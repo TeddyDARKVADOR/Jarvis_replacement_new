@@ -1,0 +1,83 @@
+# MARK LIII — headless assistant, 24/7.
+#
+#   sudo cp deployment/jarvis.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now jarvis
+#   journalctl -u jarvis -f
+#
+# Assumes the layout deployment/install.sh creates:
+#   /opt/jarvis          the repository, owned by the `jarvis` user
+#   /opt/jarvis/.venv    its virtualenv
+#
+# Adjust User/WorkingDirectory if you install somewhere else.
+
+[Unit]
+Description=MARK LIII headless assistant
+Documentation=https://github.com/TeddyDARKVADOR/Jarvis_replacement_new
+# network-online, not just network: the first thing run_headless does is bind a
+# socket and reach Gemini. Starting before DNS resolves means one failed connect
+# and a backoff wait for nothing.
+After=network-online.target
+Wants=network-online.target
+
+# These two belong in [Unit], not [Service]. Modern systemd silently IGNORES
+# them under [Service] — `systemd-analyze verify` reports "Unknown key" — so a
+# unit that looks rate-limited is not. Together they mean: give up only if the
+# service cannot stay alive through 5 starts in 5 minutes, which is a broken
+# install rather than a flapping network.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=jarvis
+Group=jarvis
+WorkingDirectory=/opt/jarvis
+
+# --quiet keeps the conversation out of the journal. Drop it to see every line
+# JARVIS would have shown on the desktop HUD — useful while bringing a server
+# up, and a transcript of everything the user says once it is running. That is
+# a privacy decision, so it is opt-in.
+ExecStart=/opt/jarvis/.venv/bin/python -m server.run_headless --quiet
+
+# Unbuffered, or journalctl shows nothing until the process exits.
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/opt/jarvis
+
+# Always, not on-failure: `shutdown_jarvis` is a tool the user can ask for by
+# voice, and it exits 0. On a 24/7 server that should bring the assistant back,
+# not leave it stopped until somebody notices.
+Restart=always
+RestartSec=5
+
+# SIGTERM is handled: run_headless turns it into a KeyboardInterrupt so main.py
+# unwinds normally and the session summary still gets written.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jarvis
+
+# ── Hardening ────────────────────────────────────────────────────────────────
+# The assistant can run shell commands and write files on request, so it is not
+# a sandbox — but there is no reason for it to be able to write to /usr or read
+# other users' home directories.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Everything MARK LIII writes to. config/ holds the API key and the device
+# credential; memory/ holds long_term.json; uploads/ is where files sent from
+# the phone land (dashboard/server.py falls back to BASE_DIR/uploads when the
+# home directory is not writable, which under ProtectHome it is not).
+ReadWritePaths=/opt/jarvis/config /opt/jarvis/memory /opt/jarvis/uploads
+
+[Install]
+WantedBy=multi-user.target
