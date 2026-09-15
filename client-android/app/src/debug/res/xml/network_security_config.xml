@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  DEBUG BUILDS ONLY. This file replaces the restricted one in src/main for
+  `assembleDebug`, and is never part of a release APK.
+
+  Its whole purpose is the first bring-up: pointing the app at a laptop on the
+  LAN (ws://192.168.1.20:8000) before Tailscale is set up. Shipping this in a
+  release would mean JARVIS's microphone could stream in the clear to any host
+  on any network.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true"/>
+</network-security-config>

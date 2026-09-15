@@ -1,0 +1,74 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Three WebSockets to MARK LIII. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- ReconnectManager watches this to retry the moment the network is back,
+         instead of sitting out a backoff that is no longer justified. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- The microphone. Declared here AND requested at runtime; neither alone
+         is enough. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+
+    <!--
+      The foreground service, and the reason the app can keep the microphone
+      once the screen goes off.
+
+      FOREGROUND_SERVICE_MICROPHONE is Android 14+. Without it, on those
+      versions, startForeground() with the microphone type throws
+      SecurityException — and on Android 11+ a background app that merely holds
+      an AudioRecord reads SILENCE rather than failing, which is the worse
+      failure: everything "works" and JARVIS just never hears anything.
+
+      Nothing here bypasses a restriction. The service is started from a visible
+      Activity, after the user has granted the microphone and switched it on
+      deliberately, and it shows an ongoing notification the whole time it runs.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+
+    <!-- Android 13+: without it the ongoing notification is never shown, and a
+         foreground service with an invisible notification is exactly what the
+         platform is designed to prevent. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!--
+      NOT declared, deliberately:
+
+      • RECEIVE_BOOT_COMPLETED — a microphone service that restarts itself after
+        a reboot, with no one present, is not something this app should do
+        silently. The user switches JARVIS on.
+      • REQUEST_IGNORE_BATTERY_OPTIMIZATIONS — the app can only *ask*, from a
+        settings screen, and Play policy is strict about it. A foreground
+        service is the supported way to stay alive; the exemption is a
+        user-visible choice, offered later, never claimed in the manifest.
+      • BLUETOOTH_CONNECT — routing to a headset is done by AudioAttributes
+        (USAGE_ASSISTANT / CONTENT_TYPE_SPEECH), which needs no permission. Only
+        a SCO call path would, and that degrades the audio to 8 kHz telephony.
+    -->
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_stat_jarvis"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Jarvis">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.Jarvis">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".service.JarvisForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone"/>
+    </application>
+</manifest>

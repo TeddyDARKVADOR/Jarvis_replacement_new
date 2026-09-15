@@ -1,0 +1,420 @@
+package com.jarvis.service
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.IBinder
+import android.os.SystemClock
+import android.util.Log
+import androidx.core.app.ServiceCompat
+import com.jarvis.AssistantState
+import com.jarvis.JarvisLog
+import com.jarvis.JarvisState
+import com.jarvis.LinkState
+import com.jarvis.MainActivity
+import com.jarvis.R
+import com.jarvis.audio.AudioPlayer
+import com.jarvis.audio.AudioRecorder
+import com.jarvis.auth.AuthManager
+import com.jarvis.net.JarvisClient
+import com.jarvis.net.Protocol
+import com.jarvis.net.ReconnectManager
+import com.jarvis.wakeword.WakeWordDetector
+import com.jarvis.wakeword.WakeWordEngines
+import com.jarvis.wakeword.WakeWordSelfTest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import org.json.JSONObject
+
+/**
+ * What keeps JARVIS alive when the screen goes off.
+ *
+ * **Why the app cannot simply record in the background.** Since Android 11 an
+ * app that is not in the foreground and holds an AudioRecord does not get an
+ * error — it gets *silence*. Everything appears to work and JARVIS never hears
+ * anything. A foreground service of type `microphone` is the supported way to
+ * be allowed to keep listening, and it costs an ongoing notification. That
+ * notification is the point, not the price: the phone is holding the microphone
+ * open, and the person carrying it is entitled to see that and to stop it in
+ * one tap.
+ *
+ * **How this differs from the old Jarvis's service, deliberately.** That one
+ * was `specialUse` and existed to stop Android killing the app for the CPU its
+ * local llama-server child was burning; it did not protect the microphone, and
+ * that app explicitly closed the microphone when it went to the background.
+ * This service has the opposite job, so: type `microphone`, and START_STICKY
+ * rather than START_NOT_STICKY — the old service had nothing to restart into
+ * (its engine was gone), while this one is the whole client and being brought
+ * back after a low-memory kill is exactly what should happen.
+ *
+ * **Nothing here bypasses a restriction.** It is started from a visible
+ * Activity, after RECORD_AUDIO has been granted and the user has switched
+ * "JARVIS 24/7" on. No boot receiver, no background start, no battery
+ * exemption claimed in the manifest.
+ */
+class JarvisForegroundService : Service() {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private lateinit var auth: AuthManager
+    private lateinit var client: JarvisClient
+    private lateinit var reconnect: ReconnectManager
+    private lateinit var player: AudioPlayer
+    private lateinit var recorder: AudioRecorder
+    private lateinit var wakeWord: WakeWordDetector
+
+    /** The user asked for the microphone. */
+    @Volatile private var micRequested = false
+
+    /** Audio may leave the phone (no wake word, or one that has just fired). */
+    @Volatile private var gateOpen = false
+    @Volatile private var gateUntil = 0L
+
+    @Volatile private var lastNotificationText = ""
+
+    /** Logs the first downlink frame once per service life. */
+    @Volatile private var sawFirstAudio = false
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        auth = AuthManager(this)
+        player = AudioPlayer(onPlayed = { JarvisState.countPlayed(it) })
+        wakeWord = WakeWordEngines.default(
+            context = this,
+            enabled = auth.wakeWordEnabled,
+            onScore = { JarvisState.setWakeScore(it) },
+        )
+        JarvisState.setWakeWord(wakeWord.name)
+        if (auth.wakeWordEnabled) {
+            // Runs once per service start, off the main thread: it replays a
+            // fixed clip through the real pipeline and says whether this port
+            // still matches the reference implementation.
+            Thread({ WakeWordSelfTest.runAndReport(this) }, "jarvis-wakeword-selftest").start()
+        }
+
+        client = JarvisClient(auth, ClientEvents())
+        reconnect = ReconnectManager(
+            context = this,
+            client = client,
+            scope = scope,
+            onLink = { state, error ->
+                JarvisState.setLink(state, error)
+                if (state != LinkState.CONNECTED) {
+                    // The microphone socket does not survive a link change, and
+                    // neither does anything queued for playback.
+                    player.flush()
+                }
+                updateNotification()
+            },
+            onRetry = { attempt, seconds -> JarvisState.setRetry(attempt, seconds) },
+            onNote = { JarvisState.log(it) },
+        )
+
+        recorder = AudioRecorder(
+            onFrame = ::onMicFrame,
+            onLevel = { level ->
+                JarvisState.setMicLevel(level)
+                // Speech refreshes the interaction window, so a wake word does
+                // not expire in the middle of a long sentence.
+                if (gateOpen && level > VOICE_FLOOR) {
+                    gateUntil = SystemClock.elapsedRealtime() + INTERACTION_WINDOW_MS
+                }
+            },
+        )
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A null intent means Android restarted us after a kill (START_STICKY).
+        // Coming back listening is the whole point of being sticky.
+        when (intent?.action ?: ACTION_START) {
+            ACTION_START -> start()
+            ACTION_STOP -> {
+                stopEverything()
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_MIC_ON -> startMic()
+            ACTION_MIC_OFF -> stopMic()
+        }
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        stopEverything()
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    // ── lifecycle ────────────────────────────────────────────────────────────
+
+    private fun start() {
+        startForegroundNotification()
+        JarvisState.setServiceRunning(true)
+        JarvisLog.service("foreground service active (type=microphone)")
+        if (!auth.isConfigured) {
+            JarvisState.setLink(LinkState.ERROR, "No server or device token configured")
+            JarvisState.log("Set the server address and device token first.")
+            updateNotification()
+            return
+        }
+        reconnect.start()
+    }
+
+    private fun stopEverything() {
+        JarvisLog.service("foreground service stopping")
+        stopMic()
+        reconnect.stop()
+        player.stop()
+        JarvisState.setServiceRunning(false)
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+    }
+
+    // ── microphone ───────────────────────────────────────────────────────────
+
+    private fun startMic() {
+        if (micRequested) return
+        micRequested = true
+
+        gateOpen = !wakeWord.gatesAudio
+        JarvisState.setGateOpen(gateOpen)
+        gateUntil = Long.MAX_VALUE
+        wakeWord.start {
+            // Fires immediately for AlwaysOpen; on a real engine, when the word
+            // is heard.
+            gateOpen = true
+            JarvisState.setGateOpen(true)
+            gateUntil = SystemClock.elapsedRealtime() + INTERACTION_WINDOW_MS
+            client.openMic()
+        }
+
+        if (!recorder.start()) {
+            micRequested = false
+            JarvisState.setLink(LinkState.ERROR, "Microphone unavailable")
+            JarvisState.log("The microphone could not be opened — another app may hold it.")
+            updateNotification()
+            return
+        }
+        if (gateOpen) client.openMic()
+        JarvisState.setMicOpen(true)
+        JarvisLog.mic("TX 16k PCM started — ${Protocol.UPLINK_FRAME_BYTES} bytes/frame, " +
+            "gate ${if (gateOpen) "open" else "closed"}")
+        updateNotification()
+    }
+
+    private fun stopMic() {
+        if (!micRequested) return
+        micRequested = false
+        gateOpen = false
+        JarvisState.setGateOpen(false)
+        recorder.stop()
+        wakeWord.stop()
+        client.closeMic()
+        JarvisState.setMicOpen(false)
+        JarvisLog.mic("TX stopped")
+        updateNotification()
+    }
+
+    /** Audio thread. Everything here is a comparison or a queue push. */
+    private fun onMicFrame(frame: ByteArray, length: Int) {
+        if (wakeWord.gatesAudio) {
+            wakeWord.feed(frame, length)
+            if (gateOpen && SystemClock.elapsedRealtime() > gateUntil) {
+                gateOpen = false
+                JarvisState.setGateOpen(false)
+                client.closeMic()
+                JarvisLog.mic("interaction window closed — back to local listening")
+            }
+            if (!gateOpen) return   // never leaves the phone
+        }
+        if (client.sendAudio(frame, length)) {
+            JarvisState.countSent(length)
+        } else {
+            JarvisState.countDropped()
+        }
+        val snap = JarvisState.state.value
+        JarvisLog.throughput(snap.bytesSent, snap.bytesReceived,
+                             snap.bytesPlayed, snap.framesDropped)
+    }
+
+    // ── what the server says ─────────────────────────────────────────────────
+
+    private inner class ClientEvents : JarvisClient.Listener {
+
+        override fun onConnected() {
+            reconnect.noteConnected()
+            sawFirstAudio = false
+            JarvisLog.net("connected to ${auth.endpoint.wsBase}")
+            if (micRequested && gateOpen) client.openMic()
+            updateNotification()
+        }
+
+        override fun onDisconnected(reason: String, fatal: Boolean) {
+            JarvisLog.net(if (fatal) "stopped: $reason" else "lost: $reason")
+            JarvisState.setMicOpen(micRequested)
+            reconnect.noteDisconnected(reason, fatal)
+        }
+
+        override fun onAudioFormat(sampleRate: Int) {
+            JarvisState.setDownlinkRate(sampleRate)
+            if (player.start(sampleRate)) {
+                JarvisLog.audio("speaker open at ${sampleRate}Hz mono 16-bit")
+            } else {
+                JarvisLog.warn("AUDIO", "could not open the speaker at ${sampleRate}Hz")
+            }
+        }
+
+        override fun onAudio(pcm: ByteArray) {
+            JarvisState.countReceived(pcm.size)
+            if (!sawFirstAudio) {
+                sawFirstAudio = true
+                // The single most useful line in the log: it separates "the
+                // server never sent anything" from "it arrived and you did not
+                // hear it", which are different bugs in different projects.
+                JarvisLog.audio("RX 24k PCM — first frame, ${pcm.size} bytes")
+            }
+            player.write(pcm)
+        }
+
+        override fun onUplinkDropped() = JarvisState.countDropped()
+
+        override fun onEvent(json: JSONObject) {
+            when (json.optString("type")) {
+                Protocol.EV_JARVIS_STATE -> {
+                    val state = when (json.optString("state").uppercase()) {
+                        "LISTENING" -> AssistantState.LISTENING
+                        "THINKING" -> AssistantState.THINKING
+                        "SPEAKING" -> AssistantState.SPEAKING
+                        "SLEEPING" -> AssistantState.SLEEPING
+                        else -> AssistantState.UNKNOWN
+                    }
+                    JarvisState.setAssistant(state)
+                    updateNotification()
+                }
+                Protocol.EV_LOG -> {
+                    val who = if (json.optString("speaker") == "jarvis") "JARVIS" else "You"
+                    JarvisState.log("$who: ${json.optString("text")}")
+                }
+                Protocol.EV_SYS -> JarvisState.log(json.optString("text"))
+                Protocol.EV_CONTENT ->
+                    JarvisState.log("[${json.optString("title")}] ${json.optString("text").take(200)}")
+                Protocol.EV_CONFIRM ->
+                    JarvisState.log("Confirmation needed: ${json.optString("title")}")
+                Protocol.EV_STATUS -> Unit   // superseded by jarvis_state
+                else -> Log.d(TAG, "unhandled event: $json")
+            }
+        }
+    }
+
+    // ── notification ─────────────────────────────────────────────────────────
+
+    private fun startForegroundNotification() {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL, "JARVIS link", NotificationManager.IMPORTANCE_LOW)
+                .apply {
+                    description = "Shown while JARVIS is connected and may be listening."
+                    setShowBadge(false)
+                }
+        )
+
+        // The microphone type is what Android 14+ requires to keep recording
+        // once the app leaves the foreground; below API 29 the parameter does
+        // not exist and 0 is the only correct value.
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        } else {
+            0
+        }
+        ServiceCompat.startForeground(this, NOTIF_ID, buildNotification(), type)
+    }
+
+    private fun updateNotification() {
+        val text = notificationText()
+        if (text == lastNotificationText) return
+        lastNotificationText = text
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        try {
+            manager.notify(NOTIF_ID, buildNotification())
+        } catch (e: Exception) {
+            Log.w(TAG, "notify failed: ${e.message}")
+        }
+    }
+
+    private fun notificationText(): String {
+        val snap = JarvisState.state.value
+        val link = when (snap.link) {
+            LinkState.CONNECTED -> "Connected"
+            LinkState.CONNECTING -> "Connecting…"
+            LinkState.RECONNECTING ->
+                if (snap.nextRetrySeconds > 0) "Reconnecting in ${snap.nextRetrySeconds}s"
+                else "Reconnecting…"
+            LinkState.ERROR -> snap.lastError ?: "Error"
+            LinkState.DISCONNECTED -> "Disconnected"
+        }
+        val mic = if (snap.micOpen) " · microphone on" else ""
+        return link + mic
+    }
+
+    private fun buildNotification(): Notification {
+        val open = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        val stop = PendingIntent.getService(
+            this, 1,
+            Intent(this, JarvisForegroundService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        return Notification.Builder(this, CHANNEL)
+            .setContentTitle("JARVIS")
+            .setContentText(notificationText())
+            .setSmallIcon(R.drawable.ic_stat_jarvis)
+            .setContentIntent(open)
+            .addAction(
+                Notification.Action.Builder(null as android.graphics.drawable.Icon?, "Stop", stop)
+                    .build()
+            )
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+    }
+
+    companion object {
+        private const val TAG = "JarvisService"
+        private const val CHANNEL = "jarvis_link"
+        private const val NOTIF_ID = 5301
+
+        const val ACTION_START = "com.jarvis.START"
+        const val ACTION_STOP = "com.jarvis.STOP"
+        const val ACTION_MIC_ON = "com.jarvis.MIC_ON"
+        const val ACTION_MIC_OFF = "com.jarvis.MIC_OFF"
+
+        /** How long a wake-word interaction stays open with nobody speaking. */
+        private const val INTERACTION_WINDOW_MS = 30_000L
+
+        /** Mic level above which someone is considered to be speaking. */
+        private const val VOICE_FLOOR = 0.04f
+
+        fun send(context: Context, action: String) {
+            val intent = Intent(context, JarvisForegroundService::class.java).setAction(action)
+            if (action == ACTION_START) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+    }
+}

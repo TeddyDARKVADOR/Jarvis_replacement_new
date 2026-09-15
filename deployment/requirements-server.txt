@@ -1,0 +1,73 @@
+# MARK LIII — headless server dependencies
+#
+# NOT requirements.txt. That file is for the desktop assistant and pulls PyQt6,
+# playwright browsers, pyautogui, opencv and the Windows extras — none of which
+# a VPS can use and several of which cannot even be imported without a display.
+#
+# This list was derived by reading the import graph of the headless entry point
+# and by running discovery with DISPLAY unset, not by guessing.
+#
+#   pip install -r deployment/requirements-server.txt
+
+# ── REQUIRED: the process does not start without these ───────────────────────
+#
+# google-genai   main.py: `from google import genai`
+# numpy          main.py's audio level meter, and actions/screen_processor
+# psutil         actions/system_monitor, imported at main.py's top level — so a
+#                missing psutil is a hard import failure, not a lost action
+# fastapi
+# uvicorn        dashboard/server.py; without them the dashboard silently
+#                disables itself and the phone has nothing to connect to
+# python-multipart
+#                FastAPI needs it to BUILD the /api/upload route. Without it the
+#                whole app fails at startup, not just uploads — this cost an
+#                afternoon once, hence the comment
+# cryptography   AES-256-CBC for encrypted commands (imported lazily)
+google-genai>=2.8.0
+numpy
+psutil
+fastapi
+uvicorn[standard]
+python-multipart
+cryptography
+
+# ── RECOMMENDED: cheap, and each one turns an action back on ─────────────────
+#
+# requests       core/llm_client (local LLM backends), several actions
+# ddgs           actions/web_search — the single most useful action on a server
+requests
+ddgs
+
+# ── OPTIONAL: only if you want that specific action on the server ────────────
+#
+# send2trash            file_controller's "move to trash" (falls back without it)
+# PyPDF2 pdfplumber     file_processor: reading PDFs
+# python-docx           file_processor: .docx
+# python-pptx openpyxl  file_processor: .pptx / .xlsx
+# pillow                file_processor: images
+# youtube-transcript-api  transcripts without a browser
+#
+# Uncomment what you need. Each is lazily imported, so a missing one costs that
+# one capability and nothing else.
+# send2trash
+# PyPDF2
+# pdfplumber
+# python-docx
+# python-pptx
+# openpyxl
+# pillow
+# youtube-transcript-api
+
+# ── DELIBERATELY ABSENT ──────────────────────────────────────────────────────
+#
+# PyQt6        the headless entry point installs a stand-in for `ui`, so the
+#              real ui.py is never imported. ~100 MB not installed.
+# sounddevice  same: server/audio_bridge stands in for it. A VPS has no sound
+#              card and does not need a PortAudio binding to pretend otherwise.
+# pyautogui    needs an X display. The five desktop-control actions that import
+#              it are rejected by the loader on a server, which is correct — a
+#              VPS has no mouse to move.
+# opencv, mss  screen capture on a machine with no screen.
+# playwright   browser_control works with it, but it pulls ~400 MB of browsers.
+#              Install separately if you want it:
+#                  pip install playwright && python -m playwright install chromium

@@ -1,0 +1,16 @@
+# Android / Gradle build output — never committed.
+*.iml
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Machine-specific SDK path.
+local.properties
+
+# Signing material. An upload key in the repository is an upload key published.
+*.jks
+*.keystore
+
+.idea/
