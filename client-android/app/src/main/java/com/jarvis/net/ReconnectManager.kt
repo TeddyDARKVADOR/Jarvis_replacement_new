@@ -61,13 +61,39 @@ class ReconnectManager(
     @Volatile private var attempts = 0
     @Volatile private var connectedAt = 0L
 
+    /**
+     * The countdown between attempts — and *only* that.
+     *
+     * It used to double as the handle on the in-flight attempt, which deadlocked
+     * the loop: `connectNow` assigned its own coroutine here, `client.connect()`
+     * threw (it performs the device-login synchronously, so a server that is down
+     * throws rather than failing a socket later), and the `catch` called
+     * `scheduleRetry` *from inside that coroutine*. The guard below then saw
+     * `retryJob.isActive` — itself — decided a retry was already pending, and
+     * scheduled nothing. The app sat in RECONNECTING for ever while the server
+     * was up and reachable, and `start()` refused to help because `running` was
+     * still true. Observed on a VPS restart and on a phone losing its network.
+     */
     private var retryJob: Job? = null
+
+    /** The attempt in flight. Never consulted by [scheduleRetry]. */
+    private var connectJob: Job? = null
+
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     // ── lifecycle ────────────────────────────────────────────────────────────
 
     fun start() {
-        if (running) return
+        if (running) {
+            // Already trying. Treat a second CONNECT as "stop waiting, try now"
+            // rather than as a no-op: this button is dead exactly when the user
+            // most wants it, staring at a stalled RECONNECTING.
+            if (!connected) {
+                attempts = 0
+                connectNow("connect pressed while retrying")
+            }
+            return
+        }
         running = true
         attempts = 0
         registerNetworkWatch()
@@ -79,6 +105,8 @@ class ReconnectManager(
         connected = false
         retryJob?.cancel()
         retryJob = null
+        connectJob?.cancel()
+        connectJob = null
         unregisterNetworkWatch()
         client.disconnect()
         onRetry(0, 0)
@@ -122,8 +150,13 @@ class ReconnectManager(
     // ── the loop ─────────────────────────────────────────────────────────────
 
     private fun connectNow(why: String) {
+        // Cancel the countdown, if one is pending — we are attempting right now.
+        // (When this runs *from* that countdown's last line, cancelling it is
+        // harmless: the new job below is launched on `scope`, not as its child.)
         retryJob?.cancel()
-        retryJob = scope.launch(Dispatchers.IO) {
+        retryJob = null
+        connectJob?.cancel()
+        connectJob = scope.launch(Dispatchers.IO) {
             onLink(
                 if (attempts == 0) LinkState.CONNECTING else LinkState.RECONNECTING,
                 null,
@@ -144,10 +177,12 @@ class ReconnectManager(
     private fun scheduleRetry(reason: String) {
         if (!running) return
         if (retryJob?.isActive == true && !connected) {
-            // A retry is already counting down. Three sockets can report the
-            // same outage within milliseconds of each other; without this they
-            // would each schedule their own attempt and the backoff would mean
-            // nothing.
+            // A countdown is already running. Three sockets can report the same
+            // outage within milliseconds of each other; without this they would
+            // each schedule their own attempt and the backoff would mean
+            // nothing. This deliberately does NOT look at `connectJob`: a failed
+            // attempt calls us from inside its own coroutine, and treating that
+            // as "a retry is pending" is what used to kill the loop.
             return
         }
         attempts++
