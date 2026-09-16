@@ -23,13 +23,18 @@ WHERE THE HUD OUTPUT GOES INSTEAD
     THINKING through the existing "status" channel would make the current web
     client show the wrong thing. A type it does not know, it ignores.
 
-THE ONE CAPABILITY THAT IS GENUINELY LOST
-    show_confirm() puts an irreversible action behind an on-screen CONFIRM
-    button (core/confirm.py). There is no button here yet, so such an action is
-    announced, surfaced in /status, and then expires after core.confirm's 90 s
-    timeout without running. That is the safe failure, and it is the correct
-    one until the Android app grows a confirm button (Phase 5). It is not a
-    regression: nothing runs that would not have run before.
+THE CONFIRMATION GATE
+    show_confirm() puts an irreversible action behind a CONFIRM button
+    (core/confirm.py). There is no button on this host, so the request is sent
+    to the connected client as a `confirm` event carrying the id core/confirm.py
+    issued for it, and the client's answer comes back as
+    `confirmation_response`. The decision is all that travels: what runs, and
+    whether anything runs at all, is still decided here against the pending
+    request and its 90 s expiry. A client that answers late, twice, or with the
+    id of a request that has been replaced changes nothing.
+
+    With no client connected the behaviour is the old one and the safe one: the
+    request is announced, surfaced in /status, and expires unconfirmed.
 """
 from __future__ import annotations
 
@@ -38,6 +43,8 @@ import json
 import threading
 import time
 from pathlib import Path
+
+from core import confirm as confirm_gate
 
 from .runtime_state import RuntimeState, State
 
@@ -180,9 +187,21 @@ class HeadlessUI:
     def show_confirm(self, title: str, detail: str) -> None:
         t = str(title)[:120]
         self.state.note_pending_confirmation(t)
-        self.write_log(f"SYS: Confirmation required — {t} (no confirm button "
-                       f"on this host; it will expire unconfirmed).")
-        self._emit({"type": "confirm", "title": t, "detail": str(detail)[:300]})
+
+        # The id core/confirm.py issued for this request. It is read here rather
+        # than passed in because the HUD's show(title, detail) signature is
+        # shared with the desktop and there was no reason to change it there.
+        # A client must quote this back for its answer to count.
+        cid = confirm_gate.pending_id()
+
+        self.write_log(f"SYS: Confirmation required — {t}")
+        self._emit({
+            "type":   "confirm",
+            "id":     cid,
+            "title":  t,
+            "detail": str(detail)[:300],
+            "timeout_s": round(confirm_gate.seconds_left()),
+        })
 
     def hide_confirm(self) -> None:
         self.state.note_pending_confirmation("")

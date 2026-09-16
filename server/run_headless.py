@@ -49,6 +49,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+from core import confirm as confirm_gate            # noqa: E402
 from server import api, auth                        # noqa: E402
 from server.audio_bridge import AudioHub, build_module  # noqa: E402
 from server.headless_ui import HeadlessUI           # noqa: E402
@@ -120,6 +121,31 @@ def build(echo: bool = True, allow_firewall: bool = False):
 
     import main  # noqa: E402  — only now is it safe
 
+    def _remote_interrupt() -> None:
+        """A client pressed INTERRUPT.
+
+        Two things have to stop, and only the first of them is main.py's.
+        `ui.on_interrupt` is the assistant's own `interrupt()` — the same
+        callable the desktop HUD button uses — and it drains the queue feeding
+        _play_audio. That stops audio being *produced*.
+
+        The hub holds what has already been produced: up to _QUEUE_SLOTS frames,
+        ~40 s, because Gemini generates faster than real time. Leave it and the
+        listener goes on speaking the abandoned answer long after the user asked
+        for silence, which reads as the interrupt having done nothing.
+
+        Order matters: stop the source first, then throw away what it already
+        emitted, or the drain races the last writes.
+        """
+        cb = getattr(ui, "on_interrupt", None)
+        if cb is None:
+            ui.write_log("SYS: Interrupt ignored — the assistant is not running yet.")
+            return
+        try:
+            cb()
+        finally:
+            hub.flush()
+
     def _on_dashboard(dash) -> None:
         ui.bind_dashboard(dash)
         token = auth.seed_dashboard(dash)
@@ -131,6 +157,17 @@ def build(echo: bool = True, allow_firewall: bool = False):
             label="MARK LIII",
             log=lambda m: print(m, flush=True),
         )
+        # The two client→server capabilities the headless host adds. Both bind a
+        # remote button to a function that already existed — no second command
+        # path, no second authority. `main.py` is untouched: it has already put
+        # `interrupt` on the UI object (JarvisLive.__init__) and already bound
+        # core/confirm.py to that UI, so both ends of each wire are in place and
+        # this only joins them.
+        dash.set_interrupt_callback(_remote_interrupt)
+        dash.set_confirm_callback(
+            lambda accepted, cid: confirm_gate.resolve(accepted, cid)
+        )
+
         ui.write_log("SYS: /health, /status and /ws/phone-out are up.")
         ui.write_log(f"SYS: paired device …{token[-6:]} restored from "
                      f"{auth.CRED_PATH.name}.")
