@@ -69,6 +69,20 @@ class _Subscriber:
         self.loop = loop
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=slots)
         self.dropped = 0
+        self.flushed = 0      # frames thrown away by AudioHub.flush()
+
+
+def _drain(sub: _Subscriber) -> None:
+    """Empty one subscriber's queue. Runs on that subscriber's own loop."""
+    n = 0
+    while True:
+        try:
+            sub.queue.get_nowait()
+            n += 1
+        except asyncio.QueueEmpty:
+            break
+    if n:
+        sub.flushed += n
 
 
 class AudioHub:
@@ -101,6 +115,32 @@ class AudioHub:
     def listeners(self) -> int:
         with self._lock:
             return len(self._subs)
+
+    def flush(self) -> None:
+        """Drop every frame still queued for every listener. Call on interrupt.
+
+        `JarvisLive.interrupt()` empties the queue feeding `_play_audio`, which
+        stops *new* audio being produced. It cannot touch what has already left
+        that queue — and what has already left it is the problem: Gemini
+        generates faster than real time (measured: 1.52 s of speech delivered in
+        0.41 s), so by the time a user says "stop", a whole answer can be sitting
+        here. At _QUEUE_SLOTS that is up to ~40 s.
+
+        Without this, pressing interrupt on the phone stops the *source* and the
+        phone keeps speaking the abandoned answer for another half minute, which
+        reads as the interrupt having done nothing at all.
+
+        Safe from any thread: each subscriber's queue is drained on the loop that
+        owns it, never here.
+        """
+        with self._lock:
+            subs = list(self._subs)
+        for sub in subs:
+            try:
+                sub.loop.call_soon_threadsafe(_drain, sub)
+            except RuntimeError:
+                # Loop already closed — that subscriber is gone anyway.
+                pass
 
     # ── producer side (any thread) ───────────────────────────────────────────
 

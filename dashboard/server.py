@@ -378,6 +378,11 @@ class DashboardServer:
         self._command_queue               = asyncio.Queue()
         self._wake_callback               = None
         self._connect_callback            = None
+        # Set by whoever owns the assistant (server/run_headless.py wires these
+        # to the UI's existing slots). Left None on the desktop, where the HUD
+        # already has its own buttons for both.
+        self._interrupt_callback          = None
+        self._confirm_callback            = None
         self._pending_keys: dict[str, float] = {}
         self._device_sessions: dict[str, dict] = {}  # device_token → {session_key}
         self._phone_audio_queue: asyncio.Queue    = asyncio.Queue(maxsize=200)
@@ -431,6 +436,19 @@ class DashboardServer:
 
     def set_connect_callback(self, fn) -> None:
         self._connect_callback = fn
+
+    def set_interrupt_callback(self, fn) -> None:
+        """fn() — stop JARVIS mid-speech. Wired to the same `interrupt()` the
+        desktop HUD button calls; this only gives a remote client a way in."""
+        self._interrupt_callback = fn
+
+    def set_confirm_callback(self, fn) -> None:
+        """fn(accepted: bool, cid: str) — answer the pending confirmation.
+
+        The server stays the authority: this carries a *decision*, never an
+        action. What runs, and whether anything runs at all, is decided by
+        core/confirm.py against its own pending request and its own expiry."""
+        self._confirm_callback = fn
 
     # ── broadcast ────────────────────────────────────────────────────────
 
@@ -736,13 +754,31 @@ class DashboardServer:
             try:
                 while True:
                     data = await websocket.receive_json()
-                    if data.get("type") == "command":
+                    _type = data.get("type")
+
+                    if _type == "command":
                         enc = data.get("enc", "")
                         t   = self._decrypt(tok, enc) if enc else (data.get("text") or "").strip()
                         if t:
                             await self._command_queue.put(t)
                             if self._wake_callback:
                                 self._wake_callback()
+
+                    elif _type == "interrupt":
+                        # Carries nothing: "stop talking" has no parameters, and
+                        # a payload would only be something to validate.
+                        if self._interrupt_callback:
+                            self._interrupt_callback()
+
+                    elif _type == "confirmation_response":
+                        # A decision, not an action. `id` must be the one this
+                        # client was shown; core/confirm.py discards anything
+                        # else, so a stale banner cannot answer a newer request.
+                        if self._confirm_callback:
+                            self._confirm_callback(
+                                bool(data.get("confirmed")),
+                                str(data.get("id") or ""),
+                            )
             except WebSocketDisconnect:
                 pass
             finally:

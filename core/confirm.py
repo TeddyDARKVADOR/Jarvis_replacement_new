@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -53,6 +54,13 @@ class _Pending:
     detail:  str
     run:     Callable[[], str]
     at:      float
+    cid:     str
+    # `cid` identifies *this* request, and exists because a remote interface can
+    # answer late. The HUD could not: its banner was the only one on screen, so
+    # "the user pressed CONFIRM" could only ever mean the thing being shown. A
+    # phone can hold a stale banner through an expiry and a new request, and
+    # without an id its CONFIRM would resolve whatever happens to be pending —
+    # which is how "yes, empty the trash" becomes "yes, shut down the machine".
 
 
 _pending: Optional[_Pending] = None
@@ -95,8 +103,11 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
 
     with _lock:
         _pending = _Pending(key=key, title=title, detail=detail,
-                            run=run, at=time.monotonic())
+                            run=run, at=time.monotonic(), cid=uuid.uuid4().hex)
 
+    # _pending is set before the interface is told, so an interface that needs
+    # the id (a remote one) can read it with pending_id() from inside its own
+    # show callback. The HUD's signature is unchanged and it ignores all of this.
     try:
         _show_cb(title, detail)
     except Exception as e:
@@ -112,16 +123,41 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
     )
 
 
-def resolve(accepted: bool) -> None:
+def resolve(accepted: bool, cid: Optional[str] = None) -> None:
     """Called by the UI when the user presses CONFIRM or CANCEL.
 
     Runs the stored callable on a worker thread — this is invoked from the Qt
     thread, and shutting the machine down from inside a button handler would
-    freeze the interface on its way out."""
+    freeze the interface on its way out.
+
+    `cid` is the id the interface was shown. Pass it from any interface that can
+    answer late — a phone, a browser — and a decision aimed at a confirmation
+    that is no longer the pending one is discarded instead of being applied to
+    whatever replaced it. Omitting it keeps the HUD's original behaviour, where
+    the banner on screen and the pending request are the same thing by
+    construction.
+
+    Answering twice is covered by the same path: the first answer clears
+    `_pending`, so the second finds nothing to resolve.
+    """
     global _pending
 
     with _lock:
-        p, _pending = _pending, None
+        p = _pending
+        if p is not None and cid is not None and cid != p.cid:
+            # Not ours: an expired banner, or one the user answered after the
+            # request had already been replaced. Leave `_pending` alone — the
+            # confirmation that *is* waiting has not been answered.
+            p = None
+            stale = True
+        else:
+            stale = False
+            _pending = None
+
+    if stale:
+        _log("SYS: Ignored a confirmation answer that no longer matches "
+             "the pending request.")
+        return
 
     if _hide_cb:
         try:
@@ -159,3 +195,25 @@ def pending_title() -> str:
         if time.monotonic() - _pending.at > TIMEOUT_SECONDS:
             return ""
         return _pending.title
+
+
+def pending_id() -> str:
+    """The id of the request now waiting, '' if none or if it has expired.
+
+    Read by a remote interface inside its show callback, so the banner it sends
+    out carries the id its answer must quote back. See `resolve`."""
+    with _lock:
+        if _pending is None:
+            return ""
+        if time.monotonic() - _pending.at > TIMEOUT_SECONDS:
+            return ""
+        return _pending.cid
+
+
+def seconds_left() -> float:
+    """How long the pending request still has, 0.0 if none. Lets an interface
+    show a countdown, and lets a test assert the expiry without sleeping 90 s."""
+    with _lock:
+        if _pending is None:
+            return 0.0
+        return max(0.0, TIMEOUT_SECONDS - (time.monotonic() - _pending.at))

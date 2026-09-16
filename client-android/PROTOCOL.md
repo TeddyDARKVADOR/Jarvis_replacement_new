@@ -143,7 +143,8 @@ reconnecting client gets recent context rather than a blank screen.
 | `file_received` | `name`, `size`, `saved_to` | dashboard |
 | `jarvis_state` | `state` (`LISTENING`\|`THINKING`\|`SPEAKING`\|`SLEEPING`) | headless |
 | `content` | `title`, `text` — what the desktop shows under the HUD | headless |
-| `confirm` / `confirm_hide` | `title`, `detail` | headless |
+| `confirm` | `id`, `title`, `detail`, `timeout_s` — see §4.1 | headless |
+| `confirm_hide` | *(no payload)* — the request is over, take the banner down | headless |
 
 `jarvis_state` is finer-grained than `status` and exists as a separate type on
 purpose: the existing web client only understands `active`/`sleeping`, and
@@ -152,8 +153,79 @@ pushing new values through `status` would make it display the wrong thing.
 ### Client → server
 
 ```json
-{"type": "command", "text": "what is the weather"}
+{"type": "command",  "text": "what is the weather"}
+{"type": "interrupt"}
+{"type": "confirmation_response", "id": "<id from `confirm`>", "confirmed": true}
 ```
+
+An unrecognised `type` is ignored and the socket stays open, so a client may be
+older or newer than the server it is talking to.
+
+#### `interrupt`
+
+Stop JARVIS mid-sentence. No payload: *stop talking* has no parameters, and a
+payload would only be something to validate.
+
+It reaches the same `interrupt()` the desktop HUD button calls. Two things are
+discarded, and a client should expect both:
+
+| | |
+|---|---|
+| audio not yet produced | the queue feeding the player is drained |
+| audio already produced | **every frame still queued for every `/ws/phone-out` listener is dropped** |
+
+The second one is not an optimisation. Gemini generates faster than real time —
+measured at 1.52 s of speech delivered in 0.41 s — so by the time anyone asks for
+silence, a complete answer can already be in flight. Up to ~40 s of it. Without
+dropping that, an interrupt stops the *source* and the phone keeps speaking the
+abandoned answer for another half minute.
+
+**A client must also clear its own playback buffer** when it sends this. The
+server cannot reach into it, and whatever the client has already received will
+otherwise still be spoken.
+
+After an interrupt: the abandoned turn does not resume, and the next thing the
+user says is a new turn. Interrupting when nothing is being said is harmless.
+
+#### `confirmation_response`
+
+The answer to a `confirm` event. It carries a **decision, never an action** — see
+§4.1.
+
+### 4.1 The confirmation gate
+
+Irreversible actions (`core/confirm.py`) do not run until a human says so. On a
+desktop that is a HUD button; here it is an event:
+
+```
+MARK LIII  ──confirm{id,title,detail,timeout_s}──►  client
+                                                      │  CONFIRM / CANCEL
+MARK LIII  ◄──confirmation_response{id,confirmed}─────┘
+```
+
+The client displays and decides. It never executes. What runs — and whether
+anything runs at all — is decided on the server against its own pending request.
+
+`id` is mandatory in the answer, and this is the whole point of it: a phone can
+hold a stale banner across an expiry and a new request in a way a HUD never
+could. An answer is applied **only** if its `id` is the request still waiting.
+The server refuses, silently and without side effects:
+
+| The client says | What happens |
+|---|---|
+| an `id` that is not the pending one | ignored — and the live request stays waiting |
+| the same `id` twice | the second is ignored; the action runs once |
+| an `id` whose request has expired | ignored, nothing runs |
+| an answer with nothing pending | ignored |
+
+**Expiry is `timeout_s` seconds from the `confirm` event** (90 s as shipped). A
+client should take its banner down when the timer runs out rather than leave a
+live-looking button on screen; either way an answer sent after it will do
+nothing. `confirm_hide` also means take it down — the request has been resolved
+or cancelled somewhere else.
+
+With no client connected, a confirmation is announced, surfaced in `/status`,
+and expires unconfirmed. That is the safe failure and it is the old behaviour.
 
 Or `{"type":"command","enc":"<base64>"}` with the text encrypted AES-256-CBC
 under `SHA256(session_key + b"JARVIS-DASHBOARD-v1")`, IV prepended, PKCS7.

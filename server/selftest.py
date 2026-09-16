@@ -476,6 +476,136 @@ def _status_contract():
     return f"{len(required)} fields, counters correct, no secret in the body"
 
 
+# ── 13. interrupt reaches the audio actually queued for the phone ────────────
+
+@check("interrupt empties what is already queued for every listener")
+def _hub_flush():
+    import asyncio
+
+    from server.audio_bridge import AudioHub
+
+    async def run():
+        hub = AudioHub()
+        sub = hub.subscribe()
+        for i in range(40):
+            hub.publish(bytes([i]))
+        await asyncio.sleep(0)
+        assert sub.queue.qsize() == 40, f"expected 40 queued, got {sub.queue.qsize()}"
+
+        # This is the half of an interrupt that main.py's interrupt() cannot do:
+        # it drains the queue feeding _play_audio, but Gemini generates faster
+        # than real time, so a whole answer can already be past that point and
+        # sitting here. Without this the listener speaks the abandoned answer
+        # for up to ~40 s after the user asked for silence.
+        hub.flush()
+        await asyncio.sleep(0)
+
+        assert sub.queue.qsize() == 0, (
+            f"{sub.queue.qsize()} frames survived the flush — the phone would "
+            f"keep talking after an interrupt")
+        assert sub.flushed == 40, f"flushed counter says {sub.flushed}, expected 40"
+
+        # A flush with nothing queued must be harmless: interrupt is a button a
+        # user can press twice.
+        hub.flush()
+        await asyncio.sleep(0)
+        return f"{sub.flushed} queued frames discarded, empty flush is a no-op"
+
+    return asyncio.run(run())
+
+
+# ── 14. the two client→server events are carried and validated ───────────────
+
+@check("/ws carries interrupt and confirmation_response to the server")
+def _ws_control_events():
+    if not _fastapi_available():
+        return "skipped (fastapi/httpx not installed)"
+    from fastapi.testclient import TestClient
+
+    dash, _state, _hub, _tok = _build_dashboard()
+    bearer = "t-" + "z" * 20
+    dash._tokens.add(bearer)
+
+    seen: dict = {"interrupts": 0, "confirms": []}
+    dash.set_interrupt_callback(lambda: seen.__setitem__("interrupts",
+                                                         seen["interrupts"] + 1))
+    dash.set_confirm_callback(
+        lambda accepted, cid: seen["confirms"].append((accepted, cid)))
+
+    with TestClient(dash.app) as client:
+        with client.websocket_connect(f"/ws?token={bearer}") as ws:
+            ws.send_json({"type": "interrupt"})
+            ws.send_json({"type": "confirmation_response",
+                          "id": "abc123", "confirmed": True})
+            ws.send_json({"type": "confirmation_response",
+                          "id": "def456", "confirmed": False})
+            # An unknown type must be ignored, not crash the socket: older and
+            # newer clients share this channel.
+            ws.send_json({"type": "something_from_a_future_client"})
+            ws.send_json({"type": "interrupt"})
+            # Round-trip a command to be sure the socket is still alive after
+            # all of the above.
+            ws.send_json({"type": "command", "text": "ping"})
+
+    assert seen["interrupts"] == 2, f"interrupts delivered: {seen['interrupts']}"
+    assert seen["confirms"] == [(True, "abc123"), (False, "def456")], (
+        f"confirmation decisions delivered: {seen['confirms']}")
+    return "2 interrupts, 2 decisions with ids, unknown type ignored"
+
+
+# ── 15. a decision cannot be replayed onto a different request ───────────────
+
+@check("a confirmation answer only resolves the request it names")
+def _confirm_identity():
+    import time as _time
+
+    from core import confirm as gate
+
+    shown: list = []
+    ran:   list = []
+    gate.bind(show=lambda t, d: shown.append(t), hide=lambda: None,
+              log=lambda _m: None)
+
+    gate.request("k", "Empty the trash", "-", lambda: ran.append("trash") or "ok")
+    first = gate.pending_id()
+    assert first, "request issued no id"
+    gate.resolve(True, first)
+    _time.sleep(0.15)
+    assert ran == ["trash"], f"confirm did not run the action: {ran}"
+
+    # Replay of the same decision.
+    gate.resolve(True, first)
+    _time.sleep(0.15)
+    assert ran == ["trash"], "a replayed answer ran the action twice"
+
+    # The dangerous one: a client still showing the old banner answers after the
+    # request has been replaced. Its yes must not run the new action, and must
+    # not consume the new request either.
+    gate.request("k2", "Shut down the machine", "-",
+                 lambda: ran.append("shutdown") or "ok")
+    second = gate.pending_id()
+    gate.resolve(True, first)
+    _time.sleep(0.15)
+    assert "shutdown" not in ran, "a stale id confirmed a different action"
+    assert gate.pending_id() == second, "a stale answer consumed the live request"
+
+    # Expiry: nothing runs, whatever the client says.
+    gate._pending.at -= (gate.TIMEOUT_SECONDS + 1)
+    assert gate.pending_id() == "", "an expired request still reports an id"
+    gate.resolve(True, second)
+    _time.sleep(0.15)
+    assert "shutdown" not in ran, "an expired confirmation ran the action"
+
+    # The desktop HUD calls resolve() with no id at all; that must still work.
+    gate.request("k3", "From the HUD", "-", lambda: ran.append("hud") or "ok")
+    gate.resolve(True)
+    _time.sleep(0.15)
+    assert ran == ["trash", "hud"], f"HUD path broken: {ran}"
+
+    gate.bind(show=None, hide=None, log=None)
+    return "replay, stale id, expiry refused; HUD path unchanged"
+
+
 # ── report ───────────────────────────────────────────────────────────────────
 
 def main() -> int:

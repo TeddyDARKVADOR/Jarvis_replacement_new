@@ -236,19 +236,49 @@ them that specific.
 request and has no effect. The Android client does not use it. Sending a text
 command wakes the assistant.
 
-### No interrupt from the phone
+### ~~No interrupt from the phone~~ — fixed
 
-`interrupt()` is bound to a desktop HUD button only, and `_relay_phone_audio`
-discards uplink audio while JARVIS is speaking — so there is no voice barge-in
-either. A route in `server/api.py` calling `ui.on_interrupt` would fix half of
-it; the other half is in `main.py`.
+A client sends `{"type":"interrupt"}` on the existing `/ws`. It reaches the same
+`interrupt()` the HUD button calls, and `AudioHub.flush()` then drops every frame
+already queued for every listener.
 
-### The confirmation gate expires unanswered
+That second step is the one worth knowing about. `interrupt()` drains the queue
+feeding `_play_audio`, which stops audio being *produced* — but Gemini produces
+faster than real time, so up to `_QUEUE_SLOTS` frames (~40 s) can already be past
+that point. Without the flush, an interrupt stops the source and the phone goes
+on speaking the abandoned answer for another half minute, which reads as the
+button doing nothing. The client clears its own playback buffer too; the server
+cannot reach into it.
 
-`core/confirm.py` parks irreversible actions behind an on-screen CONFIRM button.
-There is no such button on the phone yet, so such an action is announced,
-surfaced in `/status`, and expires after 90 seconds without running. That is the
-safe failure: nothing runs that would not have run before.
+The wiring is in `server/run_headless.py` (`_remote_interrupt`), not in
+`main.py`: `JarvisLive.__init__` already puts `interrupt` on the UI object, so
+both ends of the wire existed and this only joins them.
+
+**Still missing: voice barge-in.** `_relay_phone_audio` discards uplink audio
+while JARVIS is speaking, so interrupting by talking over it is not possible —
+only by pressing the button.
+
+### ~~The confirmation gate expires unanswered~~ — fixed
+
+`core/confirm.py` parks irreversible actions behind a CONFIRM button. There is
+now one on the phone: the request goes out as a `confirm` event carrying an id,
+and the answer comes back as `confirmation_response`. See
+[PROTOCOL.md §4.1](../client-android/PROTOCOL.md).
+
+**The client sends a decision, never an action.** What runs is decided here,
+against the pending request and its own 90 s expiry.
+
+`core/confirm.py` gained one field for this: `cid`. A HUD could not answer the
+wrong question — its banner and the pending request were the same thing by
+construction — but a phone can hold a stale banner across an expiry and a new
+request, and without an id its CONFIRM would resolve whatever happened to be
+waiting. That is how "yes, empty the trash" becomes "yes, shut down the machine".
+`resolve(accepted, cid)` applies an answer only if `cid` is the request still
+waiting; a stale answer is discarded **and leaves the live request waiting**.
+`resolve(accepted)` with no id keeps the HUD's original behaviour.
+
+With no client connected the behaviour is unchanged: announced, surfaced in
+`/status`, expires unconfirmed.
 
 ---
 
