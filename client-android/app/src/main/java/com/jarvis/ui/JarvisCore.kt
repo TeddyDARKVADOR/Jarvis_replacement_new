@@ -1,5 +1,7 @@
 package com.jarvis.ui
 
+import android.os.SystemClock
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -12,6 +14,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -56,6 +59,14 @@ fun JarvisCore(
     /** 0..1 from whichever side is currently making sound. */
     level: Float,
     animated: Boolean,
+    /**
+     * `elapsedRealtime()` of the last time the wake word opened the gate.
+     *
+     * Drives a single expanding ring. That instant is the product's whole
+     * promise — the phone decided your voice may leave it — and it had no
+     * representation at all: the state changed, the core did not.
+     */
+    wokeAt: Long = 0L,
     modifier: Modifier = Modifier,
     onTap: (() -> Unit)? = null,
 ) {
@@ -102,6 +113,17 @@ fun JarvisCore(
     val breathAmount = if (animated) breath else 0.5f
     val sweepAmount = if (animated) sweep else 0f
 
+    // The wake acknowledgement: one ring, 0 → 1, then gone. Driven off the
+    // timestamp rather than a boolean so a wake that happens while the screen is
+    // off does not fire a stale animation when the user looks at it later.
+    val wake = remember { Animatable(1f) }
+    LaunchedEffect(wokeAt) {
+        if (wokeAt > 0L && SystemClock.elapsedRealtime() - wokeAt < 1_500) {
+            wake.snapTo(0f)
+            wake.animateTo(1f, tween(700, easing = LinearEasing))
+        }
+    }
+
     Box(
         modifier = modifier
             .size(240.dp)
@@ -114,7 +136,7 @@ fun JarvisCore(
             )
     ) {
         Canvas(Modifier.size(240.dp)) {
-            drawCore(mood, breathAmount, sweepAmount, smoothed)
+            drawCore(mood, breathAmount, sweepAmount, smoothed, wake.value)
         }
     }
 }
@@ -187,6 +209,8 @@ private fun DrawScope.drawCore(
     breath: Float,
     sweep: Float,
     level: Float,
+    /** 0 = the wake ring has just started, 1 = finished and invisible. */
+    wake: Float,
 ) {
     val c = center
     val unit = size.minDimension / 2f
@@ -258,6 +282,17 @@ private fun DrawScope.drawCore(
         center = c,
         style = Stroke(width = 1.dp.toPx()),
     )
+
+    // "Hey Jarvis" was heard. One ring leaving the core, fading as it goes —
+    // drawn over everything so it reads even mid-sentence.
+    if (wake < 1f) {
+        drawCircle(
+            color = Color.White.copy(alpha = (1f - wake) * 0.5f),
+            radius = unit * (0.30f + wake * 0.72f),
+            center = c,
+            style = Stroke(width = (2.5f * (1f - wake) + 0.5f).dp.toPx()),
+        )
+    }
 
     // The centre. Always lit, always the brightest thing on the screen: it is
     // the one element that says the assistant exists at all.

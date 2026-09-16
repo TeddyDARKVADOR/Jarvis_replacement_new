@@ -1,5 +1,6 @@
 package com.jarvis
 
+import android.os.SystemClock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -42,6 +43,14 @@ data class Message(
     val fromJarvis: Boolean,
     val text: String,
     val atMillis: Long = 0L,
+    /**
+     * Set only for `content` events — the structured panel the desktop shows
+     * under the HUD (a search result, a list, a file summary). It used to be
+     * flattened into one grey log line truncated at 200 characters, which threw
+     * away the one kind of message the server had already taken the trouble to
+     * give a shape.
+     */
+    val title: String? = null,
 )
 
 data class JarvisSnapshot(
@@ -129,6 +138,24 @@ data class JarvisSnapshot(
     val confirmationId: String? = null,
     val confirmationTitle: String = "",
     val confirmationDetail: String = "",
+
+    /**
+     * `SystemClock.elapsedRealtime()` when the pending confirmation dies, 0 if
+     * none. The server sends `timeout_s` with the request and it was being
+     * ignored — so the buttons stayed lit long after an answer would be
+     * discarded. A gate that looks live and is not is worse than no gate.
+     *
+     * elapsedRealtime, not wall time: a clock change or an NTP correction must
+     * not make a 90-second countdown jump.
+     */
+    val confirmationDeadline: Long = 0L,
+
+    /**
+     * When the wake word last opened the gate — `elapsedRealtime()`, 0 if never.
+     * Purely for the acknowledgement flash: the moment "Hey Jarvis" is heard is
+     * the one the whole product turns on, and it had no representation at all.
+     */
+    val wokeAt: Long = 0L,
 ) {
     val connected: Boolean get() = link == LinkState.CONNECTED
     val awaitingConfirmation: Boolean get() = confirmationId != null
@@ -184,7 +211,16 @@ object JarvisState {
 
     fun setWakeScore(score: Float) = _state.update { it.copy(wakeWordScore = score) }
 
-    fun setGateOpen(open: Boolean) = _state.update { it.copy(gateOpen = open) }
+    fun setGateOpen(open: Boolean) = _state.update {
+        // Stamp only on the rising edge. The gate re-opens on every interaction
+        // while the window is alive, and flashing the core each time would turn
+        // an acknowledgement into a flicker.
+        if (open && !it.gateOpen) {
+            it.copy(gateOpen = true, wokeAt = SystemClock.elapsedRealtime())
+        } else {
+            it.copy(gateOpen = open)
+        }
+    }
 
     fun countSent(bytes: Int) = _state.update {
         it.copy(bytesSent = it.bytesSent + bytes, framesSent = it.framesSent + 1)
@@ -210,15 +246,30 @@ object JarvisState {
 
     /** A `confirm` event arrived. Replaces any banner already up: the server
      *  keeps exactly one pending request, so showing two would be a lie. */
-    fun setConfirmation(id: String, title: String, detail: String) = _state.update {
-        it.copy(confirmationId = id, confirmationTitle = title,
-                confirmationDetail = detail)
+    fun setConfirmation(
+        id: String,
+        title: String,
+        detail: String,
+        timeoutSeconds: Int,
+    ) = _state.update {
+        it.copy(
+            confirmationId = id,
+            confirmationTitle = title,
+            confirmationDetail = detail,
+            // A server that sends no timeout gets no countdown rather than a
+            // guessed one: showing an invented deadline would be worse than
+            // showing none.
+            confirmationDeadline = if (timeoutSeconds > 0) {
+                SystemClock.elapsedRealtime() + timeoutSeconds * 1000L
+            } else 0L,
+        )
     }
 
     /** The request is over — answered here, answered elsewhere, or expired.
      *  Clearing is all this does; nothing is executed or cancelled locally. */
     fun clearConfirmation() = _state.update {
-        it.copy(confirmationId = null, confirmationTitle = "", confirmationDetail = "")
+        it.copy(confirmationId = null, confirmationTitle = "",
+                confirmationDetail = "", confirmationDeadline = 0L)
     }
 
     private const val MAX_MESSAGES = 60

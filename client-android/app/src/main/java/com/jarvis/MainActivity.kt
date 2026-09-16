@@ -95,6 +95,9 @@ class MainActivity : ComponentActivity() {
                         // it on. The Activity decides nothing and runs nothing.
                         JarvisForegroundService.sendConfirmation(this, id, confirmed)
                     },
+                    onSend = { text ->
+                        JarvisForegroundService.sendSpoken(this, text)
+                    },
                 )
             }
         }
