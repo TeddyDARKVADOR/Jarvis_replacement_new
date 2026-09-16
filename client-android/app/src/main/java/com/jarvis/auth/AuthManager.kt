@@ -75,6 +75,19 @@ class AuthManager(context: Context) {
         get() = prefs.getBoolean(KEY_WAKEWORD, false)
         set(value) = prefs.edit().putBoolean(KEY_WAKEWORD, value).apply()
 
+    /**
+     * Whether the core moves.
+     *
+     * Off means it still draws and still changes colour with the state — the
+     * screen is never dead — but nothing loops and nothing follows the voice.
+     * Kept as a setting because a continuous animation is the one thing on this
+     * screen that costs battery all day, and because some people simply do not
+     * want motion.
+     */
+    var animationsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_ANIMATIONS, true)
+        set(value) = prefs.edit().putBoolean(KEY_ANIMATIONS, value).apply()
+
     /** Last successful exchange. Kept only in memory — see the class note. */
     @Volatile
     var session: Session? = null
@@ -135,5 +148,6 @@ class AuthManager(context: Context) {
         const val KEY_TLS = "tls"
         const val KEY_DEVICE = "device_token"
         const val KEY_WAKEWORD = "wake_word_enabled"
+        const val KEY_ANIMATIONS = "animations_enabled"
     }
 }

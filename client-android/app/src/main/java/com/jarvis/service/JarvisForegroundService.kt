@@ -18,11 +18,14 @@ import com.jarvis.JarvisLog
 import com.jarvis.JarvisState
 import com.jarvis.LinkState
 import com.jarvis.MainActivity
+import com.jarvis.Message
 import com.jarvis.R
 import com.jarvis.audio.AudioPlayer
 import com.jarvis.audio.AudioRecorder
 import com.jarvis.auth.AuthManager
 import com.jarvis.net.JarvisClient
+import java.time.LocalDateTime
+import java.time.ZoneId
 import com.jarvis.net.Protocol
 import com.jarvis.net.ReconnectManager
 import com.jarvis.wakeword.WakeWordDetector
@@ -88,7 +91,10 @@ class JarvisForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         auth = AuthManager(this)
-        player = AudioPlayer(onPlayed = { JarvisState.countPlayed(it) })
+        player = AudioPlayer(
+            onPlayed = { JarvisState.countPlayed(it) },
+            onLevel = { JarvisState.setSpeakerLevel(it) },
+        )
         wakeWord = WakeWordEngines.default(
             context = this,
             enabled = auth.wakeWordEnabled,
@@ -266,6 +272,22 @@ class JarvisForegroundService : Service() {
         }
     }
 
+    /**
+     * `datetime.now().isoformat()` → epoch millis, 0 if it will not parse.
+     *
+     * The server's clock, with no zone on it, so it is read as local time —
+     * which is right for the only case that matters here, a phone and a VPS the
+     * same person set up. A wrong hour is worse than none, so anything that does
+     * not parse cleanly becomes 0 and the row simply shows no time.
+     */
+    private fun parseTimestamp(raw: String): Long = try {
+        if (raw.isBlank()) 0L
+        else LocalDateTime.parse(raw).atZone(ZoneId.systemDefault())
+            .toInstant().toEpochMilli()
+    } catch (_: Exception) {
+        0L
+    }
+
     /** Audio thread. Everything here is a comparison or a queue push. */
     private fun onMicFrame(frame: ByteArray, length: Int) {
         if (wakeWord.gatesAudio) {
@@ -343,8 +365,14 @@ class JarvisForegroundService : Service() {
                     updateNotification()
                 }
                 Protocol.EV_LOG -> {
-                    val who = if (json.optString("speaker") == "jarvis") "JARVIS" else "You"
-                    JarvisState.log("$who: ${json.optString("text")}")
+                    val fromJarvis = json.optString("speaker") == "jarvis"
+                    val text = json.optString("text")
+                    if (text.isNotBlank()) {
+                        JarvisState.addMessage(
+                            Message(fromJarvis, text, parseTimestamp(json.optString("ts")))
+                        )
+                    }
+                    JarvisState.log("${if (fromJarvis) "JARVIS" else "You"}: $text")
                 }
                 Protocol.EV_SYS -> JarvisState.log(json.optString("text"))
                 Protocol.EV_CONTENT ->

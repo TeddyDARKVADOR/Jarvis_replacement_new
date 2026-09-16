@@ -32,6 +32,16 @@ import java.util.concurrent.TimeUnit
  */
 class AudioPlayer(
     private val onPlayed: (bytes: Int) -> Unit = {},
+    /**
+     * 0..1 loudness of what is being played, for the UI.
+     *
+     * Reported from the playback loop rather than from the socket, and that is
+     * the whole point: audio arrives in bursts up to 3.7× faster than real time
+     * (see [QUEUE_CAPACITY]), so a level taken on arrival would race ahead of
+     * the voice and then sit at zero while JARVIS was still talking. The loop
+     * below is paced by AudioTrack, so it is paced by the speaker.
+     */
+    private val onLevel: (Float) -> Unit = {},
 ) {
 
     private val queue = LinkedBlockingQueue<ByteArray>(QUEUE_CAPACITY)
@@ -120,6 +130,7 @@ class AudioPlayer(
      * the abandoned sentence still comes out of the speaker.
      */
     fun flush() {
+        onLevel(0f)
         queue.clear()
         track?.let {
             try {
@@ -161,7 +172,15 @@ class AudioPlayer(
             } catch (e: InterruptedException) {
                 Thread.currentThread().interrupt()
                 null
-            } ?: continue
+            }
+            if (chunk == null) {
+                // Nothing to play. Say so, or the core would hold whatever
+                // amplitude the last syllable had for as long as JARVIS is quiet.
+                onLevel(0f)
+                continue
+            }
+
+            onLevel(PcmLevel.of(chunk))
 
             var offset = 0
             while (offset < chunk.size && running) {

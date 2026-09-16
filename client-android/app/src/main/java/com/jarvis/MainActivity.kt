@@ -7,8 +7,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,7 +14,8 @@ import androidx.core.content.ContextCompat
 import com.jarvis.auth.AuthManager
 import com.jarvis.net.ServerEndpoint
 import com.jarvis.service.JarvisForegroundService
-import com.jarvis.ui.HomeScreen
+import com.jarvis.ui.JarvisApp
+import com.jarvis.ui.JarvisTheme
 
 /**
  * The only screen. It draws state and starts or stops the service — it owns no
@@ -34,6 +33,10 @@ class MainActivity : ComponentActivity() {
     private var micGranted by mutableStateOf(false)
     private var notificationsGranted by mutableStateOf(false)
 
+    /** Bumped on every save so the composition re-reads SharedPreferences.
+     *  Cheaper and harder to get wrong than mirroring six settings into state. */
+    private var settingsRevision by mutableStateOf(0)
+
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { refreshPermissions() }
@@ -44,19 +47,28 @@ class MainActivity : ComponentActivity() {
         refreshPermissions()
 
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                HomeScreen(
+            JarvisTheme {
+                // Read once per composition rather than held in state: these are
+                // SharedPreferences, the settings screen owns the edit fields,
+                // and `settingsRevision` is what makes a save redraw the rest.
+                @Suppress("UNUSED_EXPRESSION") settingsRevision
+
+                JarvisApp(
                     micGranted = micGranted,
                     notificationsGranted = notificationsGranted,
-                    initialHost = auth.endpoint.host,
-                    initialPort = auth.endpoint.port,
-                    initialUseTls = auth.endpoint.useTls,
-                    initialDeviceToken = auth.deviceToken,
-                    initialWakeWord = auth.wakeWordEnabled,
-                    onSaveSettings = { host, port, tls, token, wakeWord ->
+                    configured = auth.isConfigured,
+                    host = auth.endpoint.host,
+                    port = auth.endpoint.port,
+                    useTls = auth.endpoint.useTls,
+                    deviceToken = auth.deviceToken,
+                    wakeWord = auth.wakeWordEnabled,
+                    animations = auth.animationsEnabled,
+                    onSaveSettings = { host, port, tls, token, wakeWord, animations ->
                         auth.endpoint = ServerEndpoint(host.trim(), port, tls)
                         auth.deviceToken = token
                         auth.wakeWordEnabled = wakeWord
+                        auth.animationsEnabled = animations
+                        settingsRevision++
                         JarvisState.log(
                             "Settings saved for $host:$port · wake word " +
                                 if (wakeWord) "on" else "off"
