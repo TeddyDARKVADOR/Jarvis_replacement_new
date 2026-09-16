@@ -336,6 +336,42 @@ def _is_reconnect_signal(exc: BaseException) -> bool:
     return False
 
 
+def _flatten_exc_text(exc: BaseException, _depth: int = 0) -> str:
+    """Every message in `exc`, including the sub-exceptions a TaskGroup bundles
+    into a group and the `__cause__` chain underneath them.
+
+    `str()` on a BaseExceptionGroup is only its own summary — *"unhandled errors
+    in a TaskGroup (1 sub-exception)"* — which contains neither a status code nor
+    any network keyword. Everything raised inside the session TaskGroup therefore
+    arrived at the run loop's classifier as that one opaque string, and every
+    keyword test below it silently matched nothing. That is why a 1008 was logged
+    as a generic error: not because it was unrecognised, but because the text
+    being searched never mentioned it.
+    """
+    parts = [f"{type(exc).__name__}: {exc}"]
+    if _depth < 6:
+        if isinstance(exc, BaseExceptionGroup):
+            for sub in exc.exceptions:
+                parts.append(_flatten_exc_text(sub, _depth + 1))
+        for chained in (exc.__cause__, exc.__context__):
+            if chained is not None and chained is not exc:
+                parts.append(_flatten_exc_text(chained, _depth + 1))
+    return " | ".join(parts)
+
+
+def _is_session_rotation(exc: BaseException) -> bool:
+    """True for Gemini Live ending a session on its own schedule.
+
+    The Live API rotates a session every 2–3 minutes and closes the socket with
+    WebSocket 1008 "The operation was aborted". With `go_away` handled in
+    `_receive_audio` this is the rare path — the announcement did not arrive, or
+    arrived too late to act on — but it is still a rotation and not a fault: the
+    resumption handle is valid, so the conversation survives it.
+    """
+    text = _flatten_exc_text(exc)
+    return bool(re.search(r"\b1008\b", text)) and "operation was aborted" in text.lower()
+
+
 def _keep_context_of(exc: BaseException) -> bool:
     """Read `keep_context` off a reconnect signal, unwrapping the group the
     TaskGroup put it in. Defaults to True: an unexpected shape must not silently
@@ -1001,6 +1037,21 @@ class JarvisLive:
             while True:
                 async for response in self.session.receive():
 
+                    # ── The server is about to close this session ────────────
+                    # Gemini Live announces a planned disconnect with `go_away`
+                    # and a `time_left`, a moment before it closes the socket
+                    # with 1008. Acting on the announcement instead of on the
+                    # close is the whole difference between a rotation and an
+                    # error: the resumption handle is current, no turn is cut
+                    # mid-sentence, and nothing has to be classified after the
+                    # fact. This is the fix for "drops every 2–3 minutes".
+                    _ga = getattr(response, "go_away", None)
+                    if _ga is not None:
+                        _left = getattr(_ga, "time_left", None)
+                        print(f"[JARVIS] 🔄 Session end announced by Gemini "
+                              f"(time_left={_left}) — rotating now")
+                        raise _ReconnectSignal(keep_context=True)
+
                     # ── Session resumption ───────────────────────────────────
                     # The server sends this periodically. `resumable` goes false
                     # while a turn is mid-flight — replaying a handle from that
@@ -1117,7 +1168,18 @@ class JarvisLive:
                         await self.session.send_tool_response(
                             function_responses=fn_responses
                         )
+        except _ReconnectSignal:
+            # A planned rotation, raised by us a few lines above. It is not a
+            # fault and must not print a traceback: logging it as an error is
+            # what taught the operator to scroll past errors.
+            raise
         except Exception as e:
+            if _is_session_rotation(e):
+                # Gemini closing the session on its own schedule. The run loop
+                # recognises it and rotates quietly; printing eleven lines of
+                # traceback here would put back exactly the noise that
+                # classification exists to remove.
+                raise
             print(f"[JARVIS] ❌ Recv: {e}")
             traceback.print_exc()
             raise
@@ -1650,6 +1712,35 @@ class JarvisLive:
                     self._conn_backoff = 0
                     continue
 
+                # Everything below classifies on the *text* of the failure, and a
+                # TaskGroup hands us a group whose str() names none of it. Flatten
+                # first, or every test here is reading the wrong string — see
+                # _flatten_exc_text.
+                err_str = _flatten_exc_text(e)
+
+                # Gemini Live ending a session on its own schedule. `go_away` is
+                # handled in _receive_audio and turns this into a clean rotation
+                # before it happens; reaching here means the announcement did not
+                # arrive in time. Still not a fault: the resumption handle is
+                # valid, so reconnect at once and keep the conversation.
+                if _is_session_rotation(e):
+                    _now = time.monotonic()
+                    self._rotations = [
+                        t for t in getattr(self, "_rotations", []) if _now - t < 120
+                    ]
+                    self._rotations.append(_now)
+                    if len(self._rotations) <= 6:
+                        print("[JARVIS] 🔄 Gemini closed the session (1008) — "
+                              "reconnecting, conversation kept")
+                        self._conn_backoff = 0
+                        continue
+                    # Far above the documented 2–3 minute cadence. That is no
+                    # longer a rotation — a refused handle or a quota wall looks
+                    # like this — so fall through and treat it as the fault it is
+                    # rather than spinning silently.
+                    print(f"[JARVIS] ⚠️ Session rotating far faster than expected "
+                          f"({len(self._rotations)} times in 2 min) — treating as an error")
+
                 # A resumption handle the server will not accept — expired, or
                 # belonging to a session it has since dropped. Without this, the
                 # same dead handle would be replayed on every retry and the
@@ -1657,10 +1748,10 @@ class JarvisLive:
                 # survive a reconnect would be the thing preventing one. Drop it
                 # once and let the next attempt start clean.
                 if _resumed_with and (
-                    "resum" in str(e).lower()
-                    or "handle" in str(e).lower()
-                    or "INVALID_ARGUMENT" in str(e)
-                    or "NOT_FOUND" in str(e)
+                    "resum" in err_str.lower()
+                    or "handle" in err_str.lower()
+                    or "INVALID_ARGUMENT" in err_str
+                    or "NOT_FOUND" in err_str
                 ):
                     print("[JARVIS] 🔗 Resumption handle rejected — starting a fresh session")
                     self.ui.write_log("SYS: Could not restore the conversation — starting fresh.")
@@ -1668,8 +1759,7 @@ class JarvisLive:
                     self._conn_backoff = 0
                     continue
 
-                err_str = str(e)
-                print(f"[JARVIS] Error ({type(e).__name__}): {e}")
+                print(f"[JARVIS] Error ({type(e).__name__}): {err_str}")
                 traceback.print_exc()
 
                 # Proactive audio rejected by the server (preview API drift) —
@@ -1686,8 +1776,18 @@ class JarvisLive:
                     )
                     continue
 
-                # Invalid API key — stop hammering the API, prompt re-configuration
-                if "API key not valid" in err_str or "1007" in err_str:
+                # Invalid API key — stop hammering the API, prompt re-configuration.
+                #
+                # This branch parks the assistant until a human types a key, so it
+                # must not fire on a guess. It used to test the bare substring
+                # "1007", which was harmless only because the classifier above it
+                # was reading a TaskGroup summary that never contained digits.
+                # Now that it reads the real text, a bare "1007" would also match
+                # a resumption handle or an ID that happens to contain those four
+                # characters — and parking a headless server on a false positive
+                # is far worse than one extra reconnect. So the close code is
+                # matched the way it is actually formatted.
+                if "API key not valid" in err_str or re.search(r"\b1007\b", err_str):
                     self.ui.write_log("ERR: API key invalid — please re-enter your key.")
                     self.ui.set_state("SLEEPING")
                     self.ui.prompt_reconfig()

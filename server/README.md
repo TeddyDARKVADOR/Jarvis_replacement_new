@@ -142,7 +142,12 @@ Why each is still open:
 
 ## Known bugs
 
-### Gemini Live closes with 1008 every 2–3 minutes
+### ~~Gemini Live closes with 1008 every 2–3 minutes~~ — fixed, but read the caveat
+
+Gemini still closes the session every 2–3 minutes. It is no longer an error, no
+longer logged as one, and no longer costs 3 seconds of silence. The history
+below is kept because the measurement is what identified it as a timeout rather
+than a fault.
 
 ```
 [PhoneOut] listener connected
@@ -179,9 +184,51 @@ therefore bypassed for everything raised inside the TaskGroup** — including it
 server waiting for a key to be re-entered. The generic path runs instead, which
 is why the log says `Reconnecting in 3s`.
 
-**Not fixed, deliberately.** It belongs to a dedicated phase covering Gemini
-session lifecycle, `go_away`, pre-emptive reconnection and error classification.
-Nothing here works around it.
+**Fixed.** The drop itself is Gemini's, and nothing on this side prevents it —
+what is fixed is that it is no longer an error. Three changes in `main.py`:
+
+* `_flatten_exc_text()` walks the group and the `__cause__`/`__context__` chain,
+  so the run loop's classifier finally reads a string that *contains* the status
+  code. This is the second finding above, undone.
+* `_is_session_rotation()` recognises the 1008 close and the run loop reconnects
+  at once, keeping the resumption handle — one log line, no backoff, no
+  traceback, conversation intact.
+* `_receive_audio` handles `go_away`, Gemini's advance warning of a planned
+  close, and rotates *before* the socket dies.
+
+Measured over a clean 6-minute window on the Oracle deployment, 3 rotations:
+
+```
+Traceback        0
+JARVIS] Error    0
+Reconnecting in  0      (was 3s of silence per drop)
+starting fresh   0      (context kept every time)
+```
+
+The journal now contains nothing but the expected rotation lines.
+
+**One caveat, worth knowing before you trust the `go_away` path:** in 16 minutes
+of observation on `gemini-3.1-flash-live`, **`go_away` never arrived** — 0
+occurrences against 6 rotations. Every rotation went through the 1008 fallback.
+The handler is correct per the API contract and costs six lines, so it stays;
+but it is currently untested against a real message, and the fallback is what is
+actually carrying the fix. If you ever see `Session end announced by Gemini` in
+the log, that path has finally fired.
+
+Not attempted: rotating pre-emptively on a timer, before Gemini does. The
+cadence is regular enough to guess at, but it would be a guess — it would add
+reconnections when they are not needed, and the drop is already invisible.
+
+### The exception-shape fix has a second consequence
+
+The classifier was reading the wrong string for *everything* raised inside the
+session TaskGroup, not just 1008. Now that it reads the real text, its other
+branches became reachable — including the "API key invalid" one, which parks the
+assistant until a human types a key. That branch used to test the bare substring
+`"1007"`, which would also match a resumption handle containing those four
+characters. On a headless server a false positive there is unrecoverable without
+SSH, so it now matches `\b1007\b`. If you add branches to that classifier, keep
+them that specific.
 
 ### `POST /api/wake` does nothing
 
