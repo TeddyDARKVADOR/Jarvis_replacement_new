@@ -145,6 +145,11 @@ class JarvisForegroundService : Service() {
             }
             ACTION_MIC_ON -> startMic()
             ACTION_MIC_OFF -> stopMic()
+            ACTION_INTERRUPT -> interrupt()
+            ACTION_CONFIRM -> answerConfirmation(
+                intent?.getStringExtra(EXTRA_CONFIRM_ID).orEmpty(),
+                intent?.getBooleanExtra(EXTRA_CONFIRMED, false) ?: false,
+            )
         }
         return START_STICKY
     }
@@ -222,6 +227,43 @@ class JarvisForegroundService : Service() {
         JarvisState.setMicOpen(false)
         JarvisLog.mic("TX stopped")
         updateNotification()
+    }
+
+    /**
+     * Stop JARVIS mid-sentence.
+     *
+     * Both halves, and the local one first. The server drops what it has queued
+     * for us, but the audio already delivered is in this process — in the
+     * player's queue and inside AudioTrack's own buffer — and nothing on the
+     * server can reach it. Flushing after sending would leave a window in which
+     * the phone is still speaking an answer the server has already abandoned.
+     *
+     * Harmless when JARVIS is not speaking: both sides are then empty.
+     */
+    private fun interrupt() {
+        player.flush()
+        val sent = client.sendInterrupt()
+        JarvisLog.net(if (sent) "INTERRUPT sent" else "INTERRUPT not sent — no link")
+        if (!sent) JarvisState.log("Interrupt: not connected.")
+    }
+
+    /**
+     * Send the user's decision on a pending confirmation. Never acts on it.
+     *
+     * The banner is cleared either way — the request is answered from this
+     * phone's point of view. Whether anything runs is the server's call, made
+     * against its own pending request and its own expiry, and a `sys` line will
+     * say what happened.
+     */
+    private fun answerConfirmation(id: String, confirmed: Boolean) {
+        if (id.isBlank()) return
+        JarvisState.clearConfirmation()
+        val sent = client.sendConfirmation(id, confirmed)
+        if (!sent) {
+            // Nothing was decided anywhere: the socket is down, so the server
+            // still holds the request and will expire it on its own.
+            JarvisState.log("Confirmation not sent — no link. It will expire.")
+        }
     }
 
     /** Audio thread. Everything here is a comparison or a queue push. */
@@ -307,8 +349,20 @@ class JarvisForegroundService : Service() {
                 Protocol.EV_SYS -> JarvisState.log(json.optString("text"))
                 Protocol.EV_CONTENT ->
                     JarvisState.log("[${json.optString("title")}] ${json.optString("text").take(200)}")
-                Protocol.EV_CONFIRM ->
-                    JarvisState.log("Confirmation needed: ${json.optString("title")}")
+                Protocol.EV_CONFIRM -> {
+                    val id = json.optString("id")
+                    val title = json.optString("title")
+                    if (id.isNotBlank()) {
+                        JarvisState.setConfirmation(id, title, json.optString("detail"))
+                    } else {
+                        // A server older than this app: it asks, but there is no
+                        // id to answer with. Say so rather than showing buttons
+                        // whose answer would be discarded.
+                        JarvisState.log("Confirmation needed (no id — cannot answer "
+                                        + "from here): $title")
+                    }
+                }
+                Protocol.EV_CONFIRM_HIDE -> JarvisState.clearConfirmation()
                 Protocol.EV_STATUS -> Unit   // superseded by jarvis_state
                 else -> Log.d(TAG, "unhandled event: $json")
             }
@@ -401,6 +455,11 @@ class JarvisForegroundService : Service() {
         const val ACTION_STOP = "com.jarvis.STOP"
         const val ACTION_MIC_ON = "com.jarvis.MIC_ON"
         const val ACTION_MIC_OFF = "com.jarvis.MIC_OFF"
+        const val ACTION_INTERRUPT = "com.jarvis.INTERRUPT"
+        const val ACTION_CONFIRM = "com.jarvis.CONFIRM"
+
+        const val EXTRA_CONFIRM_ID = "confirm_id"
+        const val EXTRA_CONFIRMED = "confirmed"
 
         /** How long a wake-word interaction stays open with nobody speaking. */
         private const val INTERACTION_WINDOW_MS = 30_000L
@@ -415,6 +474,16 @@ class JarvisForegroundService : Service() {
             } else {
                 context.startService(intent)
             }
+        }
+
+        /** [send] with the two extras a confirmation answer needs. */
+        fun sendConfirmation(context: Context, id: String, confirmed: Boolean) {
+            context.startService(
+                Intent(context, JarvisForegroundService::class.java)
+                    .setAction(ACTION_CONFIRM)
+                    .putExtra(EXTRA_CONFIRM_ID, id)
+                    .putExtra(EXTRA_CONFIRMED, confirmed)
+            )
         }
     }
 }

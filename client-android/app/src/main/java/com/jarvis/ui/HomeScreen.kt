@@ -60,6 +60,10 @@ fun HomeScreen(
     onDisconnect: () -> Unit,
     onStartMic: () -> Unit,
     onStopMic: () -> Unit,
+    onInterrupt: () -> Unit,
+    /** Sends a decision and nothing else. The action runs on the server or not
+     *  at all; this callback must never do the thing being confirmed. */
+    onConfirm: (id: String, confirmed: Boolean) -> Unit,
 ) {
     val snap by JarvisState.state.collectAsState()
 
@@ -82,6 +86,16 @@ fun HomeScreen(
         Text("MARK LIII client · prototype", color = Color(0xFF5E6A7E), fontSize = 13.sp)
 
         StatusCard(snap.link, snap.assistant, snap.nextRetrySeconds, snap.attempt)
+
+        // Above everything else it could be confused with: this is the one thing
+        // on the screen that MARK LIII is actually waiting on.
+        snap.confirmationId?.let { id ->
+            ConfirmationCard(
+                title = snap.confirmationTitle,
+                detail = snap.confirmationDetail,
+                onAnswer = { ok -> onConfirm(id, ok) },
+            )
+        }
 
         if (snap.lastError != null) {
             Text(snap.lastError!!, color = Color(0xFFF87171), fontSize = 13.sp)
@@ -130,6 +144,16 @@ fun HomeScreen(
                 enabled = snap.serviceRunning && micGranted && !snap.micOpen,
             ) { Text("START MIC") }
             OutlinedButton(onClick = onStopMic, enabled = snap.micOpen) { Text("STOP MIC") }
+        }
+
+        // Enabled whenever there is a link, not only while SPEAKING: `assistant`
+        // is the server's last reported state and can lag the voice the user is
+        // actually hearing. A button that is greyed out at the moment someone
+        // reaches for it is worse than one that occasionally does nothing.
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onInterrupt, enabled = snap.connected) {
+                Text("INTERRUPT")
+            }
         }
 
         if (!micGranted || !notificationsGranted) {
@@ -228,6 +252,45 @@ private fun StatusCard(
         Text(label, color = colour, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         if (assistant != AssistantState.UNKNOWN) {
             Text("MARK LIII: ${assistant.name}", color = Color(0xFF8A96A8), fontSize = 13.sp)
+        }
+    }
+}
+
+/**
+ * The gate for an irreversible action.
+ *
+ * It shows and it reports a decision. It does not execute, and it cannot: the
+ * only thing it has is an opaque id to hand back. Everything about whether the
+ * action runs — the pending request, the 90 s expiry, the action itself — lives
+ * on the server.
+ *
+ * CANCEL is the ordinary-weight button and CONFIRM the outlined one, against
+ * the usual convention, because the destructive choice should not be the one
+ * the thumb lands on.
+ */
+@Composable
+private fun ConfirmationCard(
+    title: String,
+    detail: String,
+    onAnswer: (Boolean) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF2A1A12), RoundedCornerShape(12.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("CONFIRMATION REQUIRED", color = Color(0xFFFB923C),
+             fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = Color(0xFFEDE3DA), fontSize = 17.sp,
+             fontWeight = FontWeight.Bold)
+        if (detail.isNotBlank()) {
+            Text(detail, color = Color(0xFFB09C8C), fontSize = 13.sp)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = { onAnswer(false) }) { Text("CANCEL") }
+            OutlinedButton(onClick = { onAnswer(true) }) { Text("CONFIRM") }
         }
     }
 }
