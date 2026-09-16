@@ -138,26 +138,9 @@ class AudioRecorder(
      * (`_pcm_level` in main.py) so the bar on the phone and the waveform on the
      * PC mean the same thing for the same voice.
      */
-    private fun levelOf(buf: ByteArray, length: Int): Float {
-        var sum = 0.0
-        var count = 0
-        var i = 0
-        val end = min(length - 1, buf.size - 1)
-        while (i < end) {
-            val sample = ((buf[i + 1].toInt() shl 8) or (buf[i].toInt() and 0xFF)).toShort()
-            sum += sample.toDouble() * sample.toDouble()
-            count++
-            i += 2
-        }
-        if (count == 0) return 0f
-        val rms = sqrt(sum / count)
-        if (rms <= LEVEL_FLOOR) return 0f
-        return ((rms - LEVEL_FLOOR) / (LEVEL_FULL - LEVEL_FLOOR)).coerceIn(0.0, 1.0).toFloat()
-    }
+    private fun levelOf(buf: ByteArray, length: Int): Float = PcmLevel.of(buf, length)
 
     private companion object {
         const val TAG = "AudioRecorder"
-        const val LEVEL_FLOOR = 60.0
-        const val LEVEL_FULL = 2600.0
     }
 }

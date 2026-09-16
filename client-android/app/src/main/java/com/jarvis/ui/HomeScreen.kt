@@ -1,37 +1,38 @@
 package com.jarvis.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.AssistantState
@@ -39,220 +40,213 @@ import com.jarvis.JarvisState
 import com.jarvis.LinkState
 
 /**
- * Deliberately plain. This screen exists to answer four questions while the
- * audio path is being brought up — am I connected, is the microphone on, are
- * bytes moving in both directions, and what went wrong — and it will be
- * replaced once they all answer themselves.
+ * The one screen that is about JARVIS rather than about the app.
+ *
+ * It shows a core, a word, and a sentence. Every number this used to display —
+ * bytes, frames, sockets — moved to Settings → Developer, because a person
+ * looking at their assistant is not diagnosing it, and a screen that reports
+ * `RX 691 KB` is a screen about a client rather than about JARVIS.
  */
 @Composable
 fun HomeScreen(
+    configured: Boolean,
     micGranted: Boolean,
-    notificationsGranted: Boolean,
-    initialHost: String,
-    initialPort: Int,
-    initialUseTls: Boolean,
-    initialDeviceToken: String,
-    initialWakeWord: Boolean,
-    onSaveSettings: (host: String, port: Int, tls: Boolean, token: String,
-                     wakeWord: Boolean) -> Unit,
+    animationsEnabled: Boolean,
     onRequestPermissions: () -> Unit,
+    onOpenSettings: () -> Unit,
     onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
     onStartMic: () -> Unit,
     onStopMic: () -> Unit,
     onInterrupt: () -> Unit,
-    /** Sends a decision and nothing else. The action runs on the server or not
-     *  at all; this callback must never do the thing being confirmed. */
     onConfirm: (id: String, confirmed: Boolean) -> Unit,
 ) {
     val snap by JarvisState.state.collectAsState()
 
-    var host by remember { mutableStateOf(initialHost) }
-    var port by remember { mutableStateOf(initialPort.toString()) }
-    var tls by remember { mutableStateOf(initialUseTls) }
-    var token by remember { mutableStateOf(initialDeviceToken) }
-    var wakeWord by remember { mutableStateOf(initialWakeWord) }
+    // One number feeds the core, from whichever side is making sound. While
+    // JARVIS speaks, the microphone is either gated or picking up JARVIS itself,
+    // so preferring the speaker here is what keeps the core honest.
+    val level = if (snap.assistant == AssistantState.SPEAKING) {
+        snap.speakerLevel
+    } else {
+        snap.micLevel
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF07090F))
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .background(Color(0xFF05070C))
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("JARVIS", color = Color(0xFFDDE3ED), fontSize = 28.sp,
-             fontWeight = FontWeight.Bold)
-        Text("MARK LIII client · prototype", color = Color(0xFF5E6A7E), fontSize = 13.sp)
+        Spacer(Modifier.height(28.dp))
+        Text(
+            "JARVIS",
+            color = Color(0xFFD7E1F2),
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Light,
+            letterSpacing = 8.sp,
+        )
 
-        StatusCard(snap.link, snap.assistant, snap.nextRetrySeconds, snap.attempt)
+        Spacer(Modifier.weight(1f))
 
-        // Above everything else it could be confused with: this is the one thing
-        // on the screen that MARK LIII is actually waiting on.
+        JarvisCore(
+            link = snap.link,
+            assistant = snap.assistant,
+            level = level,
+            animated = animationsEnabled,
+            // Tapping the core interrupts. It is the largest target on the
+            // screen and the one thing the user is already looking at when they
+            // want JARVIS to stop talking.
+            onTap = if (snap.connected) onInterrupt else null,
+        )
+
+        Spacer(Modifier.height(22.dp))
+
+        CaptionLine(snap.assistant, snap.link, snap.lastSpokenLine)
+
+        // Weighted 1 above and 0.45 below, not 1 and 1. Optical centre, not
+        // geometric: the core plus its caption is one object, and an object
+        // centred by measurement in a column that has controls under it looks
+        // like it has slipped upwards, with a hole beneath the caption.
+        Spacer(Modifier.weight(0.45f))
+
         snap.confirmationId?.let { id ->
             ConfirmationCard(
                 title = snap.confirmationTitle,
                 detail = snap.confirmationDetail,
                 onAnswer = { ok -> onConfirm(id, ok) },
             )
+            Spacer(Modifier.height(20.dp))
         }
 
-        if (snap.lastError != null) {
-            Text(snap.lastError!!, color = Color(0xFFF87171), fontSize = 13.sp)
-        }
+        StatusPill(snap.link, snap.assistant)
 
-        // ── counters ─────────────────────────────────────────────────────────
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Counter("TX 16 kHz", "${snap.bytesSent.kb()} · ${snap.framesSent} frames")
-                Counter("RX ${snap.downlinkRate.hz()}",
-                        "${snap.bytesReceived.kb()} · ${snap.framesReceived} frames")
-                // Played is deliberately its own line: RX climbing while Played
-                // stays flat is a speaker problem, not a network one, and the
-                // two need different fixes.
-                Counter("Played", "${snap.bytesPlayed.kb()} · ${snap.secondsPlayed()}")
-                Counter("Dropped", snap.framesDropped.toString())
-                Counter("Microphone", if (snap.micOpen) "open" else "closed")
-                MicMeter(snap.micLevel)
-                if (snap.wakeWordName.isNotBlank()) {
-                    Counter("Wake word", snap.wakeWordName)
-                    if (snap.wakeWordName.startsWith("openWakeWord")) {
-                        // The live score is what makes the threshold tunable
-                        // instead of guessed: say the word and watch it move.
-                        Counter(
-                            "  score / gate",
-                            "%.3f / %s".format(
-                                snap.wakeWordScore,
-                                if (snap.gateOpen) "OPEN → server" else "closed (local)",
-                            ),
-                        )
-                    }
-                }
-            }
-        }
+        Spacer(Modifier.height(20.dp))
 
-        // ── controls ─────────────────────────────────────────────────────────
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onConnect, enabled = !snap.serviceRunning) { Text("CONNECT") }
-            OutlinedButton(onClick = onDisconnect, enabled = snap.serviceRunning) {
-                Text("DISCONNECT")
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(
-                onClick = onStartMic,
-                enabled = snap.serviceRunning && micGranted && !snap.micOpen,
-            ) { Text("START MIC") }
-            OutlinedButton(onClick = onStopMic, enabled = snap.micOpen) { Text("STOP MIC") }
-        }
-
-        // Enabled whenever there is a link, not only while SPEAKING: `assistant`
-        // is the server's last reported state and can lag the voice the user is
-        // actually hearing. A button that is greyed out at the moment someone
-        // reaches for it is worse than one that occasionally does nothing.
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(onClick = onInterrupt, enabled = snap.connected) {
-                Text("INTERRUPT")
-            }
-        }
-
-        if (!micGranted || !notificationsGranted) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "JARVIS needs the microphone, and a notification so you can " +
-                            "see when it is listening.",
-                        color = Color(0xFFDDE3ED), fontSize = 13.sp,
-                    )
-                    Button(onClick = onRequestPermissions) { Text("GRANT") }
-                }
-            }
-        }
-
-        HorizontalDivider(color = Color(0xFF1B2230))
-
-        // ── settings ─────────────────────────────────────────────────────────
-        Text("Server", color = Color(0xFFDDE3ED), fontWeight = FontWeight.SemiBold)
-        OutlinedTextField(
-            value = host, onValueChange = { host = it },
-            label = { Text("Host (Tailscale name or IP)") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(),
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedTextField(
-                value = port, onValueChange = { port = it.filter(Char::isDigit).take(5) },
-                label = { Text("Port") }, singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(0.45f),
+        when {
+            !configured -> Hint("No server yet.", "SET UP", onOpenSettings)
+            !micGranted -> Hint("JARVIS cannot hear you.", "ALLOW MIC", onRequestPermissions)
+            !snap.serviceRunning -> Hint(null, "WAKE JARVIS", onConnect)
+            else -> Controls(
+                micOpen = snap.micOpen,
+                onStartMic = onStartMic,
+                onStopMic = onStopMic,
+                onInterrupt = onInterrupt,
             )
-            Switch(checked = tls, onCheckedChange = { tls = it })
-            Text("TLS", color = Color(0xFF5E6A7E), fontSize = 13.sp)
         }
-        OutlinedTextField(
-            value = token, onValueChange = { token = it },
-            label = { Text("Device token") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            "From the server: python -m server.run_headless --pairing",
-            color = Color(0xFF5E6A7E), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Switch(checked = wakeWord, onCheckedChange = { wakeWord = it })
-            Column {
-                Text("Local wake word (\"Hey Jarvis\")",
-                     color = Color(0xFFDDE3ED), fontSize = 13.sp)
-                Text(
-                    if (wakeWord) "Audio stays on the phone until the word is heard"
-                    else "Audio streams continuously while the mic is on",
-                    color = Color(0xFF5E6A7E), fontSize = 11.sp,
-                )
-            }
-        }
-        Button(
-            onClick = {
-                onSaveSettings(host, port.toIntOrNull() ?: 8000, tls, token, wakeWord)
+
+        Spacer(Modifier.height(28.dp))
+    }
+}
+
+/**
+ * What JARVIS is doing, in words, and the last thing it said.
+ *
+ * Two lines and never more. The sentence is capped rather than scrolled: a wall
+ * of text under the core turns this back into a transcript viewer, and there is
+ * a whole screen for that one tab away.
+ */
+@Composable
+private fun CaptionLine(
+    assistant: AssistantState,
+    link: LinkState,
+    lastLine: String?,
+) {
+    val caption = when {
+        link == LinkState.DISCONNECTED -> "Offline."
+        link == LinkState.ERROR -> "Cannot reach JARVIS."
+        link == LinkState.CONNECTING -> "Waking up…"
+        link == LinkState.RECONNECTING -> "Reaching out…"
+        assistant == AssistantState.LISTENING -> "I'm listening."
+        assistant == AssistantState.THINKING -> "Thinking…"
+        assistant == AssistantState.SLEEPING -> "Say \"Hey Jarvis\"."
+        else -> null
+    }
+
+    Box(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        AnimatedContent(
+            targetState = caption ?: lastLine.orEmpty(),
+            transitionSpec = {
+                // Deliberately gentle. A typewriter would read as a machine
+                // pretending to be a terminal; this reads as something arriving.
+                (fadeIn(tween(420)) + slideInVertically(tween(420)) { it / 6 })
+                    .togetherWith(fadeOut(tween(160)))
             },
-            enabled = !snap.serviceRunning,
-        ) { Text("SAVE") }
-
-        HorizontalDivider(color = Color(0xFF1B2230))
-
-        Text("Log", color = Color(0xFFDDE3ED), fontWeight = FontWeight.SemiBold)
-        snap.log.takeLast(12).reversed().forEach {
-            Text(it, color = Color(0xFF8A96A8), fontSize = 12.sp,
-                 fontFamily = FontFamily.Monospace)
+            label = "caption",
+        ) { text ->
+            Text(
+                text = text,
+                color = if (caption != null) Color(0xFF8FA0BC) else Color(0xFFCBD7EA),
+                fontSize = if (caption != null) 15.sp else 17.sp,
+                lineHeight = 24.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                // Cut cleanly. Three lines that stop mid-word read as a layout
+                // fault; an ellipsis reads as "there is more", which there is —
+                // one tab away, in full.
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
 
+/** `● CONNECTED` and nothing else. The one piece of link state on this screen. */
 @Composable
-private fun StatusCard(
-    link: LinkState,
-    assistant: AssistantState,
-    retryIn: Int,
-    attempt: Int,
-) {
+private fun StatusPill(link: LinkState, assistant: AssistantState) {
     val (label, colour) = when (link) {
-        LinkState.CONNECTED -> "CONNECTED" to Color(0xFF4ADE80)
-        LinkState.CONNECTING -> "CONNECTING" to Color(0xFFFACC15)
-        LinkState.RECONNECTING ->
-            (if (retryIn > 0) "RECONNECTING · ${retryIn}s (try $attempt)" else "RECONNECTING") to
-                Color(0xFFFB923C)
-        LinkState.ERROR -> "ERROR" to Color(0xFFF87171)
-        LinkState.DISCONNECTED -> "DISCONNECTED" to Color(0xFF5E6A7E)
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = colour, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        if (assistant != AssistantState.UNKNOWN) {
-            Text("MARK LIII: ${assistant.name}", color = Color(0xFF8A96A8), fontSize = 13.sp)
+        LinkState.CONNECTED -> when (assistant) {
+            AssistantState.LISTENING -> "LISTENING" to Color(0xFF6EE7B7)
+            AssistantState.THINKING -> "THINKING" to Color(0xFFC4B5FD)
+            AssistantState.SPEAKING -> "SPEAKING" to Color(0xFF7DD3FC)
+            AssistantState.SLEEPING -> "ASLEEP" to Color(0xFF64748B)
+            AssistantState.UNKNOWN -> "READY" to Color(0xFF93C5FD)
         }
+        LinkState.CONNECTING -> "CONNECTING" to Color(0xFFFBBF6B)
+        LinkState.RECONNECTING -> "RECONNECTING" to Color(0xFFFBBF6B)
+        LinkState.ERROR -> "CONNECTION ERROR" to Color(0xFFF87171)
+        LinkState.DISCONNECTED -> "OFFLINE" to Color(0xFF55617A)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(7.dp).background(colour, CircleShape))
+        Spacer(Modifier.size(9.dp))
+        Text(label, color = colour, fontSize = 12.sp,
+             fontWeight = FontWeight.Medium, letterSpacing = 2.sp)
+    }
+}
+
+@Composable
+private fun Controls(
+    micOpen: Boolean,
+    onStartMic: () -> Unit,
+    onStopMic: () -> Unit,
+    onInterrupt: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // "MIC", not "LISTEN". The pill above can read LISTENING — that is MARK
+        // LIII waiting for input — while this microphone is closed, and two
+        // controls a thumb apart that both say some form of "listen" while
+        // meaning different things is a caption nobody can be expected to parse.
+        if (micOpen) {
+            OutlinedButton(onClick = onStopMic) { Text("MUTE") }
+        } else {
+            Button(onClick = onStartMic) { Text("MIC") }
+        }
+        OutlinedButton(onClick = onInterrupt) { Text("INTERRUPT") }
+    }
+}
+
+@Composable
+private fun Hint(message: String?, action: String, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        if (message != null) {
+            Text(message, color = Color(0xFF6B7A93), fontSize = 13.sp)
+            Spacer(Modifier.height(10.dp))
+        }
+        Button(onClick = onClick) { Text(action) }
     }
 }
 
@@ -269,7 +263,7 @@ private fun StatusCard(
  * the thumb lands on.
  */
 @Composable
-private fun ConfirmationCard(
+fun ConfirmationCard(
     title: String,
     detail: String,
     onAnswer: (Boolean) -> Unit,
@@ -277,58 +271,26 @@ private fun ConfirmationCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF2A1A12), RoundedCornerShape(12.dp))
-            .padding(16.dp),
+            .background(Color(0xFF241812), RoundedCornerShape(16.dp))
+            .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("CONFIRMATION REQUIRED", color = Color(0xFFFB923C),
-             fontSize = 12.sp, fontWeight = FontWeight.Bold)
+             fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
         Text(title, color = Color(0xFFEDE3DA), fontSize = 17.sp,
              fontWeight = FontWeight.Bold)
         if (detail.isNotBlank()) {
-            Text(detail, color = Color(0xFFB09C8C), fontSize = 13.sp)
+            Text(detail, color = Color(0xFFB09C8C), fontSize = 13.sp, lineHeight = 19.sp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { onAnswer(false) }) { Text("CANCEL") }
+            Button(
+                onClick = { onAnswer(false) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF3C2A20),
+                    contentColor = Color(0xFFEDE3DA),
+                ),
+            ) { Text("CANCEL") }
             OutlinedButton(onClick = { onAnswer(true) }) { Text("CONFIRM") }
         }
     }
 }
-
-@Composable
-private fun Counter(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Color(0xFF8A96A8), fontSize = 13.sp)
-        Text(value, color = Color(0xFFDDE3ED), fontSize = 13.sp,
-             fontFamily = FontFamily.Monospace)
-    }
-}
-
-@Composable
-private fun MicMeter(level: Float) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(6.dp)
-            .background(Color(0xFF1B2230), RoundedCornerShape(3.dp))
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth(level.coerceIn(0f, 1f))
-                .height(6.dp)
-                .background(Color(0xFF4ADE80), RoundedCornerShape(3.dp))
-        )
-    }
-}
-
-/** Bytes of mono 16-bit PCM → how long that is out loud. */
-private fun com.jarvis.JarvisSnapshot.secondsPlayed(): String {
-    if (downlinkRate <= 0 || bytesPlayed == 0L) return "0.0 s"
-    return String.format("%.1f s", bytesPlayed / 2.0 / downlinkRate)
-}
-
-private fun Long.kb(): String =
-    if (this < 1024) "$this B" else if (this < 1024 * 1024) "${this / 1024} KB"
-    else String.format("%.1f MB", this / 1024.0 / 1024.0)
-
-private fun Int.hz(): String = if (this == 0) "—" else "$this Hz"

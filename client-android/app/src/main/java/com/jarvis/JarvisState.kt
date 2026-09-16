@@ -31,6 +31,19 @@ enum class AssistantState {
     UNKNOWN, LISTENING, THINKING, SPEAKING, SLEEPING
 }
 
+/**
+ * One side of one turn.
+ *
+ * [atMillis] is 0 when the server did not date it. The wire format is an
+ * ISO-8601 *string* (`datetime.now().isoformat()` in main.py), not a number —
+ * parsed once on arrival so the list does not re-parse a date on every scroll.
+ */
+data class Message(
+    val fromJarvis: Boolean,
+    val text: String,
+    val atMillis: Long = 0L,
+)
+
 data class JarvisSnapshot(
     val link: LinkState = LinkState.DISCONNECTED,
     val assistant: AssistantState = AssistantState.UNKNOWN,
@@ -63,6 +76,15 @@ data class JarvisSnapshot(
     /** Microphone level 0..1, for the meter. */
     val micLevel: Float = 0f,
 
+    /**
+     * Loudness of JARVIS's own voice, 0..1, as it is played.
+     *
+     * Taken from the playback loop and not from the socket: audio arrives in
+     * bursts far faster than real time, so a level measured on arrival would run
+     * ahead of the voice and then flatline while JARVIS was still speaking.
+     */
+    val speakerLevel: Float = 0f,
+
     /** Wake-word engine in use, and its last score. */
     val wakeWordName: String = "",
     val wakeWordScore: Float = 0f,
@@ -73,8 +95,24 @@ data class JarvisSnapshot(
     val nextRetrySeconds: Int = 0,
     val lastError: String? = null,
 
-    /** Last few lines from MARK LIII, newest last. */
+    /**
+     * Last few lines from MARK LIII, newest last.
+     *
+     * Everything, flattened to strings: system lines, notes, errors. This is the
+     * debug view's feed and it is not what the home screen shows — see
+     * [messages].
+     */
     val log: List<String> = emptyList(),
+
+    /**
+     * The conversation, as turns rather than log lines.
+     *
+     * Separate from [log] because they answer different questions. `log` is
+     * "what happened", including the plumbing; this is "what was said", and it
+     * is the only one a person reads. The server replays its last 50 events on
+     * connect, so this fills itself in on reconnect with nothing to request.
+     */
+    val messages: List<Message> = emptyList(),
 
     /**
      * The irreversible action MARK LIII is waiting on, null when there is none.
@@ -94,6 +132,12 @@ data class JarvisSnapshot(
 ) {
     val connected: Boolean get() = link == LinkState.CONNECTED
     val awaitingConfirmation: Boolean get() = confirmationId != null
+
+    /** The line the home screen puts under the core, or null while JARVIS has
+     *  said nothing yet. Only JARVIS's own words: showing the user their own
+     *  sentence back is the one thing they already know. */
+    val lastSpokenLine: String?
+        get() = messages.lastOrNull { it.fromJarvis }?.text
 }
 
 object JarvisState {
@@ -127,6 +171,14 @@ object JarvisState {
     fun setDownlinkRate(rate: Int) = _state.update { it.copy(downlinkRate = rate) }
 
     fun setMicLevel(level: Float) = _state.update { it.copy(micLevel = level) }
+
+    fun setSpeakerLevel(level: Float) = _state.update { it.copy(speakerLevel = level) }
+
+    /** Append a turn. Capped: the home screen shows one line and the history
+     *  screen a scroll, and neither is a reason to hold a whole day in RAM. */
+    fun addMessage(message: Message) = _state.update {
+        it.copy(messages = (it.messages + message).takeLast(MAX_MESSAGES))
+    }
 
     fun setWakeWord(name: String) = _state.update { it.copy(wakeWordName = name) }
 
@@ -168,4 +220,6 @@ object JarvisState {
     fun clearConfirmation() = _state.update {
         it.copy(confirmationId = null, confirmationTitle = "", confirmationDetail = "")
     }
+
+    private const val MAX_MESSAGES = 60
 }
