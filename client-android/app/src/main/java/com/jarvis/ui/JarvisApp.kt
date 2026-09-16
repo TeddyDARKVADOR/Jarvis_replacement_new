@@ -1,5 +1,6 @@
 package com.jarvis.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -65,10 +66,18 @@ fun JarvisApp(
     onStopMic: () -> Unit,
     onInterrupt: () -> Unit,
     onConfirm: (id: String, confirmed: Boolean) -> Unit,
+    onSend: (String) -> Unit,
 ) {
     var tab by remember { mutableStateOf(Tab.HOME) }
     var showDebug by remember { mutableStateOf(false) }
     val snap by JarvisState.state.collectAsState()
+
+    // Back should undo the last step into the app, not leave it. Without this,
+    // backing out of Developer or History dropped the user on the launcher —
+    // and since the service keeps running, the app they just "closed" is still
+    // listening, which is exactly the wrong thing to be unsure about.
+    BackHandler(enabled = showDebug) { showDebug = false }
+    BackHandler(enabled = !showDebug && tab != Tab.HOME) { tab = Tab.HOME }
 
     Column(
         Modifier
@@ -97,6 +106,7 @@ fun JarvisApp(
                         onStopMic = onStopMic,
                         onInterrupt = onInterrupt,
                         onConfirm = onConfirm,
+                        onSend = onSend,
                     )
                     Tab.HISTORY -> HistoryScreen()
                     Tab.SETTINGS -> SettingsScreen(

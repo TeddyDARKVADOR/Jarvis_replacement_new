@@ -6,6 +6,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import android.os.SystemClock
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,15 +22,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import com.jarvis.AssistantState
 import com.jarvis.JarvisState
 import com.jarvis.LinkState
+import kotlinx.coroutines.delay
 
 /**
  * The one screen that is about JARVIS rather than about the app.
@@ -59,8 +73,15 @@ fun HomeScreen(
     onStopMic: () -> Unit,
     onInterrupt: () -> Unit,
     onConfirm: (id: String, confirmed: Boolean) -> Unit,
+    onSend: (String) -> Unit,
 ) {
     val snap by JarvisState.state.collectAsState()
+    var composing by remember { mutableStateOf(false) }
+
+    // Back closes the keyboard's own row first. Compose's default back closes
+    // only the IME, leaving an empty field behind and the user pressing again —
+    // the second press used to leave the app entirely.
+    BackHandler(enabled = composing) { composing = false }
 
     // One number feeds the core, from whichever side is making sound. While
     // JARVIS speaks, the microphone is either gated or picking up JARVIS itself,
@@ -94,6 +115,7 @@ fun HomeScreen(
             assistant = snap.assistant,
             level = level,
             animated = animationsEnabled,
+            wokeAt = snap.wokeAt,
             // Tapping the core interrupts. It is the largest target on the
             // screen and the one thing the user is already looking at when they
             // want JARVIS to stop talking.
@@ -114,6 +136,7 @@ fun HomeScreen(
             ConfirmationCard(
                 title = snap.confirmationTitle,
                 detail = snap.confirmationDetail,
+                deadline = snap.confirmationDeadline,
                 onAnswer = { ok -> onConfirm(id, ok) },
             )
             Spacer(Modifier.height(20.dp))
@@ -127,11 +150,16 @@ fun HomeScreen(
             !configured -> Hint("No server yet.", "SET UP", onOpenSettings)
             !micGranted -> Hint("JARVIS cannot hear you.", "ALLOW MIC", onRequestPermissions)
             !snap.serviceRunning -> Hint(null, "WAKE JARVIS", onConnect)
+            composing -> ComposeBar(
+                onSend = { onSend(it); composing = false },
+                onDismiss = { composing = false },
+            )
             else -> Controls(
                 micOpen = snap.micOpen,
                 onStartMic = onStartMic,
                 onStopMic = onStopMic,
                 onInterrupt = onInterrupt,
+                onType = { composing = true },
             )
         }
 
@@ -152,6 +180,18 @@ private fun CaptionLine(
     link: LinkState,
     lastLine: String?,
 ) {
+    // A quote goes stale. After a while the last thing JARVIS said stops being
+    // "what is happening" and becomes a sentence sitting under the core from
+    // some earlier conversation, so the screen falls back to its own state.
+    var stale by remember(lastLine) { mutableStateOf(false) }
+    LaunchedEffect(lastLine) {
+        stale = false
+        if (lastLine != null) {
+            delay(45_000)
+            stale = true
+        }
+    }
+
     val caption = when {
         link == LinkState.DISCONNECTED -> "Offline."
         link == LinkState.ERROR -> "Cannot reach JARVIS."
@@ -160,6 +200,7 @@ private fun CaptionLine(
         assistant == AssistantState.LISTENING -> "I'm listening."
         assistant == AssistantState.THINKING -> "Thinking…"
         assistant == AssistantState.SLEEPING -> "Say \"Hey Jarvis\"."
+        stale || lastLine == null -> "Ready."
         else -> null
     }
 
@@ -224,6 +265,7 @@ private fun Controls(
     onStartMic: () -> Unit,
     onStopMic: () -> Unit,
     onInterrupt: () -> Unit,
+    onType: () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         // "MIC", not "LISTEN". The pill above can read LISTENING — that is MARK
@@ -236,6 +278,53 @@ private fun Controls(
             Button(onClick = onStartMic) { Text("MIC") }
         }
         OutlinedButton(onClick = onInterrupt) { Text("INTERRUPT") }
+        OutlinedButton(onClick = onType) { Text("TYPE") }
+    }
+}
+
+/**
+ * Say something without saying it.
+ *
+ * `{"type":"command","text":…}` has been in the protocol since the web
+ * dashboard, and the phone had no way to send it — so in a meeting, on a train,
+ * or any time the wake word will not fire, JARVIS was simply unreachable from
+ * the device it lives on. One field closes that.
+ *
+ * It replaces the controls rather than sitting beside them: a keyboard is
+ * already covering half the screen, and a row of buttons under it would be
+ * pushed off the bottom.
+ */
+@Composable
+private fun ComposeBar(onSend: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            placeholder = { Text("Say something…", fontSize = 14.sp) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(
+                onSend = { if (text.isNotBlank()) onSend(text.trim()) }
+            ),
+            modifier = Modifier.weight(1f).focusRequester(focus),
+        )
+        // An explicit send, not only the IME action. Which key a keyboard shows
+        // for `ImeAction.Send` is the keyboard's decision — several draw a
+        // newline instead — and a message that cannot be sent because of the
+        // keyboard the user happens to have installed is not a good failure.
+        TextButton(
+            onClick = { if (text.isNotBlank()) onSend(text.trim()) },
+            enabled = text.isNotBlank(),
+        ) { Text("SEND") }
+        TextButton(onClick = onDismiss) { Text("✕", fontSize = 18.sp) }
     }
 }
 
@@ -266,8 +355,24 @@ private fun Hint(message: String?, action: String, onClick: () -> Unit) {
 fun ConfirmationCard(
     title: String,
     detail: String,
+    /** `elapsedRealtime()` at which the server will refuse an answer, 0 if unknown. */
+    deadline: Long,
     onAnswer: (Boolean) -> Unit,
 ) {
+    // Tick only while a request is up, and only once a second. The server
+    // already refuses a late answer — this is so the user is not offered a
+    // button that has quietly stopped meaning anything.
+    var secondsLeft by remember(deadline) {
+        mutableStateOf(remainingSeconds(deadline))
+    }
+    LaunchedEffect(deadline) {
+        while (deadline > 0L && secondsLeft > 0) {
+            delay(1000)
+            secondsLeft = remainingSeconds(deadline)
+        }
+    }
+    val expired = deadline > 0L && secondsLeft <= 0
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -275,22 +380,52 @@ fun ConfirmationCard(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("CONFIRMATION REQUIRED", color = Color(0xFFFB923C),
-             fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+        Row(Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                if (expired) "EXPIRED" else "CONFIRMATION REQUIRED",
+                color = if (expired) Color(0xFF8A7466) else Color(0xFFFB923C),
+                fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp,
+            )
+            if (!expired && deadline > 0L) {
+                Text("${secondsLeft}s", color = Color(0xFF8A7466), fontSize = 11.sp)
+            }
+        }
         Text(title, color = Color(0xFFEDE3DA), fontSize = 17.sp,
              fontWeight = FontWeight.Bold)
         if (detail.isNotBlank()) {
             Text(detail, color = Color(0xFFB09C8C), fontSize = 13.sp, lineHeight = 19.sp)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+
+        if (expired) {
+            // Nothing to press. The request is gone on the server too, so the
+            // only honest thing left is to say so and let the user dismiss it.
+            Text(
+                "JARVIS stopped waiting. Ask again if you still want it.",
+                color = Color(0xFF8A7466), fontSize = 12.sp,
+            )
             Button(
                 onClick = { onAnswer(false) },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFF3C2A20),
                     contentColor = Color(0xFFEDE3DA),
                 ),
-            ) { Text("CANCEL") }
-            OutlinedButton(onClick = { onAnswer(true) }) { Text("CONFIRM") }
+            ) { Text("DISMISS") }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = { onAnswer(false) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF3C2A20),
+                        contentColor = Color(0xFFEDE3DA),
+                    ),
+                ) { Text("CANCEL") }
+                OutlinedButton(onClick = { onAnswer(true) }) { Text("CONFIRM") }
+            }
         }
     }
 }
+
+private fun remainingSeconds(deadline: Long): Int =
+    if (deadline <= 0L) 0
+    else ((deadline - SystemClock.elapsedRealtime()) / 1000).coerceAtLeast(0).toInt()

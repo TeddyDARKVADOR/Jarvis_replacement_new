@@ -10,6 +10,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ServiceCompat
@@ -24,8 +27,6 @@ import com.jarvis.audio.AudioPlayer
 import com.jarvis.audio.AudioRecorder
 import com.jarvis.auth.AuthManager
 import com.jarvis.net.JarvisClient
-import java.time.LocalDateTime
-import java.time.ZoneId
 import com.jarvis.net.Protocol
 import com.jarvis.net.ReconnectManager
 import com.jarvis.wakeword.WakeWordDetector
@@ -115,6 +116,9 @@ class JarvisForegroundService : Service() {
             scope = scope,
             onLink = { state, error ->
                 JarvisState.setLink(state, error)
+                if (state == LinkState.CONNECTED) {
+                    replayUntil = SystemClock.elapsedRealtime() + REPLAY_WINDOW_MS
+                }
                 if (state != LinkState.CONNECTED) {
                     // The microphone socket does not survive a link change, and
                     // neither does anything queued for playback.
@@ -152,6 +156,7 @@ class JarvisForegroundService : Service() {
             ACTION_MIC_ON -> startMic()
             ACTION_MIC_OFF -> stopMic()
             ACTION_INTERRUPT -> interrupt()
+            ACTION_SAY -> sendText(intent?.getStringExtra(EXTRA_TEXT).orEmpty())
             ACTION_CONFIRM -> answerConfirmation(
                 intent?.getStringExtra(EXTRA_CONFIRM_ID).orEmpty(),
                 intent?.getBooleanExtra(EXTRA_CONFIRMED, false) ?: false,
@@ -202,8 +207,13 @@ class JarvisForegroundService : Service() {
         wakeWord.start {
             // Fires immediately for AlwaysOpen; on a real engine, when the word
             // is heard.
+            val wasClosed = !gateOpen
             gateOpen = true
             JarvisState.setGateOpen(true)
+            // One short pulse, only on the rising edge: this is the moment the
+            // user's voice starts leaving the phone, and it is the one thing
+            // they should be told without having to look.
+            if (wasClosed && wakeWord.gatesAudio) buzz(longArrayOf(0, 28))
             gateUntil = SystemClock.elapsedRealtime() + INTERACTION_WINDOW_MS
             client.openMic()
         }
@@ -248,6 +258,7 @@ class JarvisForegroundService : Service() {
      */
     private fun interrupt() {
         player.flush()
+        buzz(longArrayOf(0, 18))
         val sent = client.sendInterrupt()
         JarvisLog.net(if (sent) "INTERRUPT sent" else "INTERRUPT not sent — no link")
         if (!sent) JarvisState.log("Interrupt: not connected.")
@@ -273,20 +284,73 @@ class JarvisForegroundService : Service() {
     }
 
     /**
-     * `datetime.now().isoformat()` → epoch millis, 0 if it will not parse.
+     * A typed command, on the channel the web dashboard has always used.
      *
-     * The server's clock, with no zone on it, so it is read as local time —
-     * which is right for the only case that matters here, a phone and a VPS the
-     * same person set up. A wrong hour is worse than none, so anything that does
-     * not parse cleanly becomes 0 and the row simply shows no time.
+     * Echoed locally as a user turn: the server only broadcasts `speaker:user`
+     * for speech it transcribed, so without this the history would show JARVIS
+     * answering a question nobody appears to have asked.
      */
-    private fun parseTimestamp(raw: String): Long = try {
-        if (raw.isBlank()) 0L
-        else LocalDateTime.parse(raw).atZone(ZoneId.systemDefault())
-            .toInstant().toEpochMilli()
-    } catch (_: Exception) {
-        0L
+    private fun sendText(text: String) {
+        val t = text.trim()
+        if (t.isEmpty()) return
+        if (!client.sendText(t)) {
+            JarvisState.log("Not sent — no link.")
+            return
+        }
+        JarvisState.addMessage(Message(false, t, System.currentTimeMillis()))
     }
+
+    /**
+     * A short haptic. The only feedback that reaches a phone in a pocket.
+     *
+     * Best-effort by design: a device with no vibrator, or an OEM that refuses
+     * the call, must not take down the assistant over a buzz.
+     */
+    private fun buzz(pattern: LongArray) {
+        try {
+            val vib = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(VibratorManager::class.java))?.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION") getSystemService(Vibrator::class.java)
+            } ?: return
+            if (!vib.hasVibrator()) return
+            vib.vibrate(VibrationEffect.createWaveform(pattern, -1))
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * When a turn happened, by this phone's clock — or 0 for the backlog.
+     *
+     * **The server's own `ts` is deliberately not used.** It is
+     * `datetime.now().isoformat()`: a naive ISO string with no offset on it, and
+     * nothing on the wire says which zone produced it. Reading it as local time
+     * put JARVIS's turns two hours behind the user's on the very first test —
+     * the VPS runs UTC, the phone runs Europe/Paris — and a wrong hour is worse
+     * than no hour.
+     *
+     * A live event arrives within a second of being spoken, so the phone's own
+     * clock is accurate for it. The exception is the burst the server replays on
+     * connect: those are historical, their real times are unknowable from here,
+     * and stamping them "now" would be the same lie in a different form. They
+     * get 0, and the row simply shows no time.
+     *
+     * (A server that sent `datetime.now().astimezone().isoformat()` — one call,
+     * backward compatible — would make all of this unnecessary.)
+     */
+    private fun turnTimestamp(): Long =
+        if (SystemClock.elapsedRealtime() < replayUntil) 0L
+        else System.currentTimeMillis()
+
+    /**
+     * Until when arriving events are the connect-time backlog rather than news.
+     *
+     * The server sends its last 50 messages the moment /ws opens; there is no
+     * marker separating them from what happens next, so this is a window rather
+     * than a flag. Generous on purpose: labelling a live turn as backlog costs
+     * one missing timestamp, labelling backlog as live costs fifty wrong ones.
+     */
+    @Volatile private var replayUntil: Long = 0L
 
     /** Audio thread. Everything here is a comparison or a queue push. */
     private fun onMicFrame(frame: ByteArray, length: Int) {
@@ -369,19 +433,38 @@ class JarvisForegroundService : Service() {
                     val text = json.optString("text")
                     if (text.isNotBlank()) {
                         JarvisState.addMessage(
-                            Message(fromJarvis, text, parseTimestamp(json.optString("ts")))
+                            Message(fromJarvis, text, turnTimestamp())
                         )
                     }
                     JarvisState.log("${if (fromJarvis) "JARVIS" else "You"}: $text")
                 }
                 Protocol.EV_SYS -> JarvisState.log(json.optString("text"))
-                Protocol.EV_CONTENT ->
-                    JarvisState.log("[${json.optString("title")}] ${json.optString("text").take(200)}")
+                Protocol.EV_CONTENT -> {
+                    val body = json.optString("text")
+                    if (body.isNotBlank()) {
+                        JarvisState.addMessage(
+                            Message(
+                                fromJarvis = true,
+                                text = body,
+                                atMillis = turnTimestamp(),
+                                title = json.optString("title").ifBlank { "Content" },
+                            )
+                        )
+                    }
+                    JarvisState.log("[${json.optString("title")}] ${body.take(200)}")
+                }
                 Protocol.EV_CONFIRM -> {
                     val id = json.optString("id")
                     val title = json.optString("title")
                     if (id.isNotBlank()) {
-                        JarvisState.setConfirmation(id, title, json.optString("detail"))
+                        JarvisState.setConfirmation(
+                            id, title, json.optString("detail"),
+                            json.optInt("timeout_s", 0),
+                        )
+                        // The one event that must not be missed while the phone
+                        // is in a pocket. Two pulses, not a buzz: distinguishable
+                        // from a message without being an alarm.
+                        buzz(longArrayOf(0, 40, 90, 40))
                     } else {
                         // A server older than this app: it asks, but there is no
                         // id to answer with. Say so rather than showing buttons
@@ -485,12 +568,15 @@ class JarvisForegroundService : Service() {
         const val ACTION_MIC_OFF = "com.jarvis.MIC_OFF"
         const val ACTION_INTERRUPT = "com.jarvis.INTERRUPT"
         const val ACTION_CONFIRM = "com.jarvis.CONFIRM"
+        const val ACTION_SAY = "com.jarvis.SAY"
 
         const val EXTRA_CONFIRM_ID = "confirm_id"
         const val EXTRA_CONFIRMED = "confirmed"
+        const val EXTRA_TEXT = "text"
 
         /** How long a wake-word interaction stays open with nobody speaking. */
         private const val INTERACTION_WINDOW_MS = 30_000L
+        private const val REPLAY_WINDOW_MS = 3_000L
 
         /** Mic level above which someone is considered to be speaking. */
         private const val VOICE_FLOOR = 0.04f
@@ -502,6 +588,15 @@ class JarvisForegroundService : Service() {
             } else {
                 context.startService(intent)
             }
+        }
+
+        /** [send] with the text of a typed command. */
+        fun sendSpoken(context: Context, text: String) {
+            context.startService(
+                Intent(context, JarvisForegroundService::class.java)
+                    .setAction(ACTION_SAY)
+                    .putExtra(EXTRA_TEXT, text)
+            )
         }
 
         /** [send] with the two extras a confirmation answer needs. */

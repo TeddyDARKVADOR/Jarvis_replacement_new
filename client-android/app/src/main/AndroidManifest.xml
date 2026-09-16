@@ -32,6 +32,11 @@
          platform is designed to prevent. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+    <!-- The only feedback that reaches a phone in a pocket: the wake word being
+         heard, a confirmation arriving, an interrupt landing. Normal-level, so
+         it is granted at install and never prompts. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+
     <!--
       NOT declared, deliberately:
 
