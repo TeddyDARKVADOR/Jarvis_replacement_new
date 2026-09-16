@@ -98,7 +98,8 @@ object Protocol {
     const val EV_FILE = "file_received"    // {"name","size","saved_to"}
     const val EV_JARVIS_STATE = "jarvis_state"  // {"state":"LISTENING"|…}
     const val EV_CONTENT = "content"       // {"title","text"}
-    const val EV_CONFIRM = "confirm"       // {"title","detail"}
+    const val EV_CONFIRM = "confirm"       // {"id","title","detail","timeout_s"}
+    const val EV_CONFIRM_HIDE = "confirm_hide"  // no payload — take the banner down
 
     // Client → server. `text` is accepted in the clear; `enc` carries the same
     // string AES-256-CBC-encrypted under the session key from device-login.
@@ -107,6 +108,22 @@ object Protocol {
     // trusted either way. Implementing `enc` adds a second lock on one of three
     // doors.
     const val CMD_COMMAND = "command"
+
+    /** Stop JARVIS mid-sentence. No payload — "stop talking" has no parameters.
+     *
+     *  The server drops what it has queued for us, but it cannot reach into
+     *  this process: the client must also call `AudioPlayer.flush()`, or the
+     *  audio already received goes on playing and the button looks broken. */
+    const val CMD_INTERRUPT = "interrupt"
+
+    /** The answer to [EV_CONFIRM]: `{"id", "confirmed"}`.
+     *
+     *  `id` is mandatory and must be the one that arrived with the request. The
+     *  server applies an answer only to the request it names — a banner still on
+     *  screen after an expiry, or after the request was replaced, cannot confirm
+     *  something the user never read. Sending a decision is all this does; the
+     *  action itself runs on the server or not at all. */
+    const val CMD_CONFIRMATION_RESPONSE = "confirmation_response"
 
     /** WebSocket close code the server uses to refuse a bad token. */
     const val CLOSE_UNAUTHORISED = 4001

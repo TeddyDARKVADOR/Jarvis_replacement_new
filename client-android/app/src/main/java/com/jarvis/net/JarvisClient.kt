@@ -165,6 +165,36 @@ class JarvisClient(
         return ws.send(msg.toString())
     }
 
+    /**
+     * Stop JARVIS mid-sentence.
+     *
+     * Only half of an interrupt: this tells the server to stop producing and to
+     * throw away what it has queued for us. Audio already delivered is sitting
+     * in this process, and the caller must clear it — see
+     * [com.jarvis.audio.AudioPlayer.flush]. Whoever owns both does both.
+     */
+    fun sendInterrupt(): Boolean {
+        val ws = events ?: return false
+        return ws.send(JSONObject().put("type", Protocol.CMD_INTERRUPT).toString())
+    }
+
+    /**
+     * Answer a pending confirmation.
+     *
+     * [id] must be the one that came with the request. A decision travels; an
+     * action does not. If the request has expired or been replaced, the server
+     * discards this and nothing happens — which is the intended outcome, not a
+     * failure to handle here.
+     */
+    fun sendConfirmation(id: String, confirmed: Boolean): Boolean {
+        val ws = events ?: return false
+        val msg = JSONObject()
+            .put("type", Protocol.CMD_CONFIRMATION_RESPONSE)
+            .put("id", id)
+            .put("confirmed", confirmed)
+        return ws.send(msg.toString())
+    }
+
     // ── internals ────────────────────────────────────────────────────────────
 
     private enum class Channel { EVENTS, DOWNLINK, UPLINK }

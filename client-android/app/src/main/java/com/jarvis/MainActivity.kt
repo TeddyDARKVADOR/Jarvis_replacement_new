@@ -75,6 +75,14 @@ class MainActivity : ComponentActivity() {
                     onStopMic = {
                         JarvisForegroundService.send(this, JarvisForegroundService.ACTION_MIC_OFF)
                     },
+                    onInterrupt = {
+                        JarvisForegroundService.send(this, JarvisForegroundService.ACTION_INTERRUPT)
+                    },
+                    onConfirm = { id, confirmed ->
+                        // Carries the user's answer to the service, which sends
+                        // it on. The Activity decides nothing and runs nothing.
+                        JarvisForegroundService.sendConfirmation(this, id, confirmed)
+                    },
                 )
             }
         }

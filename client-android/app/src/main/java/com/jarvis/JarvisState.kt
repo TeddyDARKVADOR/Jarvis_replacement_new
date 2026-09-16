@@ -75,8 +75,25 @@ data class JarvisSnapshot(
 
     /** Last few lines from MARK LIII, newest last. */
     val log: List<String> = emptyList(),
+
+    /**
+     * The irreversible action MARK LIII is waiting on, null when there is none.
+     *
+     * Deliberately three fields on the existing snapshot rather than a second
+     * state machine: a confirmation is something JARVIS is *doing*, concurrent
+     * with LISTENING or SPEAKING, not a mode the app enters.
+     *
+     * [confirmationId] is the part that matters. It is the server's id for this
+     * request and it goes back untouched; the app never invents one, never
+     * reuses one, and never decides anything with it. If it is stale by the time
+     * the user taps, the server discards the answer — which is the point.
+     */
+    val confirmationId: String? = null,
+    val confirmationTitle: String = "",
+    val confirmationDetail: String = "",
 ) {
     val connected: Boolean get() = link == LinkState.CONNECTED
+    val awaitingConfirmation: Boolean get() = confirmationId != null
 }
 
 object JarvisState {
@@ -137,5 +154,18 @@ object JarvisState {
 
     fun log(line: String) = _state.update {
         it.copy(log = (it.log + line).takeLast(40))
+    }
+
+    /** A `confirm` event arrived. Replaces any banner already up: the server
+     *  keeps exactly one pending request, so showing two would be a lie. */
+    fun setConfirmation(id: String, title: String, detail: String) = _state.update {
+        it.copy(confirmationId = id, confirmationTitle = title,
+                confirmationDetail = detail)
+    }
+
+    /** The request is over — answered here, answered elsewhere, or expired.
+     *  Clearing is all this does; nothing is executed or cancelled locally. */
+    fun clearConfirmation() = _state.update {
+        it.copy(confirmationId = null, confirmationTitle = "", confirmationDetail = "")
     }
 }

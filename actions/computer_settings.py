@@ -787,9 +787,6 @@ def computer_settings(
     player=None,
     session_memory=None,
 ) -> str:
-    if not _PYAUTOGUI:
-        return "pyautogui is not installed. Run: pip install pyautogui"
-
     params      = parameters or {}
     raw_action  = params.get("action", "").strip()
     description = params.get("description", "").strip()
@@ -809,6 +806,21 @@ def computer_settings(
     print(f"[Settings] Action: {action}  Value: {value}  OS: {_OS}")
     if player:
         player.write_log(f"[Settings] {action}")
+
+    # The pyautogui guard. It used to be the first line of this function, which
+    # refused *every* action in the module on any host without a display — and
+    # one consequence of that was not obvious: this module is the only caller of
+    # core/confirm.py, so refusing at the front door meant the confirmation gate
+    # could never fire on a headless host at all. The feature was not disabled,
+    # it was unreachable.
+    #
+    # The three actions in _IRREVERSIBLE are subprocess calls — `systemctl
+    # reboot`, `systemctl poweroff`, `networksetup`/`nmcli`/PowerShell for the
+    # WiFi — and none of them touches pyautogui. They are exactly the actions
+    # that must still be askable on a server, because they are the ones worth
+    # asking about. Everything else keeps the old refusal, unchanged.
+    if not _PYAUTOGUI and action not in _IRREVERSIBLE:
+        return "pyautogui is not installed. Run: pip install pyautogui"
 
     # ── The gate ─────────────────────────────────────────────────────────────
     # A human presses a button, or this does not happen. The model can no longer
