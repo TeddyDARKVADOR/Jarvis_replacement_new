@@ -92,17 +92,22 @@ ignore audio until something wakes it.
 ## 6. Self-test before anything else
 
 ```bash
-cd /opt/jarvis
-sudo -u jarvis /opt/jarvis/.venv/bin/python -m server.selftest
+sudo -u jarvis sh -c 'cd /opt/jarvis && exec .venv/bin/python -m server.selftest'
 ```
 
 Expect **12/12**.
 
-**`cd /opt/jarvis` first, and it matters.** `python -m` puts the current
-directory at the front of `sys.path`, so running this from your git clone tests
-the *clone* rather than the installed copy — with the clone's paths, its
-`config/`, and its permissions. The symptom is a handful of failures mentioning
-a directory you did not expect.
+**The `cd /opt/jarvis` matters, and it has to happen inside the `sudo`.**
+`python -m` puts the current directory at the front of `sys.path`, so running
+this from your git clone tests the *clone* rather than the installed copy — with
+the clone's paths, its `config/`, and its permissions. The symptom is a handful
+of failures mentioning a directory you did not expect.
+
+Your own `cd /opt/jarvis` will not work: the installer sets the directory to 750
+owned by `jarvis`, so `ubuntu` gets `Permission denied` before Python is even
+reached. `sudo -u jarvis sh -c '…'` is the shell that is allowed in. (`jarvis`
+has `nologin` as its shell, which is fine — that only blocks *login* shells, and
+this is an explicit `sh`.)
 
 This runs with no Gemini connection and no socket: if it fails, nothing
 downstream is worth trying.
@@ -110,25 +115,35 @@ downstream is worth trying.
 ## 7. Run it by hand once
 
 ```bash
-cd /opt/jarvis
-sudo -u jarvis /opt/jarvis/.venv/bin/python -m server.run_headless
+sudo -u jarvis sh -c 'cd /opt/jarvis && exec .venv/bin/python -m server.run_headless'
 ```
 
 Expect, within a few seconds:
 
 ```
 [Headless] MARK LIII starting — main.py, actions, plugins and memory unchanged.
-[Actions] Action discovery complete: 11 active.
+[Actions] Action rejected: browser_control.py — Failed to load: No module named 'playwright'
+[Actions] Action discovery complete: 15 active.
 [JARVIS] SYS: /health, /status and /ws/phone-out are up.
 [JARVIS] SYS: paired device …XXXXXX restored from device_credentials.json.
 [JARVIS] SYS: JARVIS online.
 ```
 
-**11 actions, not 16, is correct on a server.** Five desktop-control actions
-(`computer_control`, `computer_settings`, `desktop`, `send_message`,
-`youtube_video`) import `pyautogui`, which needs an X display. The loader
-rejects them and logs a traceback; nothing else is affected. A VPS has no mouse
-to move.
+**15 active and one rejection is correct on a server.** The rejection is
+`browser_control`, which needs `playwright` — ~400 MB of browsers that
+`requirements-server.txt` deliberately leaves out. Install it if you want that
+action (see the bottom of `requirements-server.txt`).
+
+The five desktop-control actions (`computer_control`, `computer_settings`,
+`desktop`, `send_message`, `youtube_video`) **do** load, and that is also
+correct. Each guards `import pyautogui` in a `try`/`except` and raises
+`PyAutoGUI not installed` when it is actually called, so the loader has nothing
+to reject. They are listed to the model and refuse politely if it reaches for
+one. A VPS still has no mouse to move.
+
+If you see **12 active** and three rejections naming `get_os` or `is_windows`
+"from `config` (unknown location)", you are on an install that predates the
+`config/__init__.py` fix in `install.sh` — re-run the installer.
 
 From a second shell:
 
@@ -142,8 +157,7 @@ Stop it with Ctrl-C.
 ## 8. Pair the phone
 
 ```bash
-cd /opt/jarvis
-sudo -u jarvis /opt/jarvis/.venv/bin/python -m server.run_headless --pairing
+sudo -u jarvis sh -c 'cd /opt/jarvis && exec .venv/bin/python -m server.run_headless --pairing'
 ```
 
 Copy the `device_token`. It is printed twice — once on its own line and once
@@ -174,6 +188,16 @@ sudo systemctl enable --now jarvis
 systemctl status jarvis
 journalctl -u jarvis -f
 ```
+
+If you check the unit with `systemd-analyze verify`, **run it under `sudo`**.
+Unprivileged, it reports
+
+```
+jarvis.service: Command /opt/jarvis/.venv/bin/python is not executable: Permission denied
+```
+
+which is the verifier failing to traverse `/opt/jarvis` (750, owned by `jarvis`),
+not a fault in the unit. As root the same command prints nothing.
 
 ## 11. Connect the Android client
 
@@ -218,7 +242,7 @@ Healthy output, with the phone connected and talking:
 Watch it live over time:
 
 ```bash
-sudo -u jarvis /opt/jarvis/.venv/bin/python -m server.watch
+sudo -u jarvis sh -c 'cd /opt/jarvis && exec .venv/bin/python -m server.watch'
 ```
 
 One line per transition, nothing while it is healthy.
@@ -243,7 +267,8 @@ single `LOGIN` line in `server.watch`.
 |---|---|
 | `No Gemini API key found` at startup | step 5 not done, or the file is not readable by `jarvis` |
 | App fails to start, error mentions **Form data / python-multipart** | `python-multipart` missing. FastAPI needs it to *build* the upload route, so the whole app refuses to start and the message names an upload nobody attempted. |
-| `Action rejected: … 'DISPLAY'` | Expected on a server. See step 7. |
+| `Action rejected: browser_control … 'playwright'` | Expected on a server. See step 7. |
+| `Action rejected: … cannot import name 'get_os' from 'config'` | `config/__init__.py` is missing from `/opt/jarvis/config/` — an install from before the fix. Re-run `deployment/install.sh`. |
 | Phone shows `RECONNECTING` forever | Tailscale down on one side, or the release APK pointed at a non-`ts.net` host (cleartext refused, silently) |
 | Phone shows `ERROR: device token refused` | `config/device_credentials.json` was regenerated. Re-pair (step 8). |
 | `/health` works locally, not from the phone | the server is bound on `0.0.0.0:8000`; check `tailscale status` on both ends before suspecting the app |

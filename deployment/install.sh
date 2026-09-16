@@ -60,17 +60,39 @@ if [ "$REPO_DIR" != "$JARVIS_HOME" ]; then
     mkdir -p "$JARVIS_HOME"
     # -a preserves the layout; --exclude keeps build junk and, crucially, the
     # destination's own config/ out of the way.
+    # config/ is NOT excluded as a directory. config/__init__.py is *code* —
+    # get_os()/is_windows()/is_mac()/is_linux(), which flight_finder, game_updater
+    # and youtube_video import at module level. Excluding the whole directory left
+    # `config` as an empty namespace package on the server (config.__file__ was
+    # None) and those three actions were rejected at discovery with an ImportError
+    # that named a symbol, not a missing file. Only the secrets are protected, by
+    # name; rsync does not delete excluded files on the receiver.
     if command -v rsync >/dev/null 2>&1; then
         rsync -a --delete \
               --exclude '.git' --exclude '__pycache__' --exclude '.venv' \
-              --exclude 'config/' --exclude 'memory/long_term.json' \
+              --exclude 'config/api_keys.json' \
+              --exclude 'config/device_credentials.json' \
+              --exclude 'config/certs/' --exclude 'config/whatsapp_web/' \
+              --exclude 'memory/long_term.json' \
               --exclude 'client-android/' \
               "$REPO_DIR"/ "$JARVIS_HOME"/
     else
         warn "rsync not found — copying with cp, stale files will not be removed"
+        # The header promises a re-run never overwrites config/. cp has no
+        # --exclude, so the secrets are set aside and put back around the copy.
+        _keep="$(mktemp -d)"
+        for _f in config/api_keys.json config/device_credentials.json \
+                  memory/long_term.json; do
+            if [ -f "$JARVIS_HOME/$_f" ]; then
+                mkdir -p "$_keep/$(dirname "$_f")"
+                cp -p "$JARVIS_HOME/$_f" "$_keep/$_f"
+            fi
+        done
         cp -r "$REPO_DIR"/. "$JARVIS_HOME"/
+        cp -rp "$_keep"/. "$JARVIS_HOME"/ 2>/dev/null || true
+        rm -rf "$_keep"
     fi
-    echo "  code copied (config/ and memory/long_term.json deliberately preserved)"
+    echo "  code copied (secrets in config/ and memory/long_term.json preserved)"
 else
     echo "  already running from $JARVIS_HOME"
 fi
@@ -155,8 +177,11 @@ fi
 echo
 echo "  2. Check it works before enabling the service:"
 echo
-echo "       sudo -u $JARVIS_USER $JARVIS_HOME/.venv/bin/python -m server.selftest"
-echo "       sudo -u $JARVIS_USER $JARVIS_HOME/.venv/bin/python -m server.run_headless"
+# The cd has to happen inside the sudo: $JARVIS_HOME is 750 and owned by
+# $JARVIS_USER, so your own shell cannot enter it — and `python -m` needs the
+# install root on sys.path, not your home directory.
+echo "       sudo -u $JARVIS_USER sh -c 'cd $JARVIS_HOME && exec .venv/bin/python -m server.selftest'"
+echo "       sudo -u $JARVIS_USER sh -c 'cd $JARVIS_HOME && exec .venv/bin/python -m server.run_headless'"
 echo "       curl http://127.0.0.1:8000/health"
 echo
 echo "     Then start it for real:"
@@ -165,5 +190,5 @@ echo "       sudo systemctl enable --now jarvis"
 echo "       journalctl -u jarvis -f"
 echo
 echo "  Pair the phone with:"
-echo "       sudo -u $JARVIS_USER $JARVIS_HOME/.venv/bin/python -m server.run_headless --pairing"
+echo "       sudo -u $JARVIS_USER sh -c 'cd $JARVIS_HOME && exec .venv/bin/python -m server.run_headless --pairing'"
 echo
