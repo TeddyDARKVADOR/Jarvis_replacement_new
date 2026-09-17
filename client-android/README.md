@@ -13,7 +13,8 @@ AudioTrack  24 kHz ◄───────────────────�
 
 ## Build
 
-Needs the Android SDK with **platform 37** and a JDK 17+. Everything else is
+Needs a **JDK** 17 or newer — a JRE is not enough, and a machine with only
+`jre1.8` installed has neither — plus one SDK platform. Everything else is
 fetched by the wrapper.
 
 ```bash
@@ -21,6 +22,41 @@ cd client-android
 ANDROID_HOME=$HOME/Android/Sdk ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+
+**The platform package is `platforms;android-37.0`, not `platforms;android-37`.**
+Asking for the latter fails with `Failed to find package`, which reads like the
+platform does not exist yet. It does; the naming gained a minor component (as
+`android-36.1` did), and `compileSdk = 37` resolves to `android-37.0`.
+
+```bash
+sdkmanager "platforms;android-37.0"
+```
+
+If `sdkmanager` warns that it *"only understands SDK XML versions up to 3"*,
+its package list is incomplete — install a newer `cmdline-tools` before
+concluding that something is missing from the repository.
+
+Nothing has to be installed system-wide. A portable JDK unzipped anywhere works,
+pointed at for the build alone:
+
+```bash
+JAVA_HOME=/path/to/jdk-21 ANDROID_HOME=$HOME/Android/Sdk ./gradlew :app:assembleDebug
+```
+
+Measured on a cold cache (Windows 11, JDK 21.0.12 LTS, 17 September 2026):
+
+| | |
+|---|---|
+| `assembleDebug` | 2 min 7 s, 36 tasks — `app-debug.apk`, 31.5 MB |
+| `assembleRelease` | 38 s — `app-release-unsigned.apk`, 28.0 MB |
+
+The release output is **unsigned**: there is no `signingConfig` in
+`app/build.gradle.kts`, so it cannot be installed as it stands. Use the debug
+APK for bring-up.
+
+`stripDebugDebugSymbols` reports that it cannot strip `libtensorflowlite_jni.so`
+and `libandroidx.graphics.path.so`. That is expected and not an error — they are
+packaged as they are, and they are most of the 31.5 MB.
 
 Toolchain, and why each version is what it is:
 
