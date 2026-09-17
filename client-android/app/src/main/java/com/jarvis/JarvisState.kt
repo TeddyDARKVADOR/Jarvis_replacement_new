@@ -79,6 +79,20 @@ data class JarvisSnapshot(
     /** Uplink frames dropped because the socket was behind. */
     val framesDropped: Long = 0,
 
+    /**
+     * Notification counters, for the debug view.
+     *
+     * Four numbers rather than three, because [notificationsDuplicate] is the
+     * one that tells you the system is working: the server re-offers recent
+     * notifications on every reconnect, so duplicates climbing while shown
+     * stays flat is dedup doing its job. Received climbing with nothing else
+     * moving is the bug — events arriving and never reaching the shade.
+     */
+    val notificationsReceived: Long = 0,
+    val notificationsShown: Long = 0,
+    val notificationsDuplicate: Long = 0,
+    val notificationsDropped: Long = 0,
+
     /** Sample rate the server announced on /ws/phone-out. */
     val downlinkRate: Int = 0,
 
@@ -237,6 +251,22 @@ object JarvisState {
     }
 
     fun countDropped() = _state.update { it.copy(framesDropped = it.framesDropped + 1) }
+
+    fun countNotificationReceived() = _state.update {
+        it.copy(notificationsReceived = it.notificationsReceived + 1)
+    }
+
+    fun countNotificationShown() = _state.update {
+        it.copy(notificationsShown = it.notificationsShown + 1)
+    }
+
+    fun countNotificationDuplicate() = _state.update {
+        it.copy(notificationsDuplicate = it.notificationsDuplicate + 1)
+    }
+
+    fun countNotificationDropped() = _state.update {
+        it.copy(notificationsDropped = it.notificationsDropped + 1)
+    }
 
     fun setError(message: String?) = _state.update { it.copy(lastError = message) }
 

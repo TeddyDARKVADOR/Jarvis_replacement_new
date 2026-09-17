@@ -752,6 +752,21 @@ class DashboardServer:
                     await websocket.send_json(entry)
                 except Exception:
                     break
+            # Notifications recent enough to still matter, re-offered in full.
+            # The 50-message replay above already carries the ones that happened
+            # lately, but a notification is not a transcript line: it must not
+            # scroll out behind a busy conversation while the phone was away.
+            # The client drops what it has already shown (by `id`), so sending a
+            # duplicate here is cheap and losing one is not.
+            try:
+                from server.notify import get_hub
+                for entry in get_hub().pending():
+                    try:
+                        await websocket.send_json(entry)
+                    except Exception:
+                        break
+            except Exception:
+                pass
             try:
                 while True:
                     data = await websocket.receive_json()

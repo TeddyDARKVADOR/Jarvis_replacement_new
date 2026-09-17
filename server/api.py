@@ -70,6 +70,13 @@ def attach(dashboard, *, state, hub, sample_rate: int = DEFAULT_SAMPLE_RATE,
     app.state.jarvis_state = state
     app.state.jarvis_hub = hub
 
+    # The notification hub needs the dashboard to broadcast through, and this is
+    # the one function that already holds it. Binding here rather than in
+    # run_headless keeps the transport working for any host that attaches these
+    # routes, including the selftest's.
+    from server.notify import get_hub as _get_notify_hub
+    _get_notify_hub().bind_dashboard(dashboard)
+
     def _authorised(req: Request) -> bool:
         """Same check dashboard/server.py performs on /api/command: a bearer
         token that the dashboard itself has issued. Reading its token set is
@@ -104,6 +111,9 @@ def attach(dashboard, *, state, hub, sample_rate: int = DEFAULT_SAMPLE_RATE,
             "frames":      hub.frames_published,
             "bytes":       hub.bytes_published,
         }
+        # Counts only. A notification's title and text are the user's content
+        # and have no business in an endpoint a monitoring script polls.
+        snap["notifications"] = _get_notify_hub().stats()
         return JSONResponse(snap)
 
     # ── WS /ws/phone-out ─────────────────────────────────────────────────────
@@ -163,6 +173,43 @@ def attach(dashboard, *, state, hub, sample_rate: int = DEFAULT_SAMPLE_RATE,
             else:
                 log("[PhoneOut] listener gone")
 
+    # ── POST /api/notify ─────────────────────────────────────────────────────
+
+    async def notify_ep(req: Request) -> JSONResponse:
+        """Produce a notification. The producer-facing half of server/notify.py,
+        for anything that is not already inside this process.
+
+        Authority: the same bearer that /api/command accepts, which already runs
+        arbitrary commands on this machine. Being able to raise a notification
+        is strictly less than that, so this adds no new privilege — it reuses
+        the one the device already holds.
+
+        It is also how the Android side is tested end to end without waiting for
+        a real producer: curl a CRITICAL one and watch the phone.
+        """
+        if not _authorised(req):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            body = await req.json()
+        except Exception:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        note = _get_notify_hub().notify(
+            priority = body.get("priority") or "USEFUL",
+            title    = body.get("title") or "JARVIS",
+            text     = body.get("text") or "",
+        )
+        if note is None:
+            # Empty body, or a level the table never delivers. Refusing loudly
+            # beats a 200 for something that was silently dropped.
+            return JSONResponse(
+                {"ok": False, "reason": "refused (empty text, or TRIVIAL)"},
+                status_code=400,
+            )
+        return JSONResponse({"ok": True, "id": note.id, "priority": note.priority})
+
     app.add_api_route("/health", health, methods=["GET"])
     app.add_api_route("/status", status, methods=["GET"])
+    app.add_api_route("/api/notify", notify_ep, methods=["POST"])
     app.add_api_websocket_route("/ws/phone-out", phone_out)

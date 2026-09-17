@@ -160,6 +160,47 @@ courte.** Le jour où elle ne tient plus sur un écran, le contrat a été rompu
 
 ---
 
+## Exemple appliqué — le transport des notifications
+
+L'arbre de décision, sur un cas réel, pour montrer à quoi ressemble une réponse
+correcte à chacune de ses branches.
+
+**L'idée :** quand la politique de contexte classe une information en `NOTIFY`,
+elle doit devenir une vraie notification Android.
+
+| Branche | Réponse | Où |
+|---|---|---|
+| §1 plugin ? | Non — rien à invoquer, c'est un canal de sortie permanent | — |
+| §2 Android seul ? | **En partie.** L'affichage, les canaux, la déduplication et les compteurs sont purement Android | `client-android/notification/` |
+| §3 module serveur ? | **Oui, l'essentiel.** Produire, retenir, re-proposer | `server/notify.py` |
+| §4 cœur ? | **Non.** `main.py` n'a pas bougé | — |
+
+Ce que le serveur existant a fourni sans être modifié : `dashboard.broadcast()`
+pour la diffusion, `/ws` pour le canal, le rejeu à la connexion pour la remise
+en attente, et le fait qu'un `type` inconnu soit ignoré côté client pour la
+compatibilité ascendante. **Aucun nouveau protocole, aucun nouveau socket.**
+
+Les deux seules insertions dans la zone protégée :
+
+- `dashboard/server.py` : re-proposer les notifications en attente à la
+  connexion (ajout, §3 — une route ni modifiée ni remplacée).
+- rien dans `main.py`.
+
+### Ce que cet exemple apprend sur le contrat
+
+La bonne question n'était pas « où mettre le code ». C'était **« qu'est-ce que
+le système sait déjà faire que je m'apprête à réécrire ? »**
+
+Le rejeu des 50 derniers messages existait pour redonner du contexte à un client
+qui se reconnecte. Il se trouve que c'est aussi, presque, une file d'attente de
+notifications — et le voir a évité d'écrire un système de file généraliste. Ce
+qui manquait tenait en deux choses : une durée de validité, et un identifiant
+pour que le client sache reconnaître ce qu'il a déjà montré.
+
+Corollaire : le même mécanisme de rejeu qui sauve une notification est celui qui
+la répéterait. **Une fonctionnalité qui réutilise un mécanisme existant hérite
+aussi de ses effets de bord**, et c'est là qu'il faut regarder en premier.
+
 ## À remplir pour chaque fonctionnalité
 
 - [ ] Classée §1, §2, §3 ou §4 — et la raison est écrite

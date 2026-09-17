@@ -30,6 +30,7 @@ import com.jarvis.device.DeviceStateReporter
 import com.jarvis.net.JarvisClient
 import com.jarvis.net.Protocol
 import com.jarvis.net.ReconnectManager
+import com.jarvis.notification.JarvisNotificationManager
 import com.jarvis.wakeword.WakeWordDetector
 import com.jarvis.wakeword.WakeWordEngines
 import com.jarvis.wakeword.WakeWordSelfTest
@@ -72,6 +73,7 @@ class JarvisForegroundService : Service() {
     private lateinit var auth: AuthManager
     private lateinit var client: JarvisClient
     private lateinit var deviceState: DeviceStateReporter
+    private lateinit var notifications: JarvisNotificationManager
     private lateinit var reconnect: ReconnectManager
     private lateinit var player: AudioPlayer
     private lateinit var recorder: AudioRecorder
@@ -110,6 +112,13 @@ class JarvisForegroundService : Service() {
             // still matches the reference implementation.
             Thread({ WakeWordSelfTest.runAndReport(this) }, "jarvis-wakeword-selftest").start()
         }
+
+        // Created before the client, so no event can arrive before there is
+        // somewhere to put it. Channels are registered now rather than on the
+        // first notification: a channel the user cannot see is a channel they
+        // cannot mute in advance.
+        notifications = JarvisNotificationManager(this)
+        notifications.ensureChannels()
 
         client = JarvisClient(auth, ClientEvents())
         deviceState = DeviceStateReporter(
@@ -487,6 +496,13 @@ class JarvisForegroundService : Service() {
                     }
                 }
                 Protocol.EV_CONFIRM_HIDE -> JarvisState.clearConfirmation()
+                Protocol.EV_NOTIFICATION -> {
+                    // Handed straight over. Whether it is shown, is a duplicate
+                    // from a reconnect replay, or is refused, is entirely the
+                    // notification manager's business — this service does not
+                    // need to know and must not grow a second opinion about it.
+                    notifications.handle(json)
+                }
                 Protocol.EV_STATUS -> Unit   // superseded by jarvis_state
                 else -> Log.d(TAG, "unhandled event: $json")
             }

@@ -51,8 +51,9 @@ server**: the real `ui.py` is never imported.
 | `api.py` | Grafts `/health`, `/status` and `WS /ws/phone-out` onto the FastAPI app `dashboard/server.py` already runs. |
 | `auth.py` | The persistent device credential, seeded into the dashboard's own pairing store. |
 | `runtime_state.py` | Records the state stream `main.py` already emits. Not a second state machine. |
+| `notify.py` | Turns a `NOTIFY` decision into an event on the socket the phone already listens to. Holds recent ones so a reconnect does not lose them, and re-offers them so a reconnect does not repeat them. |
 | `watch.py` | Prints a timeline of link transitions. One line per change, nothing while healthy. |
-| `selftest.py` | 12 checks, no Gemini, no microphone, no display, no network. |
+| `selftest.py` | 22 checks, no Gemini, no microphone, no display, no network. |
 
 ## Running it
 
@@ -291,6 +292,6 @@ python -m server.selftest
 git diff -- main.py dashboard core memory actions plugins
 ```
 
-12/12, and an empty diff. `selftest.py` parses `main.py`'s syntax tree to
+22/22, and an empty diff. `selftest.py` parses `main.py`'s syntax tree to
 collect every `self.ui.<attr>` it touches and fails if `HeadlessUI` is missing
 one — so the stand-in cannot silently fall behind the file it stands in for.

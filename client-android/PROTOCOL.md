@@ -145,6 +145,7 @@ reconnecting client gets recent context rather than a blank screen.
 | `content` | `title`, `text` — what the desktop shows under the HUD | headless |
 | `confirm` | `id`, `title`, `detail`, `timeout_s` — see §4.1 | headless |
 | `confirm_hide` | *(no payload)* — the request is over, take the banner down | headless |
+| `notification` | `id`, `priority`, `title`, `text`, `ts` — see §4.2 | V2 |
 
 `jarvis_state` is finer-grained than `status` and exists as a separate type on
 purpose: the existing web client only understands `active`/`sleeping`, and
@@ -156,10 +157,38 @@ pushing new values through `status` would make it display the wrong thing.
 {"type": "command",  "text": "what is the weather"}
 {"type": "interrupt"}
 {"type": "confirmation_response", "id": "<id from `confirm`>", "confirmed": true}
+{"type": "device_state", "state": {"battery_percent": 42, "headset": true, …}}
 ```
 
 An unrecognised `type` is ignored and the socket stays open, so a client may be
 older or newer than the server it is talking to.
+
+#### `device_state`
+
+What the phone can see about its own situation, read by the optional `context/`
+package so JARVIS can decide whether now is a good moment to speak at all.
+
+Every field inside `state` is optional, and the server **merges** each report
+into what it already holds — so a report carrying only a battery level does not
+erase the headset state an earlier one established. A permission the phone does
+not hold is a field it omits, not an error.
+
+| Field | Meaning |
+|---|---|
+| `battery_percent`, `battery_charging` | 0–100, and whether it is on a charger |
+| `screen_on`, `idle_seconds` | interactive now, and how long the screen has been dark |
+| `headset`, `headset_name`, `bluetooth_devices` | audio outputs currently attached |
+| `ringer`, `dnd` | `NORMAL`\|`VIBRATE`\|`SILENT`, and Do-Not-Disturb |
+| `activity`, `activity_confidence` | `STILL`\|`WALKING`\|`IN_VEHICLE`…, 0–100 |
+| `network`, `place` | `wifi`\|`cellular`\|`offline`, and a free label |
+
+The whole record **expires after 300 s**, so a phone that drops off Wi-Fi cannot
+leave a stale "headset connected" behind it. A client must therefore re-send
+even when nothing has changed; the Android client does so every 120 s. A clean
+disconnect drops the record immediately rather than waiting for the timer.
+
+Sending this to a server without `context/` installed is harmless — the branch
+in `dashboard/server.py` swallows it.
 
 #### `interrupt`
 
@@ -226,6 +255,86 @@ or cancelled somewhere else.
 
 With no client connected, a confirmation is announced, surfaced in `/status`,
 and expires unconfirmed. That is the safe failure and it is the old behaviour.
+
+### 4.2 Notifications
+
+```json
+{"type":"notification","id":"9f2a…","priority":"IMPORTANT",
+ "title":"Rendez-vous","text":"Ça commence dans 15 minutes.","ts":1758100000.0}
+```
+
+Something JARVIS decided belongs in the notification shade rather than in
+speech. Produced by `server/notify.py`; classified before it gets here.
+
+**The priority is already decided.** `context/policy.py` weighed the message
+against the user's situation — asleep, driving, in a meeting, headset connected
+— using signals the phone reported but the phone does not reason about. A client
+**presents** this decision and must not re-rank it, or two policies end up
+disagreeing about one message and the one with less information wins.
+
+| `priority` | What the client should do |
+|---|---|
+| `CRITICAL` | interrupt: heads-up banner and sound |
+| `IMPORTANT` | an ordinary notification |
+| `USEFUL` | a quiet one — no sound, no banner |
+| `TRIVIAL` | **never sent.** The server refuses it at the door |
+
+#### Delivery, and why the same notification may arrive twice
+
+`broadcast()` fans out to whoever is connected and keeps no obligation, so a
+notification raised while the phone was out of coverage would simply be lost.
+Two mechanisms prevent that, and both resend:
+
+1. the ordinary **last-50 replay** every client gets on connect, and
+2. the hub's own **pending list** — every notification still inside its TTL
+   (6 h), re-offered in full the moment a client connects.
+
+So a client will receive duplicates. This is by design and is not something the
+server tries to avoid: losing one matters, repeating one does not, and the
+server has no way to know what was displayed. There is **no acknowledgement in
+this protocol** and none is planned.
+
+#### `id` is what makes that safe
+
+**A client must remember the ids it has shown, and drop a repeat.** It is the
+only participant that knows what reached the user. Two properties matter:
+
+* the memory must **survive a restart** — Android is most likely to have
+  restarted the service at exactly the moment a replay arrives;
+* it must hold **more ids than the server's pending list** (50), so an id cannot
+  be forgotten locally while it is still being re-offered.
+
+The Android client keeps the last 200 in `SharedPreferences`
+(`JarvisNotificationManager`), and `server/selftest.py` fails if those two
+numbers ever cross.
+
+A **dismissed** notification whose id is still remembered is not re-posted:
+dismissal is the user saying they have read it, and a replay is not new
+information.
+
+#### Producing one
+
+```
+POST /api/notify          Authorization: Bearer <token>
+  {"priority": "IMPORTANT", "title": "…", "text": "…"}
+
+200 {"ok": true, "id": "9f2a…", "priority": "IMPORTANT"}
+400 {"ok": false, "reason": "refused (empty text, or TRIVIAL)"}
+401 {"error": "Unauthorized"}
+```
+
+Same bearer as `/api/command`, which already runs arbitrary commands on the
+host — raising a notification is strictly less authority than that, so this adds
+no new privilege. It is also how the phone side is tested end to end without
+waiting for a producer:
+
+```bash
+curl -X POST http://<host>:8000/api/notify \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"priority":"CRITICAL","title":"Test","text":"Ceci est un test."}'
+```
+
+Counters (not content) appear under `notifications` in `/status`.
 
 Or `{"type":"command","enc":"<base64>"}` with the text encrypted AES-256-CBC
 under `SHA256(session_key + b"JARVIS-DASHBOARD-v1")`, IV prepended, PKCS7.
@@ -294,9 +403,9 @@ everything so a first test on the LAN needs no edit — and is never shipped.
 
 | Gap | Consequence | Where a fix would go |
 |---|---|---|
-| No interrupt endpoint | Cannot cut JARVIS off from the phone; `interrupt()` is wired to a desktop button only | a new route in `server/api.py`, calling `ui.on_interrupt` |
+| ~~No interrupt endpoint~~ | **Fixed.** Not by a route: `interrupt` travels on `/ws` and reaches the same `ui.on_interrupt` the HUD button calls | — |
 | Uplink dropped while speaking | No voice barge-in | server-side, `_relay_phone_audio` — would modify `main.py` |
 | `POST /api/wake` is inert | Cannot wake without sending a command | `dashboard.set_wake_callback` from `server/run_headless.py` |
-| No confirm button | Irreversible actions expire unconfirmed after 90 s | `confirm` event is already sent; needs a reply channel |
+| ~~No confirm button~~ | **Fixed.** `confirmation_response` is the reply channel; see §4.1 | — |
 | Port 8000 hardcoded | `PORT` is a constant in `dashboard/server.py` | would modify an existing file |
 | Gemini drops every 2–3 min | the Live session closes with 1008 and reconnects; inaudible, but constant | a dedicated phase — see [`../server/README.md`](../server/README.md#known-bugs) |

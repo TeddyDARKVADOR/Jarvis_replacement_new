@@ -101,6 +101,20 @@ object Protocol {
     const val EV_CONFIRM = "confirm"       // {"id","title","detail","timeout_s"}
     const val EV_CONFIRM_HIDE = "confirm_hide"  // no payload — take the banner down
 
+    /** Something JARVIS decided belongs in the notification shade, not in speech.
+     *
+     *  `{"id","priority","title","text","ts"}` — see `server/notify.py`. The
+     *  priority is already decided against the user's situation by
+     *  `context/policy.py`; the client presents it and does not re-rank it.
+     *
+     *  **Re-sent on purpose.** The server re-offers every notification still
+     *  inside its TTL whenever a client connects, so one that arrived while the
+     *  phone was out of coverage is not lost. `id` is what makes that safe:
+     *  [com.jarvis.notification.JarvisNotificationManager] remembers what it has
+     *  shown, across restarts, and drops a repeat. A client that ignores `id`
+     *  will show duplicates. */
+    const val EV_NOTIFICATION = "notification"
+
     // Client → server. `text` is accepted in the clear; `enc` carries the same
     // string AES-256-CBC-encrypted under the session key from device-login.
     // The prototype sends `text`: the AES layer protects commands only and does
