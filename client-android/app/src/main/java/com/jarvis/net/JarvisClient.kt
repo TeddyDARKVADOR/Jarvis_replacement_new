@@ -195,6 +195,20 @@ class JarvisClient(
         return ws.send(msg.toString())
     }
 
+    /**
+     * Report this phone's situation — battery, headset, screen, ringer.
+     *
+     * Already framed by [com.jarvis.device.DeviceStateReporter]; this only puts
+     * it on the wire. Returns false when the events socket is down, and the
+     * caller drops the payload rather than queueing it: context is only worth
+     * anything fresh, and a reading delivered after a reconnect would describe
+     * a phone that has since moved on.
+     */
+    fun sendDeviceState(message: JSONObject): Boolean {
+        val ws = events ?: return false
+        return ws.send(message.toString())
+    }
+
     // ── internals ────────────────────────────────────────────────────────────
 
     private enum class Channel { EVENTS, DOWNLINK, UPLINK }

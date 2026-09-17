@@ -746,6 +746,7 @@ class DashboardServer:
                 return
             await websocket.accept()
             self._clients.add(websocket)
+            reported_device = False   # set by the first device_state from THIS socket
             for entry in self._history[-50:]:
                 try:
                     await websocket.send_json(entry)
@@ -779,10 +780,31 @@ class DashboardServer:
                                 bool(data.get("confirmed")),
                                 str(data.get("id") or ""),
                             )
+
+                    elif _type == "device_state":
+                        # Battery, headset, screen, DND — whatever the phone can
+                        # see. Optional feature: context/ may not be installed,
+                        # and if it is not, this is a message we silently ignore
+                        # rather than an error the socket has to survive.
+                        try:
+                            from context import get_store
+                            get_store().update_device(data.get("state") or {})
+                            reported_device = True
+                        except Exception:
+                            pass
             except WebSocketDisconnect:
                 pass
             finally:
                 self._clients.discard(websocket)
+                # Only a client that actually reported device state may retract
+                # it. /ws also serves the browser dashboard, and a closed laptop
+                # tab must not erase what the phone is still reporting.
+                if reported_device:
+                    try:
+                        from context import get_store
+                        get_store().forget_device()
+                    except Exception:
+                        pass
 
         return app
 

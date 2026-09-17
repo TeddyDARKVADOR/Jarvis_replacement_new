@@ -1513,11 +1513,57 @@ class JarvisLive:
                     monitors     = monitors or None,
                     recent_turns = recent_turns or None,
                 )
+
+                # ── context/ (V2, optionnel) ─────────────────────────────────
+                # Le paquet decide si ce moment autorise une prise de parole, et
+                # enrichit le prompt de la situation. Absent -> ImportError -> le
+                # comportement V1 reprend a l'identique. Casse -> l'except plus
+                # bas avale l'erreur et le check-in est saute : en cas de doute,
+                # se taire est le bon echec.
+                try:
+                    from context import Priority, get_policy, get_queue, get_store
+                    # Le poste de travail a des enceintes ; le serveur headless
+                    # relaie vers le telephone. C'est precisement ce que dit le
+                    # stand-in sounddevice (server/audio_bridge.py), donc on lit
+                    # celui-la au lieu d'inventer un second drapeau.
+                    get_store().bind_system_probe(lambda: {
+                        "desktop_audio": not getattr(sd, "__headless__", False),
+                        # La presence que ce poste observe lui-meme. Sans
+                        # telephone, c'est le seul signal disponible — et c'est
+                        # celui sur lequel la proactivite V1 reposait deja.
+                        "local_presence_s": time.monotonic() - self._last_user_speech,
+                    })
+                    snap     = await asyncio.to_thread(get_store().snapshot)
+                    # IMPORTANT, pas UTILE : ce check-in a deja franchi le verrou
+                    # de silence et le cooldown de ProactiveEngine, donc il est
+                    # par construction quelque chose que JARVIS a juge digne
+                    # d'etre dit. UTILE est la bande des messages que les
+                    # automatisations produiront plus tard (batterie faible,
+                    # colis livre), et la table les rend muets a dessein.
+                    decision = get_policy().decide(Priority.IMPORTANT, snap)
+                    # `speaks`, pas `silent` : les canaux NOTIFY existent dans la
+                    # table mais aucun transport ne les delivre encore. Tant que
+                    # c'est le cas, tout ce qui n'est pas la voix est mis en
+                    # attente plutot que parle quand meme.
+                    if not decision.speaks:
+                        get_queue().push("proactive", Priority.IMPORTANT, decision.reason)
+                        self.ui.write_log(f"SYS: Check-in differe ({decision.reason}).")
+                        continue
+                    prompt += "\n\nContexte actuel :\n" + get_store().describe(snap)
+                except ImportError:
+                    pass
+                # ─────────────────────────────────────────────────────────────
+
                 await self.session.send_client_content(
                     turns={"role": "user", "parts": [{"text": prompt}]},
                     turn_complete=True,
                 )
                 self.ui.write_log("SYS: Proactive check-in.")
+                try:
+                    from context import Priority, get_policy
+                    get_policy().note_delivered(Priority.IMPORTANT)
+                except ImportError:
+                    pass
             except Exception as e:
                 print(f"[Proactive] ⚠️ {e}")
 

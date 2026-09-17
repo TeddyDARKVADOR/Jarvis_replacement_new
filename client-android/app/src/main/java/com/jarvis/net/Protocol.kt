@@ -125,6 +125,19 @@ object Protocol {
      *  action itself runs on the server or not at all. */
     const val CMD_CONFIRMATION_RESPONSE = "confirmation_response"
 
+    /** What this phone can see about its own situation: `{"state": {...}}`.
+     *
+     *  Read by the server's optional `context/` package, which decides from it
+     *  whether JARVIS may speak right now (see `context/README.md`). Every
+     *  field inside `state` is optional and the server merges what arrives into
+     *  what it already had, so a phone that cannot read a signal omits it
+     *  rather than sending a placeholder — and an older phone sending half the
+     *  fields is a supported case, not a version mismatch.
+     *
+     *  Unhandled by a server without `context/` installed: the branch in
+     *  `dashboard/server.py` swallows it. Sending it is therefore always safe. */
+    const val CMD_DEVICE_STATE = "device_state"
+
     /** WebSocket close code the server uses to refuse a bad token. */
     const val CLOSE_UNAUTHORISED = 4001
 }

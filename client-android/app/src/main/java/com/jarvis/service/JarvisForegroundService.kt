@@ -26,6 +26,7 @@ import com.jarvis.R
 import com.jarvis.audio.AudioPlayer
 import com.jarvis.audio.AudioRecorder
 import com.jarvis.auth.AuthManager
+import com.jarvis.device.DeviceStateReporter
 import com.jarvis.net.JarvisClient
 import com.jarvis.net.Protocol
 import com.jarvis.net.ReconnectManager
@@ -70,6 +71,7 @@ class JarvisForegroundService : Service() {
 
     private lateinit var auth: AuthManager
     private lateinit var client: JarvisClient
+    private lateinit var deviceState: DeviceStateReporter
     private lateinit var reconnect: ReconnectManager
     private lateinit var player: AudioPlayer
     private lateinit var recorder: AudioRecorder
@@ -110,6 +112,11 @@ class JarvisForegroundService : Service() {
         }
 
         client = JarvisClient(auth, ClientEvents())
+        deviceState = DeviceStateReporter(
+            context = this,
+            scope = scope,
+            send = { client.sendDeviceState(it) },
+        )
         reconnect = ReconnectManager(
             context = this,
             client = client,
@@ -118,6 +125,10 @@ class JarvisForegroundService : Service() {
                 JarvisState.setLink(state, error)
                 if (state == LinkState.CONNECTED) {
                     replayUntil = SystemClock.elapsedRealtime() + REPLAY_WINDOW_MS
+                    // The server forgets this phone's state when the socket
+                    // closes, so a fresh link starts from nothing until we
+                    // speak. Do not make it wait a full tick.
+                    deviceState.reportNow()
                 }
                 if (state != LinkState.CONNECTED) {
                     // The microphone socket does not survive a link change, and
@@ -184,11 +195,13 @@ class JarvisForegroundService : Service() {
             return
         }
         reconnect.start()
+        deviceState.start()
     }
 
     private fun stopEverything() {
         JarvisLog.service("foreground service stopping")
         stopMic()
+        deviceState.stop()
         reconnect.stop()
         player.stop()
         JarvisState.setServiceRunning(false)
