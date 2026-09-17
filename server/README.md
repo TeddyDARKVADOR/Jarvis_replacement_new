@@ -52,13 +52,14 @@ server**: the real `ui.py` is never imported.
 | `auth.py` | The persistent device credential, seeded into the dashboard's own pairing store. |
 | `runtime_state.py` | Records the state stream `main.py` already emits. Not a second state machine. |
 | `notify.py` | Turns a `NOTIFY` decision into an event on the socket the phone already listens to. Holds recent ones so a reconnect does not lose them, and re-offers them so a reconnect does not repeat them. |
+| `alerts.py` | Runs a finished alert from `actions/background_monitor.py` past the context policy: spoken, shown, or held. Not a monitor — it never re-runs one. |
 | `watch.py` | Prints a timeline of link transitions. One line per change, nothing while healthy. |
-| `selftest.py` | 22 checks, no Gemini, no microphone, no display, no network. |
+| `selftest.py` | 32 checks, no Gemini, no microphone, no display, no network. |
 
 ## Running it
 
 ```bash
-python -m server.selftest          # 12/12 before anything else
+python -m server.selftest          # 32/32 before anything else
 python -m server.run_headless      # the assistant
 python -m server.run_headless --pairing    # the phone's device token
 python -m server.watch             # live timeline
@@ -292,6 +293,6 @@ python -m server.selftest
 git diff -- main.py dashboard core memory actions plugins
 ```
 
-22/22, and an empty diff. `selftest.py` parses `main.py`'s syntax tree to
+32/32, and an empty diff. `selftest.py` parses `main.py`'s syntax tree to
 collect every `self.ui.<attr>` it touches and fails if `HeadlessUI` is missing
 one — so the stand-in cannot silently fall behind the file it stands in for.
