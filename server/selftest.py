@@ -832,6 +832,283 @@ def _notify_android_contract():
     return f"SEEN_LIMIT {seen_limit} > hub {server_maxlen}, 4 levels mapped"
 
 
+# ── 17. the background monitor speaks only when the context allows ───────────
+#
+# The producer these tests drive is actions/background_monitor.py, which is not
+# touched, not read and not re-run by any of this: every check hands
+# route_monitor_alerts() strings of the shape check_all() already returns.
+
+
+class _FakeDash:
+    """Enough of a dashboard for the hub to bind to. Nothing is broadcast in a
+    sync test (there is no running loop), so the assertions read the hub's own
+    record instead — which is what the pending-replay path reads too."""
+
+    async def broadcast(self, msg):
+        pass
+
+
+def _seed_context(*, asleep=False, device=None, desktop_audio=True):
+    """Put the context store into one known situation.
+
+    Quiet hours are forced rather than waited for: `time_state()` reads the real
+    clock, so a test that needed 3 a.m. would pass only at 3 a.m.
+    0→24 is always inside, 0→0 never is.
+    """
+    import context
+    from context.situation import Thresholds
+
+    context.reset()
+    store = context.get_store()
+    store.thresholds = Thresholds(
+        quiet_start_hour=0, quiet_end_hour=24 if asleep else 0,
+    )
+    store.bind_system_probe(lambda: {"desktop_audio": desktop_audio})
+    if device:
+        store.update_device(device)
+    return store
+
+
+def _situation_of(store):
+    return store.snapshot().situation.value
+
+
+@check("a monitor alert splits into title + text without losing anything")
+def _alert_split():
+    from server.alerts import split_monitor_alert
+
+    alert = ("[MONITOR_ALERT] tesla\n"
+             "Headline: Model Y refresh announced\n"
+             "The updated car arrives in spring.\n"
+             "Source: Reuters")
+    title, text = split_monitor_alert(alert)
+
+    # The topic is what the user typed when they asked to follow something:
+    # already short and already explicit.
+    assert title == "tesla", title
+    # Everything else survives verbatim.
+    for fragment in ("Headline: Model Y refresh announced",
+                     "The updated car arrives in spring.", "Source: Reuters"):
+        assert fragment in text, f"lost from the body: {fragment!r}"
+    # The marker is for Gemini, not for a person.
+    assert "[MONITOR_ALERT]" not in title and "[MONITOR_ALERT]" not in text
+
+    # An unexpected shape keeps all of its content rather than truncating.
+    odd_title, odd_text = split_monitor_alert("something else entirely")
+    assert odd_text == "something else entirely", odd_text
+    assert odd_title == "JARVIS", odd_title
+    assert split_monitor_alert("") == ("JARVIS", "")
+    return "titre = sujet, corps verbatim, format inconnu preserve"
+
+
+@check("case 1 — normal context: the alert is still spoken, exactly as in V1")
+def _alert_voice():
+    from server import notify as N
+    from server.alerts import route_monitor_alerts
+
+    store = _seed_context(device={"screen_on": True})
+    assert _situation_of(store) == "ACTIVE", _situation_of(store)
+    N.reset()
+
+    alerts = ["[MONITOR_ALERT] tesla\nHeadline: Something new"]
+    out = route_monitor_alerts(alerts, _FakeDash())
+
+    assert out == alerts, "the alert was not handed back to be spoken"
+    assert N.get_hub().stats()["created"] == 0, "it was notified as well as spoken"
+    N.reset()
+    return "ACTIVE -> VOICE, liste inchangee, aucune notification"
+
+
+@check("case 2 — ASLEEP: no voice, and the alert is held rather than lost")
+def _alert_asleep():
+    """The point of the whole phase: a non-critical alert must no longer wake
+    the user just because the monitor found something."""
+    import context
+    from server import notify as N
+    from server.alerts import route_monitor_alerts
+
+    store = _seed_context(asleep=True,
+                          device={"screen_on": False, "idle_seconds": 7200})
+    assert _situation_of(store) == "ASLEEP", _situation_of(store)
+    N.reset()
+
+    out = route_monitor_alerts(["[MONITOR_ALERT] tesla\nHeadline: Nothing urgent"],
+                               _FakeDash())
+
+    assert out == [], f"JARVIS would have spoken while asleep: {out}"
+    # The policy answers DEFER here, not NOTIFY — an IMPORTANT notification
+    # would still make a sound on its channel. Held, never dropped.
+    assert N.get_hub().stats()["created"] == 0, "a sound was made while asleep"
+    assert len(context.get_queue()) == 1, "the alert was lost instead of held"
+    context.reset()
+    N.reset()
+    return "aucune voix, aucun son, 1 alerte retenue"
+
+
+@check("case 3 — CRITICAL still pierces sleep (the rule the monitor cannot reach)")
+def _alert_critical_rule():
+    """The monitor has no way to express urgency, so it never produces CRITICAL
+    — see server/alerts.py. What must stay true is that the rule itself is
+    intact for the producers that will. This asserts the rule, and asserts that
+    this path deliberately does not use it."""
+    import context
+    from context import Priority
+
+    store = _seed_context(asleep=True,
+                          device={"screen_on": False, "idle_seconds": 7200})
+    snap = store.snapshot()
+    assert snap.situation.value == "ASLEEP", snap.situation
+
+    critical = context.get_policy().decide(Priority.CRITICAL, snap)
+    important = context.get_policy().decide(Priority.IMPORTANT, snap)
+    assert critical.speaks, "CRITICAL no longer pierces sleep"
+    assert not important.speaks, "IMPORTANT would wake the user"
+
+    from server.alerts import ALERT_PRIORITY
+    assert ALERT_PRIORITY == "IMPORTANT", (
+        f"monitor alerts are now {ALERT_PRIORITY} — they could wake the user")
+    context.reset()
+    return "CRITICAL reveille, IMPORTANT non, le monitor est IMPORTANT"
+
+
+@check("case 4 — MEETING: the existing policy decides, and it chooses silence")
+def _alert_meeting():
+    from server import notify as N
+    from server.alerts import route_monitor_alerts
+
+    store = _seed_context(device={"screen_on": True, "dnd": True})
+    assert _situation_of(store) == "MEETING", _situation_of(store)
+    N.reset()
+
+    out = route_monitor_alerts(["[MONITOR_ALERT] tesla\nHeadline: A headline"],
+                               _FakeDash())
+
+    assert out == [], "JARVIS would have spoken in a meeting"
+    # MEETING + IMPORTANT is NOTIFY_SILENT: it reaches the shade without a sound.
+    assert N.get_hub().stats()["created"] == 1, N.get_hub().stats()
+    pending = N.get_hub().pending()
+    assert pending and pending[0]["title"] == "tesla", pending
+    N.reset()
+    return "aucune voix, 1 notification muette"
+
+
+@check("case 5 — DRIVING: the policy keeps the voice, the only usable channel")
+def _alert_driving():
+    from server import notify as N
+    from server.alerts import route_monitor_alerts
+
+    store = _seed_context(device={"screen_on": False, "idle_seconds": 120,
+                                  "bluetooth_devices": ["Peugeot CarKit"]})
+    assert _situation_of(store) == "DRIVING", _situation_of(store)
+    N.reset()
+
+    alerts = ["[MONITOR_ALERT] trafic\nHeadline: A2 bloquee"]
+    out = route_monitor_alerts(alerts, _FakeDash())
+
+    assert out == alerts, "the alert was silenced in a car"
+    assert N.get_hub().stats()["created"] == 0
+    N.reset()
+    return "mains et yeux pris -> VOICE conservee"
+
+
+@check("case 6 — what was held while asleep is delivered once awake")
+def _alert_release():
+    """No second scheduler: the release happens on the monitor's own next pass,
+    because that is the function the monitor already calls."""
+    import context
+    from server import notify as N
+    from server.alerts import route_monitor_alerts
+
+    _seed_context(asleep=True, device={"screen_on": False, "idle_seconds": 7200})
+    N.reset()
+    route_monitor_alerts(["[MONITOR_ALERT] tesla\nHeadline: Held overnight"],
+                         _FakeDash())
+    assert len(context.get_queue()) == 1, "nothing was held"
+
+    # Morning: the same store, now awake and in a meeting-free situation. The
+    # store is kept (the queue lives beside it); only the situation changes.
+    store = context.get_store()
+    from context.situation import Thresholds
+    store.thresholds = Thresholds(quiet_start_hour=0, quiet_end_hour=0)
+    store.update_device({"screen_on": True, "idle_seconds": 0})
+    assert _situation_of(store) == "ACTIVE", _situation_of(store)
+
+    route_monitor_alerts([], _FakeDash())      # une passe sans nouvelle alerte
+    assert len(context.get_queue()) == 0, "the held alert was never released"
+    stats = N.get_hub().stats()
+    assert stats["created"] == 1, stats
+    assert N.get_hub().pending()[0]["title"] == "tesla"
+    context.reset()
+    N.reset()
+    return "retenu la nuit, rendu au reveil en notification, file videe"
+
+
+@check("case 7 — no transport means V1 speaks, so nothing is ever lost")
+def _alert_no_transport():
+    """`self._dashboard` is None on a desktop run until a phone is linked. With
+    no client that could ever receive a notification, speaking is the only
+    delivery there is — and it is exactly what V1 did."""
+    from server import notify as N
+    from server.alerts import route_monitor_alerts
+
+    _seed_context(asleep=True, device={"screen_on": False, "idle_seconds": 7200})
+    N.reset()
+    alerts = ["[MONITOR_ALERT] tesla\nHeadline: Something"]
+    out = route_monitor_alerts(alerts, None)
+    assert out == alerts, "an alert was dropped with no way to deliver it"
+    assert N.get_hub().stats()["created"] == 0
+    N.reset()
+    return "pas de dashboard -> V1, alerte conservee"
+
+
+@check("routing never re-runs the monitor, and never touches its state")
+def _alert_no_second_monitor():
+    """Parsed rather than trusted: the whole risk of this phase is a second
+    consumer of check_all(), which would eat headlines the first one would
+    otherwise have reported."""
+    import ast
+
+    source = (BASE_DIR / "server" / "alerts.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            mod = getattr(node, "module", "") or ""
+            names = [a.name for a in node.names]
+            assert "background_monitor" not in mod, "alerts.py imports the monitor"
+            assert not any("background_monitor" in n for n in names)
+    # Identifiers only, never prose: the module docstring explains what it does
+    # NOT do, and naming the monitor there is the point.
+    forbidden = {"check_all", "monitor_check_all", "_save", "_load",
+                 "last_hash", "last_check"}
+    used = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            used.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            used.add(node.attr)
+    clash = sorted(used & forbidden)
+    assert not clash, f"alerts.py calls into the monitor: {clash}"
+    return "aucun import, aucun appel, aucun etat du monitor"
+
+
+@check("main.py's insertion is one filter and nothing else")
+def _alert_main_insertion():
+    """The monitor loop must still call check_all exactly once and still speak
+    through the same send_client_content. The hook filters a list; it does not
+    become a second send path."""
+    source = (BASE_DIR / "main.py").read_text(encoding="utf-8")
+    assert source.count("monitor_check_all)") == 1, (
+        "check_all is called more than once — a second consumer of its state")
+    assert source.count("route_monitor_alerts") == 2, (
+        "expected exactly one import and one call of route_monitor_alerts")
+    assert "alerts = route_monitor_alerts(alerts, self._dashboard)" in source, (
+        "the hook no longer filters the existing list in place")
+    # The V1 voice path, untouched.
+    assert 'f"{alert}\\n\\n"' in source, "the monitor's own prompt was rewritten"
+    assert source.count("SYS: Monitor alert sent.") == 1
+    return "1 appel monitor, 1 filtre, chemin vocal V1 intact"
+
+
 # ── report ───────────────────────────────────────────────────────────────────
 
 def main() -> int:

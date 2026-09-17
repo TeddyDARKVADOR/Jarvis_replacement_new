@@ -1461,6 +1461,17 @@ class JarvisLive:
                 if not speaking and not recent_speech:
                     try:
                         alerts = await asyncio.to_thread(monitor_check_all)
+                        # ── context/ (V2, optionnel) ─────────────────────────
+                        # Filtre la liste : ce qui revient est ce qui peut etre
+                        # dit maintenant. Le reste est notifie ou mis en attente
+                        # par server/alerts.py. Paquet absent ou incident ->
+                        # liste inchangee, donc comportement V1 a l'identique.
+                        try:
+                            from server.alerts import route_monitor_alerts
+                            alerts = route_monitor_alerts(alerts, self._dashboard)
+                        except ImportError:
+                            pass
+                        # ─────────────────────────────────────────────────────
                         memory = load_memory()
                         lang_e = memory.get("identity", {}).get("language", {})
                         lang   = (lang_e.get("value", "") if isinstance(lang_e, dict) else str(lang_e)).strip() or "English"
