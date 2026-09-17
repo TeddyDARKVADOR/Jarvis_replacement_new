@@ -72,6 +72,18 @@ fun DebugScreen(onBack: () -> Unit) {
 
         Gap()
         Card {
+            Line("Notifications", "${snap.notificationsReceived} received")
+            Line("Shown", snap.notificationsShown.toString())
+            // Climbing while "Shown" stays flat is dedup working, not a fault:
+            // the server re-offers recent notifications on every reconnect.
+            Line("Duplicate", snap.notificationsDuplicate.toString())
+            Line("Dropped", snap.notificationsDropped.toString(),
+                 valueColour = if (snap.notificationsDropped > 0) Color(0xFFF87171)
+                               else Color(0xFFCBD7EA))
+        }
+
+        Gap()
+        Card {
             Line("Wake word", snap.wakeWordName.ifBlank { "—" })
             Line("Score / gate", String.format(Locale.US, "%.3f", snap.wakeWordScore) +
                  "  /  " + if (snap.gateOpen) "OPEN → server" else "closed (local)")

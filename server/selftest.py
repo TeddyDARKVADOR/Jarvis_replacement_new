@@ -606,6 +606,232 @@ def _confirm_identity():
     return "replay, stale id, expiry refused; HUD path unchanged"
 
 
+# ── 16. notifications: the transport for a decision that is not speech ───────
+
+@check("notification levels are exactly context/'s priority vocabulary")
+def _notify_vocabulary():
+    """server/notify.py deliberately does NOT import context.Priority — deleting
+    the optional context package must not take notifications with it. The cost
+    of that independence is two copies of one vocabulary, so this is the check
+    that makes the copies stay equal."""
+    from server.notify import PRIORITIES
+    try:
+        from context.model import Priority
+    except ImportError:
+        return f"{len(PRIORITIES)} levels (context/ absent, nothing to compare)"
+    theirs = tuple(p.value for p in Priority)
+    assert set(PRIORITIES) == set(theirs), (
+        f"drift: notify has {PRIORITIES}, context has {theirs}")
+    return f"{len(PRIORITIES)} levels, identical on both sides"
+
+
+@check("the hub refuses what must never reach the shade")
+def _notify_refuses():
+    from server import notify as N
+
+    N.reset()
+    hub = N.get_hub()
+
+    # TRIVIAL is DROP in every cell of the policy table; delivering it would
+    # contradict the table, so it is refused at the door rather than left for
+    # the phone to decide.
+    assert hub.notify("TRIVIAL", "x", "y") is None, "TRIVIAL was accepted"
+    # A notification with no body is a buzz carrying no information.
+    assert hub.notify("IMPORTANT", "x", "   ") is None, "empty text was accepted"
+    assert hub.notify("IMPORTANT", "x", None) is None, "null text was accepted"
+    # An unknown level must not escalate into an interruption.
+    note = hub.notify("WHATEVER", "t", "body")
+    assert note is not None and note.priority == "USEFUL", note
+    stats = hub.stats()
+    assert stats["refused"] == 3, stats
+    assert stats["created"] == 1, stats
+    N.reset()
+    return "TRIVIAL, empty and unknown handled; unknown falls to USEFUL"
+
+
+@check("a notification reaches the dashboard's broadcast, once")
+def _notify_broadcast():
+    import asyncio as _a
+
+    from server import notify as N
+
+    sent: list = []
+
+    class _FakeDash:
+        async def broadcast(self, msg):
+            sent.append(msg)
+
+    async def run():
+        N.reset()
+        hub = N.get_hub()
+        hub.bind_dashboard(_FakeDash())
+        note = hub.notify("CRITICAL", "Fuite", "Le detecteur du garage a sonne.")
+        assert note is not None
+        await _a.sleep(0)          # laisser partir le call_soon_threadsafe
+        await _a.sleep(0)
+        return note
+
+    note = _a.run(run())
+    assert len(sent) == 1, f"{len(sent)} broadcasts for one notification"
+    event = sent[0]
+    assert event["type"] == "notification", event
+    for field in ("id", "priority", "title", "text", "ts"):
+        assert field in event, f"event is missing {field!r}"
+    assert event["priority"] == "CRITICAL" and event["id"] == note.id
+    assert isinstance(event["ts"], float), "ts must be a number the client can compare"
+    N.reset()
+    return "5 fields, one broadcast, id matches the record"
+
+
+@check("a reconnecting client is re-offered recent notifications, never stale ones")
+def _notify_replay():
+    """The whole reason notifications are not lost while the phone is away —
+    and the whole reason they must not come back as news a day later."""
+    import time as _t
+
+    from server import notify as N
+
+    N.reset()
+    hub = N.NotificationHub(ttl_s=60.0)
+    fresh = hub.notify("IMPORTANT", "Facture", "Elle est due demain.")
+    assert fresh is not None
+    # Age one notification past the window by hand rather than by sleeping.
+    old = hub.notify("IMPORTANT", "Vieux", "Date de longtemps.")
+    assert old is not None
+    old.created_at = _t.time() - 3600
+
+    pending = hub.pending()
+    ids = [p["id"] for p in pending]
+    assert fresh.id in ids, "a fresh notification was not re-offered"
+    assert old.id not in ids, "a stale notification was re-offered as news"
+    N.reset()
+    return "fresh re-offered, 1 h old withheld (ttl 60 s)"
+
+
+@check("/ws replays pending notifications the moment a client connects")
+def _notify_on_connect():
+    if not _fastapi_available():
+        return "skipped (fastapi/httpx not installed)"
+    from fastapi.testclient import TestClient
+
+    from server import notify as N
+
+    dash, _state, _hub, _tok = _build_dashboard()
+    bearer = "t-" + "n" * 20
+    dash._tokens.add(bearer)
+
+    N.reset()
+    note = N.get_hub().notify("IMPORTANT", "Rendez-vous", "Dans 15 minutes.")
+    assert note is not None
+
+    received: list = []
+    with TestClient(dash.app) as client:
+        with client.websocket_connect(f"/ws?token={bearer}") as ws:
+            # History first, then pending. Read a bounded number of frames and
+            # look for ours rather than assuming a position: other checks in
+            # this file may have left messages in the same history.
+            for _ in range(80):
+                try:
+                    received.append(ws.receive_json())
+                except Exception:
+                    break
+                if received[-1].get("id") == note.id:
+                    break
+
+    mine = [m for m in received if m.get("id") == note.id]
+    assert mine, "the pending notification was not sent on connect"
+    assert mine[0]["type"] == "notification" and mine[0]["text"] == "Dans 15 minutes."
+    N.reset()
+    return "delivered on connect, without a producer being present"
+
+
+@check("/api/notify authenticates, produces, and refuses an empty body")
+def _notify_route():
+    if not _fastapi_available():
+        return "skipped (fastapi/httpx not installed)"
+    from fastapi.testclient import TestClient
+
+    from server import notify as N
+
+    dash, _state, _hub, _tok = _build_dashboard()
+    bearer = "t-" + "q" * 20
+    dash._tokens.add(bearer)
+    auth_header = {"Authorization": f"Bearer {bearer}"}
+
+    N.reset()
+    with TestClient(dash.app) as client:
+        r = client.post("/api/notify", json={"priority": "IMPORTANT",
+                                             "title": "T", "text": "B"})
+        assert r.status_code == 401, f"unauthenticated -> {r.status_code}"
+
+        r = client.post("/api/notify", headers=auth_header,
+                        json={"priority": "IMPORTANT", "title": "T", "text": "B"})
+        assert r.status_code == 200, f"authorised -> {r.status_code}: {r.text}"
+        assert r.json()["ok"] is True and r.json()["id"]
+
+        r = client.post("/api/notify", headers=auth_header,
+                        json={"priority": "IMPORTANT", "title": "T", "text": ""})
+        assert r.status_code == 400, f"empty text -> {r.status_code}"
+
+        r = client.post("/api/notify", headers=auth_header,
+                        json={"priority": "TRIVIAL", "title": "T", "text": "B"})
+        assert r.status_code == 400, f"TRIVIAL -> {r.status_code}"
+
+        # And the counters must reach /status without leaking any content.
+        r = client.get("/status", headers=auth_header)
+        body, raw = r.json(), r.text
+        assert "notifications" in body, "/status does not report the counters"
+        assert body["notifications"]["created"] >= 1, body["notifications"]
+        for key in body["notifications"]:
+            assert key in ("created", "delivered", "refused", "replayed", "held"), (
+                f"/status exposes an unexpected notification field: {key}")
+        assert "Rendez-vous" not in raw, "/status leaks notification content"
+    N.reset()
+    return "401 / 200 / 400 / 400, counters on /status, no content in it"
+
+
+@check("the Android client's dedup outlives the server's replay window")
+def _notify_android_contract():
+    """Three constants in two languages have to agree or notifications repeat.
+
+    SEEN_LIMIT (Kotlin) must exceed the hub's `maxlen`, or an id can age out of
+    the phone's memory while the server is still re-offering it — which shows
+    the user the same alert again with nothing in either log to explain it.
+    """
+    import re
+
+    root = BASE_DIR / "client-android" / "app" / "src" / "main" / "java" / "com" / "jarvis"
+    manager = root / "notification" / "JarvisNotificationManager.kt"
+    mapper = root / "notification" / "NotificationMapper.kt"
+    if not manager.exists() or not mapper.exists():
+        return "skipped (client Android absent)"
+
+    text = manager.read_text(encoding="utf-8")
+    m = re.search(r"SEEN_LIMIT\s*=\s*(\d+)", text)
+    assert m, "SEEN_LIMIT introuvable"
+    seen_limit = int(m.group(1))
+
+    from server.notify import NotificationHub
+    server_maxlen = NotificationHub()._recent.maxlen
+    assert seen_limit > server_maxlen, (
+        f"SEEN_LIMIT {seen_limit} <= hub maxlen {server_maxlen}: "
+        "an id can be forgotten while still replayable")
+
+    # The mapper must name every level the server can actually send.
+    mapper_text = mapper.read_text(encoding="utf-8")
+    from server.notify import PRIORITIES, _NEVER_DELIVERED
+    for level in PRIORITIES:
+        assert f'"{level}"' in mapper_text, f"the mapper never mentions {level}"
+    for level in _NEVER_DELIVERED:
+        assert f'priority == "{level}"' in mapper_text, (
+            f"the mapper does not refuse {level} defensively")
+
+    # The foreground notification's id must stay out of reach.
+    assert "BASE_NOTIFICATION_ID = 100_000" in mapper_text, (
+        "the notification id base moved - check it cannot collide with NOTIF_ID 5301")
+    return f"SEEN_LIMIT {seen_limit} > hub {server_maxlen}, 4 levels mapped"
+
+
 # ── report ───────────────────────────────────────────────────────────────────
 
 def main() -> int:
