@@ -399,6 +399,59 @@ everything so a first test on the LAN needs no edit — and is never shipped.
 
 ---
 
+## 6.1 Device identity and routing — added, optional
+
+Two routes added by `server/device_api.py`, beside the five above. **Nothing
+here replaces anything.** A server without them answers 404 to the registration,
+the channel never opens, and a client behaves exactly as this document
+describes up to §6.
+
+```
+POST /api/device-register   Bearer <token>
+  {"device_id", "device_type", "display_name", "capabilities", "protocol_version"}
+  → {"ok": true, "device": {...}, "devices": [...]}
+
+WS   /ws/device?token=<bearer>&device_id=<id>
+```
+
+### Why a command belongs here rather than on `/ws`
+
+`/ws` hands the server a bare string: `dashboard/server.py` discards the token
+that authenticated the socket before the command reaches Gemini. By then nothing
+says which machine spoke, so "ouvre le navigateur" from the phone and from the
+PC are the same nine bytes — and the server has no honest way to pick a device.
+
+On this channel the origin travels with the command, which is what lets the
+server run it **on the device that asked**. Clients send `command` here when it
+is open and fall back to `/ws` when it is not; the cost of the fallback is a
+clarifying question, never a wrong device.
+
+| Direction | `type` | Payload |
+|---|---|---|
+| server → client | `device_command` | `id`, `target_device_id`, `action`, `parameters` |
+| client → server | `device_result` | `id`, `result` — the `id` must be the one that arrived |
+| client → server | `command` | `text` — same as `/ws`, but with an origin |
+| client → server | `mic` | `open` — a voice turn has no text to read an origin from |
+| client → server | `ping` | answered with `pong` |
+
+### Capabilities are a promise
+
+`capabilities` is a list of **action names** — the same names
+`core/action_loader.py` discovers, never invented strings. The server routes on
+them: a device that declares `computer_control` will be sent mouse commands. So
+a client declares only what it can actually execute *right now*. The Android
+client declares an empty list today and refuses any `device_command` it
+receives, which is the correct behaviour rather than an unfinished one.
+
+### Two barriers
+
+The server resolves the target before dispatching; the client refuses a
+`device_command` whose `target_device_id` is not its own, and refuses an action
+outside its declared capabilities. A wrong-device execution therefore needs two
+simultaneous faults rather than one.
+
+---
+
 ## 7. Known gaps
 
 | Gap | Consequence | Where a fix would go |
