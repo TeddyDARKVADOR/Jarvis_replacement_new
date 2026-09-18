@@ -38,6 +38,29 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
 
     <!--
+      The `open_app` capability, and nothing else.
+
+      Since Android 10 a background app cannot start an activity. JARVIS runs as
+      a foreground SERVICE — a notification, not a window — so every "ouvre
+      Chrome" arriving over the device channel is a background launch, and the
+      platform drops it. It does not throw: startActivity returns normally, one
+      line appears in logcat, and the screen does not change. An assistant that
+      says "c'est ouvert" while nothing opened is worse than one that cannot
+      open anything.
+
+      SYSTEM_ALERT_WINDOW is the documented exemption. The app never draws an
+      overlay — it holds this so that a launch the user asked for out loud
+      actually reaches the screen.
+
+      It is a special permission: declaring it here does NOT grant it. The user
+      turns it on in Settings, and until they do,
+      `DeviceCapabilities.granted()` leaves `open_app` out of what this phone
+      declares to the server — so the command goes to the PC, or comes back as a
+      question, instead of failing silently here.
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+
+    <!--
       NOT declared, deliberately:
 
       • RECEIVE_BOOT_COMPLETED — a microphone service that restarts itself after
@@ -51,6 +74,22 @@
         (USAGE_ASSISTANT / CONTENT_TYPE_SPEECH), which needs no permission. Only
         a SCO call path would, and that degrades the audio to 8 kHz telephony.
     -->
+
+    <!--
+      Android 11+ hides other packages by default. AppLauncher needs to know
+      what has a launcher entry, so it can turn "Chrome" into a package name;
+      this asks for exactly that set and nothing else. QUERY_ALL_PACKAGES would
+      have been one line instead of five and would have granted the app a list
+      of every application installed, including the ones that have no screen to
+      open — which is not what the capability needs and not what the user is
+      agreeing to.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
+    </queries>
 
     <application
         android:label="@string/app_name"

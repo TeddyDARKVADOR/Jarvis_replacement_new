@@ -25,6 +25,7 @@ cd jarvis-preprod
 | `notifications` | les quatre priorités, la déduplication, le replay |
 | `network` | perte réseau et reconnexion |
 | `ui` | navigation et états |
+| `devices` | identité, capacités déclarées, commandes routées |
 | `audio` | ce qui est déterministe ; le reste sort en `PHYSICAL_ONLY` |
 | `all` | tout, dans l'ordre, puis rapport |
 | `report` | régénère le rapport depuis les résultats existants |
@@ -45,6 +46,29 @@ résultats de deux exécutions ment sur au moins l'une des deux.
 `PHYSICAL_ONLY` est affiché dans son propre bloc du rapport, et pas fondu dans
 les `SKIP` : une campagne entièrement verte ne doit jamais pouvoir se lire
 comme « tout est validé ».
+
+## La suite `devices`
+
+C'est la seule qui exerce le routage par appareil sur un vrai téléphone.
+`server/routing_selftest.py` prouve que `targeting.py` choisit la bonne cible,
+avec un registre en mémoire et des appareils qui n'existent pas ; ici, au bout
+d'un vrai WebSocket, il y a un Android qui ouvre — ou n'ouvre pas — une vraie
+application.
+
+Les deux tests centraux sont symétriques : **permission refusée, la capacité
+n'est pas annoncée ; permission accordée, elle l'est.** Une suite qui ne
+vérifierait que le second cas laisserait passer un client qui déclare tout,
+tout le temps.
+
+Elle laisse `SYSTEM_ALERT_WINDOW` sur `allow` en sortant, et le dit.
+
+En mode `lab`, la commande routée est injectée par `POST /lab/device-command`,
+une route qui n'existe que dans `tools/lab_server.py`. Ce n'est pas de la
+surface de production : le chemin complet est *Gemini appelle un outil →
+ActionRouter choisit l'appareil → DeviceChannel.request()*, les deux premiers
+maillons demandent le modèle, et seul le troisième est celui que le téléphone
+doit honorer. Le faire payer un tour de conversation à chaque campagne serait
+absurde.
 
 ## Les deux modes du serveur
 

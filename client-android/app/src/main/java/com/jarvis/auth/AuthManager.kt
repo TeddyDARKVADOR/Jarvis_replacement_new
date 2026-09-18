@@ -2,6 +2,7 @@ package com.jarvis.auth
 
 import android.content.Context
 import android.os.Build
+import com.jarvis.device.DeviceCapabilities
 import com.jarvis.net.Protocol
 import com.jarvis.net.ServerEndpoint
 import okhttp3.MediaType.Companion.toMediaType
@@ -39,6 +40,11 @@ import java.util.concurrent.TimeUnit
  * self-contained change to this file and nothing else.
  */
 class AuthManager(context: Context) {
+
+    // The application context, not the one passed in: this object outlives the
+    // Activity that built it, and registerDevice() reads the phone's granted
+    // capabilities every time it runs.
+    private val appContext = context.applicationContext
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -181,7 +187,11 @@ class AuthManager(context: Context) {
                 .put("device_id", deviceId)
                 .put("device_type", Protocol.DEVICE_TYPE)
                 .put("display_name", deviceName)
-                .put("capabilities", JSONArray(Protocol.CAPABILITIES))
+                // What this PHONE can do, not what this build implements. A
+                // capability whose permission is missing is never declared, so
+                // the server routes elsewhere instead of sending a command that
+                // could only come back refused.
+                .put("capabilities", JSONArray(DeviceCapabilities.granted(appContext)))
                 .put("protocol_version", 1)
                 .toString()
                 .toRequestBody("application/json".toMediaType())

@@ -127,8 +127,51 @@ status)
     echo
     ;;
 
+devices)
+    # Le registre tel que /status l'expose : identite et capacites, jamais un
+    # token. Une ligne par appareil, tabulee, pour que les tests lisent des
+    # colonnes plutot que du JSON.
+    bearer="$("$HERE/server.sh" bearer)"
+    curl -s --max-time 5 "$BASE/status" -H "Authorization: Bearer $bearer"         | python -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for d in (data.get('devices') or []):
+    print('	'.join([
+        d.get('device_id', ''),
+        d.get('device_type', ''),
+        d.get('display_name', ''),
+        'online' if d.get('connected') else 'offline',
+        ','.join(d.get('capabilities') or []) or '-',
+    ]))
+"
+    ;;
+
+device-command)
+    # La commande que Gemini aurait routee. N'existe qu'en mode laboratoire ;
+    # voir la docstring de tools/lab_server.py pour ce que cette route est et
+    # n'est pas.
+    shift
+    dev="${1:?device_id requis}"; act="${2:?action requise}"; params="${3:-{\}}"
+    if [ "$(server_mode)" = "full" ]; then
+        echo "  /lab/device-command n'existe pas en mode full." >&2
+        exit 2
+    fi
+    bearer="$("$HERE/server.sh" bearer)"
+    curl -s --max-time 70 -X POST "$BASE/lab/device-command"         -H "Authorization: Bearer $bearer"         -H "Content-Type: application/json"         -d "$(python -c "
+import json, sys
+print(json.dumps({'device_id': sys.argv[1], 'action': sys.argv[2],
+                  'parameters': json.loads(sys.argv[3])}))
+" "$dev" "$act" "$params")"
+    echo
+    ;;
+
 *)
-    echo "usage: server.sh start|stop|health|mode|bearer|notify <PRIO> <TITRE> <TEXTE>|status" >&2
+    echo "usage: server.sh start|stop|health|mode|bearer|status|devices" >&2
+    echo "       server.sh notify <PRIO> <TITRE> <TEXTE>" >&2
+    echo "       server.sh device-command <DEVICE_ID> <ACTION> [JSON]" >&2
     exit 1
     ;;
 esac

@@ -26,6 +26,7 @@ import com.jarvis.R
 import com.jarvis.audio.AudioPlayer
 import com.jarvis.audio.AudioRecorder
 import com.jarvis.auth.AuthManager
+import com.jarvis.device.DeviceCapabilities
 import com.jarvis.device.DeviceStateReporter
 import com.jarvis.net.JarvisClient
 import com.jarvis.net.Protocol
@@ -120,7 +121,16 @@ class JarvisForegroundService : Service() {
         notifications = JarvisNotificationManager(this)
         notifications.ensureChannels()
 
-        client = JarvisClient(auth, ClientEvents())
+        // The service is the only place that has both a Context and the client,
+        // so it is where the two meet. `DeviceCapabilities` decides what a
+        // routed command does; `JarvisClient` only carries it.
+        client = JarvisClient(
+            auth,
+            ClientEvents(),
+            execute = { action, parameters ->
+                DeviceCapabilities.execute(this, action, parameters)
+            },
+        )
         deviceState = DeviceStateReporter(
             context = this,
             scope = scope,
