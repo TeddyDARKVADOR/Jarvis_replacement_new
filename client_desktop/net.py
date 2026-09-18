@@ -43,6 +43,7 @@ from websockets.exceptions import ConnectionClosed, InvalidStatus
 from . import protocol as P
 from .audio import Microphone, Speaker
 from .config import Settings
+from .device import DEVICE_TYPE, PROTOCOL_VERSION, LocalExecutor
 from .protocol import AuthRejected, ServerEndpoint
 from .reconnect import ReconnectManager
 from .state import AssistantState, JarvisStore, LinkState, Message
@@ -92,6 +93,13 @@ class JarvisClient:
         self._mic_queue: asyncio.Queue[bytes] = asyncio.Queue(MIC_QUEUE_FRAMES)
         self._want_uplink = False
 
+        # Device identity. None until the capability probe has finished, which
+        # is why the device socket is opened per connection rather than once.
+        self._executor = None
+        self._capabilities: list[str] = []
+        self._device_ws = None
+        self._device_route_missing_logged = False
+
         self._sockets_open: set[str] = set()
         self._announced_connected = False
         self._closing = False
@@ -125,6 +133,10 @@ class JarvisClient:
 
         self._spawn(self._events_loop(endpoint), "events")
         self._spawn(self._downlink_loop(endpoint), "downlink")
+        # Third socket, and the only optional one. A server without
+        # `server/device_api.py` answers 404 to the registration and this never
+        # opens; everything above keeps working exactly as it did.
+        self._spawn(self._device_loop(endpoint), "device")
 
     async def _login(self, endpoint: ServerEndpoint) -> tuple[str, str]:
         """`/api/device-login`, off the event loop.
@@ -329,6 +341,114 @@ class JarvisClient:
         finally:
             self._sockets_open.discard("downlink")
 
+    # ── /ws/device — identity, and commands addressed to this machine ────────
+
+    async def _register_device(self, endpoint: ServerEndpoint) -> bool:
+        """Declare who we are and what we can do. False if the server has no
+        such route, which is not an error — only an older Oracle."""
+        if self._executor is None:
+            return False
+
+        def post() -> tuple[int, dict]:
+            response = requests.post(
+                endpoint.device_register,
+                headers={"Authorization": f"Bearer {self._bearer}"},
+                json={
+                    "device_id": self._executor.device_id,
+                    "device_type": DEVICE_TYPE,
+                    "display_name": self._settings.device_name or "",
+                    "capabilities": sorted(self._capabilities),
+                    "protocol_version": PROTOCOL_VERSION,
+                },
+                timeout=LOGIN_TIMEOUT,
+            )
+            try:
+                return response.status_code, response.json()
+            except Exception:
+                return response.status_code, {}
+
+        status, payload = await asyncio.get_running_loop().run_in_executor(None, post)
+        if status == 404:
+            if not self._device_route_missing_logged:
+                self._device_route_missing_logged = True
+                self._store.log(
+                    "Serveur sans routage par appareil — mode compatible, "
+                    "les commandes partent sans origine."
+                )
+            return False
+        if status != 200 or not payload.get("ok"):
+            self._store.log(f"Enregistrement appareil refusé ({status}).")
+            return False
+        self._store.log(
+            f"Enregistré comme {DEVICE_TYPE}:{self._executor.device_id} "
+            f"({len(self._capabilities)} capacités)"
+        )
+        return True
+
+    async def _device_loop(self, endpoint: ServerEndpoint) -> None:
+        if not await self._register_device(endpoint):
+            return
+        try:
+            async with ws_connect(
+                endpoint.device_channel(self._bearer, self._executor.device_id),
+                ping_interval=P.PING_SECONDS,
+                ping_timeout=P.PING_TIMEOUT_SECONDS,
+                max_size=None,
+            ) as socket:
+                self._device_ws = socket
+                self._store.log("Canal appareil ouvert.")
+                # Tell the server whether audio is already leaving this machine:
+                # a voice turn has no text to read an origin from, and the open
+                # microphone is what says who is speaking.
+                await self._send_device({"type": P.CMD_MIC_STATE,
+                                         "open": self._want_uplink})
+                async for raw in socket:
+                    if isinstance(raw, bytes):
+                        continue
+                    await self._handle_device_message(raw)
+        except asyncio.CancelledError:
+            raise
+        except ConnectionClosed as exc:
+            self._store.log(f"Canal appareil fermé ({_close_code(exc) or 'no code'}).")
+        except Exception as exc:
+            self._store.log(f"Canal appareil : {exc}")
+        finally:
+            self._device_ws = None
+
+    async def _handle_device_message(self, raw: str) -> None:
+        try:
+            message = json.loads(raw)
+        except Exception:
+            return
+        if message.get("type") != P.EV_DEVICE_COMMAND:
+            return
+
+        request_id = str(message.get("id") or "")
+        action = str(message.get("action") or "")
+        target = str(message.get("target_device_id") or "")
+        parameters = message.get("parameters") or {}
+
+        # Off the event loop: an action opens applications and drives the mouse,
+        # and none of that belongs on the socket's thread.
+        result = await asyncio.get_running_loop().run_in_executor(
+            None, self._executor.execute, action, parameters, target
+        )
+        await self._send_device({
+            "type": P.CMD_DEVICE_RESULT,
+            "id": request_id,
+            "result": result,
+        })
+
+    async def _send_device(self, payload: dict) -> bool:
+        socket = self._device_ws
+        if socket is None:
+            return False
+        try:
+            await socket.send(json.dumps(payload))
+            return True
+        except Exception:
+            return False
+
     # ── /ws/phone-audio — this microphone ────────────────────────────────────
 
     async def _uplink_loop(self, endpoint: ServerEndpoint) -> None:
@@ -369,6 +489,9 @@ class JarvisClient:
         if streaming == self._want_uplink:
             return
         self._want_uplink = streaming
+        # A voice turn carries no text, so the microphone is what tells the
+        # server who is about to speak.
+        await self._send_device({"type": P.CMD_MIC_STATE, "open": streaming})
         if streaming:
             if self._announced_connected:
                 self._spawn(self._uplink_loop(self.endpoint), "uplink")
@@ -393,6 +516,13 @@ class JarvisClient:
     # ── client -> server ─────────────────────────────────────────────────────
 
     async def send_command(self, text: str) -> None:
+        # Preferred over `/ws` when the device channel is up, and that is the
+        # whole point of it: a command sent there carries its origin, so
+        # "ouvre le navigateur" from this machine opens a browser on this
+        # machine. On `/ws` the origin is lost before the command reaches
+        # Gemini and the server has to ask instead.
+        if await self._send_device({"type": P.CMD_COMMAND, "text": text}):
+            return
         await self._send({"type": P.CMD_COMMAND, "text": text})
 
     async def send_interrupt(self) -> None:
@@ -578,6 +708,16 @@ class NetworkWorker:
 
     def set_mic_streaming(self, streaming: bool) -> None:
         self._submit(self._client.set_mic_streaming(streaming))
+
+    def set_identity(self, executor: LocalExecutor, capabilities: list[str]) -> None:
+        """Hand the client its proven capabilities, once they are known.
+
+        Set after the probe finishes rather than at construction: enumerating
+        them imports pyautogui, playwright and OpenCV, and blocking startup on
+        that would mean a panel that does not paint at login.
+        """
+        self._client._executor = executor
+        self._client._capabilities = list(capabilities)
 
     def send_command(self, text: str) -> None:
         self._submit(self._client.send_command(text))

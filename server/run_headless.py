@@ -50,7 +50,8 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from core import confirm as confirm_gate            # noqa: E402
-from server import api, auth                        # noqa: E402
+from server import api, auth, device_api, routing    # noqa: E402
+from server.device_api import DeviceHub              # noqa: E402
 from server.audio_bridge import AudioHub, build_module  # noqa: E402
 from server.headless_ui import HeadlessUI           # noqa: E402
 from server.runtime_state import RuntimeState, State  # noqa: E402
@@ -114,6 +115,10 @@ def build(echo: bool = True, allow_firewall: bool = False):
         return _BUILT
 
     state = RuntimeState(label="MARK LIII headless")
+    # Who is connected, what each can do, and who spoke last. Created here so
+    # both the routes and the action router share one instance — two registries
+    # would mean a device that is registered for one and invisible to the other.
+    device_hub = DeviceHub()
     ui    = HeadlessUI(state=state, echo=echo)
     hub   = AudioHub()
 
@@ -157,6 +162,10 @@ def build(echo: bool = True, allow_firewall: bool = False):
             label="MARK LIII",
             log=lambda m: print(m, flush=True),
         )
+        # Device identity and the routed-command channel. Two NEW routes on the
+        # same app — `/ws` and `/api/device-login` are left exactly as they are,
+        # which is what keeps the current Android build working untouched.
+        device_api.attach(dash, device_hub, log=lambda m: print(m, flush=True))
         # The two client→server capabilities the headless host adds. Both bind a
         # remote button to a function that already existed — no second command
         # path, no second authority. `main.py` is untouched: it has already put
@@ -177,19 +186,37 @@ def build(echo: bool = True, allow_firewall: bool = False):
     ui.wait_for_api_key()
     jarvis = main.JarvisLive(ui)
 
+    # Wrap the action registry so a tool call is addressed before it is run.
+    #
+    # After `build()` and before `run()`, because `main.py` reads the tool
+    # declarations when it configures the Live session — which happens inside
+    # `run()`. The wrapper delegates everything and only interposes on `run`;
+    # with no device registered it forwards straight through, so a server with
+    # no clients behaves exactly as it did before.
+    routing.install(jarvis, device_hub, log=lambda m: print(m, flush=True))
+
     # The only honest answer to "is the Live session up?" is the object that
     # owns it. Everything /status reports about the link comes from here.
     state.bind_session_probe(lambda: jarvis.session is not None)
-    state.bind_extra_probe(lambda: _extras(jarvis))
+    state.bind_extra_probe(lambda: _extras(jarvis, device_hub))
 
     _BUILT = (jarvis, ui, state, hub)
     return _BUILT
 
 
-def _extras(jarvis) -> dict:
+def _extras(jarvis, device_hub: DeviceHub | None = None) -> dict:
     """Facts /status reports that only JarvisLive knows. Read-only, and every
     lookup is defensive: /status must never be the thing that breaks."""
     out: dict = {}
+    if device_hub is not None:
+        try:
+            # No token ever reaches here: DeviceInfo.public() carries identity
+            # and capabilities, and the token map is a separate dict that is
+            # never exported.
+            out["devices"] = device_hub.registry.public()
+            out["turn_origin"] = device_hub.turn.origin_device_id or None
+        except Exception:
+            pass
     try:
         out["tools"] = {
             "actions": len(jarvis._action_registry.names()),

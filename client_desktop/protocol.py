@@ -83,6 +83,16 @@ CMD_COMMAND = "command"
 CMD_INTERRUPT = "interrupt"
 CMD_CONFIRMATION_RESPONSE = "confirmation_response"
 
+# ── /ws/device ───────────────────────────────────────────────────────────────
+#
+# Server -> client, and the answer back. Unknown types are ignored by both ends
+# (PROTOCOL.md section 4), so a client or server that predates these carries on
+# without noticing them.
+EV_DEVICE_COMMAND = "device_command"    # {"id","target_device_id","action","parameters"}
+CMD_DEVICE_RESULT = "device_result"     # {"id","result"}
+CMD_MIC_STATE = "mic"                   # {"open": bool} - who is speaking
+CMD_PING = "ping"
+
 # WebSocket close code the server uses to refuse a stale bearer. Not fatal: the
 # correct response is to call /api/device-login again. Only a 401 on that call
 # means the credential itself is wrong.
@@ -148,6 +158,23 @@ class ServerEndpoint:
 
     def audio_downlink(self, bearer: str) -> str:
         return f"{self.ws_base}/ws/phone-out?token={quote(bearer, safe='')}"
+
+    # ── device identity and routing (server/device_api.py) ───────────────────
+    #
+    # Two routes added beside the five above, never replacing them. A server
+    # that does not have them answers 404 and the client carries on exactly as
+    # it did before — which is how this stays compatible with an Oracle that
+    # has not been updated yet.
+
+    @property
+    def device_register(self) -> str:
+        return f"{self.http_base}/api/device-register"
+
+    def device_channel(self, bearer: str, device_id: str) -> str:
+        return (
+            f"{self.ws_base}/ws/device?token={quote(bearer, safe='')}"
+            f"&device_id={quote(device_id, safe='')}"
+        )
 
     @property
     def is_usable(self) -> bool:

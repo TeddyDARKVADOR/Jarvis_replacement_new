@@ -10,16 +10,20 @@ are a large part of why this file exists:
   SDK. That is the "no second session" promise made mechanical: it cannot be
   quietly undone by someone reaching for `JarvisLive` to save an afternoon.
 
-* **15** fails if anything reaches into `core/` other than `core.wake_word`,
-  so a second brain cannot arrive by the back door.
+* **15** fails if anything reaches into `core/` beyond the two modules this
+  client is allowed to reuse, so a second brain cannot arrive by the back door.
 
-* **43** fails if `git status` reports a modification to `main.py`,
+* **45** fails if `git status` reports a modification to `main.py`,
   `dashboard/`, `core/`, `memory/`, `actions/`, `plugins/` or
   `requirements.txt`. This client is additive or it is broken.
 
 Checks 16-41 are the placement arithmetic. They run on synthetic rectangles
 because placement defects live on the third monitor at 150 % scaling behind a
 maximised editor, which no real desktop can reproduce on demand.
+
+Checks 42-43 are the device capabilities, and they are the same kind of check
+one level up: a capability is a promise the router acts on, so every declared
+name must be a real action that actually imported here.
 
 Run it with `python -m client_desktop --selftest`.
 """
@@ -83,8 +87,8 @@ def run() -> bool:  # noqa: C901
     # -- 1. every module imports ---------------------------------------------
     try:
         from client_desktop import (  # noqa: F401
-            app, audio, autostart, config, net, placement, protocol, reconnect,
-            single_instance, state, wake, win_windows,
+            app, audio, autostart, config, device, net, placement, protocol,
+            reconnect, single_instance, state, wake, win_windows,
         )
         from client_desktop.ui import (  # noqa: F401
             core_widget, debug, panel, screens, theme, tray,
@@ -304,10 +308,20 @@ def run() -> bool:  # noqa: C901
         not offenders,
         "; ".join(offenders),
     )
+    # `core.action_loader` joined `core.wake_word` when device routing landed,
+    # and the reason is worth stating: a routed action must behave identically
+    # whether Oracle ran it or this client did, which means running *the same
+    # registry over the same files*. Copying an action into `client_desktop/`
+    # would be the alternative, and two divergent copies of `computer_control`
+    # is a far worse outcome than one extra import.
+    #
+    # The list stays closed on purpose. `core.llm_client` or `core.tts` would be
+    # a second brain arriving by the back door, and this is what refuses it.
+    ALLOWED_CORE = {"core.wake_word", "core.action_loader"}
     report.check(
-        "15 core.wake_word is the only thing reached into core/",
-        core_imports <= {"core.wake_word"},
-        f"also imports {sorted(core_imports - {'core.wake_word'})}",
+        "15 only wake_word and action_loader are reached into core/",
+        core_imports <= ALLOWED_CORE,
+        f"also imports {sorted(core_imports - ALLOWED_CORE)}",
     )
 
     # -- 16-41. placement ----------------------------------------------------
@@ -540,7 +554,39 @@ def run() -> bool:  # noqa: C901
     report.check("41 an unknown mode or anchor falls back instead of raising",
                  tolerant)
 
-    # -- 42. shutdown must not write the settings file -----------------------
+    # -- 42a. capabilities are proven, never asserted ------------------------
+    #
+    # A capability is a promise the router acts on: a device that declares
+    # `computer_control` will be sent mouse commands. So the declared set must
+    # be a subset of what actually imported here, and every name must be a real
+    # action — never an invented string like "browser.open".
+    from client_desktop.device import DEVICE_BOUND_ACTIONS, discover_capabilities
+
+    declared = set(discover_capabilities(logger=lambda _l: None))
+    try:
+        from core.action_loader import discover_actions
+
+        real_actions = discover_actions(
+            _REPO_ROOT / "actions", logger=lambda _l: None
+        ).names()
+    except Exception:
+        real_actions = set()
+
+    report.check(
+        "42 toute capacite declaree est une action reelle et chargee",
+        declared <= real_actions and declared <= set(DEVICE_BOUND_ACTIONS),
+        f"declarees={sorted(declared)} inconnues={sorted(declared - real_actions)}",
+    )
+
+    # Network-only actions must never be device capabilities: declaring
+    # `web_search` on two devices invents an ambiguity where none exists.
+    report.check(
+        "43 les actions non liees a l'appareil ne sont pas declarees",
+        not ({"web_search", "weather_report", "flight_finder", "reminder"} & declared),
+        f"declarees={sorted(declared)}",
+    )
+
+    # -- 44. shutdown must not write the settings file -----------------------
     #
     # A regression guard for a bug that cost a working pairing: `shutdown()`
     # used to call `save(self.settings)`, so any process holding an in-memory
@@ -562,15 +608,15 @@ def run() -> bool:  # noqa: C901
                     ):
                         shutdown_saves = True
     except Exception as exc:
-        report.fail("42 shutdown does not write settings", repr(exc))
+        report.fail("44 shutdown does not write settings", repr(exc))
     else:
         report.check(
-            "42 shutdown does not overwrite the settings file",
+            "44 shutdown does not overwrite the settings file",
             not shutdown_saves,
             "shutdown() calls save() - an unpaired process would wipe the pairing",
         )
 
-    # -- 43. non-regression: the guarded tree is untouched -------------------
+    # -- 45. non-regression: the guarded tree is untouched -------------------
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain", "--"] + list(GUARDED),
@@ -581,12 +627,12 @@ def run() -> bool:  # noqa: C901
         )
         dirty = [line for line in result.stdout.splitlines() if line.strip()]
         report.check(
-            "43 MARK LIII is untouched (git status on the guarded paths)",
+            "45 MARK LIII is untouched (git status on the guarded paths)",
             result.returncode == 0 and not dirty,
             " | ".join(dirty[:5]),
         )
     except Exception as exc:
-        report.fail("43 MARK LIII is untouched", f"git unavailable: {exc}")
+        report.fail("45 MARK LIII is untouched", f"git unavailable: {exc}")
 
     total = report.passed + report.failed
     print(f"\n{report.passed}/{total}")

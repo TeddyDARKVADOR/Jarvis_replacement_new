@@ -50,6 +50,15 @@ class Settings:
     #: From `python -m server.run_headless --pairing` on the VPS.
     device_token: str = ""
 
+    # ── identity ─────────────────────────────────────────────────────────────
+    #: This machine's logical id, generated once on first run and then kept.
+    #: It is what Oracle routes on — not the hostname, which two machines can
+    #: share and which changes when the user renames their laptop.
+    device_id: str = ""
+    #: What a question to the user calls this machine ("sur le PC de travail ?").
+    #: For humans only: routing never looks at it.
+    device_name: str = ""
+
     # ── microphone ───────────────────────────────────────────────────────────
     #
     # None means "whatever Windows calls the default", which is the right answer
@@ -149,6 +158,26 @@ class Settings:
     @property
     def is_configured(self) -> bool:
         return bool(self.host.strip()) and bool(self.device_token.strip())
+
+    def ensure_identity(self) -> bool:
+        """Give this machine an id and a name if it has none. True if changed.
+
+        Called once at startup rather than generated on the fly every time: an
+        id that changed between runs would register a new device on every login
+        and leave the registry full of ghosts that are all 'connected'.
+        """
+        changed = False
+        if not self.device_id.strip():
+            from .device import new_device_id
+
+            self.device_id = new_device_id()
+            changed = True
+        if not self.device_name.strip():
+            from .device import default_display_name
+
+            self.device_name = default_display_name()
+            changed = True
+        return changed
 
 
 def load() -> Settings:
