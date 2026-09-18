@@ -36,6 +36,7 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from . import autostart
 from .audio import Microphone
 from .config import Settings, load, save  # noqa: F401  (save: _on_settings_changed)
+from .device import CapabilityProbe, LocalExecutor
 from .net import NetworkWorker
 from .state import AssistantState, JarvisStore, LinkState, Snapshot
 from .placement import PlacementMode, Rect
@@ -128,6 +129,10 @@ class JarvisDesktop(QObject):
         self._target_seen_at = 0.0
         self._last_target_rect: Rect | None = None
 
+        # What this machine can honestly claim to do. Proven by import in a
+        # background thread — see `device.CapabilityProbe`.
+        self._probe = CapabilityProbe(logger=self.store.log)
+
         self._bridge = _Bridge()
         self._bridge.event.connect(self._on_store_event)
         self.store.subscribe(lambda kind, payload: self._bridge.event.emit(kind, payload))
@@ -187,6 +192,16 @@ class JarvisDesktop(QObject):
                 "Démarrage auto : la commande enregistrée ne pointe plus ici. "
                 "Ré-activez la case pour la corriger."
             )
+
+        # Identity first, and persisted the moment it is generated: an id that
+        # changed between runs would register a new device at every login and
+        # leave the registry full of ghosts that all claim to be connected.
+        if self.settings.ensure_identity():
+            save(self.settings)
+        self.store.log(
+            f"Appareil : {self.settings.device_name} ({self.settings.device_id})"
+        )
+        self._probe.start(self._on_capabilities)
 
         self.store.set_wake_word(self.wake.NAME if engine_available() else "")
         if self.settings.wake_word_enabled and engine_available():
@@ -305,6 +320,21 @@ class JarvisDesktop(QObject):
         save(self.settings)
         self._follow_timer.stop()
         self.debug.refresh_placement_controls()
+
+    # ── device identity ──────────────────────────────────────────────────────
+
+    def _on_capabilities(self, capabilities: list[str]) -> None:
+        """The probe thread finished. Register, and reconnect to open the
+        device channel — the registration has to precede the socket, and the
+        socket is opened by `connect()`."""
+        executor = LocalExecutor(
+            device_id=self.settings.device_id,
+            allowed=set(capabilities),
+            logger=self.store.log,
+        )
+        self.worker.set_identity(executor, capabilities)
+        if self.settings.is_configured:
+            self.worker.connect()
 
     # ── the audio thread ─────────────────────────────────────────────────────
 
