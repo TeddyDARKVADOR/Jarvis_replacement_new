@@ -32,11 +32,17 @@ lab_init "audio"
 # Ces nombres vivent dans deux langages et deux dépôts d'habitudes. C'est le
 # seul endroit où ils sont comparés.
 
+# L'ancre $ n'est pas decorative : sans elle, [0-9_]+ matche aussi les
+# underscores du NOM de la constante. Sur « UPLINK_SAMPLE_RATE = 16_000 »,
+# grep rendait trois lignes — "_", "_", "16_000" — que tr -d _ reduisait a
+# deux lignes vides suivies de 16000. La comparaison echouait en annoncant
+# un desaccord de valeur alors que les deux cotes etaient d'accord depuis le
+# debut : le seul ecart etait dans l'extraction.
 kt="$REPO/client-android/app/src/main/java/com/jarvis/net/Protocol.kt"
 if [ -f "$kt" ]; then
-    up="$(grep -oE 'UPLINK_SAMPLE_RATE = [0-9_]+' "$kt" | grep -oE '[0-9_]+' | tr -d '_')"
-    down="$(grep -oE 'DOWNLINK_SAMPLE_RATE_DEFAULT = [0-9_]+' "$kt" | grep -oE '[0-9_]+' | tr -d '_')"
-    frame="$(grep -oE 'UPLINK_FRAME_SAMPLES = [0-9_]+' "$kt" | grep -oE '[0-9_]+' | tr -d '_')"
+    up="$(grep -oE 'UPLINK_SAMPLE_RATE = [0-9_]+' "$kt" | grep -oE '[0-9_]+$' | tr -d '_')"
+    down="$(grep -oE 'DOWNLINK_SAMPLE_RATE_DEFAULT = [0-9_]+' "$kt" | grep -oE '[0-9_]+$' | tr -d '_')"
+    frame="$(grep -oE 'UPLINK_FRAME_SAMPLES = [0-9_]+' "$kt" | grep -oE '[0-9_]+$' | tr -d '_')"
 
     py_up="$(grep -oE 'SEND_SAMPLE_RATE\s*=\s*[0-9]+' "$REPO/main.py" | grep -oE '[0-9]+$' | head -1)"
     py_down="$(grep -oE 'RECEIVE_SAMPLE_RATE\s*=\s*[0-9]+' "$REPO/main.py" | grep -oE '[0-9]+$' | head -1)"

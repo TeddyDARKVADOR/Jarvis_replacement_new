@@ -439,9 +439,29 @@ clarifying question, never a wrong device.
 `capabilities` is a list of **action names** — the same names
 `core/action_loader.py` discovers, never invented strings. The server routes on
 them: a device that declares `computer_control` will be sent mouse commands. So
-a client declares only what it can actually execute *right now*. The Android
-client declares an empty list today and refuses any `device_command` it
-receives, which is the correct behaviour rather than an unfinished one.
+a client declares only what it can actually execute *right now*.
+
+The names are shared on purpose. `open_app` is `actions/open_app.py`'s tool
+name, and the PC and the phone both claiming it is what lets
+`server/targeting.py` arbitrate between them — origin by default, the named
+device when the user says one, a question when neither rule settles it. A
+phone-only tool name would have moved that decision into the model, which picks
+a device by picking a tool and never sees the rules at all.
+
+**Declared is not the same as implemented.** The Android client's
+`Protocol.CAPABILITIES` is the catalogue this build can carry out;
+`DeviceCapabilities.granted(context)` is what actually goes on the wire, and it
+keeps only the entries whose precondition holds on this device. Today:
+
+| Capability | Precondition | Why |
+|---|---|---|
+| `open_app` | `SYSTEM_ALERT_WINDOW` granted | Since Android 10 a background app cannot start an activity. JARVIS runs as a foreground *service*, so every voice-triggered launch is a background launch. The platform drops it **without an error** — `startActivity` returns normally and the screen does not change. Declaring the capability without the permission would make JARVIS say "c'est ouvert" about an app that never opened. |
+
+An ungranted phone therefore declares nothing, the server routes to the PC or
+asks which device, and nobody is told that something happened when it did not.
+This is the same rule `client_desktop/device.py` follows when it refuses to
+declare an action whose Python dependency is missing: a capability is proven,
+never asserted.
 
 ### Two barriers
 
@@ -449,6 +469,16 @@ The server resolves the target before dispatching; the client refuses a
 `device_command` whose `target_device_id` is not its own, and refuses an action
 outside its declared capabilities. A wrong-device execution therefore needs two
 simultaneous faults rather than one.
+
+The Android client checks its declaration a third time, at execution: a
+permission revoked between registration and the command is precisely the case
+where the server's view and the phone's truth disagree, and the phone is the one
+that knows.
+
+Every `device_command` is answered, refusals included. A dropped command costs
+the user forty-five seconds of silence and then a timeout with no sentence to
+explain it. The work runs on its own thread rather than the socket's reader, so
+a slow capability cannot wedge the channel it answers on.
 
 ---
 
