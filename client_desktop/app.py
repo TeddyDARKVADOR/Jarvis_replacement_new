@@ -38,10 +38,13 @@ from .audio import Microphone
 from .config import Settings, load, save  # noqa: F401  (save: _on_settings_changed)
 from .net import NetworkWorker
 from .state import AssistantState, JarvisStore, LinkState, Snapshot
+from .placement import PlacementMode, Rect
+from .ui import screens
 from .ui.debug import DebugWindow
 from .ui.panel import JarvisPanel
 from .ui.tray import JarvisTray
 from .wake import Gate, WakeWord, engine_available, install
+from .win_windows import foreground_window
 
 #: How often the UI pulls a snapshot. The core repaints faster than this off its
 #: own timer; this is for everything made of text.
@@ -60,6 +63,22 @@ SNAPSHOT_HZ = 10
 #: downloads folder"; a silent second attempt at an irreversible action is a
 #: far worse failure than a sentence the user has to repeat.
 COMMAND_ANSWER_TIMEOUT = 25.0
+
+
+def _close_enough(a: Rect, b: Rect, epsilon: int) -> bool:
+    """True when two rectangles are the same window to within rounding.
+
+    Physical-to-logical conversion divides by a scale factor, so a window that
+    has not moved can still report a coordinate one pixel different between two
+    reads. Re-applying the geometry on that makes the panel shiver against a
+    window being dragged.
+    """
+    return (
+        abs(a.x - b.x) <= epsilon
+        and abs(a.y - b.y) <= epsilon
+        and abs(a.w - b.w) <= epsilon
+        and abs(a.h - b.h) <= epsilon
+    )
 
 
 class _Bridge(QObject):
@@ -98,12 +117,16 @@ class JarvisDesktop(QObject):
         )
 
         # ── the surfaces ─────────────────────────────────────────────────────
-        self.panel = JarvisPanel(
-            width_fraction=self.settings.width_fraction,
-            dock=self.settings.dock,
-        )
+        self.panel = JarvisPanel(self.settings)
         self.debug = DebugWindow(self.settings)
         self.tray = JarvisTray()
+
+        # ── following the active window ──────────────────────────────────────
+        self._follow_timer = QTimer(self)
+        self._follow_timer.timeout.connect(self._follow_tick)
+        self._last_target_hwnd = 0
+        self._target_seen_at = 0.0
+        self._last_target_rect: Rect | None = None
 
         self._bridge = _Bridge()
         self._bridge.event.connect(self._on_store_event)
@@ -130,6 +153,9 @@ class JarvisDesktop(QObject):
         self.debug.settings_changed.connect(self._on_settings_changed)
         self.debug.wake_word_install_requested.connect(self._install_wake_word)
         self.debug.autostart_toggled.connect(self._set_autostart)
+        self.debug.placement_changed.connect(self._on_placement_settings_changed)
+        self.debug.realign_requested.connect(self._capture_target_now)
+        self.panel.placement_changed.connect(self._on_panel_dragged)
 
         self.tray.toggle_panel.connect(self._toggle_panel)
         self.tray.show_panel.connect(self._show_panel)
@@ -145,6 +171,11 @@ class JarvisDesktop(QObject):
         self.panel.show()
         if self.settings.start_collapsed:
             self.panel._toggle_collapse()
+
+        # After show(): winId() is only meaningful once the window exists, and
+        # the exclusion set is what stops FOLLOW aligning the panel against
+        # itself.
+        self._apply_placement_mode()
 
         self.worker.start()
         self.debug.set_autostart_checked(autostart.is_enabled())
@@ -172,6 +203,108 @@ class JarvisDesktop(QObject):
             return
 
         self.worker.connect()
+
+    # ── placement ────────────────────────────────────────────────────────────
+
+    #: How often FOLLOW re-reads the foreground window. One syscall, and the
+    #: whole feature costs less than a frame of the core animation.
+    FOLLOW_HZ = 4
+    #: A new foreground window must hold still this long before the panel moves
+    #: to it. Alt-tabbing through six windows should not drag the panel across
+    #: the desktop six times.
+    TARGET_SETTLE = 0.25
+    #: Below this, a target that has "moved" is just rounding, and re-applying
+    #: the geometry would make the panel shiver against a window being dragged.
+    TARGET_MOVE_EPSILON = 8
+
+    def _our_windows(self) -> frozenset[int]:
+        """Our own handles, so the panel never aligns itself against itself.
+
+        Without this, clicking the panel makes it the foreground window; it then
+        computes a position beside its own rectangle, which moves it, which it
+        then aligns against again — a slow drift into a corner that reads as the
+        panel wandering off.
+        """
+        handles = []
+        for widget in (self.panel, self.debug):
+            try:
+                handles.append(int(widget.winId()))
+            except Exception:
+                pass
+        return frozenset(handles)
+
+    def _read_target(self) -> Rect | None:
+        window = foreground_window(exclude=self._our_windows())
+        if window is None:
+            return None
+        return screens.to_logical(window)
+
+    def _apply_placement_mode(self) -> None:
+        """Start or stop following, and place the panel once, now."""
+        mode = self.settings.placement.mode
+        if mode is PlacementMode.FOLLOW:
+            if not self._follow_timer.isActive():
+                self._follow_timer.start(1000 // self.FOLLOW_HZ)
+        else:
+            self._follow_timer.stop()
+
+        if mode is PlacementMode.WINDOW:
+            # A one-shot alignment: the window that is in front *now*. Following
+            # it continuously is a separate mode on purpose — a panel that moves
+            # on every Alt-Tab is a different product from one that sits beside
+            # the editor you told it about.
+            self._capture_target_now()
+            return
+        if mode is not PlacementMode.FOLLOW:
+            self.panel.set_target(None)
+        self.panel.apply_placement()
+
+    def _capture_target_now(self) -> None:
+        target = self._read_target()
+        if target is None:
+            self.store.log("Aucune fenêtre cible utilisable — ancrage à l'écran.")
+        self.panel.set_target(target)
+        self.panel.apply_placement()
+
+    def _follow_tick(self) -> None:
+        window = foreground_window(exclude=self._our_windows())
+        if window is None:
+            # Nothing sensible in front — the desktop, the Start menu, or our
+            # own panel. Keep the last position rather than snapping away: a
+            # panel that jumps every time Start opens is worse than one that
+            # waits.
+            return
+
+        now = time.monotonic()
+        if window.hwnd != self._last_target_hwnd:
+            self._last_target_hwnd = window.hwnd
+            self._target_seen_at = now
+            return
+        if now - self._target_seen_at < self.TARGET_SETTLE:
+            return
+
+        rect = screens.to_logical(window)
+        if rect is None:
+            return
+        previous = self._last_target_rect
+        if previous is not None and _close_enough(
+            previous, rect, self.TARGET_MOVE_EPSILON
+        ):
+            return
+        self._last_target_rect = rect
+        self.panel.set_target(rect)
+        self.panel.apply_placement()
+
+    def _on_placement_settings_changed(self) -> None:
+        save(self.settings)
+        self.panel.sync_always_on_top()
+        self._apply_placement_mode()
+
+    def _on_panel_dragged(self) -> None:
+        """The panel was moved by hand — it is FREE now and that was persisted."""
+        save(self.settings)
+        self._follow_timer.stop()
+        self.debug.refresh_placement_controls()
 
     # ── the audio thread ─────────────────────────────────────────────────────
 
@@ -337,6 +470,7 @@ class JarvisDesktop(QObject):
 
     def shutdown(self) -> None:
         self._timer.stop()
+        self._follow_timer.stop()
         self.gate.close()
         self.wake.stop()
         self.microphone.stop()

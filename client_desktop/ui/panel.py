@@ -1,38 +1,45 @@
 """
-The panel — JARVIS's permanent place on the screen.
+The panel — JARVIS's place on the screen, wherever the user has put it.
 
 ```
 ┌────────────────────────────────────────────────────┐
-│                                                    │
 │                 work happens here                  │
 │                                      ┌───────────┐ │
 │                                      │  JARVIS   │ │
 │                                      │     ◉     │ │
 │                                      │ Je vous   │ │
 │                                      │ écoute.   │ │
-│                                      │ ● CONNECTED│ │
+│                                      │ ●CONNECTED│ │
 │                                      └───────────┘ │
 └────────────────────────────────────────────────────┘
 ```
 
-**Three properties, and each is a decision that had to be made once.**
+**Three properties, each a decision made once.**
 
-*It does not take focus.* `WA_ShowWithoutActivating` plus a `Tool` window: it
-can appear, change state, flash a wake ring and put a confirmation on screen
-while the caret stays in the editor the user is typing in. An assistant that
-stole focus to say "I am listening" would be worse than no assistant.
+*It does not take focus.* `WA_ShowWithoutActivating` on a `Qt.Tool` window: it
+can appear, move, change state, flash a wake ring and raise a confirmation while
+the caret stays in the editor being typed in.
 
-*It is not in the taskbar and not in Alt-Tab.* `Qt.Tool` does both. This is
-furniture, not an application the user switches to — it is already there.
+*It is not in the taskbar and not in Alt-Tab.* This is furniture, not an
+application to switch to.
 
-*It stays on top, and that is why it must be narrow.* A 20 % strip that is
-always visible is presence; a window that is always on top and takes half the
-screen is an obstruction. The width comes from the brief and is clamped to a
-readable range, because 20 % of a 1366-wide laptop is not the same object as
-20 % of an ultrawide.
+*Topmost is a visibility setting and never an activation one.* `setGeometry` on
+a window that is already visible does not activate it, and nothing here calls
+`raise_()`, `activateWindow()` or `SetForegroundWindow` on its own initiative —
+only `_show_panel`, which the user asks for explicitly. That distinction is the
+whole difference between a panel that stays visible while you work and one that
+interrupts you every time it moves.
 
-The measured target on this machine: 1920×1080 at 125 % scaling = 1536×864
-logical, so 20 % is **307 px**.
+**The geometry is not computed here.** `placement.py` does the arithmetic on
+plain rectangles; this file asks it for one and applies it. Everything the panel
+knows about its own position is therefore testable without a display.
+
+**Responsive, and not by guessing at resolutions.** The content reflows off the
+size it actually has: a LEFT/RIGHT anchor makes a tall column, TOP/BOTTOM makes
+a wide strip, and a strip has no room for a scrolling history. The direction of
+one `QBoxLayout` is flipped rather than the widget tree rebuilt — the core is a
+single widget that cannot exist in two layouts, and destroying and recreating it
+on every resize would restart its animation.
 """
 
 from __future__ import annotations
@@ -43,6 +50,7 @@ from PyQt6.QtCore import QEvent, QPoint, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -54,21 +62,33 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ..config import Settings
+from ..placement import (
+    MIN_HEIGHT,
+    MIN_WIDTH,
+    NARROW_WIDTH,
+    SHORT_HEIGHT,
+    Anchor,
+    PlacementMode,
+    Rect,
+    apply_snap,
+    clamp_to,
+    compute,
+    ensure_visible,
+    screen_for,
+)
 from ..state import AssistantState, LinkState, Snapshot
+from . import screens
 from .core_widget import JarvisCoreWidget
 from .theme import HEX, PANEL_STYLESHEET
 
 #: Repaint rate for the core. 60 would be smoother and is not worth the wakeups
 #: on a laptop; the animations are slow enough that 30 is indistinguishable.
 PAINT_HZ = 30
-#: Everything that is text updates far more slowly than the core moves.
+#: Everything made of text updates far more slowly than the core moves.
 TEXT_HZ = 5
 
-MIN_WIDTH = 260
-MAX_WIDTH = 460
 COLLAPSED_WIDTH = 68
-
-#: How many turns the discreet history keeps on screen.
 HISTORY_LINES = 24
 
 _STATE_COLOURS = {
@@ -93,33 +113,34 @@ class JarvisPanel(QWidget):
     confirmation_answered = pyqtSignal(str, bool)
     debug_requested = pyqtSignal()
     quit_requested = pyqtSignal()
+    #: The user dragged the panel, so the mode is now FREE and was persisted.
+    placement_changed = pyqtSignal()
 
-    def __init__(
-        self,
-        width_fraction: float = 0.20,
-        dock: str = "right",
-        parent: QWidget | None = None,
-    ) -> None:
+    def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._width_fraction = width_fraction
-        self._dock = dock
+        self.settings = settings
         self._collapsed = False
         self._drag_offset: QPoint | None = None
+        self._dragging = False
         self._message_count = 0
         self._last_confirmation: str | None = None
+        self._density = ""
+        #: Set when the density actually changed, so the placement can be
+        #: re-measured once the new layout exists. See `apply_placement`.
+        self._density_changed = False
+        #: The size the last density pass was computed for.
+        self._intended_size = (0, 0)
+        #: The window the panel is currently aligned against, logical pixels.
+        self._target: Rect | None = None
 
         self.setWindowTitle("JARVIS")
-        self.setWindowFlags(
-            Qt.WindowType.Tool                      # no taskbar entry, no Alt-Tab
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
-        )
-        # The one that matters: appear, and keep the caret where it was.
+        self._apply_window_flags()
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setStyleSheet(PANEL_STYLESHEET)
 
         self._build()
-        self._place()
+        self._watch_screens()
+        self.apply_placement()
 
         self._paint_timer = QTimer(self)
         self._paint_timer.timeout.connect(self._core.update)
@@ -159,45 +180,59 @@ class JarvisPanel(QWidget):
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(4)
 
-        title = QLabel("J A R V I S")
-        title.setObjectName("title")
-        header.addWidget(title)
+        self._title = QLabel("J A R V I S")
+        self._title.setObjectName("title")
+        header.addWidget(self._title)
         header.addStretch(1)
 
         self._collapse_button = self._chrome_button("—", "Réduire", self._toggle_collapse)
-        self._debug_button = self._chrome_button("⚙", "Developer / Debug",
-                                                 self.debug_requested.emit)
+        self._debug_button = self._chrome_button(
+            "⚙", "Developer / Debug", self.debug_requested.emit
+        )
         header.addWidget(self._debug_button)
         header.addWidget(self._collapse_button)
         root.addWidget(self._header)
 
-        # ── the core ─────────────────────────────────────────────────────────
+        # ── core + what JARVIS said: one box whose direction flips ───────────
+        self._core_row = QBoxLayout(QBoxLayout.Direction.TopToBottom)
+        self._core_row.setSpacing(8)
+        self._core_row.setContentsMargins(0, 0, 0, 0)
+
         self._core = JarvisCoreWidget()
         self._core.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._core.setFixedHeight(180)
         self._core.clicked.connect(self._on_core_clicked)
-        root.addWidget(self._core)
+        self._core_row.addWidget(self._core)
 
-        # ── what JARVIS last said ────────────────────────────────────────────
+        self._text_box = QWidget()
+        text_layout = QVBoxLayout(self._text_box)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(4)
+
         self._spoken = QLabel("Je vous écoute.")
         self._spoken.setObjectName("spoken")
         self._spoken.setWordWrap(True)
-        self._spoken.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
-        self._spoken.setMinimumHeight(46)
-        root.addWidget(self._spoken)
+        self._spoken.setAlignment(
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
+        )
+        self._spoken.setMinimumHeight(40)
+        text_layout.addWidget(self._spoken)
 
-        # ── the state line ───────────────────────────────────────────────────
         self._state = QLabel()
         self._state.setObjectName("state")
         self._state.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        root.addWidget(self._state)
+        text_layout.addWidget(self._state)
+        self._core_row.addWidget(self._text_box, 1)
+
+        root.addLayout(self._core_row)
 
         # ── the confirmation gate, hidden until there is one ─────────────────
         self._confirm_box = self._build_confirmation()
         self._confirm_box.hide()
         root.addWidget(self._confirm_box)
 
-        root.addWidget(self._separator())
+        self._separator = self._make_separator()
+        root.addWidget(self._separator)
 
         # ── the discreet history ─────────────────────────────────────────────
         self._history_area = QScrollArea()
@@ -225,8 +260,8 @@ class JarvisPanel(QWidget):
         self._input.returnPressed.connect(self._submit)
         root.addWidget(self._input)
 
-        buttons = QHBoxLayout()
-        buttons.setSpacing(6)
+        self._button_row = QHBoxLayout()
+        self._button_row.setSpacing(6)
         self._mic_button = QPushButton("🎙  Micro")
         self._mic_button.setCheckable(True)
         self._mic_button.setToolTip(
@@ -235,21 +270,20 @@ class JarvisPanel(QWidget):
         self._mic_button.clicked.connect(
             lambda: self.mic_toggled.emit(self._mic_button.isChecked())
         )
-        buttons.addWidget(self._mic_button, 1)
+        self._button_row.addWidget(self._mic_button, 1)
 
         self._interrupt_button = QPushButton("■")
         self._interrupt_button.setObjectName("danger")
         self._interrupt_button.setToolTip("Couper JARVIS (INTERRUPT)")
         self._interrupt_button.setFixedWidth(40)
         self._interrupt_button.clicked.connect(self.interrupt_requested.emit)
-        buttons.addWidget(self._interrupt_button)
-        root.addLayout(buttons)
+        self._button_row.addWidget(self._interrupt_button)
+        root.addLayout(self._button_row)
 
-        # Everything below the core collapses away together.
-        self._body = [
-            self._spoken, self._state, self._history_area, self._input,
+        self._collapsible = [
+            self._text_box, self._history_area, self._input,
+            self._mic_button, self._interrupt_button, self._separator,
         ]
-        self._body_layouts = [buttons]
 
     def _chrome_button(self, text: str, tip: str, slot) -> QPushButton:  # noqa: ANN001
         button = QPushButton(text)
@@ -263,7 +297,7 @@ class JarvisPanel(QWidget):
         button.clicked.connect(slot)
         return button
 
-    def _separator(self) -> QFrame:
+    def _make_separator(self) -> QFrame:
         line = QFrame()
         line.setObjectName("separator")
         line.setFrameShape(QFrame.Shape.HLine)
@@ -308,47 +342,247 @@ class JarvisPanel(QWidget):
         layout.addLayout(row)
         return box
 
-    # ── geometry ─────────────────────────────────────────────────────────────
+    # ── placement ────────────────────────────────────────────────────────────
 
-    def _place(self) -> None:
-        screen = QApplication.primaryScreen()
-        if screen is None:
+    def _apply_window_flags(self) -> None:
+        flags = Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
+        if self.settings.always_on_top:
+            flags |= Qt.WindowType.WindowStaysOnTopHint
+        self.setWindowFlags(flags)
+
+    def sync_always_on_top(self) -> None:
+        """Make the window match `settings.always_on_top`, without taking focus.
+
+        Compared against the *window's own flag*, never against the setting: the
+        settings object is written by the debug window before this is called, so
+        a guard on the setting would find it already correct and never do
+        anything. The flag is the only thing that knows the truth.
+
+        Qt unmaps a visible window when its flags change and it has to be shown
+        again; `show()` on a widget carrying `WA_ShowWithoutActivating` re-maps
+        it without activating — which is the property that must survive this.
+        """
+        wanted = bool(self.settings.always_on_top)
+        current = bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        if wanted == current:
             return
-        area = screen.availableGeometry()
-        width = COLLAPSED_WIDTH if self._collapsed else self._target_width(area.width())
-        # Full height, minus a small inset so the rounded corners read as a
-        # panel rather than as a window that failed to maximise.
-        inset = 8
-        height = area.height() - inset * 2
-        x = (
-            area.right() - width - inset
-            if self._dock == "right"
-            else area.left() + inset
+        visible = self.isVisible()
+        geometry = self.geometry()
+        self._apply_window_flags()
+        if visible:
+            self.show()
+            # Re-showing can nudge the geometry on some Windows builds; putting
+            # it back is cheaper than explaining why the panel drifts a few
+            # pixels every time this is toggled.
+            self.setGeometry(geometry)
+
+    def set_target(self, target: Rect | None) -> None:
+        """The window to align against, in logical pixels. None means none."""
+        self._target = target
+
+    def current_rect(self) -> Rect:
+        geometry = self.geometry()
+        return Rect(geometry.x(), geometry.y(), geometry.width(), geometry.height())
+
+    def apply_placement(self) -> None:
+        """Ask `placement` where to be, and go there.
+
+        Never called while the user is dragging: recomputing a position under a
+        held mouse button fights the drag, and the panel jitters between the
+        cursor and the computed rectangle.
+        """
+        if self._dragging:
+            return
+        work_areas = screens.work_areas()
+        if not work_areas:
+            return
+
+        config = self.settings.placement
+        rect = compute(
+            config,
+            work_areas,
+            target=self._target,
+            free=self.settings.free_rect,
+            current=self.current_rect(),
         )
-        self.setGeometry(x, area.top() + inset, width, height)
 
-    def _target_width(self, available: int) -> int:
-        return max(MIN_WIDTH, min(MAX_WIDTH, int(available * self._width_fraction)))
+        if self._collapsed:
+            # A collapsed panel keeps its anchor but not its width.
+            if config.anchor.is_vertical_edge:
+                shift = rect.w - COLLAPSED_WIDTH
+                x = rect.x + shift if config.anchor.value == "right" else rect.x
+                rect = Rect(x, rect.y, COLLAPSED_WIDTH, rect.h)
+            else:
+                rect = Rect(rect.x, rect.y, COLLAPSED_WIDTH, rect.h)
+            rect = ensure_visible(rect, work_areas)
 
-    def _toggle_collapse(self) -> None:
-        self._collapsed = not self._collapsed
-        for widget in self._body:
-            widget.setVisible(not self._collapsed)
-        for layout in self._body_layouts:
-            for i in range(layout.count()):
-                item = layout.itemAt(i).widget()
-                if item is not None:
-                    item.setVisible(not self._collapsed)
-        self._confirm_box.setVisible(
-            not self._collapsed and self._last_confirmation is not None
-        )
-        self._core.setFixedHeight(56 if self._collapsed else 180)
-        self._collapse_button.setText("▢" if self._collapsed else "—")
-        self._collapse_button.setToolTip("Agrandir" if self._collapsed else "Réduire")
-        self._debug_button.setVisible(not self._collapsed)
-        self._place()
+        # Reflow *before* moving, never after.
+        #
+        # Qt will not shrink a window below its layout's minimum size, so a
+        # panel still laid out as a tall column cannot be given a 241 px strip:
+        # `setGeometry` silently clamps it to ~552 and the strip never happens.
+        # Deciding the density from the rectangle we are about to apply — rather
+        # than from the size we ended up with — is what breaks that circle.
+        #
+        # And the density is decided on the *unmodified* rectangle. Growing it
+        # first and measuring afterwards makes the two feed each other: a strip
+        # grown to fit a confirmation reads as "compact", whose taller core
+        # needs more room, which grows it again.
+        self._apply_density(rect.w, rect.h)
 
-    # ── dragging, on the header only ─────────────────────────────────────────
+        # Now, and only now, give the content whatever it genuinely cannot do
+        # without. In practice that is a pending confirmation in a strip: there
+        # is no room for the banner in the computed height, and re-asserting
+        # that height squashes it until its buttons overlap its own title —
+        # an unreadable gate on an irreversible action.
+        #
+        # Measured off `minimumSizeHint` rather than off the banner, so this
+        # covers anything else that ever needs the space, and shrinks back on
+        # its own when it does not.
+        needed = self.minimumSizeHint().height()
+        if needed > rect.h:
+            extra = needed - rect.h
+            # Downwards normally; upwards for a bottom anchor, which would
+            # otherwise walk off the edge of the screen.
+            grown = (
+                Rect(rect.x, rect.y - extra, rect.w, needed)
+                if config.anchor is Anchor.BOTTOM
+                else Rect(rect.x, rect.y, rect.w, needed)
+            )
+            rect = clamp_to(grown, work_areas[screen_for(grown, work_areas)])
+
+        self.setGeometry(*rect.as_tuple())
+
+        # A density change takes one turn of the event loop to reach
+        # `minimumSizeHint`, so the measurement above used the *previous*
+        # layout's minimum — 552 for a strip that needs 293. Re-asserting once
+        # on the next turn measures the layout that now exists. It cannot loop:
+        # the second pass computes the same density, so nothing reschedules it.
+        if self._density_changed:
+            self._density_changed = False
+            QTimer.singleShot(0, self.apply_placement)
+
+    # ── responsive content ───────────────────────────────────────────────────
+
+    def resizeEvent(self, event) -> None:  # noqa: ANN001
+        super().resizeEvent(event)
+        # **The density is deliberately not recomputed here**, and that is the
+        # opposite of the obvious thing to do.
+        #
+        # This window is frameless and has no resize grip, so the user cannot
+        # resize it; every resize is either our own `setGeometry` or Qt growing
+        # the window because its content needs more room. Re-deciding on the
+        # latter is a runaway: a 241 px strip that grew to fit a confirmation
+        # banner reads back as "compact", which restores the title and the tall
+        # core, which raises the minimum again — measured settling at 421 px for
+        # a panel that asked for 241.
+        #
+        # The density follows the size we *intend*, set in `apply_placement`.
+        # Genuine outside changes — a screen added, removed or rescaled — are
+        # handled by the signals wired in `_watch_screens`.
+
+    def _apply_density(self, width: int, height: int) -> None:
+        """Reflow for a given size, which may be one the panel does not have yet.
+
+        Three densities, chosen off pixels rather than off which anchor is
+        selected — the two usually agree, but a user who has dragged the panel
+        into a short wide shape in FREE mode deserves the same reflow.
+
+        Each density also sets the window's own minimum size. That is not
+        decoration: the minimum is what Qt clamps `setGeometry` against, so a
+        layout that can reflow but never lowers its minimum can still not be
+        made small.
+        """
+        self._intended_size = (width, height)
+
+        if self._collapsed:
+            # Fixed, not merely minimum: the header and core would otherwise
+            # hold the window at whatever their content happens to need, and
+            # a "collapsed" panel 222 px wide is not collapsed.
+            self.setFixedWidth(COLLAPSED_WIDTH)
+            self.setMinimumHeight(90)
+            self._activate_layout()
+            return
+
+        self.setMinimumWidth(0)
+        self.setMaximumWidth(16777215)
+
+        if height < SHORT_HEIGHT:
+            density = "strip"
+        elif width < NARROW_WIDTH or height < 460:
+            density = "compact"
+        else:
+            density = "full"
+        if density == self._density:
+            return
+        self._density = density
+        self._density_changed = True
+
+        if density == "strip":
+            # A wide short panel: core beside the text, no room for history.
+            self._core_row.setDirection(QBoxLayout.Direction.LeftToRight)
+            self._core.setSizePolicy(
+                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
+            )
+            self._core.setFixedWidth(max(56, min(120, height - 90)))
+            self._core.setMinimumHeight(48)
+            self._core.setMaximumHeight(16777215)
+            self._history_area.hide()
+            self._separator.hide()
+            self._title.hide()
+            self._spoken.setMinimumHeight(0)
+            self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
+        else:
+            self._core_row.setDirection(QBoxLayout.Direction.TopToBottom)
+            self._core.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
+            self._core.setMinimumWidth(0)
+            self._core.setMaximumWidth(16777215)
+            self._core.setFixedHeight(120 if density == "compact" else 180)
+            self._history_area.setVisible(density == "full")
+            self._separator.setVisible(density == "full")
+            self._title.show()
+            self._spoken.setMinimumHeight(40)
+            # `compact` already hides the history, so its floor is the core plus
+            # the input row; `full` has to leave the history somewhere to live.
+            self.setMinimumSize(MIN_WIDTH, 300 if density == "compact" else 420)
+
+        self._activate_layout()
+
+    def _watch_screens(self) -> None:
+        """Re-place when the desktop itself changes underneath us.
+
+        Undocking a laptop, unplugging a monitor or changing a scaling factor
+        all invalidate a stored position, and none of them arrive as a resize
+        this window could react to. `ensure_visible` inside `compute` is what
+        rescues a rectangle that now points at nothing; these signals are what
+        make it run at the moment it is needed rather than at the next restart.
+        """
+        application = QApplication.instance()
+        if application is None:
+            return
+        application.screenAdded.connect(lambda _: self.apply_placement())
+        application.screenRemoved.connect(lambda _: self.apply_placement())
+        for screen in QApplication.screens():
+            screen.geometryChanged.connect(lambda _: self.apply_placement())
+            screen.availableGeometryChanged.connect(lambda _: self.apply_placement())
+            screen.logicalDotsPerInchChanged.connect(lambda _: self.apply_placement())
+
+    def _activate_layout(self) -> None:
+        """Recompute the layout's minimum size now, not on the next event loop.
+
+        Qt defers that work, so a `setGeometry` issued immediately after a
+        density change is clamped against the *previous* density's minimum —
+        which is exactly the size the reflow was supposed to make possible.
+        """
+        layout = self.layout()
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+        self.updateGeometry()
+
+    # ── dragging ─────────────────────────────────────────────────────────────
 
     def mousePressEvent(self, event) -> None:  # noqa: ANN001
         if (
@@ -358,6 +592,7 @@ class JarvisPanel(QWidget):
             self._drag_offset = (
                 event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             )
+            self._dragging = True
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: ANN001
@@ -366,8 +601,60 @@ class JarvisPanel(QWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: ANN001
-        self._drag_offset = None
+        if self._drag_offset is not None:
+            self._drag_offset = None
+            self._dragging = False
+            self._settle_after_drag()
         super().mouseReleaseEvent(event)
+
+    def _settle_after_drag(self) -> None:
+        """Snap where it landed, remember it, and switch to FREE.
+
+        Dragging a panel that is anchored to the right edge and watching it jump
+        back is the behaviour nobody wants; moving it *is* the request to stop
+        anchoring it. The mode change is persisted and announced so the settings
+        UI stops claiming the panel is still anchored.
+        """
+        work_areas = screens.work_areas()
+        if not work_areas:
+            return
+        config = self.settings.placement
+        rect = self.current_rect()
+        index = screen_for(rect, work_areas)
+        rect = apply_snap(rect, work_areas[index], self._target, config)
+        rect = ensure_visible(rect, work_areas)
+        self.setGeometry(*rect.as_tuple())
+
+        names = screens.screen_names()
+        self.settings.placement_mode = PlacementMode.FREE.value
+        self.settings.remember_free(rect, names[index] if index < len(names) else "")
+        self.placement_changed.emit()
+
+    # ── collapse ─────────────────────────────────────────────────────────────
+
+    def _toggle_collapse(self) -> None:
+        self._collapsed = not self._collapsed
+        for widget in self._collapsible:
+            widget.setVisible(not self._collapsed)
+        self._confirm_box.setVisible(
+            not self._collapsed and self._last_confirmation is not None
+        )
+        self._core.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._core.setMinimumWidth(0)
+        self._core.setMaximumWidth(16777215)
+        self._core.setFixedHeight(56 if self._collapsed else 180)
+        self._collapse_button.setText("▢" if self._collapsed else "—")
+        self._collapse_button.setToolTip("Agrandir" if self._collapsed else "Réduire")
+        self._debug_button.setVisible(not self._collapsed)
+        self._title.setVisible(not self._collapsed)
+        # Force the next density pass to do its work: collapsing and expanding
+        # change which widgets exist, not just how big they are.
+        self._density = ""
+        self.apply_placement()
+
+    @property
+    def collapsed(self) -> bool:
+        return self._collapsed
 
     def changeEvent(self, event) -> None:  # noqa: ANN001
         # A core nobody can see should not be smoothing a level towards
@@ -386,7 +673,6 @@ class JarvisPanel(QWidget):
     def _refresh_text(self) -> None:
         snapshot = self._snapshot
 
-        # ── state line ───────────────────────────────────────────────────────
         name = snapshot.display_state
         colour = _STATE_COLOURS.get(name, HEX["muted"])
         suffix = ""
@@ -401,7 +687,6 @@ class JarvisPanel(QWidget):
             f'<span style="color:{HEX["muted"]}">{name}{suffix}</span>'
         )
 
-        # ── the line under the core ──────────────────────────────────────────
         if snapshot.link is LinkState.ERROR:
             self._spoken.setText(snapshot.last_error or "Erreur.")
         elif not snapshot.connected:
@@ -410,7 +695,6 @@ class JarvisPanel(QWidget):
             spoken = snapshot.last_spoken_line
             self._spoken.setText(spoken if spoken else "Je vous écoute.")
 
-        # ── buttons ──────────────────────────────────────────────────────────
         self._mic_button.setChecked(snapshot.gate_open)
         self._mic_button.setEnabled(snapshot.connected)
         self._mic_button.setText("🎙  Micro ouvert" if snapshot.gate_open else "🎙  Micro")
@@ -428,6 +712,8 @@ class JarvisPanel(QWidget):
             if self._last_confirmation is not None:
                 self._last_confirmation = None
                 self._confirm_box.hide()
+                # Give the height the banner borrowed back.
+                self.apply_placement()
             return
 
         if cid != self._last_confirmation:
@@ -435,6 +721,11 @@ class JarvisPanel(QWidget):
             self._confirm_title.setText(snapshot.confirmation_title or "Confirmer ?")
             self._confirm_detail.setText(snapshot.confirmation_detail)
             self._confirm_box.setVisible(not self._collapsed)
+            # The banner needs room a strip does not have, so Qt will grow the
+            # window past the rectangle it was given. Re-asserting the placement
+            # keeps the *position* right while the height floats, and puts the
+            # height back when the banner goes away.
+            self.apply_placement()
 
         # The countdown is not decoration: an answer sent after the deadline is
         # discarded by the server, and a button that looks live and is not is
@@ -514,6 +805,4 @@ def _history_line(message) -> QLabel:  # noqa: ANN001
 
 
 def _escape(text: str) -> str:
-    return (
-        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    )
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

@@ -22,6 +22,7 @@ import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
+from .placement import Anchor, PlacementConfig, PlacementMode, Rect
 from .protocol import ServerEndpoint
 
 APP_DIR_NAME = "JarvisDesktop"
@@ -68,10 +69,35 @@ class Settings:
     mic_open_at_start: bool = False
 
     # ── the panel ────────────────────────────────────────────────────────────
-    #: Fraction of the available width. 0.20 is the brief; it is clamped to a
-    #: sane pixel range at layout time for very small or very wide screens.
+    #: Fraction of the reference width, for a LEFT/RIGHT anchor. 0.20 is the
+    #: brief; `placement` clamps it to a readable pixel range, because 20 % of a
+    #: 1366-wide laptop is not the same object as 20 % of an ultrawide.
     width_fraction: float = 0.20
-    dock: str = "right"          # "right" | "left"
+    #: Fraction of the reference height, for a TOP/BOTTOM anchor — where the
+    #: panel becomes a wide strip rather than a tall column.
+    height_fraction: float = 0.28
+
+    # ── where it goes ────────────────────────────────────────────────────────
+    #: "screen" | "window" | "follow" | "free". See `placement.PlacementMode`.
+    placement_mode: str = "screen"
+    #: "left" | "right" | "top" | "bottom".
+    anchor: str = "right"
+    margin: int = 8
+    snap_enabled: bool = True
+    snap_distance: int = 16
+    #: Topmost is a *visibility* setting and nothing else — it never implies
+    #: activation. See the note in `ui/panel.py`.
+    always_on_top: bool = True
+
+    #: The FREE position, remembered. `free_screen` is `QScreen.name()`, kept so
+    #: a position can be recognised as belonging to a monitor that is no longer
+    #: attached rather than silently restored into empty space.
+    free_x: int | None = None
+    free_y: int | None = None
+    free_w: int | None = None
+    free_h: int | None = None
+    free_screen: str = ""
+
     start_collapsed: bool = False
     notifications: bool = True
     #: Only ever shown when explicitly asked for. The debug window is a separate
@@ -83,6 +109,42 @@ class Settings:
     @property
     def endpoint(self) -> ServerEndpoint:
         return ServerEndpoint(host=self.host, port=self.port, use_tls=self.use_tls)
+
+    @property
+    def placement(self) -> PlacementConfig:
+        """The stored strings, turned into the enums the arithmetic uses.
+
+        Unknown values fall back rather than raise: a settings file hand-edited
+        to `"anchor": "diagonal"` must still produce a client that starts.
+        """
+        try:
+            mode = PlacementMode(self.placement_mode)
+        except ValueError:
+            mode = PlacementMode.SCREEN
+        try:
+            anchor = Anchor(self.anchor)
+        except ValueError:
+            anchor = Anchor.RIGHT
+        return PlacementConfig(
+            mode=mode,
+            anchor=anchor,
+            margin=max(0, int(self.margin)),
+            width_fraction=float(self.width_fraction),
+            height_fraction=float(self.height_fraction),
+            snap_enabled=bool(self.snap_enabled),
+            snap_distance=max(0, int(self.snap_distance)),
+        )
+
+    @property
+    def free_rect(self) -> Rect | None:
+        if None in (self.free_x, self.free_y, self.free_w, self.free_h):
+            return None
+        return Rect(int(self.free_x), int(self.free_y), int(self.free_w), int(self.free_h))  # type: ignore[arg-type]
+
+    def remember_free(self, rect: Rect, screen_name: str = "") -> None:
+        self.free_x, self.free_y = rect.x, rect.y
+        self.free_w, self.free_h = rect.w, rect.h
+        self.free_screen = screen_name
 
     @property
     def is_configured(self) -> bool:
@@ -103,6 +165,13 @@ def load() -> Settings:
             data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         data = {}
+
+    # `dock` was the only placement setting before there were four modes.
+    # Migrated rather than dropped: the filter below discards unknown keys, so
+    # without this an existing user's left-hand panel would silently jump to
+    # the right on the first run of the new version.
+    if "dock" in data and "anchor" not in data:
+        data["anchor"] = data["dock"]
 
     known = {f.name for f in fields(Settings)}
     filtered = {k: v for k, v in data.items() if k in known}
