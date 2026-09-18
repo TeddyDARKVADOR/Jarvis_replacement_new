@@ -82,6 +82,16 @@ class JarvisClient(
     @Volatile private var downlink: WebSocket? = null
     @Volatile private var uplink: WebSocket? = null
 
+    /**
+     * The routed-command channel, when the server has one.
+     *
+     * Null against an Oracle that predates device routing, and everything keeps
+     * working — see [Protocol.deviceChannel]. It is the *only* optional socket:
+     * a failure to open it is never reported as a disconnection, because
+     * identity is a refinement and the assistant itself is not.
+     */
+    @Volatile private var deviceChannel: WebSocket? = null
+
     @Volatile private var eventsOpen = false
     @Volatile private var downlinkOpen = false
     @Volatile private var announced = false
@@ -115,6 +125,19 @@ class JarvisClient(
             Request.Builder().url(ep.audioDownlink(session.bearer)).build(),
             SocketListener(gen, Channel.DOWNLINK),
         )
+
+        // Declare who we are, then open the channel that carries it. Both are
+        // best-effort: `registerDevice` swallows a 404 and returns false, and
+        // `onConnected` does not wait on this socket — so a server without
+        // device routing produces exactly the behaviour it did before.
+        if (auth.registerDevice(session.bearer)) {
+            deviceChannel = http.newWebSocket(
+                Request.Builder()
+                    .url(ep.deviceChannel(session.bearer, auth.deviceId))
+                    .build(),
+                SocketListener(gen, Channel.DEVICE),
+            )
+        }
     }
 
     fun disconnect() {
@@ -130,12 +153,37 @@ class JarvisClient(
             Request.Builder().url(auth.endpoint.micUplink(session.bearer)).build(),
             SocketListener(generation.get(), Channel.UPLINK),
         )
+        reportMic(true)
         return true
     }
 
     fun closeMic() {
         uplink?.close(NORMAL_CLOSE, "mic off")
         uplink = null
+        reportMic(false)
+    }
+
+    /**
+     * Tell the server the microphone opened or closed.
+     *
+     * A voice turn carries no text for the server to read an origin from, so
+     * the open microphone is what says who is about to speak. Without it,
+     * "ouvre le navigateur" spoken into this phone would reach Gemini with no
+     * origin at all and the server would have to ask which device it meant.
+     */
+    private fun reportMic(open: Boolean) {
+        val ws = deviceChannel ?: return
+        try {
+            ws.send(
+                JSONObject()
+                    .put("type", Protocol.CMD_MIC_STATE)
+                    .put("open", open)
+                    .toString()
+            )
+        } catch (_: Exception) {
+            // Best effort: losing the hint costs a clarifying question, never
+            // the microphone.
+        }
     }
 
     /**
@@ -156,12 +204,22 @@ class JarvisClient(
         return ws.send(frame.toByteString(0, length))
     }
 
-    /** A typed command, on the same channel the web dashboard uses. */
+    /**
+     * A typed command.
+     *
+     * Sent on the device channel when it is open, and on `/ws` otherwise. The
+     * difference is the origin: `/ws` hands the server a bare string and the
+     * token that authenticated the socket is discarded before the command
+     * reaches Gemini, so nothing downstream can tell this phone from the PC.
+     * On the device channel the origin travels with the command, which is what
+     * makes "ouvre le navigateur" open a browser HERE.
+     */
     fun sendText(text: String): Boolean {
-        val ws = events ?: return false
         val msg = JSONObject()
             .put("type", Protocol.CMD_COMMAND)
             .put("text", text)
+        deviceChannel?.let { if (it.send(msg.toString())) return true }
+        val ws = events ?: return false
         return ws.send(msg.toString())
     }
 
@@ -197,10 +255,10 @@ class JarvisClient(
 
     // ── internals ────────────────────────────────────────────────────────────
 
-    private enum class Channel { EVENTS, DOWNLINK, UPLINK }
+    private enum class Channel { EVENTS, DOWNLINK, UPLINK, DEVICE }
 
     private fun closeSockets(reason: String) {
-        listOf(uplink, downlink, events).forEach {
+        listOf(uplink, downlink, events, deviceChannel).forEach {
             try {
                 it?.close(NORMAL_CLOSE, reason)
             } catch (_: Exception) {
@@ -210,8 +268,48 @@ class JarvisClient(
         uplink = null
         downlink = null
         events = null
+        deviceChannel = null
         eventsOpen = false
         downlinkOpen = false
+    }
+
+    /**
+     * Answer a command the server routed to this phone.
+     *
+     * Today that answer is always a refusal, and that is correct rather than
+     * unfinished: [Protocol.CAPABILITIES] is empty, so the server should never
+     * send one. Replying instead of ignoring it means a misrouted command fails
+     * *visibly*, with a sentence JARVIS can say, rather than timing out forty-
+     * five seconds later with nothing to explain it.
+     *
+     * This is the second barrier the design asks for. When phone capabilities
+     * land, they get dispatched here — one `when` branch each.
+     */
+    private fun answerDeviceCommand(json: JSONObject) {
+        val ws = deviceChannel ?: return
+        val id = json.optString("id")
+        val action = json.optString("action")
+        val target = json.optString("target_device_id")
+
+        val result = when {
+            target.isNotBlank() && target != auth.deviceId ->
+                "Refusé : cette commande est destinée à $target, pas à ce téléphone."
+            action !in Protocol.CAPABILITIES ->
+                "Refusé : « $action » ne fait pas partie des capacités de ce téléphone."
+            else ->
+                "Refusé : « $action » n'est pas encore implémenté sur ce téléphone."
+        }
+        try {
+            ws.send(
+                JSONObject()
+                    .put("type", Protocol.CMD_DEVICE_RESULT)
+                    .put("id", id)
+                    .put("result", result)
+                    .toString()
+            )
+        } catch (_: Exception) {
+            // The socket went away mid-answer; the server's own timeout covers it.
+        }
     }
 
     private inner class SocketListener(
@@ -229,8 +327,11 @@ class JarvisClient(
             when (channel) {
                 Channel.EVENTS -> eventsOpen = true
                 Channel.DOWNLINK -> downlinkOpen = true
-                Channel.UPLINK -> Unit
+                // Neither gates CONNECTED. The microphone is not part of being
+                // connected, and the device channel is optional by design.
+                Channel.UPLINK, Channel.DEVICE -> Unit
             }
+            if (channel == Channel.DEVICE) reportMic(uplink != null)
             if (eventsOpen && downlinkOpen) listener.onConnected()
         }
 
@@ -246,6 +347,16 @@ class JarvisClient(
                     listener.onAudioFormat(
                         json.optInt("sample_rate", Protocol.DOWNLINK_SAMPLE_RATE_DEFAULT)
                     )
+                    return
+                }
+                // The device channel carries addressing, not conversation.
+                // Passing its traffic to `onEvent` would put "device_command"
+                // through the same path as a log line and the UI would have to
+                // learn to ignore it.
+                if (channel == Channel.DEVICE) {
+                    if (json.optString("type") == Protocol.EV_DEVICE_COMMAND) {
+                        answerDeviceCommand(json)
+                    }
                     return
                 }
                 listener.onEvent(json)
@@ -296,6 +407,16 @@ class JarvisClient(
                 // and let the next interaction reopen it.
                 uplink = null
                 Log.i(TAG, "uplink: $reason")
+                return
+            }
+            if (channel == Channel.DEVICE) {
+                // Neither is the device channel. It is optional by design — a
+                // server without device routing never opens it at all — so
+                // tearing the whole link down when it drops would turn a
+                // missing refinement into a disconnection. Commands fall back
+                // to `/ws` on their own; the cost is a clarifying question.
+                deviceChannel = null
+                Log.i(TAG, "device channel: $reason")
                 return
             }
             closeSockets("link lost")
