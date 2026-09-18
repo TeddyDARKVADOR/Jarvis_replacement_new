@@ -127,6 +127,132 @@ a billboard on an ultrawide.
 `—` collapses it to a 68 px strip showing only the core. The tray icon toggles
 it, and double-clicking the tray brings it back.
 
+---
+
+## Where it goes
+
+Four modes, configured under **Position de JARVIS** in the debug window and
+persisted like everything else.
+
+| Mode | Placed against | Anchors |
+|---|---|---|
+| **Screen** | the screen's *work area* | Left · Right · Top · Bottom |
+| **Window** | the foreground window, once | same four, plus "Réaligner" |
+| **Follow** | the foreground window, continuously | same four |
+| **Free** | nothing — dragged by hand, remembered | — |
+
+**All of the arithmetic is in `placement.py`, which imports neither Qt nor
+Win32.** Rectangles in, a rectangle out. That is what makes 26 of the 43
+selftests possible: placement defects live on the third monitor at 150 %
+scaling behind a maximised editor, and synthetic rectangles reproduce that in a
+millisecond where a real desktop cannot reproduce it at all.
+
+### The work area, not the screen
+
+`QScreen.availableGeometry()` already excludes the taskbar wherever the user
+keeps it and whether or not it auto-hides. Subtracting a taskbar by hand is how
+a panel ends up underneath one on the machine where it lives on the left.
+
+### Aligning against a window, in three attempts
+
+1. the requested side, if the panel fits without leaving the screen;
+2. **the opposite side** — a panel asked to sit right of a window that is itself
+   pinned to the right edge belongs on its left, not half off the desktop;
+3. the screen edge on the requested side, accepting an overlap.
+
+Step 3 is a deliberate concession: against a maximised window there is no
+non-overlapping answer, and refusing to place the panel would be worse than
+covering 300 px of an editor that scrolls.
+
+### Following, without ever stealing focus
+
+`GetForegroundWindow()` polled at 4 Hz, not `SetWinEventHook`. The hook is the
+"correct" API and it needs a C callback invoked on someone else's UI thread; a
+Python callback there can take another process's window manager down with it.
+One syscall four times a second costs less than a frame of the core animation.
+
+Three things keep it stable:
+
+* **Our own handles are excluded.** Otherwise clicking the panel makes the panel
+  the foreground window, it aligns against itself, which moves it, which it
+  aligns against again — a drift into the corner that reads as the panel
+  wandering off.
+* **A new window must hold still for 250 ms.** Alt-tabbing through six windows
+  should not drag the panel across the desktop six times.
+* **Movements under 8 px are ignored.** Physical-to-logical conversion divides
+  by a scale factor, so an unmoved window can report a different coordinate
+  between two reads, and the panel would shiver.
+
+Minimised windows are excluded, and that is not an optimisation: a minimised
+window's rectangle is around (−32000, −32000).
+
+### Physical pixels and logical pixels
+
+Windows reports physical pixels; Qt lays out in logical ones. `ui/screens.py` is
+the only file that sees both:
+
+```
+logical = screen.geometry().topLeft()
+        + (physical − monitor.physicalTopLeft()) / scale
+```
+
+Dividing the raw physical coordinate by the scale is the version that works on
+one monitor and fails on two: a 1920-wide primary at 125 % is 1536 logical, so a
+second monitor physically at x=1920 starts at x=1536 for Qt. Monitors are
+matched by device name (`\\.\DISPLAY1`), which `GetMonitorInfoExW` and
+`QScreen.name()` spell identically.
+
+### Snap, and a position that outlives its monitor
+
+Snapping moves the panel and never resizes it — a window that changes size when
+dragged near an edge reads as a bug however it is explained. Both of the panel's
+edges are candidates on each axis, against both the bare screen edges and the
+edges inset by the margin.
+
+A saved FREE position outlives the monitor it was saved on: undock, change a
+resolution, unplug a screen, and the stored rectangle points at empty space.
+`ensure_visible` corrects a rectangle that no longer has at least 80×80 px on
+any real work area, because Windows would place a window there quite happily and
+the user would have no way to get it back. Screen additions, removals and DPI
+changes all re-run it immediately rather than at the next restart.
+
+### Responsive, without guessing at resolutions
+
+The content reflows off the size it actually has, in three densities:
+
+| | |
+|---|---|
+| **full** | core, last line, state, history, input |
+| **compact** | history dropped, core halved |
+| **strip** | core *beside* the text, no history — a wide short panel |
+
+The direction of one `QBoxLayout` is flipped rather than the widget tree
+rebuilt: the core is a single widget that cannot exist in two layouts, and
+recreating it on every resize would restart its animation.
+
+Two ordering rules here were each found by a test rather than by reasoning:
+
+* **The density is applied before `setGeometry`, not after.** Qt will not shrink
+  a window below its layout's minimum, so a panel still laid out as a tall
+  column cannot be given a 241 px strip — the call silently clamps it and the
+  strip never happens.
+* **The density is decided on the unmodified rectangle.** A pending
+  confirmation makes the panel grow to fit its banner; measuring the density
+  *after* that growth makes the two feed each other, and a strip that asked for
+  241 px settles at 421.
+
+`resizeEvent` deliberately does not recompute anything. This window is frameless
+with no resize grip, so every resize is either our own or Qt growing the window
+to fit its content, and re-deciding on the latter is the runaway above.
+
+### Topmost is visibility, never activation
+
+`setGeometry` on an already-visible window does not activate it, and nothing
+here calls `raise_()`, `activateWindow()` or `SetForegroundWindow` on its own
+initiative. Toggling the setting re-applies the flag and re-shows the window,
+which `WA_ShowWithoutActivating` keeps silent — and the geometry is restored
+afterwards, because re-showing can nudge it on some Windows builds.
+
 ### The eight states
 
 `OFFLINE · CONNECTING · CONNECTED · LISTENING · THINKING · SPEAKING ·

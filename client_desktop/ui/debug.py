@@ -53,6 +53,10 @@ class DebugWindow(QWidget):
     settings_changed = pyqtSignal()
     wake_word_install_requested = pyqtSignal()
     autostart_toggled = pyqtSignal(bool)
+    #: A placement control was touched; the settings object is already updated.
+    placement_changed = pyqtSignal()
+    #: "Align with whatever is in front right now."
+    realign_requested = pyqtSignal()
 
     def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -68,6 +72,7 @@ class DebugWindow(QWidget):
         root.setSpacing(10)
 
         root.addWidget(self._build_connection())
+        root.addWidget(self._build_placement())
         root.addWidget(self._build_counters())
         root.addWidget(self._build_audio())
         root.addWidget(self._build_log(), 1)
@@ -128,6 +133,103 @@ class DebugWindow(QWidget):
         self._link_label = QLabel("—")
         form.addRow("État", self._link_label)
         return box
+
+    def _build_placement(self) -> QGroupBox:
+        """Position de JARVIS.
+
+        Every control writes straight through to the settings object and emits;
+        there is no Save button here, unlike the connection section. The reason
+        is the feedback loop: choosing "Bottom" and seeing the panel move is the
+        only way to know it is what you wanted, and a Save button between the
+        choice and the result makes that a two-step guess.
+        """
+        box = QGroupBox("Position de JARVIS")
+        form = QFormLayout(box)
+        form.setSpacing(6)
+
+        self._mode = QComboBox()
+        for label, value in (
+            ("Ancré à l'écran", "screen"),
+            ("Aligné sur une fenêtre", "window"),
+            ("Suivre la fenêtre active", "follow"),
+            ("Libre", "free"),
+        ):
+            self._mode.addItem(label, value)
+        form.addRow("Mode", self._mode)
+
+        self._anchor = QComboBox()
+        for label, value in (
+            ("Droite", "right"), ("Gauche", "left"),
+            ("Haut", "top"), ("Bas", "bottom"),
+        ):
+            self._anchor.addItem(label, value)
+        form.addRow("Ancrage", self._anchor)
+
+        self._margin = QSpinBox()
+        self._margin.setRange(0, 200)
+        self._margin.setSuffix(" px")
+        form.addRow("Marge", self._margin)
+
+        self._snap = QCheckBox("Magnétisme aux bords")
+        form.addRow("", self._snap)
+
+        self._snap_distance = QSpinBox()
+        self._snap_distance.setRange(1, 200)
+        self._snap_distance.setSuffix(" px")
+        form.addRow("Distance snap", self._snap_distance)
+
+        self._topmost = QCheckBox("Toujours visible au premier plan")
+        self._topmost.setToolTip(
+            "Visibilité uniquement : JARVIS ne prend jamais le focus."
+        )
+        form.addRow("", self._topmost)
+
+        realign = QPushButton("Réaligner sur la fenêtre active")
+        realign.clicked.connect(self.realign_requested.emit)
+        form.addRow("", realign)
+
+        self.refresh_placement_controls()
+        for widget in (self._mode, self._anchor):
+            widget.currentIndexChanged.connect(self._placement_edited)
+        for widget in (self._margin, self._snap_distance):
+            widget.valueChanged.connect(self._placement_edited)
+        for widget in (self._snap, self._topmost):
+            widget.toggled.connect(self._placement_edited)
+        return box
+
+    def refresh_placement_controls(self) -> None:
+        """Re-read the settings into the controls without firing them.
+
+        Needed because the panel can change the mode behind this window's back:
+        dragging it switches to FREE, and a combo box still reading "Ancré à
+        l'écran" would be telling the user something false about their own
+        panel.
+        """
+        controls = (
+            self._mode, self._anchor, self._margin,
+            self._snap_distance, self._snap, self._topmost,
+        )
+        for widget in controls:
+            widget.blockSignals(True)
+        try:
+            self._select(self._mode, self._settings.placement_mode)
+            self._select(self._anchor, self._settings.anchor)
+            self._margin.setValue(int(self._settings.margin))
+            self._snap_distance.setValue(int(self._settings.snap_distance))
+            self._snap.setChecked(bool(self._settings.snap_enabled))
+            self._topmost.setChecked(bool(self._settings.always_on_top))
+        finally:
+            for widget in controls:
+                widget.blockSignals(False)
+
+    def _placement_edited(self) -> None:
+        self._settings.placement_mode = self._mode.currentData()
+        self._settings.anchor = self._anchor.currentData()
+        self._settings.margin = self._margin.value()
+        self._settings.snap_distance = self._snap_distance.value()
+        self._settings.snap_enabled = self._snap.isChecked()
+        self._settings.always_on_top = self._topmost.isChecked()
+        self.placement_changed.emit()
 
     def _build_counters(self) -> QGroupBox:
         box = QGroupBox("TX / RX")
