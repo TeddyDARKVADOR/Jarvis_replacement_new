@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+#
+# preprod — le point d'entrée du laboratoire.
+#
+#     ./preprod deps            vérifie la chaîne d'outils, ne touche à rien
+#     ./preprod build           compile l'APK debug
+#     ./preprod up              serveur + émulateur, laissés en marche
+#     ./preprod smoke           installe et vérifie que ça démarre
+#     ./preprod notifications   les quatre priorités, dédup, replay
+#     ./preprod network         perte réseau et reconnexion
+#     ./preprod ui              navigation et états
+#     ./preprod audio           fixtures déterministes ; le reste est PHYSICAL_ONLY
+#     ./preprod all             tout, dans l'ordre, puis rapport
+#     ./preprod down            arrête le serveur et l'émulateur
+#     ./preprod report          régénère le rapport depuis les résultats existants
+#
+# Chaque campagne repart d'un reports/latest vide : un rapport qui mélange les
+# résultats de deux exécutions est un rapport qui ment sur au moins l'une des
+# deux.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$ROOT/config/lab.env"
+REPO="$(cd "$ROOT/.." && pwd)"
+
+ADB="$ROOT/tools/adb.sh"
+SERVER="$ROOT/tools/server.sh"
+LATEST="$ROOT/reports/latest"
+
+hr() { printf '\n══ %s %s\n' "$1" "$(printf '═%.0s' $(seq 1 $((66 - ${#1}))))"; }
+
+fresh_reports() { rm -rf "$LATEST"; mkdir -p "$LATEST"; }
+
+# ── dépendances ──────────────────────────────────────────────────────────────
+
+cmd_deps() {
+    hr "dependances"
+    local bad=0
+    check() {
+        local label="$1" path="$2"
+        if [ -e "$path" ]; then printf '  OK      %-26s %s\n' "$label" "$path"
+        else printf '  MANQUE  %-26s %s\n' "$label" "$path"; bad=1; fi
+    }
+    check "JDK 17+"        "$LAB_JDK/bin/java.exe"
+    check "Android SDK"    "$LAB_SDK"
+    check "platform-tools" "$LAB_SDK/platform-tools/adb.exe"
+    check "emulator"       "$LAB_SDK/emulator/emulator.exe"
+    check "cmdline-tools"  "$LAB_SDK/cmdline-tools/23.0/bin/avdmanager.bat"
+    check "image systeme"  "$LAB_SDK/system-images/android-36/google_apis_playstore/x86_64"
+    check "AVD $LAB_AVD"   "$LAB_AVD_HOME/$LAB_AVD.avd"
+    check "gradlew"        "$REPO/client-android/gradlew"
+
+    printf '  %-34s %s\n' "python" "$(python --version 2>&1)"
+    printf '  %-34s mode %s\n' "serveur MARK LIII" "$("$SERVER" mode)"
+    [ "$("$SERVER" mode)" = "lab" ] && printf '          (pas de config/api_keys.json : les tests qui\n           dependent de Gemini se declareront SKIP)\n'
+    return $bad
+}
+
+# ── build ────────────────────────────────────────────────────────────────────
+
+cmd_build() {
+    hr "build APK debug"
+    cd "$REPO/client-android"
+    JAVA_HOME="${LAB_JDK//\//\\}" ANDROID_HOME="${LAB_SDK//\//\\}" \
+        ./gradlew :app:assembleDebug --console=plain
+    ls -la app/build/outputs/apk/debug/app-debug.apk
+}
+
+# ── infrastructure ───────────────────────────────────────────────────────────
+
+cmd_up() {
+    hr "serveur"
+    "$SERVER" start
+    hr "emulateur"
+    "$ROOT/emulator/start.sh" "$@"
+}
+
+cmd_down() {
+    hr "arret"
+    "$SERVER" stop || true
+    "$ROOT/emulator/stop.sh" || true
+}
+
+# ── suites ───────────────────────────────────────────────────────────────────
+
+run_suite() {
+    local name="$1" script="$2"
+    if [ ! -x "$script" ] && [ ! -f "$script" ]; then
+        printf '\n  (suite %s absente: %s)\n' "$name" "$script"
+        return 0
+    fi
+    bash "$script" || true          # un FAIL est un résultat, pas une panne du runner
+}
+
+cmd_report() {
+    python "$ROOT/tools/report.py" "$("$SERVER" mode 2>/dev/null || echo '?')"
+}
+
+case "${1:-all}" in
+
+deps)   cmd_deps ;;
+build)  cmd_build ;;
+up)     shift; cmd_up "$@" ;;
+down)   cmd_down ;;
+report) cmd_report ;;
+
+smoke)
+    fresh_reports
+    run_suite smoke "$ROOT/tests/smoke/test_launch.sh"
+    cmd_report
+    ;;
+
+notifications)
+    fresh_reports
+    run_suite notifications "$ROOT/tests/notifications/test_notifications.sh"
+    cmd_report
+    ;;
+
+network)
+    fresh_reports
+    run_suite network "$ROOT/tests/network/test_reconnect.sh"
+    cmd_report
+    ;;
+
+ui)
+    fresh_reports
+    run_suite ui "$ROOT/tests/ui/test_states.sh"
+    cmd_report
+    ;;
+
+audio)
+    fresh_reports
+    run_suite audio "$ROOT/tests/audio/test_audio.sh"
+    cmd_report
+    ;;
+
+all)
+    fresh_reports
+    cmd_deps || { echo "  Dependances manquantes — corrige-les d'abord." >&2; exit 1; }
+    cmd_up
+    run_suite smoke         "$ROOT/tests/smoke/test_launch.sh"
+    run_suite notifications "$ROOT/tests/notifications/test_notifications.sh"
+    run_suite network       "$ROOT/tests/network/test_reconnect.sh"
+    run_suite ui            "$ROOT/tests/ui/test_states.sh"
+    run_suite audio         "$ROOT/tests/audio/test_audio.sh"
+    hr "rapport"
+    cmd_report
+    ;;
+
+clean)
+    rm -rf "$ROOT/reports/latest"
+    echo "  reports/latest efface."
+    ;;
+
+*)
+    sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'
+    exit 1
+    ;;
+esac

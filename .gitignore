@@ -63,3 +63,11 @@ desktop.ini
 logs/
 downloads/
 screenshots/
+
+# ── jarvis-preprod : ce qu'une campagne produit ───────────────────────────────
+#
+# reports/latest est effacé au début de chaque campagne (fresh_reports), et
+# server.pid désigne un processus qui n'existe plus sur une autre machine.
+# Le laboratoire est du source ; ses verdicts, ses captures et ses logcat sont
+# des observations datées, qui se rejouent au lieu de se versionner.
+jarvis-preprod/reports/
