@@ -45,6 +45,17 @@ data class ServerEndpoint(
     fun micUplink(bearer: String) = "$wsBase/ws/phone-audio?token=${bearer.enc()}"
     fun audioDownlink(bearer: String) = "$wsBase/ws/phone-out?token=${bearer.enc()}"
 
+    // ── device identity and routing (server/device_api.py) ───────────────────
+    //
+    // Two routes added beside the five above, never replacing them. A server
+    // that predates them answers 404, the device channel never opens, and the
+    // app behaves exactly as it did before — which is how this ships without
+    // having to update both ends at the same moment.
+    val deviceRegister: String get() = "$httpBase/api/device-register"
+
+    fun deviceChannel(bearer: String, deviceId: String) =
+        "$wsBase/ws/device?token=${bearer.enc()}&device_id=${deviceId.enc()}"
+
     val isUsable: Boolean get() = host.isNotBlank() && port in 1..65535
 
     private fun String.enc(): String = URLEncoder.encode(this, "UTF-8")
@@ -127,4 +138,31 @@ object Protocol {
 
     /** WebSocket close code the server uses to refuse a bad token. */
     const val CLOSE_UNAUTHORISED = 4001
+
+    // ── /ws/device ───────────────────────────────────────────────────────────
+    //
+    // Why commands go here when it is open: `/ws` hands the server a bare
+    // string. The token that authenticated the socket is discarded in
+    // dashboard/server.py before the command reaches Gemini, so by then nothing
+    // says which machine spoke — and "ouvre le navigateur" from this phone is
+    // indistinguishable from the same words typed on the PC. On this channel
+    // the origin travels with the command, which is what lets the server run it
+    // HERE rather than asking.
+
+    /** This device's type, as the server's DeviceType enum spells it. */
+    const val DEVICE_TYPE = "android"
+
+    /**
+     * Capabilities this client can actually execute: none, today.
+     *
+     * Deliberately empty rather than aspirational. A capability is a promise
+     * the server routes on — declaring `phone.camera` before it exists would
+     * send camera commands to a client that can only refuse them, on a device
+     * the user deliberately chose. They get added one at a time, as they land.
+     */
+    val CAPABILITIES: List<String> = emptyList()
+
+    const val EV_DEVICE_COMMAND = "device_command"
+    const val CMD_DEVICE_RESULT = "device_result"
+    const val CMD_MIC_STATE = "mic"
 }

@@ -1,12 +1,16 @@
 package com.jarvis.auth
 
 import android.content.Context
+import android.os.Build
+import com.jarvis.net.Protocol
 import com.jarvis.net.ServerEndpoint
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
@@ -60,6 +64,29 @@ class AuthManager(context: Context) {
     var deviceToken: String
         get() = prefs.getString(KEY_DEVICE, "") ?: ""
         set(value) = prefs.edit().putString(KEY_DEVICE, value.trim()).apply()
+
+    /**
+     * This phone's logical id, minted once and then kept for good.
+     *
+     * Not ANDROID_ID, not the IMEI, not the Tailscale address. A random id
+     * generated here identifies the device to *this* server and to nothing
+     * else, survives a change of network, and is not a hardware identifier the
+     * user never agreed to hand over.
+     *
+     * It must be stable: an id that changed per launch would register a new
+     * device at every start and leave the server's registry full of phones that
+     * all claim to be connected.
+     */
+    val deviceId: String
+        get() = prefs.getString(KEY_DEVICE_ID, null) ?: run {
+            val minted = "android-" + UUID.randomUUID().toString().take(12)
+            prefs.edit().putString(KEY_DEVICE_ID, minted).apply()
+            minted
+        }
+
+    /** What a question to the user calls this phone. Never used for routing. */
+    val deviceName: String
+        get() = (Build.MODEL ?: "").ifBlank { "Téléphone" }
 
     val isConfigured: Boolean
         get() = endpoint.isUsable && deviceToken.isNotBlank()
@@ -135,6 +162,44 @@ class AuthManager(context: Context) {
             }
     }
 
+    /**
+     * Tell the server what this device is and what it can do.
+     *
+     * Blocking; call from a background thread, right after [login].
+     *
+     * Returns false — and never throws — when the server has no such route.
+     * That is not an error: it is an Oracle that predates device routing, and
+     * the app must go on working against it unchanged. A failure here must
+     * never cost the phone its connection, because identity is a refinement and
+     * the assistant itself is not.
+     */
+    fun registerDevice(bearer: String): Boolean {
+        val ep = endpoint
+        if (!ep.isUsable) return false
+        return try {
+            val payload = JSONObject()
+                .put("device_id", deviceId)
+                .put("device_type", Protocol.DEVICE_TYPE)
+                .put("display_name", deviceName)
+                .put("capabilities", JSONArray(Protocol.CAPABILITIES))
+                .put("protocol_version", 1)
+                .toString()
+                .toRequestBody("application/json".toMediaType())
+
+            http.newCall(
+                Request.Builder()
+                    .url(ep.deviceRegister)
+                    .addHeader("Authorization", "Bearer $bearer")
+                    .post(payload)
+                    .build()
+            ).execute().use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun forgetSession() {
         session = null
     }
@@ -147,6 +212,7 @@ class AuthManager(context: Context) {
         const val KEY_PORT = "port"
         const val KEY_TLS = "tls"
         const val KEY_DEVICE = "device_token"
+        const val KEY_DEVICE_ID = "device_id"
         const val KEY_WAKEWORD = "wake_word_enabled"
         const val KEY_ANIMATIONS = "animations_enabled"
     }
