@@ -76,7 +76,7 @@ import time
 # log the file and skip it, so the tool is never offered to a model that has no
 # body to drive. The alternative, a guarded import and an inert tool, would
 # advertise a capability that cannot be cashed. See core/plugin_loader.py.
-from presence import Expression, Gaze, Gesture, Posture, catalogue, parse
+from presence import Expression, Gaze, Gesture, Intent, Posture, catalogue, parse
 from presence.affect import SocialMode
 
 # ── the wire ─────────────────────────────────────────────────────────────────
@@ -112,8 +112,8 @@ FRESH_S = 25.0
 #: hallucinated one that happens to collide with a future field costs an
 #: afternoon. `presence.director._coerce` reads exactly these.
 _ALLOWED = (
-    "expression", "intensity", "gesture", "gaze", "posture", "reason",
-    "valence", "arousal", "attention", "confidence", "urgency",
+    "intent", "expression", "intensity", "gesture", "head", "gaze", "posture",
+    "reason", "valence", "arousal", "attention", "confidence", "urgency",
     "socialMode", "social_mode", "emotion",
 )
 
@@ -121,7 +121,8 @@ _ALLOWED = (
 #: line, not a second channel for the model to talk on.
 _MAX_REASON = 200
 
-_WORDS = ("expression", "gesture", "gaze", "posture", "socialMode", "social_mode")
+_WORDS = ("intent", "expression", "gesture", "head", "gaze", "posture",
+          "socialMode", "social_mode")
 
 
 def _number(value) -> float | None:  # noqa: ANN001
@@ -284,6 +285,7 @@ def _vocabulary(enum) -> list[str]:  # noqa: ANN001
 
 
 _GESTURES = _installed_gestures()
+_INTENTS = _vocabulary(Intent)
 _EXPRESSIONS = _vocabulary(Expression)
 _GAZES = _vocabulary(Gaze)
 _POSTURES = _vocabulary(Posture)
@@ -340,19 +342,27 @@ reaction compte autant que ta reponse : une mauvaise nouvelle, une plaisanterie,
 un doute, une action irreversible. N'annonce jamais cet appel a voix haute et ne
 le commente pas — il ne s'entend pas, il se voit.
 
-DEUX FACONS DE L'APPELER, au choix.
+TROIS FACONS DE L'APPELER, de la plus simple a la plus precise.
 
-1. DECRIRE TON ETAT (preferee). Donne les axes ; ton visage, ton regard, ta
-   posture et le rythme de tes gestes en decoulent tout seuls. C'est plus riche
-   qu'un nom de visage, et plus proche de ce que tu viens deja de calculer pour
-   ecrire ta phrase.
+1. DIRE POURQUOI (preferee, et le plus souvent la seule utile). Un mot : ce que
+   tu es en train de faire. Le visage, l'intensite, le regard, la posture et le
+   mouvement en decoulent tout seuls.
+       intent "investigate"
+
+   C'est la forme la plus proche de ce que tu sais deja : tu sais que tu es en
+   train d'examiner un resultat bien avant de savoir a quoi ca ressemble. Tu
+   peux raffiner en ajoutant n'importe quel champ des formes 2 et 3 — ce que tu
+   precises gagne, le reste vient de l'intention.
+       intent "investigate", gaze "user"   (examiner sans le quitter des yeux)
+
+2. DECRIRE TON ETAT. Donne les axes toi-meme, quand aucune intention ne colle.
        valence 0.45, arousal 0.25, attention 0.9, confidence 0.75
 
-2. NOMMER UN VISAGE, quand tu veux exactement celui-la et aucun autre.
+3. NOMMER UN VISAGE, quand tu veux exactement celui-la et aucun autre.
        expression "serious", intensity 0.8
 
-Le geste se declare dans les deux cas : un etat faconne un mouvement, il ne le
-designe pas.
+Le mouvement se declare dans les trois formes, et l'intention en propose deja
+un : un etat faconne un mouvement, il ne le designe pas.
 
 Cet outil est facultatif et doit le rester. Sans appel, ton corps suit ton etat
 machine — ecoute, reflexion, parole — ce qui est correct la plupart du temps.
@@ -367,7 +377,17 @@ PLUGIN = {
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            # ── forme 1 : l'etat interieur ───────────────────────────────────
+            # ── forme 1 : pourquoi ───────────────────────────────────────────
+            "intent": {
+                "type": "STRING",
+                "enum": _INTENTS,
+                "description": (
+                    "Ce que tu es en train de faire. Le reste en decoule : "
+                    "visage, intensite, regard, posture, rythme. C'est la "
+                    "facon la plus courte et la plus sure de t'exprimer."
+                ),
+            },
+            # ── forme 2 : l'etat interieur ───────────────────────────────────
             "valence": {
                 "type": "NUMBER",
                 "description": "-1.0 desagreable -> +1.0 agreable.",
@@ -397,7 +417,7 @@ PLUGIN = {
                     "expressif, il est faux."
                 ),
             },
-            # ── forme 2 : le visage nomme ────────────────────────────────────
+            # ── forme 3 : le visage nomme ────────────────────────────────────
             "expression": {
                 "type": "STRING",
                 "enum": _EXPRESSIONS,
@@ -410,7 +430,7 @@ PLUGIN = {
                 "type": "NUMBER",
                 "description": "0.0 a 1.0. Accompagne `expression`. Defaut 0.5.",
             },
-            # ── les deux formes ──────────────────────────────────────────────
+            # ── les trois formes ─────────────────────────────────────────────
             "gesture": {
                 "type": "STRING",
                 "enum": _GESTURES,
@@ -496,13 +516,17 @@ def _log(line: str) -> None:
 def _summary(raw: dict) -> str:
     """The directive in one line, in the form it was asked for.
 
-    Prints the axes when JARVIS described a state and the word when he named a
-    face, because which of the two forms he used is the first thing worth
-    knowing — a model reaching for `expression` every turn is the failure mode
-    the affect form exists to avoid.
+    Which of the three forms he used is the first thing worth knowing, so the
+    line leads with it: an intent as `-> word`, a named face as `word 0.42`,
+    a described state as its axes. A model reaching for `expression` every turn
+    is the failure mode the other two forms exist to avoid, and this line is
+    where that shows up first.
     """
+    intent = str(raw.get("intent", "")).strip()
     expression = str(raw.get("expression", "")).strip()
-    if expression:
+    if intent:
+        line = f"-> {intent}"
+    elif expression:
         line = f"{expression} {float(raw.get('intensity', 0.5)):.2f}"
     else:
         axes = [f"{key[:3]} {float(raw[key]):+.2f}"

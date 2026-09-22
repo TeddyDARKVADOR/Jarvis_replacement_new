@@ -54,20 +54,24 @@ from __future__ import annotations
 import json
 import re
 import time
+from dataclasses import replace
 
 from .affect import (
     Affect,
     SocialMode,
+    affect_for_intent,
     expression_for,
     gaze_for,
+    gaze_for_intent,
     gaze_hold_for,
+    gesture_for_intent,
     intensity_for,
     posture_for,
     stillness_for,
     tempo_for,
 )
 from .catalog import Catalogue, catalogue
-from .model import Directive, Expression, Gaze, Gesture, Performance, Posture
+from .model import Directive, Expression, Gaze, Gesture, Intent, Performance, Posture
 from .vocabulary import face
 
 #: How long a directive from JARVIS outranks the reflex. Roughly the length of
@@ -268,14 +272,19 @@ class Director:
         # ── 3. l'intention nommee ────────────────────────────────────────────
         intent = self._intent
         requested: Gesture | None = None
+        # Le mot choisi, mis de cote SOUS la garde de peremption. `intent` est
+        # lu au-dessus d'elle, donc s'en servir directement ferait survivre le
+        # mot a l'intention qu'il nomme — un « il a voulu investigate » affiche
+        # une minute apres que l'intention a expire.
+        chosen_intent = None
         if intent is not None and (now - self._intent_at) <= INTENT_TTL_S:
+            chosen_intent = getattr(intent, "intent", None)
             # Une intention qui ne portait QUE de l'affect a deja tout dit a
             # l'etape 2 ; la reecraser avec ses defauts (neutral, 0.5, idle)
             # effacerait precisement ce qu'elle exprimait.
             if not (derived and getattr(intent, "affect", None) is not None):
                 expression = intent.expression
                 intensity = _clamp(intent.intensity)
-                gaze = intent.gaze
                 posture = intent.posture or _POSTURE_OF.get(expression, posture)
                 reason = intent.reason or f"intent:{expression.value}"
             elif intent.reason:
@@ -283,6 +292,20 @@ class Director:
             # Le geste vient toujours de l'intention : l'affect faconne, il ne
             # designe pas. « amuse » ne veut pas dire « hausse un sourcil ».
             gesture = intent.gesture
+            # Le regard aussi, QUAND il a ete nomme — et c'est pour ca que
+            # `Directive.gaze` vaut None quand il ne l'a pas ete.
+            #
+            # Il etait auparavant lu dans le bloc ci-dessus, donc ignore des
+            # qu'un affect accompagnait la directive : JARVIS ecrivait
+            # `"gaze": "down"` et obtenait `user`. Un champ declare, parse,
+            # transporte, et jete a l'avant-derniere etape — la meme panne que
+            # `rootRy`, au meme endroit de la chaine.
+            #
+            # Et c'est la seule facon d'atteindre `Gaze.SCREEN` : `gaze_for()`
+            # derive une direction depuis l'attention, et l'attention ne sait
+            # pas qu'il existe un ecran.
+            if intent.gaze is not None:
+                gaze = intent.gaze
 
         # ── 4. ce qui prime sur tout ─────────────────────────────────────────
         if word == "SLEEPING":
@@ -312,6 +335,12 @@ class Director:
             gaze_hold_s=gaze_hold_for(affect),
             affect=affect,
             requested_gesture=requested,
+            # Le mot que JARVIS a choisi, porte jusqu'au bout. Il n'influence
+            # plus rien a ce stade — tout ce qu'il impliquait est deja dans les
+            # champs ci-dessus — et c'est exactement pour ca qu'il doit
+            # traverser : une capacite qui ne se voit pas au bout de la chaine
+            # est une capacite qu'on croit avoir.
+            intent=chosen_intent,
             reason=reason,
         )
 
@@ -444,6 +473,33 @@ def _affect_from(raw: dict) -> Affect | None:
     )
 
 
+def _affect_axes(raw: dict) -> tuple[str, ...]:
+    """Quels axes JARVIS a ECRITS lui-meme, par opposition a ceux qu'on a comblés.
+
+    `_affect_from` rend un `Affect` complet en bouchant les trous avec la base
+    neutre, ce qui est exactement ce qu'il faut quand la directive ne porte que
+    de l'affect. Mais a cote d'une intention, un trou comblé et une valeur
+    choisie ne se distinguent plus — et l'un doit ceder a l'intention pendant
+    que l'autre doit la corriger.
+
+    D'ou cette deuxieme lecture, qui ne rend que les noms. Elle relit `raw`
+    plutot que de comparer l'affect a la base : un modele qui ecrit exactement
+    la valeur de base l'a quand meme ecrite, et elle doit compter.
+    """
+    emotion = raw.get("emotion")
+    inner = emotion if isinstance(emotion, dict) else {}
+    names: list[str] = []
+    for axis in ("valence", "arousal"):
+        if _number(inner, axis) is not None or _number(raw, axis) is not None:
+            names.append(axis)
+    for axis in ("attention", "confidence", "urgency"):
+        if _number(raw, axis) is not None:
+            names.append(axis)
+    if raw.get("socialMode", raw.get("social_mode")) is not None:
+        names.append("social_mode")
+    return tuple(names)
+
+
 def _coerce(raw: dict) -> Directive | None:
     def word(key: str, enum, default):  # noqa: ANN001
         value = raw.get(key)
@@ -455,8 +511,50 @@ def _coerce(raw: dict) -> Directive | None:
             return default
 
     expression = word("expression", Expression, None)
-    gesture = word("gesture", Gesture, Gesture.IDLE)
     affect = _affect_from(raw)
+
+    # `head` est accepte comme synonyme de `gesture`. Le vocabulaire reel est
+    # `Gesture`, et il n'y a qu'un champ — mais un modele a qui on a decrit un
+    # corps dont seule la tete bouge ecrit naturellement "head", et un mot qui
+    # ne fait rien est indiscernable d'un moteur casse. Meme raison que
+    # `social_mode` a cote de `socialMode` : le parseur est indulgent, le
+    # vocabulaire ne l'est pas.
+    gesture = word("gesture", Gesture, None)
+    if gesture is None:
+        gesture = word("head", Gesture, None)
+    gesture_given = gesture is not None
+
+    # ── l'intention : pourquoi, avant comment ────────────────────────────────
+    #
+    # Resolue ICI et pas dans le directeur, pour une raison qui se voit dans le
+    # diff : la directive qui sort d'ici porte deja les CONSEQUENCES de
+    # l'intention, donc `resolve()` n'a pas une ligne a changer et les trois
+    # couches (reflexe, affect, intention) gardent exactement leur ordre.
+    #
+    # L'intention pose la base, l'explicite raffine. C'est l'ordre utile : un
+    # modele qui ecrit {"intent": "investigate", "gaze": "user"} veut examiner
+    # quelque chose SANS quitter l'utilisateur des yeux, et lui refuser cette
+    # nuance reviendrait a n'avoir que seize comportements possibles.
+    intent = word("intent", Intent, None)
+    if intent is not None:
+        base = affect_for_intent(intent, affect)
+        if affect is not None:
+            # Les axes que JARVIS a cites lui-meme gagnent, un par un. `_affect_from`
+            # a deja comble les absents avec la base neutre, donc on ne peut pas
+            # les distinguer ici — c'est `_affect_axes` qui dit lesquels etaient
+            # ecrits.
+            given = _affect_axes(raw)
+            base = replace(base, **{name: getattr(affect, name) for name in given})
+        affect = base
+        if not gesture_given:
+            gesture = gesture_for_intent(intent)
+        if raw.get("gaze") is None:
+            preferred = gaze_for_intent(intent)
+            if preferred is not None:
+                raw = {**raw, "gaze": preferred.value}
+
+    if gesture is None:
+        gesture = Gesture.IDLE
 
     # `emotion` peut etre un simple mot : {"emotion": "amused"}. C'est la forme
     # la plus courante quand un modele improvise, et elle doit etre resolue
@@ -469,8 +567,12 @@ def _coerce(raw: dict) -> Directive | None:
         except ValueError:
             expression = None
 
-    if expression is None and gesture is Gesture.IDLE and affect is None:
-        # Ni expression, ni geste, ni etat reconnus : ce n'etait pas une directive.
+    if (expression is None and gesture is Gesture.IDLE and affect is None
+            and intent is None):
+        # Ni expression, ni geste, ni etat, ni intention : ce n'etait pas une
+        # directive. `intent` compte dans ce garde, sinon {"intent": "think"}
+        # — la forme la plus courte et la plus souhaitable des trois — serait
+        # rejetee comme du bruit.
         return None
 
     posture_raw = raw.get("posture")
@@ -488,10 +590,11 @@ def _coerce(raw: dict) -> Directive | None:
         expression=expression or Expression.NEUTRAL,
         intensity=_clamp(intensity),
         gesture=gesture,
-        gaze=word("gaze", Gaze, Gaze.USER),
+        gaze=word("gaze", Gaze, None),
         posture=posture,
         reason=str(raw.get("reason", ""))[:200],
         affect=affect,
+        intent=intent,
     )
 
 

@@ -6,7 +6,7 @@ Supprimer le dossier rend JARVIS identique à ce qu'il était : une voix avec un
 cœur 2D.
 
 ```
-python -m presence.selftest                      42 contrôles, sans clé, sans micro, sans GPU
+python -m presence.selftest                      45 contrôles, sans clé, sans micro, sans GPU
 python -m presence.install_model --demo          installer un modèle qui marche
 python -m presence.install_model --list          où trouver un vrai personnage
 python -m presence.inspect                       ce qu'il y a réellement dans le modèle
@@ -83,8 +83,8 @@ pendant une confirmation de suppression n'est pas « expressif », il est faux.
 | | d'où ça vient | durée de vie |
 |---|---|---|
 | **réflexe** | l'état machine seul (`LISTENING`, `THINKING`, …) | permanent |
-| **affect** | JARVIS décrit son état | **décroît** vers une base, demi-vie 22 s |
-| **intention** | JARVIS nomme un visage | expire d'un coup, 25 s |
+| **affect** | JARVIS décrit son état, ou nomme une intention | **décroît** vers une base, demi-vie 22 s |
+| **intention** | JARVIS nomme un visage ou une intention | expire d'un coup, 25 s |
 
 L'affect écrase le réflexe parce qu'un état intérieur en sait plus qu'un état
 machine. L'intention écrase l'affect parce qu'une décision doit pouvoir
@@ -107,7 +107,7 @@ revient en quarante secondes a l'air de s'être calmé.
 | `inspect.py` | ce qu'un `.glb` / `.vrm` contient vraiment, et le manifeste qui en découle | `model`, `vocabulary` |
 | `install_model.py` | installer un personnage en une commande | `inspect` |
 
-## Les deux formes que JARVIS peut émettre
+## Les deux autres formes
 
 Le bloc est **facultatif** et doit le rester : sans lui, le corps suit l'état
 machine, ce qui est correct la plupart du temps. Un modèle qui décrit son visage
@@ -147,6 +147,76 @@ c'est le seul vrai risque de ce format.
 > renseignés. Appliqués après la dérivation, ces défauts effacent exactement ce
 > que la directive exprimait — et le symptôme est « la forme état ne fait
 > rien », sans erreur nulle part.
+
+## La troisième forme : dire *pourquoi*
+
+C'est celle qu'on préfère, et la plus courte.
+
+```
+intent "investigate"
+```
+
+Un mot. L'état intérieur, le visage, l'intensité, le regard, la posture, le
+tempo et l'immobilité en découlent — par la même arithmétique que le reste,
+sans une branche de plus.
+
+```
+JARVIS décide POURQUOI    →  investigate
+presence choisit COMMENT  →  attention 0.30, confiance 0.55
+                             → visage thinking, regard screen, geste turn
+avatar joue CE QU'IL PEUT →  look_away, parce que rig.motion vaut "face"
+```
+
+La dernière ligne est celle qui justifie la couche. Le même mot produit un
+mouvement de tête aujourd'hui et une rotation du buste le jour où les clips
+arrivent, **sans que JARVIS change une virgule** : il n'a jamais nommé le moyen.
+`requested_gesture` garde la demande d'origine, donc la substitution reste
+lisible.
+
+### Les seize
+
+| intention | visage dérivé | regard | mouvement demandé |
+|---|---|---|---|
+| `greet` | happy 0.68 | user | `wave` |
+| `farewell` | amused 0.37 | user | `bow` |
+| `acknowledge` | neutral 0.34 | user | `nod` |
+| `wait` | neutral 0.30 | user | `lean_in` |
+| `investigate` | thinking 0.44 | screen | `turn` |
+| `think` | thinking 0.33 | away | `think` |
+| `explain` | neutral 0.40 | user | `explain` |
+| `agree` | amused 0.48 | user | `nod` |
+| `disagree` | serious 0.47 | user | `shake_head` |
+| `amuse` | amused 0.54 | user | `tilt_head` |
+| `confirm` | serious 0.54 | user | `look_at_user` |
+| `warn` | concerned 0.68 | user | `lean_in` |
+| `reassure` | amused 0.38 | user | `blink_slow` |
+| `report_success` | happy 0.68 | user | `thumbs_up` |
+| `report_failure` | concerned 0.63 | user | `sigh` |
+| `apologise` | sad 0.50 | down | `bow` |
+
+Sept visages pour seize intentions : le visage a le droit de se répéter, ce qui
+les sépare est le mouvement et le regard. **Le selftest le vérifie sur la
+sortie** — deux intentions qui produisent exactement le même triplet ne sont pas
+deux intentions, ce sont deux noms, et il refuse la paire.
+
+### Raffiner sans tout réécrire
+
+L'intention pose la base, l'explicite corrige, champ par champ :
+
+```jsonc
+{"intent": "investigate", "gaze": "user"}   // examiner sans le quitter des yeux
+{"intent": "warn", "confidence": 0.2}       // alerter, mais sans certitude
+```
+
+C'est l'ordre utile. Refuser cette nuance reviendrait à n'avoir que seize
+comportements possibles, là où on en a seize points de départ.
+
+### Pourquoi une intention n'est pas une treizième expression
+
+Une expression est un point d'arrivée, une intention un point de départ. Deux
+intentions peuvent atterrir sur le même visage — `agree` et `amuse` sourient
+tous les deux — et rester deux intentions. L'inverse n'est pas vrai : un visage
+ne dit pas pourquoi il est là.
 
 ## Par où la directive arrive vraiment, dans **ce** JARVIS
 
@@ -296,6 +366,29 @@ Cette dernière est la plus importante : c'est elle qui décide si un modèle
 acheté est exploitable ou pas. `browDown_L` et `browDownLeft` sont la même
 forme, et un matcher qui l'ignore jette 36 blendshapes sur 52 — à cause d'un
 tiret bas.
+
+### Une capacité déclarée doit aller jusqu'au bout
+
+C'est la règle qu'on a tirée de `rootRy`, et elle a maintenant un contrôle à
+elle. Le report du poids était **déclaré, calculé, documenté et mesuré** — et
+jeté en silence à l'avant-dernière étape, parce qu'une clé manquait dans un
+accumulateur. Une fonctionnalité morte que sa propre documentation décrivait
+comme vivante.
+
+La même famille de panne existait sur `gaze` : JARVIS écrivait `"gaze": "down"`
+à côté d'un affect, et obtenait `user`. Le champ était lu, parsé, transporté
+dans la `Directive` — et ignoré par le directeur.
+
+Une capacité doit donc avoir la chaîne entière :
+
+```
+déclarée → calculée → accumulée → lissée → écrite → visible → testée
+```
+
+`une intention traverse toute la chaîne, jusqu'au JSON` suit un mot sur les sept
+étapes et refuse qu'une seule le laisse tomber. C'est un test de **sortie
+réelle**, pas de présence de champ : la différence est exactement celle qui a
+laissé passer `rootRy`.
 
 ### Le chemin jusqu'au corps, lui, est vérifié ailleurs
 

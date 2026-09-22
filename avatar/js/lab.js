@@ -38,7 +38,10 @@ import { Rig } from './rig.js';
 import { LipSync } from './lipsync.js';
 import { Gestures } from './gestures.js';
 import { EXPRESSIONS, GAZES, face } from './expressions.js';
-import { BASELINE, SOCIAL_MODES, deriveFrom } from './affect.js';
+import {
+  BASELINE, INTENTS, SOCIAL_MODES, affectForIntent, deriveFrom,
+  gazeForIntent, gestureForIntent,
+} from './affect.js';
 
 /** Le vocabulaire de gestes, miroir de `presence/model.py`. Verifie par le test. */
 const GESTURES = [
@@ -98,6 +101,7 @@ const app = window.__lab = {
   forced: null,                          // {expression, intensity} ou null
   gaze: null,                            // force, sinon derive
   gesture: 'idle',
+  intent: null,                          // le mot choisi, s'il y en a un
   speech: 0,
   situation: '',
   decision: null,                        // la derniere decision derivee
@@ -349,6 +353,9 @@ function buildAffectSliders() {
       // Toucher l'etat rend la main a la derivation : c'est tout le propos.
       app.forced = null;
       app.gaze = null;
+      // Et ce n'est plus l'intention choisie : elle a pose ces nombres, elle ne
+      // les possede plus des qu'on les deplace.
+      app.intent = null;
       apply();
     });
     host.appendChild(wrap);
@@ -366,6 +373,24 @@ function buildAffectSliders() {
     app.affect.social_mode = social.value;
     apply();
   });
+}
+
+/**
+ * Recopie `app.affect` dans les curseurs, puis derive.
+ *
+ * Une intention pose cinq nombres d'un coup. Sans ca les curseurs afficheraient
+ * encore les precedents — et un labo dont les cadrans mentent est pire qu'un
+ * labo sans cadrans, parce qu'on les croit.
+ */
+function syncAffectSliders() {
+  for (const [name] of AXES) {
+    const input = $(`a-${name}`);
+    if (!input) continue;
+    input.value = app.affect[name];
+    const out = input.parentElement.querySelector('output');
+    if (out) out.textContent = Number(app.affect[name]).toFixed(2);
+  }
+  apply();
 }
 
 // ── la decision, et sa trace ─────────────────────────────────────────────────
@@ -489,6 +514,9 @@ function markActive(expression, gaze) {
   for (const button of $('gestures').children) {
     button.classList.toggle('on', button.dataset.value === app.gesture);
   }
+  for (const button of $('intents').children) {
+    button.classList.toggle('on', button.dataset.value === app.intent);
+  }
 }
 
 // ── les boutons ──────────────────────────────────────────────────────────────
@@ -510,9 +538,32 @@ buttons('expressions', EXPRESSIONS, (value) => {
 buttons('gazes', GAZES, (value) => { app.gaze = value; });
 buttons('gestures', GESTURES, (value) => { app.gesture = value; });
 
+/**
+ * Une intention, jouee comme le panneau la jouera.
+ *
+ * Miroir exact de ce que `presence/director.py` fait en Python : le mot pose
+ * l'etat interieur, le geste et le regard, et tout le reste se derive. Rien
+ * n'est force — cliquer une intention rend la main a la derivation, exactement
+ * comme bouger un curseur.
+ *
+ * C'est le seul endroit ou on peut repondre a « a quoi ressemble `investigate` »
+ * sans parler a Gemini.
+ */
+buttons('intents', Object.keys(INTENTS), (value) => {
+  const affect = affectForIntent(value);
+  if (!affect) return;
+  Object.assign(app.affect, affect);
+  app.intent = value;
+  app.gesture = gestureForIntent(value);
+  app.gaze = gazeForIntent(value);      // null = laisser deriver
+  app.forced = null;
+  syncAffectSliders();
+});
+
 $('unforce').addEventListener('click', () => {
   app.forced = null;
   app.gaze = null;
+  app.intent = null;
   apply();
 });
 
@@ -571,6 +622,26 @@ $('send').addEventListener('click', () => {
     return;
   }
 
+  // L'intention d'abord : elle pose l'etat, le geste et le regard, et tout ce
+  // qui suit dans cette fonction a le droit de la corriger. Meme ordre de
+  // precedence que `presence/director.py`, pour la meme raison — un labo qui
+  // resout dans un autre ordre montre un autre comportement.
+  app.intent = null;
+  if (typeof parsed.intent === 'string' && INTENTS[parsed.intent]) {
+    const affect = affectForIntent(parsed.intent);
+    Object.assign(app.affect, affect);
+    app.intent = parsed.intent;
+    app.gesture = gestureForIntent(parsed.intent);
+    app.gaze = gazeForIntent(parsed.intent);
+    app.forced = null;
+    for (const [name] of AXES) {
+      const input = $(`a-${name}`);
+      if (!input) continue;
+      input.value = app.affect[name];
+      input.nextElementSibling.textContent = Number(app.affect[name]).toFixed(2);
+    }
+  }
+
   const inner = (parsed.emotion && typeof parsed.emotion === 'object') ? parsed.emotion : parsed;
   let touched = false;
   for (const [name] of AXES) {
@@ -602,8 +673,10 @@ $('send').addEventListener('click', () => {
   }
 
   if (typeof parsed.gaze === 'string' && GAZES.includes(parsed.gaze)) app.gaze = parsed.gaze;
-  if (typeof parsed.gesture === 'string' && GESTURES.includes(parsed.gesture)) {
-    app.gesture = parsed.gesture;
+  const movement = typeof parsed.gesture === 'string' ? parsed.gesture
+    : (typeof parsed.head === 'string' ? parsed.head : null);
+  if (movement && GESTURES.includes(movement)) {
+    app.gesture = movement;
   }
   if (typeof parsed.reason === 'string') {
     app.situation = parsed.reason;

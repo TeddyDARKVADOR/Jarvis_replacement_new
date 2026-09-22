@@ -23,9 +23,10 @@ from PyQt6.QtWebEngineCore import QWebEngineScript  # noqa: E402
 from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from presence import Affect, SocialMode  # noqa: E402
+from presence import Affect, Intent, SocialMode  # noqa: E402
 from presence.affect import (  # noqa: E402
-    expression_for, gaze_for, intensity_for, posture_for, stillness_for, tempo_for,
+    affect_for_intent, expression_for, gaze_for, gaze_for_intent,
+    gesture_for_intent, intensity_for, posture_for, stillness_for, tempo_for,
 )
 
 CAPTURE = """
@@ -77,13 +78,14 @@ SITUATIONS = [
     ("session de sept heures, plus rien a faire",
      Affect(valence=-0.20, arousal=0.05, attention=0.20, confidence=0.60)),
 ]
-step = {"i": 0, "bad": 0}
+step = {"i": 0, "intent": 0, "bad": 0}
 
 
 def tick():
     i = step["i"]
     if i >= len(SITUATIONS):
-        page.runJavaScript("JSON.stringify(window.__log)", drain)
+        print(flush=True)
+        QTimer.singleShot(120, intent_tick)
         return
 
     label, affect = SITUATIONS[i]
@@ -146,6 +148,90 @@ def compare(i, label, affect, raw):
     QTimer.singleShot(120, tick)
 
 
+# ── les intentions ───────────────────────────────────────────────────────────
+#
+# La meme question, un cran plus haut : le labo tire-t-il d'un MOT le meme
+# comportement que Python ? C'est ce qui decide si on peut se servir du labo
+# pour regler une intention — et c'est le seul endroit ou les deux tables
+# INTENTS, celle de `affect.py` et celle de `affect.js`, sont confrontees en
+# marche plutot que comparees au repos.
+
+INTENTS = list(Intent)
+
+
+def intent_tick():
+    i = step["intent"]
+    if i >= len(INTENTS):
+        page.runJavaScript("JSON.stringify(window.__log)", drain)
+        return
+
+    intent = INTENTS[i]
+    payload = json.dumps({"intent": intent.value})
+    page.runJavaScript(
+        f"document.getElementById('json').value = {json.dumps(payload)};"
+        "document.getElementById('send').click(); 0")
+
+    def after():
+        page.runJavaScript(
+            "JSON.stringify({"
+            " decision: window.__lab.decision,"
+            " intent: window.__lab.intent,"
+            " gesture: window.__lab.gesture,"
+            " gaze: window.__lab.gaze,"
+            " forced: !!window.__lab.forced})",
+            lambda raw: compare_intent(intent, raw))
+    QTimer.singleShot(500, after)
+
+
+def compare_intent(intent, raw):
+    data = json.loads(raw)
+    d = data["decision"]
+    affect = affect_for_intent(intent)
+
+    want = {
+        "expression": expression_for(affect).value,
+        "posture": posture_for(affect).value,
+        "intensity": intensity_for(affect),
+        "tempo": tempo_for(affect),
+        "stillness": stillness_for(affect),
+    }
+    problems = []
+    for field, expected in want.items():
+        got = d[field]
+        same = abs(got - expected) < 1e-9 if isinstance(expected, float) else got == expected
+        if not same:
+            problems.append(f"{field}: labo={got!r} python={expected!r}")
+
+    # Le geste et le regard ne sont pas derives de l'affect : l'intention les
+    # porte. Ce sont eux qui prouvent que c'est bien la table INTENTS du JS qui
+    # a parle, et pas une derivation qui serait tombee juste par hasard.
+    want_gesture = gesture_for_intent(intent).value
+    if data["gesture"] != want_gesture:
+        problems.append(f"gesture: labo={data['gesture']!r} python={want_gesture!r}")
+
+    want_gaze = gaze_for_intent(intent)
+    got_gaze = data["gaze"] or d["gaze"]
+    expected_gaze = (want_gaze or gaze_for(affect)).value
+    if got_gaze != expected_gaze:
+        problems.append(f"gaze: labo={got_gaze!r} python={expected_gaze!r}")
+
+    if data["intent"] != intent.value:
+        problems.append(f"le labo n'a pas retenu l'intention ({data['intent']!r})")
+    if data["forced"]:
+        problems.append("le labo a force un visage au lieu de le deriver")
+
+    mark = "OK  " if not problems else "FAUX"
+    print(f"  [{mark}] intent {intent.value:<15} -> {d['expression']:<10} "
+          f"{d['intensity']:.2f}  regard {got_gaze:<7} geste {data['gesture']}",
+          flush=True)
+    for problem in problems:
+        print(f"         {problem}", flush=True)
+        step["bad"] += 1
+
+    step["intent"] += 1
+    QTimer.singleShot(90, intent_tick)
+
+
 def drain(raw):
     lines = json.loads(raw or "[]")
     if lines:
@@ -191,5 +277,5 @@ def ready(raw):
 
 view.loadFinished.connect(lambda ok: (print(f"  page      : {ok}", flush=True), probe()))
 view.setUrl(QUrl("jarvis://avatar/lab.html"))
-QTimer.singleShot(60000, app.quit)
+QTimer.singleShot(120000, app.quit)
 app.exec()

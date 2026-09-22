@@ -73,6 +73,7 @@ from presence.model import (                           # noqa: E402
     Expression,
     Gaze,
     Gesture,
+    Intent,
     Posture,
     RigPart,
 )
@@ -1207,6 +1208,128 @@ def _face_mode_js():
     manifest = json.loads((AVATAR_DIR / "manifest.json").read_text(encoding="utf-8"))
     motion = (manifest.get("rig") or {}).get("motion", "full")
     return f"gestures.js + lab.js accordes ; manifeste livre en \"{motion}\""
+
+
+# ── 9. les intentions : pourquoi, avant comment ──────────────────────────────
+
+
+@check("intentions identiques en JS")
+def _js_intents():
+    """`avatar/js/affect.js` porte la meme table, et le labo en depend.
+
+    Meme mecanisme que pour les douze ancres, et pour la meme raison : une copie
+    que personne ne verifie derive, et une derive ici ferait montrer au labo un
+    comportement que le panneau ne jouera pas.
+    """
+    from presence.affect import _INTENTS
+
+    source = (AVATAR_DIR / "js" / "affect.js").read_text(encoding="utf-8")
+    block = source[source.index("export const INTENTS = {"):]
+    rows = re.findall(
+        r"^  (\w+)\s*: \[([^\]]+)\],", block, re.MULTILINE)
+    assert rows, "table INTENTS introuvable dans affect.js"
+
+    found = {}
+    for name, raw in rows:
+        parts = [p.strip() for p in raw.split(",")]
+        numbers = tuple(float(p) for p in parts[:5])
+        gesture = parts[5].strip("'")
+        gaze = None if parts[6] == "null" else parts[6].strip("'")
+        found[name] = (numbers, gesture, gaze)
+
+    expected = {
+        intent.value: (row[:5], row[5].value, row[6].value if row[6] else None)
+        for intent, row in _INTENTS.items()
+    }
+    assert found == expected, (
+        "intentions differentes : "
+        + ", ".join(sorted(set(found) ^ set(expected))
+                    or [k for k in expected if found.get(k) != expected[k]]))
+    return f"{len(expected)} intentions, identiques"
+
+
+@check("deux intentions ne produisent jamais le meme comportement")
+def _intents_distinct():
+    """La regle qui garde la liste courte, verifiee sur la SORTIE.
+
+    Une table de seize lignes toutes differentes ne prouve rien : ce qui compte
+    est que les seize se distinguent une fois derivees. Deux intentions qui
+    atterrissent sur le meme visage, le meme regard ET le meme mouvement ne sont
+    pas deux intentions, ce sont deux noms pour la meme chose — et le modele
+    apprendra a en choisir une au hasard.
+
+    Le visage seul a le droit de se repeter : `agree` et `amuse` sourient tous
+    les deux, et ce qui les separe est le mouvement. C'est le triplet complet qui
+    doit etre unique.
+    """
+    from presence.affect import affect_for_intent, gaze_for, gaze_for_intent, gesture_for_intent
+
+    seen: dict[tuple, Intent] = {}
+    for intent in Intent:
+        affect = affect_for_intent(intent)
+        signature = (
+            expression_for(affect),
+            gaze_for_intent(intent) or gaze_for(affect),
+            gesture_for_intent(intent),
+        )
+        clash = seen.get(signature)
+        assert clash is None, (
+            f"{intent.value} et {clash.value} produisent exactement "
+            f"{signature[0].value} / regard {signature[1].value} / "
+            f"{signature[2].value} — c'est une intention de trop")
+        seen[signature] = intent
+
+    faces = {expression_for(affect_for_intent(i)) for i in Intent}
+    return f"{len(Intent)} intentions distinctes, sur {len(faces)} visages"
+
+
+@check("une intention traverse toute la chaine, jusqu'au JSON")
+def _intent_chain():
+    """La regle tiree de `rootRy`, rendue executable.
+
+    Une capacite declaree doit etre calculee, accumulee, ecrite, visible ET
+    verifiee — sinon on obtient une fonctionnalite morte que sa propre
+    documentation decrit comme vivante. Le report du poids l'a ete pendant des
+    semaines.
+
+    Ce controle suit donc un mot, du texte brut jusqu'au JSON qui part sur le
+    fil, et refuse qu'une etape le laisse tomber.
+    """
+    directive = parse('{"intent": "investigate", "reason": "le log"}')
+    assert directive is not None, "1. lu : le parseur a jete une intention seule"
+    assert directive.intent is Intent.INVESTIGATE, "1. lu : mauvais mot"
+
+    assert directive.affect is not None, "2. calcule : aucun etat interieur"
+    assert directive.gesture is Gesture.TURN, (
+        f"2. calcule : geste {directive.gesture.value}, pas celui de l'intention")
+    assert directive.gaze is Gaze.SCREEN, (
+        "2. calcule : le regard de l'intention a ete perdu — `gaze_for` ne rend "
+        "jamais `screen`, donc personne d'autre ne peut le remettre")
+
+    director = Director(_cat({RigPart.HEAD}, set()))
+    director.set_intent(directive, now=0.0)
+    performance = director.resolve("ACTIVE", now=0.1)
+
+    assert performance.expression is Expression.THINKING, (
+        f"3. derive : visage {performance.expression.value}")
+    assert performance.gaze is Gaze.SCREEN, "3. derive : regard perdu au directeur"
+    assert performance.gesture is Gesture.LOOK_AWAY, (
+        f"4. rabattu : {performance.gesture.value} au lieu d'un mouvement de tete")
+    assert performance.requested_gesture is Gesture.TURN, (
+        "4. rabattu : la demande d'origine n'est plus lisible")
+    assert performance.intent is Intent.INVESTIGATE, (
+        "5. visible : l'intention n'a pas survecu jusqu'a la Performance")
+
+    payload = performance.as_json()
+    assert payload["intent"] == "investigate", (
+        "6. transmis : le mot n'est pas dans le JSON qui part sur le fil — "
+        "c'est exactement la panne de `rootRy`, une etape plus loin")
+
+    # Et il expire avec l'intention qu'il nomme.
+    assert director.resolve("ACTIVE", now=INTENT_TTL_S + 1).intent is None, (
+        "7. borne : le mot survit a l'intention")
+
+    return "lu -> calcule -> derive -> rabattu -> visible -> transmis -> expire"
 
 
 # ── report ───────────────────────────────────────────────────────────────────

@@ -63,7 +63,7 @@ import math
 from dataclasses import dataclass, replace
 from enum import Enum
 
-from .model import Expression, Gaze, Posture
+from .model import Expression, Gaze, Gesture, Intent, Posture
 
 
 class SocialMode(str, Enum):
@@ -353,3 +353,90 @@ def gaze_hold_for(affect: Affect) -> float:
     return (TUNING["gaze_hold_base"]
             + affect.attention * TUNING["gaze_hold_attention"]
             - affect.urgency * TUNING["gaze_hold_urgency"])
+
+
+# ── les intentions : pourquoi, avant comment ─────────────────────────────────
+
+#: Où chaque intention place JARVIS, et par quoi elle voudrait passer.
+#:
+#: `(valence, arousal, attention, confidence, urgency, geste, regard)`
+#:
+#: POURQUOI ÇA VIT ICI ET PAS DANS UN FICHIER À PART
+#:     C'est la même chose que `_ANCHORS` : un point nommé dans l'espace
+#:     affectif. La seule différence est le sens de lecture — une ancre répond
+#:     « à quoi ressemble cet état », une intention « dans quel état met cette
+#:     situation ». Les deux tables se vérifient par le même mécanisme de parité
+#:     avec `avatar/js/affect.js`, et un fichier de plus aurait été un troisième
+#:     endroit à garder synchronisé pour aucun gain.
+#:
+#: LE GESTE EST TOUJOURS CELUI DU CORPS COMPLET
+#:     `greet` demande `wave`, y compris sur un corps dont les bras sont gelés.
+#:     C'est délibéré et c'est tout l'intérêt : `FALLBACK_CHAIN` le rabat sur
+#:     `nod` en mode visage, et le jour où un clip de salut est installé le même
+#:     mot produit un vrai salut. L'intention ne nomme jamais le moyen, donc
+#:     elle n'a pas à être réécrite quand les moyens changent.
+#:
+#: LE REGARD, LUI, EST PARFOIS EXPLICITE
+#:     `gaze_for()` ne rend jamais `screen` : il dérive de l'attention, et
+#:     l'attention ne sait pas qu'il existe un écran. Une intention qui regarde
+#:     un résultat doit donc le dire. Les autres laissent `None` et se laissent
+#:     dériver — un regard imposé sans raison est un regard qui ne réagit plus à
+#:     l'état.
+_INTENTS: dict[Intent, tuple[float, float, float, float, float, Gesture, Gaze | None]] = {
+    #                     valence arousal attent  confid  urgenc  geste                  regard
+    Intent.GREET:          ( 0.76,  0.64,  0.95,  0.82,  0.00, Gesture.WAVE,         Gaze.USER),
+    Intent.FAREWELL:       ( 0.32,  0.24,  0.90,  0.86,  0.00, Gesture.BOW,          Gaze.USER),
+
+    Intent.ACKNOWLEDGE:    ( 0.15,  0.30,  0.92,  0.88,  0.05, Gesture.NOD,          Gaze.USER),
+    Intent.WAIT:           ( 0.10,  0.26,  0.96,  0.68,  0.00, Gesture.LEAN_IN,      Gaze.USER),
+
+    Intent.INVESTIGATE:    ( 0.00,  0.55,  0.30,  0.55,  0.15, Gesture.TURN,         Gaze.SCREEN),
+    Intent.THINK:          ( 0.00,  0.36,  0.28,  0.40,  0.05, Gesture.THINK_POSE,   Gaze.AWAY),
+    Intent.EXPLAIN:        ( 0.10,  0.42,  0.88,  0.84,  0.05, Gesture.EXPLAIN,      Gaze.USER),
+
+    Intent.AGREE:          ( 0.45,  0.36,  0.92,  0.92,  0.00, Gesture.NOD,          Gaze.USER),
+    Intent.DISAGREE:       (-0.22,  0.48,  0.92,  0.86,  0.55, Gesture.SHAKE_HEAD,   Gaze.USER),
+    Intent.AMUSE:          ( 0.58,  0.38,  0.86,  0.86,  0.00, Gesture.TILT_HEAD,    Gaze.USER),
+
+    Intent.CONFIRM:        (-0.05,  0.52,  0.96,  0.90,  0.72, Gesture.LOOK_AT_USER, Gaze.USER),
+    Intent.WARN:           (-0.48,  0.74,  0.95,  0.78,  0.88, Gesture.LEAN_IN,      Gaze.USER),
+    Intent.REASSURE:       ( 0.38,  0.22,  0.94,  0.92,  0.00, Gesture.BLINK_SLOW,   Gaze.USER),
+
+    Intent.REPORT_SUCCESS: ( 0.75,  0.58,  0.88,  0.94,  0.00, Gesture.THUMBS_UP,    Gaze.USER),
+    Intent.REPORT_FAILURE: (-0.52,  0.58,  0.92,  0.38,  0.48, Gesture.SIGH,         Gaze.USER),
+    Intent.APOLOGISE:      (-0.58,  0.32,  0.90,  0.30,  0.25, Gesture.BOW,          Gaze.DOWN),
+}
+
+
+def affect_for_intent(intent: Intent, base: Affect | None = None) -> Affect:
+    """L'état intérieur où cette intention met JARVIS.
+
+    `base` n'est là que pour le registre : `social_mode` est une décision de
+    contexte, pas une conséquence de la situation. Saluer en registre formel et
+    saluer en registre intime sont la même intention et deux comportements, et
+    c'est le plafond du registre qui fait la différence — pas la table.
+    """
+    valence, arousal, attention, confidence, urgency, _gesture, _gaze = _INTENTS[intent]
+    return Affect(
+        valence=valence,
+        arousal=arousal,
+        attention=attention,
+        confidence=confidence,
+        urgency=urgency,
+        social_mode=base.social_mode if base is not None else Affect().social_mode,
+    )
+
+
+def gesture_for_intent(intent: Intent) -> Gesture:
+    """Par quoi cette intention voudrait passer, sur un corps qui peut tout.
+
+    « Voudrait » est le mot : rien ici ne vérifie qu'il est installé. C'est
+    `catalog.resolve()` qui tranche, plus tard, contre le corps réel — et qui
+    garde la demande d'origine dans `requested_gesture`.
+    """
+    return _INTENTS[intent][5]
+
+
+def gaze_for_intent(intent: Intent) -> Gaze | None:
+    """Où cette intention regarde, ou `None` pour laisser l'état décider."""
+    return _INTENTS[intent][6]

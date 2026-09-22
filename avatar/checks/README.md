@@ -63,6 +63,12 @@ Décrit six situations au laboratoire comportemental, et compare sa dérivation 
 celle de Python, champ par champ. Un labo qui montre autre chose que ce que le
 panneau jouera est pire qu'absent.
 
+Puis les **seize intentions**, une par une. Le selftest compare les deux tables
+`INTENTS` au repos ; celui-ci les confronte **en marche** — et il vérifie le
+geste et le regard, qui ne se dérivent pas de l'affect. Ce sont eux qui prouvent
+que c'est bien la table du JavaScript qui a parlé, et pas une dérivation tombée
+juste par hasard.
+
 ### `idle_motion.py` — le repos est vivant
 
 Échantillonne la rotation de la tête pendant neuf secondes, à deux états

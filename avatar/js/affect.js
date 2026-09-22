@@ -235,3 +235,56 @@ export function deriveFrom(affect) {
     gaze_hold_s: gazeHoldFor(a),
   };
 }
+
+/**
+ * Les seize intentions : (valence, arousal, attention, confidence, urgency,
+ * geste, regard).
+ *
+ * Genere depuis `presence/affect.py`. Une intention nomme la SITUATION ; l'etat
+ * interieur, et tout ce qui en derive, se calculent. Le geste est toujours
+ * celui d'un corps complet — `FALLBACK_CHAIN` le rabat sur ce que ce corps-ci
+ * sait faire, et c'est ce qui permet au meme mot de produire un salut de la
+ * main un jour et un hochement de tete aujourd'hui.
+ *
+ * Le regard vaut `null` quand il se derive de l'attention. Il n'est explicite
+ * que la ou la derivation ne peut pas aller : `gazeFor()` ne rend jamais
+ * `screen`, parce que l'attention ne sait pas qu'il existe un ecran.
+ */
+export const INTENTS = {
+  greet         : [ 0.76, 0.64, 0.95, 0.82, 0.00, 'wave', 'user'],
+  farewell      : [ 0.32, 0.24, 0.90, 0.86, 0.00, 'bow', 'user'],
+  acknowledge   : [ 0.15, 0.30, 0.92, 0.88, 0.05, 'nod', 'user'],
+  wait          : [ 0.10, 0.26, 0.96, 0.68, 0.00, 'lean_in', 'user'],
+  investigate   : [ 0.00, 0.55, 0.30, 0.55, 0.15, 'turn', 'screen'],
+  think         : [ 0.00, 0.36, 0.28, 0.40, 0.05, 'think', 'away'],
+  explain       : [ 0.10, 0.42, 0.88, 0.84, 0.05, 'explain', 'user'],
+  agree         : [ 0.45, 0.36, 0.92, 0.92, 0.00, 'nod', 'user'],
+  disagree      : [-0.22, 0.48, 0.92, 0.86, 0.55, 'shake_head', 'user'],
+  amuse         : [ 0.58, 0.38, 0.86, 0.86, 0.00, 'tilt_head', 'user'],
+  confirm       : [-0.05, 0.52, 0.96, 0.90, 0.72, 'look_at_user', 'user'],
+  warn          : [-0.48, 0.74, 0.95, 0.78, 0.88, 'lean_in', 'user'],
+  reassure      : [ 0.38, 0.22, 0.94, 0.92, 0.00, 'blink_slow', 'user'],
+  report_success: [ 0.75, 0.58, 0.88, 0.94, 0.00, 'thumbs_up', 'user'],
+  report_failure: [-0.52, 0.58, 0.92, 0.38, 0.48, 'sigh', 'user'],
+  apologise     : [-0.58, 0.32, 0.90, 0.30, 0.25, 'bow', 'down'],
+};
+
+/** L'etat interieur ou cette intention met JARVIS. `null` si le mot est inconnu. */
+export function affectForIntent(name) {
+  const row = INTENTS[name];
+  if (!row) return null;
+  return { valence: row[0], arousal: row[1], attention: row[2],
+           confidence: row[3], urgency: row[4] };
+}
+
+/** Par quoi elle voudrait passer, sur un corps qui peut tout. */
+export function gestureForIntent(name) {
+  const row = INTENTS[name];
+  return row ? row[5] : null;
+}
+
+/** Ou elle regarde, ou `null` pour laisser l'etat decider. */
+export function gazeForIntent(name) {
+  const row = INTENTS[name];
+  return row ? row[6] : null;
+}
