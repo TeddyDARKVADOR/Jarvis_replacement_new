@@ -175,7 +175,8 @@ python -m presence.install_model C:/Downloads/aven.glb     # un asset acheté
 python -m presence.install_model mon_avatar.vrm            # un VRM (VRoid Studio)
 ```
 
-La commande télécharge, inspecte le fichier **lui-même**, et écrit dans
+La commande télécharge, inspecte le fichier **lui-même**, affiche un barème
+— corps entier, rig facial, visèmes, yeux, animations — et écrit dans
 `avatar/manifest.json` ce qu'elle y a trouvé : les alias de blendshapes, les
 membres réellement présents, les os. Ce qu'un humain garde la main dessus —
 caméra, couleurs, échelle — n'est pas touché.
