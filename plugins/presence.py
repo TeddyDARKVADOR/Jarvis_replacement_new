@@ -415,26 +415,43 @@ def run(parameters: dict, player=None, session_memory=None) -> str:  # noqa: ANN
 
     What actually diagnoses this goes to stdout, beside the `📞 set_presence`
     line main.py already prints, and therefore into journalctl — which is where
-    a body that is not moving gets investigated.
+    a body that is not moving gets investigated. Those lines are ASCII on
+    purpose: a Windows console is cp1252, `print` of anything outside it raises,
+    and the loader would then hand Gemini an error string it might read out.
     """
     raw = parameters if isinstance(parameters, dict) else {}
     try:
         delivered = deliver(player, raw)
     except Exception as exc:
-        print(f"[presence] directive non transmise ({exc})", flush=True)
+        _log(f"directive non transmise ({exc})")
         return "ok"
 
     reason = str(raw.get("reason", ""))[:80]
     if delivered:
-        print(f"[presence] {_summary(raw)}" + (f" — {reason}" if reason else ""),
-              flush=True)
+        _log(_summary(raw) + (f" : {reason}" if reason else ""))
     else:
         # Three ways to land here, and telling them apart is the whole point of
         # printing it: no client is connected, this host draws its own window
         # (desktop `ui.JarvisUI` has no `emit_event`), or the arguments were not
         # a directive at all. The first two are normal.
-        print(f"[presence] aucune destination pour {_summary(raw)}", flush=True)
+        _log(f"aucune destination pour {_summary(raw)}")
     return "ok"
+
+
+def _log(line: str) -> None:
+    """One diagnostic line, forced into ASCII first.
+
+    `reason` is written by the model and will contain accents, and a Windows
+    console is cp1252: `print` of anything outside it raises. The loader's net
+    would catch that and hand Gemini an error string, which it might then read
+    out — a JARVIS announcing a console encoding problem because he chose a
+    face. So the line is flattened, and never allowed to raise on its own.
+    """
+    try:
+        print("[presence] " + line.encode("ascii", "replace").decode("ascii"),
+              flush=True)
+    except Exception:
+        pass
 
 
 def _summary(raw: dict) -> str:
@@ -453,6 +470,6 @@ def _summary(raw: dict) -> str:
                 for key in ("valence", "arousal", "attention",
                             "confidence", "urgency")
                 if isinstance(raw.get(key), (int, float))]
-        line = " · ".join(axes) or "etat vide"
+        line = " ".join(axes) or "etat vide"
     gesture = str(raw.get("gesture", "")).strip()
-    return line + (f" · {gesture}" if gesture else "")
+    return line + (f" | {gesture}" if gesture else "")
