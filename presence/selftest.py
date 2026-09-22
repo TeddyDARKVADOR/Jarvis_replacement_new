@@ -809,6 +809,95 @@ def _no_stray_rounding():
         "Performance.as_json n'arrondit plus : le fil devient bavard")
     return "derivations en pleine precision, arrondi au bord du fil seulement"
 
+@check("le contrat de l'adaptateur tient")
+def _adapter_contract():
+    """Les trois corps repondent aux memes questions, dans le meme vocabulaire.
+
+    C'EST LA COUTURE QUI REND LE MODELE INTERCHANGEABLE
+        Le moteur comportemental demande « sais-tu regarder ? », jamais « as-tu
+        un os LeftEye ? ». Un corps qui repondrait a des questions differentes
+        obligerait l'appelant a savoir lequel il a — et ce jour-la, changer de
+        modele cesse d'etre une ligne dans le manifeste.
+
+        Le test lit les trois implementations et exige le meme jeu de cles.
+        Ajouter une capacite est alors une modification de trois fichiers que le
+        test impose, au lieu d'une divergence que personne ne voit.
+
+    Ce que la traduction ARKit -> os fait reellement a l'execution est prouve
+    separement, sur un rig construit en memoire : `scratchpad/bench_adapter.py`,
+    douze verifications, parce que ce test-ci ne peut pas executer de
+    JavaScript.
+    """
+    #: Les seules questions que le moteur a le droit de poser a un corps.
+    expected = {"expression", "gaze", "gazeBy", "lipsync", "gesture", "posture"}
+
+    bodies = {
+        "body_gltf.js": "GltfBody",
+        "body_vrm.js": "VrmBody",
+        "body_procedural.js": "ProceduralBody",
+    }
+    found = {}
+    for filename in bodies:
+        source = (AVATAR_DIR / "js" / filename).read_text(encoding="utf-8")
+        assert "capabilities()" in source, f"{filename} ne declare aucune capacite"
+        block = source[source.index("  capabilities() {"):]
+        block = block[:block.index("\n  }")]
+        found[filename] = set(re.findall(r"^      (\w+):", block, re.MULTILINE))
+
+    for filename, keys in found.items():
+        assert keys == expected, (
+            f"{filename} ({bodies[filename]}) repond a "
+            f"{sorted(keys)} au lieu de {sorted(expected)}")
+
+    # Le moteur ne doit jamais nommer un modele en particulier.
+    engine = ["rig.js", "gestures.js", "idle.js", "lipsync.js", "main.js"]
+    leaks = []
+    for filename in engine:
+        source = (AVATAR_DIR / "js" / filename).read_text(encoding="utf-8")
+        code = "\n".join(
+            line for line in source.split("\n")
+            if not line.lstrip().startswith(("*", "//", "/*"))
+        )
+        for token in ("Wolf3D", "readyplayer", "mixamorig", "VRMC_vrm", "Fcl_"):
+            if token.lower() in code.lower():
+                leaks.append(f"{filename}: {token}")
+    assert not leaks, (
+        "le moteur nomme un modele en particulier : " + ", ".join(leaks))
+
+    return (f"{len(bodies)} corps, {len(expected)} capacites identiques, "
+            f"{len(engine)} fichiers moteur sans nom de modele")
+
+
+@check("le regard survit a un modele sans formes")
+def _gaze_fallback_declared():
+    """Ready Player Me pilote ses yeux par des os, pas par blendshapes.
+
+    Sans traduction dans l'adaptateur, le regard de JARVIS ne bougerait que la
+    tete sur ces modeles — pas d'erreur, pas de message, juste des yeux qui
+    fixent droit devant. Ce controle verifie que le repli existe et que les
+    formes gardent la priorite quand elles sont la : elles sont plus fines, et
+    l'auteur du modele les a reglees lui-meme.
+    """
+    source = (AVATAR_DIR / "js" / "body_gltf.js").read_text(encoding="utf-8")
+
+    assert "_setupGaze" in source and "_applyBoneGaze" in source, (
+        "le repli du regard sur les os a disparu de l'adaptateur")
+    assert "this.gazeByBone = !hasMorphs && hasBones" in source, (
+        "les formes ne gagnent plus sur les os")
+    # Les huit formes de regard doivent toutes etre interceptables.
+    block = source[source.index("this.gaze = {"):]
+    block = block[:block.index("};")]
+    intercepted = set(re.findall(r"(eyeLook\w+):", block))
+    expected = {f"eyeLook{d}{s}" for d in ("In", "Out", "Up", "Down")
+                for s in ("Left", "Right")}
+    assert intercepted == expected, (
+        f"formes de regard manquantes : {sorted(expected - intercepted)}")
+    # Le signe doit rester reglable : l'axe depend de l'orientation du rig.
+    assert "rig.gaze" in source or "gazeSignY" in source, (
+        "les signes du regard ne sont plus reglables depuis le manifeste")
+
+    return f"{len(intercepted)} formes interceptables, formes prioritaires sur les os"
+
 @check("le moteur 3D est local")
 def _vendored():
     """A face that needs a CDN is a face missing on a bad network day."""

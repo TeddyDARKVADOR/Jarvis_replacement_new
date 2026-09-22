@@ -161,6 +161,18 @@ def install(source: str, *, rpm: bool = False, name: str | None = None) -> int:
         if suffix not in ALLOWED_SUFFIXES:
             raise SystemExit(f"  extension non geree : {suffix or 'aucune'} "
                              f"(attendu {', '.join(sorted(ALLOWED_SUFFIXES))})")
+
+        # L'erreur la plus courante, et la plus silencieuse : coller l'URL d'un
+        # avatar Ready Player Me telle quelle. Sans `morphTargets=ARKit`, le
+        # meme avatar arrive avec huit blendshapes au lieu de cinquante-deux —
+        # il se charge, il s'affiche, et son visage ne bouge pas. Rien ne le
+        # signale nulle part.
+        if "readyplayer.me" in source and "morphTargets" not in source:
+            joiner = "&" if "?" in source else "?"
+            source = f"{source}{joiner}{RPM_QUERY}"
+            print("  complete       morphTargets=ARKit ajoute a l'URL "
+                  "(sans lui : 8 blendshapes au lieu de 52)")
+
         path = fetch(source, MODELS_DIR / (name or stem))
 
     else:
