@@ -202,7 +202,7 @@ moindre différence :
 Le test lit les tables ; il ne peut pas exécuter le JavaScript. Cet écart a été
 comblé séparément : les deux dérivations ont tourné **côte à côte sur 20 000
 points** de l'espace affectif — 140 000 comparaisons, aucun désaccord
-(`scratchpad/bench_affect_parity.py`). C'est pour y arriver qu'aucun des deux
+(`avatar/checks/affect_parity.py`). C'est pour y arriver qu'aucun des deux
 côtés n'arrondit plus : l'arrondi est une affaire de présentation, et l'avoir
 dans le calcul rendait la comparaison exacte impossible.
 

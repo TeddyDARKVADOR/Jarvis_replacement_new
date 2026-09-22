@@ -743,7 +743,7 @@ def _js_affect():
 
     That gap was closed separately and deliberately: the two derivations were run
     side by side over 20 000 points of the affect space, 140 000 comparisons, and
-    agreed exactly (`scratchpad/bench_affect_parity.py`). Getting there is why
+    agreed exactly (`avatar/checks/affect_parity.py`). Getting there is why
     neither side rounds any more — rounding is a presentation concern, and having
     it inside the calculation made exact comparison impossible.
     """
@@ -824,7 +824,7 @@ def _adapter_contract():
         test impose, au lieu d'une divergence que personne ne voit.
 
     Ce que la traduction ARKit -> os fait reellement a l'execution est prouve
-    separement, sur un rig construit en memoire : `scratchpad/bench_adapter.py`,
+    separement, sur un rig construit en memoire : `avatar/checks/adapter_contract.py`,
     douze verifications, parce que ce test-ci ne peut pas executer de
     JavaScript.
     """
