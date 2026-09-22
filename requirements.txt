@@ -49,6 +49,20 @@ pywinauto;  sys_platform == "win32"
 pywin32;    sys_platform == "win32"
 wmi;        sys_platform == "win32"
 
+# ── Optional: the 3D avatar (avatar/ + presence/) ─────────────────────────────
+#
+# Deliberately NOT installed by default, like the wake word. The avatar renders
+# in a QWebEngineView, which is a Chromium process and a GPU context for as long
+# as the session lasts — a fair price for a face, a poor one for a machine that
+# is already compiling. The 2 KB core stays the default and the setting
+# `avatar_enabled` turns this on.
+#
+#     pip install PyQt6-WebEngine
+#     python -m presence.install_model --demo
+#
+# three.js and its transcoders are vendored in avatar/vendor/ — no npm, no build
+# step, and no network needed to have a face.
+
 # ── Optional: local wake word ("Hey Jarvis") ──────────────────────────────────
 # Deliberately NOT installed by default — it's opt-in. Enable it (and download
 # the tiny model) with one click from ⚙ → WAKE WORD in the app, or install it

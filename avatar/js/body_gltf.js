@@ -1,0 +1,345 @@
+/**
+ * body_gltf.js — a real model, wearing the same interface as the fake one.
+ *
+ * WHAT IT HAS TO ABSORB
+ *   Every humanoid on every marketplace names things differently, and none of
+ *   them is wrong. Ready Player Me prefixes its morph targets with the mesh
+ *   name. Some exports use `browInnerUp`, others `brow_inner_up`, others the
+ *   old `Brow_Inner_Up`. ARKit's 52 might be 52 of 128 (Aven), 52 of 165
+ *   (Inori), or a MetaHuman's 251 mapped down. Bones are `Head` in Mixamo,
+ *   `mixamorigHead` after an FBX round trip, `Head_01` in some store assets.
+ *
+ *   None of that may reach `rig.js`, `gestures.js` or Python. It is absorbed
+ *   here, in three passes, and the manifest only has to carry what the passes
+ *   cannot guess.
+ *
+ * HOW A NAME IS RESOLVED
+ *   Every name — the model's and ARKit's — is put through `normalise()` below,
+ *   which collapses case, separators, exporter prefixes and the `_L` / `Left`
+ *   side conventions onto one key. `Wolf3D_Head.browInnerUp`, `brow_inner_up`,
+ *   `Brow Inner Up` and `browDown_L` all land where they should.
+ *
+ *   The manifest's `morphAliases` is consulted FIRST, before the automatic
+ *   match, because it is the explicit override for a mesh that calls a shape
+ *   something genuinely different — and an override the automatic rule can
+ *   silently beat is not an override.
+ *
+ *   A shape found by none of them is simply absent, and absent is fine: the rig
+ *   writes to it, nothing happens, the expression is a little flatter. That is
+ *   a *degradation*, not a failure, and it is why a four-shape robot mesh works
+ *   here at all.
+ *
+ * WHY THE RIG PARTS ARE DETECTED AND NOT DECLARED
+ *   `manifest.rig.parts` decides what `presence/catalog.py` will offer JARVIS,
+ *   and a human editing that by hand will get it wrong — they will write
+ *   `["head","torso","arms","legs"]` for a bust because it sounds complete.
+ *   So the loader reports what it actually found, `main.js` prints it, and the
+ *   manifest is corrected from evidence.
+ */
+
+import * as THREE from 'three';
+import { GLTFLoader } from '../vendor/loaders/GLTFLoader.js';
+import { KTX2Loader } from '../vendor/loaders/KTX2Loader.js';
+import { DRACOLoader } from '../vendor/loaders/DRACOLoader.js';
+import { MeshoptDecoder } from '../vendor/libs/meshopt_decoder.module.js';
+import { useXhrLoading } from './xhr_loader.js';
+import { VrmBody, enableVrm, isVrm } from './body_vrm.js';
+import { ARKIT_NAMES } from './arkit.js';
+
+/** Bone name candidates, in order of preference. Lowercased, separators gone. */
+const BONE_HINTS = {
+  head:     ['head', 'mixamorighead', 'bip01head', 'headjoint'],
+  neck:     ['neck', 'mixamorigneck', 'bip01neck'],
+  spine:    ['spine2', 'spine1', 'spine', 'mixamorigspine2', 'mixamorigspine1',
+             'mixamorigspine', 'chest', 'upperchest'],
+  root:     ['hips', 'mixamorighips', 'root', 'armature', 'bip01pelvis'],
+  eyeLeft:  ['lefteye', 'eyeleft', 'mixamoriglefteye', 'eye_l', 'eyel'],
+  eyeRight: ['righteye', 'eyeright', 'mixamorigrighteye', 'eye_r', 'eyer'],
+
+  // Les bras, pour la pose de repos. Un modele livre en T-pose sans clip
+  // d'attente ressemble a un epouvantail, et c'est l'etat par defaut de tout
+  // humanoide telecharge : Mixamo et VRoid exportent la pose de bind.
+  armLeftUpper:  ['leftarm', 'leftupperarm', 'mixamorigleftarm', 'upperarmleft'],
+  armRightUpper: ['rightarm', 'rightupperarm', 'mixamorigrightarm', 'upperarmright'],
+  armLeftLower:  ['leftforearm', 'leftlowerarm', 'mixamorigleftforearm'],
+  armRightLower: ['rightforearm', 'rightlowerarm', 'mixamorigrightforearm'],
+};
+
+/** What the presence of a bone proves about the body. */
+const PART_HINTS = {
+  arms: ['leftarm', 'rightarm', 'leftforearm', 'rightforearm', 'lefthand', 'righthand',
+         'mixamorigleftarm', 'mixamorigrightarm'],
+  legs: ['leftupleg', 'rightupleg', 'leftleg', 'rightleg', 'leftfoot', 'rightfoot',
+         'mixamorigleftupleg', 'mixamorigrightupleg'],
+  torso: ['spine', 'spine1', 'spine2', 'chest', 'hips', 'mixamorigspine'],
+};
+
+/**
+ * A trailing side marker, in the two spellings the world actually uses.
+ *
+ * `browDown_L` and `browDownLeft` are the same shape. A matcher that does not
+ * know this throws away 36 of facecap.glb's 52 blendshapes — a real, textured,
+ * fully ARKit-rigged human head, discarded over an underscore.
+ */
+const SIDE_SEPARATED = /[._\s-]([lr])$/;
+const SIDE_WORD = /(left|right)$/;
+
+/**
+ * The one spelling of a name, whatever the exporter called it.
+ *
+ * Three things are removed, in this order, and the order matters:
+ *
+ *   1. the exporter's prefix   `Wolf3D_Head.browInnerUp` -> `browInnerUp`
+ *                              `mixamorig:Head`          -> `Head`
+ *   2. the side marker         `_L` / `.R` / `Left` / `Right`, put back at the
+ *                              end in one spelling so both conventions land on
+ *                              the same key
+ *   3. every separator         `brow_inner_up` -> `browinnerup`
+ *
+ * Doing (3) before (2) is the bug that costs 36 blendshapes: once the
+ * underscore in `browDown_L` is gone, the `l` is the last letter of a word and
+ * there is nothing left to recognise.
+ *
+ * `presence/inspect.py` implements exactly this, and `presence/selftest.py`
+ * checks the two against the same table of awkward names — because a renderer
+ * that resolves a shape the inspector said was missing, or misses one it
+ * promised, is a bug nobody would find by looking at either file alone.
+ */
+function normalise(name) {
+  // Le point est ambigu : il separe un prefixe d'export
+  // (`Wolf3D_Head.browInnerUp`) ET un marqueur de cote (`mouthSmile.L`,
+  // convention Blender). Couper aveuglement au dernier point reduit la
+  // seconde forme a "L". On recolle donc le dernier segment quand il
+  // n'est qu'un cote.
+  const segments = String(name).trim().split(/[.:]/).filter(Boolean);
+  const last = segments[segments.length - 1] || '';
+  const tail = (segments.length > 1 && /^[lr]$/i.test(last)
+    ? `${segments[segments.length - 2]}_${last}`
+    : last).toLowerCase();
+
+  let base = tail;
+  let side = '';
+  const separated = SIDE_SEPARATED.exec(base);
+  if (separated) {
+    side = separated[1] === 'l' ? 'left' : 'right';
+    base = base.slice(0, separated.index);
+  } else {
+    const word = SIDE_WORD.exec(base);
+    if (word) {
+      side = word[1];
+      base = base.slice(0, word.index);
+    }
+  }
+  return base.replace(/[^a-z0-9]/g, '') + side;
+}
+
+export class GltfBody {
+  constructor(gltf, manifest) {
+    this.gltf = gltf;
+    this.scene = gltf.scene;
+    this.manifest = manifest;
+
+    const model = manifest.model || {};
+    this.scene.scale.setScalar(Number(model.scale) || 1);
+    const p = model.position || [0, 0, 0];
+    this.scene.position.set(p[0] || 0, p[1] || 0, p[2] || 0);
+
+    this.morphTargets = new Map();   // nom ARKit -> [{mesh, index}, ...]
+    this.nodes = {};
+    this.detectedParts = new Set(['head']);
+    this.clips = Object.create(null);
+    this.mixer = new THREE.AnimationMixer(this.scene);
+
+    this._mapMorphs();
+    this._mapBones();
+  }
+
+  get object3D() { return this.scene; }
+
+  /** Same signature as ProceduralBody.setMorph. That is the entire contract. */
+  setMorph(name, weight) {
+    const targets = this.morphTargets.get(name);
+    if (!targets) return;
+    for (const { mesh, index } of targets) {
+      mesh.morphTargetInfluences[index] = weight;
+    }
+  }
+
+  /** Register one gesture clip, loaded separately. */
+  addClip(gesture, clip) {
+    this.clips[gesture] = clip;
+  }
+
+  update() { /* le mixer est avance par gestures.js, qui possede dt */ }
+
+  // ── mapping ─────────────────────────────────────────────────────────────
+
+  _mapMorphs() {
+    const aliases = (this.manifest.model && this.manifest.model.morphAliases) || {};
+    // L'alias est ecrit "ARKit -> nom dans le mesh" dans le manifeste, parce
+    // que c'est le sens dans lequel un humain le lit. On l'inverse ici.
+    const aliasByMeshName = new Map();
+    for (const arkit in aliases) {
+      aliasByMeshName.set(normalise(aliases[arkit]), arkit);
+    }
+
+    // Table ARKit normalisee -> nom canonique, construite une fois.
+    const canonical = new Map();
+    for (const name of ARKIT_NAMES) canonical.set(normalise(name), name);
+
+    this.scene.traverse((node) => {
+      const dict = node.morphTargetDictionary;
+      if (!dict || !node.morphTargetInfluences) return;
+
+      for (const raw in dict) {
+        const index = dict[raw];
+        const key = normalise(raw);
+        // Le manifeste passe en premier : c'est le recours explicite, et un
+        // recours qu'une correspondance automatique peut ecraser n'en est pas un.
+        const arkit = aliasByMeshName.get(key) || canonical.get(key);
+
+        if (!arkit) continue;
+        if (!this.morphTargets.has(arkit)) this.morphTargets.set(arkit, []);
+        this.morphTargets.get(arkit).push({ mesh: node, index });
+      }
+    });
+  }
+
+  _mapBones() {
+    const byName = new Map();
+    this.scene.traverse((node) => {
+      if (node.name) byName.set(normalise(node.name), node);
+    });
+
+    const declared = (this.manifest.rig && this.manifest.rig.bones) || {};
+
+    for (const key in BONE_HINTS) {
+      // Le manifeste gagne toujours : c'est le recours quand la detection se
+      // trompe, et un recours qu'on peut ignorer n'en est pas un.
+      const forced = declared[key];
+      if (forced && byName.has(normalise(forced))) {
+        this.nodes[key] = byName.get(normalise(forced));
+        continue;
+      }
+      for (const hint of BONE_HINTS[key]) {
+        if (byName.has(hint)) { this.nodes[key] = byName.get(hint); break; }
+      }
+    }
+    if (!this.nodes.root) this.nodes.root = this.scene;
+
+    for (const part in PART_HINTS) {
+      if (PART_HINTS[part].some((hint) => byName.has(hint))) this.detectedParts.add(part);
+    }
+  }
+
+  /** What `main.js` prints so the manifest can be corrected from evidence. */
+  report() {
+    return {
+      morphsFound: this.morphTargets.size,
+      morphsMissing: ARKIT_NAMES.filter((n) => !this.morphTargets.has(n)),
+      bones: Object.keys(this.nodes).filter((k) => this.nodes[k]),
+      parts: [...this.detectedParts],
+      clips: Object.keys(this.clips),
+    };
+  }
+}
+
+/**
+ * Load the model and every installed gesture clip.
+ *
+ * A clip that fails to load is skipped with a warning and the gesture becomes
+ * uninstalled — which `presence/catalog.py` would already have concluded from
+ * the missing file, and which the fallback chain then handles. One broken
+ * download must never cost the whole body.
+ */
+/**
+ * A GLTFLoader that can read what asset stores actually sell.
+ *
+ * KTX2/Basis for textures, DRACO and meshopt for geometry are not exotic: they
+ * are what
+ * "game ready" means in practice, and facecap.glb — a plain three.js sample —
+ * already uses KTX2. A loader without them reports
+ * "setKTX2Loader must be called before loading KTX2 textures" and the model
+ * simply does not appear, which reads as a missing file.
+ *
+ * Both transcoders are vendored under `avatar/vendor/libs/`, for the same
+ * reason three.js itself is: a face that needs a CDN is a face missing on a bad
+ * network day.
+ */
+export function buildLoader(renderer) {
+  // Avant toute construction de loader : c'est ce qui rend le transport XHR
+  // au lieu de fetch, pour ces loaders comme pour tous les autres.
+  useXhrLoading();
+
+  const loader = new GLTFLoader();
+
+  const ktx2 = new KTX2Loader()
+    .setTranscoderPath(new URL('../vendor/libs/basis/', import.meta.url).href);
+  if (renderer) ktx2.detectSupport(renderer);
+  loader.setKTX2Loader(ktx2);
+
+  const draco = new DRACOLoader()
+    .setDecoderPath(new URL('../vendor/libs/draco/gltf/', import.meta.url).href);
+  loader.setDRACOLoader(draco);
+
+  // EXT_meshopt_compression : la troisieme compression courante, apres KTX2
+  // (textures) et DRACO (geometrie). facecap.glb l'utilise, et sans elle le
+  // message est "setMeshoptDecoder must be called" et le modele n'apparait pas.
+  loader.setMeshoptDecoder(MeshoptDecoder);
+
+  // Le greffon VRM est inoffensif sur un .glb ordinaire : il ne fait
+  // quelque chose que si le fichier porte l'extension VRMC_vrm. Le brancher
+  // toujours evite d'avoir a deviner le format depuis l'extension, qui ment
+  // (des VRM circulent en .glb).
+  enableVrm(loader);
+
+  return loader;
+}
+
+/**
+ * Load the model and every installed gesture clip.
+ *
+ * A clip that fails to load is skipped with a warning and the gesture becomes
+ * uninstalled — which `presence/catalog.py` would already have concluded from
+ * the missing file, and which the fallback chain then handles. One broken
+ * download must never cost the whole body.
+ *
+ * `renderer` is needed only so KTX2Loader can ask the GPU which compressed
+ * texture formats it supports; without it every KTX2 texture is transcoded to
+ * uncompressed RGBA, which works and wastes memory.
+ */
+export async function loadGltfBody(manifest, baseUrl, renderer) {
+  const loader = buildLoader(renderer);
+  const gltf = await loader.loadAsync(new URL(`models/${manifest.model.file}`, baseUrl).href);
+  // Le format decide de la classe, pas l'extension du fichier.
+  const body = isVrm(gltf) ? new VrmBody(gltf, manifest) : new GltfBody(gltf, manifest);
+
+  // Les animations embarquees dans le modele comptent : un Mixamo exporte en
+  // GLB porte souvent ses clips, et les ignorer obligerait a reinstaller ce
+  // qui est deja la.
+  if (!body.embedded) body.embedded = (gltf.animations || []).map((c) => c.name);
+
+  const gestures = manifest.gestures || {};
+  await Promise.all(Object.keys(gestures).map(async (name) => {
+    const spec = gestures[name] || {};
+    try {
+      // Deux facons d'installer un geste : un fichier dedie, ou le nom d'un
+      // clip deja present dans le modele.
+      if (spec.animation) {
+        const clip = (gltf.animations || []).find((c) => c.name === spec.animation);
+        if (clip) body.addClip(name, clip);
+        else console.warn(`[avatar] geste "${name}" : clip "${spec.animation}" absent du modele`);
+        return;
+      }
+      if (!spec.clip) return;
+      const asset = await loader.loadAsync(new URL(`gestures/${spec.clip}`, baseUrl).href);
+      const clip = asset.animations[spec.index || 0];
+      if (clip) body.addClip(name, clip);
+      else console.warn(`[avatar] geste "${name}" : aucune animation dans ${spec.clip}`);
+    } catch (err) {
+      console.warn(`[avatar] geste "${name}" non charge :`, err.message);
+    }
+  }));
+
+  return body;
+}
