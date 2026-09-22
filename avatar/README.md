@@ -11,6 +11,8 @@ avatar/
   manifest.json       QUEL modèle, QUELS gestes — le seul point d'extension
   models/             le personnage (non versionné)
   gestures/           les clips Mixamo (non versionnés)
+  checks/             ce que le selftest ne peut pas verifier
+                      (adaptateur, parite Python/JS, repos, labo)
   vendor/             three.js + KTX2 + DRACO + meshopt + VRM, en local
   js/
     main.js           amorçage, cadrage, boucle de rendu

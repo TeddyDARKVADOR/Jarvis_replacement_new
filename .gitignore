@@ -93,3 +93,6 @@ avatar/models/*
 !avatar/models/README.md
 avatar/gestures/*
 !avatar/gestures/README.md
+
+# Captures produites par avatar/checks/ — des sorties, pas du code.
+avatar/checks/shots/

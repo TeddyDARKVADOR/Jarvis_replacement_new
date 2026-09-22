@@ -24,7 +24,7 @@
  *
  *   L'equivalence des FONCTIONS a donc ete mesuree separement, sur une grille de
  *   plusieurs milliers de points, en faisant tourner les deux implementations
- *   cote a cote (`scratchpad/bench_affect_parity.py`). C'est une verification
+ *   cote a cote (`avatar/checks/affect_parity.py`). C'est une verification
  *   ponctuelle et non un garde-fou permanent : en toucher une sans toucher
  *   l'autre demande de la relancer.
  */
