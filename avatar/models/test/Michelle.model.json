@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "test/Michelle",
+  "name": "Michelle (corps sans visage, test)",
+  "version": "2026.09.22",
+  "file": "Michelle.glb",
+  "sha256": "7a87e15a99ccbc5e5877be66e1e4ecae0a581adcafa0cce1a5569f49909e968e",
+  "size": 3276888,
+  "license": "a verifier — exemple three.js (Mixamo)",
+  "provenance": {
+    "source": "exemple three.js",
+    "installed": "2026-09-22T20:45:09",
+    "installer": "presence.install_model"
+  },
+  "format": "GLB",
+  "compression": [],
+  "capabilities": {
+    "arkit": 0,
+    "visemes": [],
+    "eyes": "aucun",
+    "head": true,
+    "limbs": [
+      "arms",
+      "head",
+      "legs",
+      "torso"
+    ],
+    "animations": 2,
+    "vrm": ""
+  },
+  "calibration": {
+    "morphAliases": {},
+    "bones": {
+      "head": "mixamorig:Head",
+      "neck": "mixamorig:Neck",
+      "spine": "mixamorig:Spine2",
+      "root": "mixamorig:Hips",
+      "eyeLeft": "",
+      "eyeRight": ""
+    },
+    "parts": [
+      "arms",
+      "head",
+      "legs",
+      "torso"
+    ]
+  }
+}

@@ -218,6 +218,48 @@ class Intent(str, Enum):
     APOLOGISE      = "apologise"        # une erreur de sa part
 
 
+class Accent(str, Enum):
+    """Un bref geste du VISAGE qui porte une intention. Jamais choisi par JARVIS.
+
+    POURQUOI CETTE COUCHE EXISTE
+        En mode visage, le corps est tenu et tous les gestes se rabattent sur la
+        tete. Mesure sur la sortie reelle : `greet` et `report_success` y
+        devenaient exactement le meme comportement (happy 0.68, regard user,
+        `nod`), de meme que `acknowledge` et `explain` (un visage neutre, qui
+        n'ecrit aucune forme, et `nod`). Deux intentions qui se jouent pareil ne
+        sont que deux noms.
+
+        Ce qui les separe chez un humain, quand le corps ne bouge pas, est un
+        signal facial bref et bien documente — pas un visage de plus :
+
+            brow_flash   les deux sourcils montent un tiers de seconde. Le
+                         salut universel (Eibl-Eibesfeldt), a l'arrivee comme
+                         au depart.
+            chin_up      le menton se releve et la bouche se retient. La
+                         posture de fierte (Tracy & Robins) : reussir, pas
+                         seulement etre content.
+            beat         de petits appuis de tete sur le rythme de la parole.
+                         Ce qui fait qu'une explication se voit (McNeill).
+            head_down    la tete s'abaisse et reste basse. L'excuse, que le
+                         hochement vers lequel `bow` se rabat ne dit pas.
+
+    POURQUOI JARVIS NE LE NOMME JAMAIS
+        C'est le COMMENT d'une intention, au meme titre que le visage derive :
+        `presence/affect.py` l'associe au mot, le moteur le joue. L'offrir dans
+        l'outil reviendrait a lui faire faire de l'animation — exactement ce que
+        l'architecture refuse.
+
+    POURQUOI IL N'EST PAS UN REPLI
+        Il joue aussi en mode complet : un salut de la main s'accompagne d'un
+        flash des sourcils. Le jour ou les clips arrivent, l'accent reste et le
+        bras s'ajoute.
+    """
+    BROW_FLASH = "brow_flash"
+    CHIN_UP    = "chin_up"
+    BEAT       = "beat"
+    HEAD_DOWN  = "head_down"
+
+
 #: Where a gesture degrades when it is not installed. Walked until something in
 #: the catalogue is reached; `IDLE` terminates every chain and is always
 #: performable, including by the procedural body that ships with no assets.
@@ -345,6 +387,21 @@ class Directive:
     #: ce qui est vrai et illisible.
     intent: object | None = None
 
+    #: D'ou vient `gaze` quand il n'est pas None : "explicit" (JARVIS l'a ecrit)
+    #: ou "intent" (la table de l'intention l'a pose). La difference ne change
+    #: rien au regard choisi — elle dit qui l'a choisi, ce que le journal de
+    #: diagnostic et le moteur de regard ont besoin de savoir.
+    gaze_from: str = ""
+
+    #: JARVIS a-t-il NOMME ce visage, cette intensite ? `expression` vaut
+    #: NEUTRAL et `intensity` 0.5 quand rien n'est dit, et un defaut ne se
+    #: distingue pas d'un choix. Sans ces deux drapeaux, `{"intent": "agree",
+    #: "expression": "proud"}` jouait `amused` : le visage nomme etait
+    #: remplace par celui que l'intention derive — une valeur explicite
+    #: ecrasee par une valeur derivee, la famille de `gaze` et de `rootRy`.
+    expression_given: bool = False
+    intensity_given: bool = False
+
 
 @dataclass(frozen=True)
 class Performance:
@@ -414,6 +471,34 @@ class Performance:
     #: arrive.
     intent: object | None = None
 
+    # ── ce que le moteur a besoin de savoir pour jouer JUSTE ─────────────────
+
+    #: Le mot d'etat machine qui a produit cette performance (`SPEAKING`,
+    #: `THINKING`...). Le moteur en tire le comportement de fond — frequence de
+    #: clignement, amplitude des saccades, inclinaison d'ecoute — que personne
+    #: n'a a decider image par image.
+    state: str = ""
+
+    #: Qui a choisi le regard : "explicit", "intent", "affect", "reflex" ou
+    #: "safety" (le sommeil ferme les yeux quoi qu'on demande).
+    #:
+    #: Le moteur s'en sert pour une seule chose, et elle compte : un regard
+    #: DECIDE ne doit jamais etre deplace par un comportement de fond — l'etat
+    #: THINKING detourne les yeux, sauf si JARVIS a dit ou regarder.
+    gaze_source: str = "reflex"
+
+    #: L'identite de la DECISION qui a demande le geste.
+    #:
+    #: Le moteur ne rejouait un geste que si son NOM changeait. En mode visage,
+    #: sept intentions sur seize se rabattent sur `nod`, et le reflexe SPEAKING
+    #: aussi : pendant la parole, `agree` arrivait avec le meme nom que ce qui
+    #: jouait deja, et le hochement etait avale. Le nom ne dit pas si c'est une
+    #: nouvelle decision ; cet identifiant, si.
+    gesture_id: str = ""
+
+    #: Le geste facial bref qui porte l'intention, ou None. Voir `Accent`.
+    accent: object | None = None
+
     def as_json(self) -> dict:
         """The wire form. Flat, short keys stay long — this travels once per
         decision, not once per frame, so readability beats a few bytes."""
@@ -436,6 +521,13 @@ class Performance:
             payload["requested_gesture"] = self.requested_gesture.value
         if self.intent is not None:
             payload["intent"] = self.intent.value
+        if self.state:
+            payload["state"] = self.state
+        payload["gaze_source"] = self.gaze_source
+        if self.gesture_id:
+            payload["gesture_id"] = self.gesture_id
+        if self.accent is not None:
+            payload["accent"] = self.accent.value
         if self.reason:
             payload["reason"] = self.reason[:200]
         return payload

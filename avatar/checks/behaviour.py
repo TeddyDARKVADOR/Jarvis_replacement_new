@@ -1,7 +1,19 @@
-"""Banc d'essai du labo comportemental.
+"""Banc d'essai du labo comportemental : dit-il la verite sur le modele installe ?
 
-Decrit des situations, pose des etats interieurs, et verifie que la decision en
-DECOULE — et que la trace affichee dit la meme chose que l'etat interne.
+Pilote `avatar/lab.html` comme une personne le ferait — la demande collee dans
+le champ, le bouton « Exécuter » — et confronte trois choses au Python :
+
+    la DECISION     la Performance que le labo a resolue (miroir de
+                    `presence/director.py`) contre celle du vrai directeur, sur
+                    le catalogue du modele reellement installe
+    le REPLI        le geste JOUE apres `FALLBACK_CHAIN`, pas le geste demande.
+                    C'est ce que l'ancien labo ratait : `greet` y affichait
+                    `wave -> idle` pendant que le panneau hochait la tete
+    la SORTIE       ce que le moteur rapporte avoir fait, relu dans le moteur :
+                    le geste a-t-il joue ou ete gele, l'accent a-t-il joue
+
+`director_parity.py` couvre 2 112 decisions sous Node ; celui-ci verifie que la
+PAGE, avec son vrai modele et ses vrais boutons, fait la meme chose.
 
 La console du navigateur est captee en JavaScript : surcharger
 QWebEnginePage.javaScriptConsoleMessage fait tomber le processus en PyQt6 sur
@@ -11,7 +23,6 @@ import json
 import sys
 from pathlib import Path
 
-# Le projet, depuis ici : avatar/checks/x.py -> la racine.
 BASE = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(BASE))
 
@@ -24,10 +35,8 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 from presence import Affect, Intent, SocialMode  # noqa: E402
-from presence.affect import (  # noqa: E402
-    affect_for_intent, expression_for, gaze_for, gaze_for_intent,
-    gesture_for_intent, intensity_for, posture_for, stillness_for, tempo_for,
-)
+from presence.catalog import catalogue  # noqa: E402
+from presence.director import Director, parse  # noqa: E402
 
 CAPTURE = """
 window.__log = [];
@@ -58,10 +67,18 @@ script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
 script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
 page.scripts().insert(script)
 
-view.resize(1400, 820)
+view.resize(1400, 860)
 view.show()
 
-# ── les situations ───────────────────────────────────────────────────────────
+CAT = catalogue(force=True)
+
+
+def affect_form(label, a: Affect) -> dict:
+    return {"emotion": {"valence": a.valence, "arousal": a.arousal},
+            "attention": a.attention, "confidence": a.confidence,
+            "urgency": a.urgency, "socialMode": a.social_mode.value, "reason": label}
+
+
 SITUATIONS = [
     ("j'ai trouve quelque chose d'interessant",
      Affect(valence=0.35, arousal=0.55, attention=0.92, confidence=0.70)),
@@ -78,158 +95,82 @@ SITUATIONS = [
     ("session de sept heures, plus rien a faire",
      Affect(valence=-0.20, arousal=0.05, attention=0.20, confidence=0.60)),
 ]
-step = {"i": 0, "intent": 0, "bad": 0}
+
+CASES = ([(label, affect_form(label, a)) for label, a in SITUATIONS]
+         + [(f"intent {i.value}", {"intent": i.value}) for i in Intent]
+         + [("intent investigate + regard user", {"intent": "investigate", "gaze": "user"}),
+            ("intent warn + regard user", {"intent": "warn", "gaze": "user"}),
+            ("visage force angry 1.0", {"expression": "angry", "intensity": 1.0}),
+            ("visage force serious, sans posture", {"expression": "serious", "intensity": 0.8})])
+
+FIELDS = ("expression", "gaze", "gaze_source", "posture", "gesture",
+          "requested_gesture", "accent", "intent")
+
+step = {"i": 0, "bad": 0}
+
+
+def expected(request: dict) -> dict:
+    director = Director(CAT)
+    director.set_intent(parse(json.dumps(request)), now=0.0)
+    return director.resolve("ACTIVE", now=0.0).as_json()
 
 
 def tick():
     i = step["i"]
-    if i >= len(SITUATIONS):
-        print(flush=True)
-        QTimer.singleShot(120, intent_tick)
+    if i >= len(CASES):
+        page.runJavaScript("JSON.stringify(window.__log)", drain)
         return
-
-    label, affect = SITUATIONS[i]
-    payload = json.dumps({
-        "emotion": {"valence": affect.valence, "arousal": affect.arousal},
-        "attention": affect.attention,
-        "confidence": affect.confidence,
-        "urgency": affect.urgency,
-        "socialMode": affect.social_mode.value,
-        "reason": label,
-    })
+    label, request = CASES[i]
+    payload = json.dumps(request)
     page.runJavaScript(
+        "document.getElementById('clear').click();"
         f"document.getElementById('json').value = {json.dumps(payload)};"
         "document.getElementById('send').click(); 0")
 
     def after():
         page.runJavaScript(
-            "JSON.stringify({"
-            " decision: window.__lab.decision,"
-            " forced: !!window.__lab.forced,"
-            " situation: document.getElementById('situation-line').textContent,"
-            " trace: document.getElementById('trace-decision').textContent,"
-            " exec: document.getElementById('trace-exec').textContent})",
-            lambda raw: compare(i, label, affect, raw))
+            "JSON.stringify({perf: window.__lab.performance,"
+            " decision: window.__lab.engine.decision,"
+            " exec: document.getElementById('trace-exec').textContent,"
+            " shown: document.getElementById('trace-decision').textContent})",
+            lambda raw: compare(label, request, raw))
     QTimer.singleShot(700, after)
 
 
-def compare(i, label, affect, raw):
+def compare(label, request, raw):
     data = json.loads(raw)
-    d = data["decision"]
-
-    want = {
-        "expression": expression_for(affect).value,
-        "gaze": gaze_for(affect).value,
-        "posture": posture_for(affect).value,
-        "intensity": intensity_for(affect),
-        "tempo": tempo_for(affect),
-        "stillness": stillness_for(affect),
-    }
+    perf = data["perf"]
+    want = expected(request)
     problems = []
-    for field, expected in want.items():
-        got = d[field]
-        same = abs(got - expected) < 1e-9 if isinstance(expected, float) else got == expected
-        if not same:
-            problems.append(f"{field}: labo={got!r} python={expected!r}")
-    if label not in data["situation"]:
-        problems.append("la situation n'est pas affichee")
-    if data["forced"]:
-        problems.append("le labo a force un visage au lieu de le deriver")
+    for field in FIELDS:
+        if perf.get(field) != want.get(field):
+            problems.append(f"{field}: labo={perf.get(field)!r} python={want.get(field)!r}")
+    for field in ("intensity", "tempo", "stillness"):
+        if abs(perf[field] - want[field]) > 1.5e-3:
+            problems.append(f"{field}: labo={perf[field]} python={want[field]}")
+
+    # La sortie : le geste a-t-il REELLEMENT joue, sur ce corps ?
+    d = data["decision"]
+    if d["gesture"] != want["gesture"]:
+        problems.append(f"le moteur a recu {d['gesture']} au lieu de {want['gesture']}")
+    if d["gesture_played"] not in ("procedural", "clip", "deja en cours"):
+        problems.append(f"geste {d['gesture']} : {d['gesture_played']}")
+    if want.get("accent") and not d["accent_played"]:
+        problems.append(f"accent {want['accent']} non joue")
+    if want.get("requested_gesture") and "→" not in data["shown"]:
+        problems.append("le repli n'est pas affiche")
 
     mark = "OK  " if not problems else "FAUX"
-    print(f"  [{mark}] {label[:44]:<44} -> {d['expression']:<10} "
-          f"{d['intensity']:.2f}  regard {d['gaze']:<7} posture {d['posture']:<9} "
-          f"tempo {d['tempo']:.2f} immob {d['stillness']:.2f}", flush=True)
+    fallback = (f"{want['requested_gesture']} -> " if want.get("requested_gesture") else "")
+    print(f"  [{mark}] {label[:40]:<40} {perf['expression']:<10} {perf['intensity']:.2f} "
+          f"regard {perf['gaze']:<6} ({perf['gaze_source']:<8}) geste {fallback}{perf['gesture']}"
+          + (f" +{perf['accent']}" if perf.get("accent") else ""), flush=True)
     for problem in problems:
         print(f"         {problem}", flush=True)
         step["bad"] += 1
 
     step["i"] += 1
-    QTimer.singleShot(120, tick)
-
-
-# ── les intentions ───────────────────────────────────────────────────────────
-#
-# La meme question, un cran plus haut : le labo tire-t-il d'un MOT le meme
-# comportement que Python ? C'est ce qui decide si on peut se servir du labo
-# pour regler une intention — et c'est le seul endroit ou les deux tables
-# INTENTS, celle de `affect.py` et celle de `affect.js`, sont confrontees en
-# marche plutot que comparees au repos.
-
-INTENTS = list(Intent)
-
-
-def intent_tick():
-    i = step["intent"]
-    if i >= len(INTENTS):
-        page.runJavaScript("JSON.stringify(window.__log)", drain)
-        return
-
-    intent = INTENTS[i]
-    payload = json.dumps({"intent": intent.value})
-    page.runJavaScript(
-        f"document.getElementById('json').value = {json.dumps(payload)};"
-        "document.getElementById('send').click(); 0")
-
-    def after():
-        page.runJavaScript(
-            "JSON.stringify({"
-            " decision: window.__lab.decision,"
-            " intent: window.__lab.intent,"
-            " gesture: window.__lab.gesture,"
-            " gaze: window.__lab.gaze,"
-            " forced: !!window.__lab.forced})",
-            lambda raw: compare_intent(intent, raw))
-    QTimer.singleShot(500, after)
-
-
-def compare_intent(intent, raw):
-    data = json.loads(raw)
-    d = data["decision"]
-    affect = affect_for_intent(intent)
-
-    want = {
-        "expression": expression_for(affect).value,
-        "posture": posture_for(affect).value,
-        "intensity": intensity_for(affect),
-        "tempo": tempo_for(affect),
-        "stillness": stillness_for(affect),
-    }
-    problems = []
-    for field, expected in want.items():
-        got = d[field]
-        same = abs(got - expected) < 1e-9 if isinstance(expected, float) else got == expected
-        if not same:
-            problems.append(f"{field}: labo={got!r} python={expected!r}")
-
-    # Le geste et le regard ne sont pas derives de l'affect : l'intention les
-    # porte. Ce sont eux qui prouvent que c'est bien la table INTENTS du JS qui
-    # a parle, et pas une derivation qui serait tombee juste par hasard.
-    want_gesture = gesture_for_intent(intent).value
-    if data["gesture"] != want_gesture:
-        problems.append(f"gesture: labo={data['gesture']!r} python={want_gesture!r}")
-
-    want_gaze = gaze_for_intent(intent)
-    got_gaze = data["gaze"] or d["gaze"]
-    expected_gaze = (want_gaze or gaze_for(affect)).value
-    if got_gaze != expected_gaze:
-        problems.append(f"gaze: labo={got_gaze!r} python={expected_gaze!r}")
-
-    if data["intent"] != intent.value:
-        problems.append(f"le labo n'a pas retenu l'intention ({data['intent']!r})")
-    if data["forced"]:
-        problems.append("le labo a force un visage au lieu de le deriver")
-
-    mark = "OK  " if not problems else "FAUX"
-    print(f"  [{mark}] intent {intent.value:<15} -> {d['expression']:<10} "
-          f"{d['intensity']:.2f}  regard {got_gaze:<7} geste {data['gesture']}",
-          flush=True)
-    for problem in problems:
-        print(f"         {problem}", flush=True)
-        step["bad"] += 1
-
-    step["intent"] += 1
-    QTimer.singleShot(90, intent_tick)
+    QTimer.singleShot(90, tick)
 
 
 def drain(raw):
@@ -240,11 +181,12 @@ def drain(raw):
             print(f"    {line}", flush=True)
     else:
         print("\n  aucune erreur ni avertissement JavaScript", flush=True)
-    if step["bad"]:
+    if step["bad"] or lines:
         print(f"  {step['bad']} DESACCORDS entre le labo et Python", flush=True)
-    else:
-        print("  le labo derive exactement ce que Python derive", flush=True)
-    app.quit()
+        app.exit(1)
+        return
+    print("  le labo decide et joue exactement ce que le panneau jouerait", flush=True)
+    app.exit(0)
 
 
 tries = {"n": 0}
@@ -252,11 +194,8 @@ tries = {"n": 0}
 
 def probe():
     page.runJavaScript(
-        "JSON.stringify({pret: !!(window.__lab && window.__lab.decision),"
-        " curseurs: document.getElementById('shapes').children.length,"
-        " axes: document.getElementById('affect').children.length,"
-        " gestes: document.getElementById('gestures').children.length,"
-        " rapport: (document.getElementById('report').textContent||'').split('\\n')[0]})",
+        "JSON.stringify({pret: !!(window.__lab && window.__lab.performance && window.__lab.engine),"
+        " rapport: (document.getElementById('report').textContent||'').split('\\n').slice(0, 12).join(' | ')})",
         ready)
 
 
@@ -264,18 +203,17 @@ def ready(raw):
     data = json.loads(raw)
     tries["n"] += 1
     if data["pret"]:
-        print(f"  modele    : {data['rapport']}", flush=True)
-        print(f"  {data['axes']} axes · {data['curseurs']} formes · "
-              f"{data['gestes']} gestes\n", flush=True)
+        print(f"  modele : {data['rapport']}", flush=True)
+        print(f"  catalogue Python : motion={CAT.motion}, {len(CAT.vocabulary)} gestes\n", flush=True)
         QTimer.singleShot(400, tick)
         return
-    if tries["n"] > 60:
+    if tries["n"] > 80:
         page.runJavaScript("JSON.stringify(window.__log)", drain)
         return
     QTimer.singleShot(250, probe)
 
 
-view.loadFinished.connect(lambda ok: (print(f"  page      : {ok}", flush=True), probe()))
+view.loadFinished.connect(lambda ok: (print(f"  page : {ok}", flush=True), probe()))
 view.setUrl(QUrl("jarvis://avatar/lab.html"))
-QTimer.singleShot(120000, app.quit)
-app.exec()
+QTimer.singleShot(120000, lambda: app.exit(1))
+sys.exit(app.exec())

@@ -91,12 +91,22 @@ const LOOK = {
   eyeLookDownLeft: [0, -1], eyeLookDownRight: [0, -1],
 };
 
+/**
+ * Oculus viseme -> the VRM viseme that carries it. VRM has five mouth shapes;
+ * the closures (PP, FF, sil) have none and are the mouth at rest.
+ */
+const OCULUS_TO_VRM = {
+  aa: 'aa', E: 'ee', I: 'ih', O: 'oh', U: 'ou',
+  RR: 'ou', CH: 'ih', SS: 'ih', DD: 'ee', nn: 'ee', kk: 'ee', TH: 'ee',
+};
+
 /** How far the eyes travel at full weight. Metres, in front of the head. */
 const GAZE_REACH = 0.45;
 
 export class VrmBody {
   constructor(gltf, manifest) {
     this.vrm = gltf.userData.vrm;
+    this.gltf = gltf;          // pour le profil : format, compression
     this.scene = this.vrm.scene;
     this.manifest = manifest;
     this.clips = Object.create(null);
@@ -122,10 +132,19 @@ export class VrmBody {
     this.direct = this.native.length >= 20;
 
     this.pending = Object.create(null);   // accumule une image, applique en fin
+    this.visemePending = Object.create(null);
     this.gaze = { x: 0, y: 0 };
 
     this._mapBones();
-    this.detectedParts = new Set(['head', 'torso', 'arms', 'legs']);   // un VRM est humanoide par definition
+    // Les membres DECLARES par le squelette humanoide, pas supposes. La
+    // specification VRM exige un corps complet, mais un fichier reel peut
+    // etre un buste ; « humanoide par definition » annoncait des jambes a un
+    // modele qui n'en avait pas.
+    const n = this.nodes;
+    this.detectedParts = new Set(['head']);
+    if (n.spine || n.root !== this.scene) this.detectedParts.add('torso');
+    if (n.armLeftUpper || n.armRightUpper) this.detectedParts.add('arms');
+    if (n.legLeftUpper || n.legRightUpper) this.detectedParts.add('legs');
   }
 
   get object3D() { return this.scene; }
@@ -137,6 +156,11 @@ export class VrmBody {
    */
   setMorph(name, weight) {
     this.pending[name] = weight;
+  }
+
+  /** A native viseme, Oculus name, folded onto the five VRM mouth shapes. */
+  setViseme(name, weight) {
+    this.visemePending[name] = weight;
   }
 
   /** Called once per frame by main.js, after the rig has written everything. */
@@ -151,6 +175,13 @@ export class VrmBody {
         const [target, scale] = TO_VRM[name];
         const value = (this.pending[name] || 0) * scale;
         if (value > (resolved[target] || 0)) resolved[target] = value;
+      }
+      // Les visemes natifs, s'il y en a : la bouche de la parole, par
+      // l'expression VRM que l'auteur a faite pour elle.
+      for (const name in this.visemePending) {
+        const target = OCULUS_TO_VRM[name];
+        const value = this.visemePending[name] || 0;
+        if (target && value > (resolved[target] || 0)) resolved[target] = value;
       }
       for (const target in resolved) {
         if (this.available.has(target)) {
@@ -213,6 +244,8 @@ export class VrmBody {
       armRightUpper: get('rightUpperArm'),
       armLeftLower: get('leftLowerArm'),
       armRightLower: get('rightLowerArm'),
+      legLeftUpper: get('leftUpperLeg'),
+      legRightUpper: get('rightUpperLeg'),
     };
   }
 
@@ -226,8 +259,13 @@ export class VrmBody {
       gazeBy: this.vrm.lookAt ? 'VRMLookAt' : 'aucun',
       lipsync: ['aa', 'ih', 'ou', 'ee', 'oh'].some((v) => this.available.has(v))
         || this.direct,
-      gesture: true,
-      posture: true,
+      // Le chemin ARKit natif pilote la bouche par les 52 ; sinon les cinq
+      // visemes VRM, quand l'auteur les a faits.
+      visemes: this.direct ? 'arkit'
+        : (['aa', 'oh'].every((v) => this.available.has(v)) ? 'vrm' : 'none'),
+      head: !!(this.nodes.head || this.nodes.neck),
+      gesture: !!(this.nodes.head || this.nodes.neck),
+      posture: !!this.nodes.spine,
     };
   }
 

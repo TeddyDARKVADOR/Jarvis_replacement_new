@@ -671,7 +671,8 @@ def run() -> bool:  # noqa: C901
             _json.dumps({"type": P.EV_AVATAR, "ts": _time.time(),
                          "directive": directive})
         )
-        fresh_arrived = seen == [directive]
+        fresh_arrived = (len(seen) == 1 and isinstance(seen[0], dict)
+                         and seen[0].get("directive") == directive)
 
         # Late, and therefore not a face any more. `/ws` replays its last 50
         # events to every client that connects, so this is not a hypothetical:
@@ -748,6 +749,124 @@ def run() -> bool:  # noqa: C901
         )
     except Exception as exc:
         report.fail("48 an intent is offered to a body only", repr(exc))
+
+    # -- 49. the intent reaches the Director, through the real hand-off ------
+    #
+    # Checks 46 and 48 each proved their half: the store emits, the panel asks
+    # the core. Nothing proved the two halves spoke the same shape — and they
+    # did not. The store emitted the bare directive, the widget looked for a
+    # `directive` key inside it, and every intent JARVIS ever sent was dropped
+    # right here. This check runs the widget's own methods on what the store
+    # actually emits, and follows the word to the JSON pushed to the page.
+    try:
+        import json as _json
+        import time as _time
+
+        from client_desktop.net import JarvisClient
+        from client_desktop.state import JarvisStore
+        from client_desktop.ui import avatar_view
+        from presence import Director
+
+        class _Body:
+            """The widget's state, without Qt: its real methods run on this."""
+
+            def __init__(self) -> None:
+                self._director = Director()
+                self._last_state = "SPEAKING"
+                self._last_speech = 0.3
+                self.pushed: list[dict] = []
+
+            def _push(self, performance) -> None:  # noqa: ANN001
+                self.pushed.append(performance.as_json())
+
+            def set_intent(self, directive, age: float = 0.0) -> None:  # noqa: ANN001
+                avatar_view.JarvisAvatarWidget.set_intent(self, directive, age)
+
+        body = _Body()
+        store = JarvisStore()
+        store.subscribe(
+            lambda kind, payload: avatar_view.JarvisAvatarWidget.set_intent_json(
+                body, payload) if kind == "avatar" else None)
+        client = JarvisClient(
+            config_mod.Settings(host="h.ts.net", device_token="tok"),
+            store, speaker=None,
+            on_connected=lambda: None, on_disconnected=lambda _r, _f: None,
+        )
+        client._handle_event(_json.dumps({
+            "type": P.EV_AVATAR, "ts": _time.time(),
+            "directive": {"intent": "investigate", "reason": "le log"}}))
+
+        pushed = body.pushed[-1] if body.pushed else {}
+        reached = (
+            pushed.get("intent") == "investigate"
+            and pushed.get("gaze") == "screen"
+            and pushed.get("expression") == "thinking"
+            and str(pushed.get("gesture_id", "")).startswith("intent#")
+            and pushed.get("speech_level") == 0.3
+        )
+        report.check(
+            "49 an intent from the wire reaches the Director and the page",
+            reached,
+            f"pushed={len(body.pushed)} intent={pushed.get('intent')} "
+            f"gaze={pushed.get('gaze')} gesture_id={pushed.get('gesture_id')}",
+        )
+    except Exception as exc:
+        report.fail("49 an intent reaches the Director", repr(exc))
+
+    # -- 50. a reconnection does not replay a face, and age is honoured -------
+    #
+    # `/ws` replays its last 50 events to whoever connects. The 25 s window
+    # stops yesterday's faces, not the one from ten seconds ago: a quick
+    # reconnect used to hand the last directive back, and JARVIS nodded again
+    # for a sentence that had finished. Order is decided on the SERVER's `ts`,
+    # compared only with other stamps from the same server.
+    try:
+        import json as _json
+        import time as _time
+
+        from client_desktop.net import JarvisClient
+        from client_desktop.state import JarvisStore
+        from presence import Director, parse
+
+        store = JarvisStore()
+        seen: list[dict] = []
+        store.subscribe(
+            lambda kind, payload: seen.append(payload) if kind == "avatar" else None)
+        client = JarvisClient(
+            config_mod.Settings(host="h.ts.net", device_token="tok"),
+            store, speaker=None,
+            on_connected=lambda: None, on_disconnected=lambda _r, _f: None,
+        )
+        now = _time.time()
+        first = _json.dumps({"type": P.EV_AVATAR, "ts": now - 10,
+                             "directive": {"intent": "agree"}})
+        second = _json.dumps({"type": P.EV_AVATAR, "ts": now - 2,
+                              "directive": {"intent": "warn"}})
+        client._handle_event(first)
+        client._handle_event(second)
+        # The reconnection: the server replays both, in its own order.
+        client._handle_event(first)
+        client._handle_event(second)
+        # And an older one arriving late, out of order.
+        client._handle_event(_json.dumps({"type": P.EV_AVATAR, "ts": now - 5,
+                                          "directive": {"intent": "amuse"}}))
+        words = [p["directive"].get("intent") for p in seen]
+        no_replay = words == ["agree", "warn"]
+
+        # A decision already 20 s old on arrival has 5 s left, not 25.
+        director = Director()
+        director.set_intent(parse('{"intent": "warn"}'), now=100.0 - 20.0)
+        backdated = (director.resolve("SPEAKING", now=100.0 + 4.0).intent is not None
+                     and director.resolve("SPEAKING", now=100.0 + 6.0).intent is None)
+        ages_carried = all(0.0 <= p.get("age", -1) < 11.0 for p in seen)
+
+        report.check(
+            "50 a reconnection never replays a face, and a late one dies on time",
+            no_replay and backdated and ages_carried,
+            f"played={words} backdated={backdated} ages={ages_carried}",
+        )
+    except Exception as exc:
+        report.fail("50 a reconnection never replays a face", repr(exc))
 
     total = report.passed + report.failed
     print(f"\n{report.passed}/{total}")

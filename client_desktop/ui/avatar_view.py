@@ -39,6 +39,7 @@ WHERE THE FACE IS DECIDED
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -71,6 +72,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 #: mouth reads as laggy and a quarter of the calls.
 SPEECH_INTERVAL_S = 1.0 / 25.0
 
+#: `JARVIS_AVATAR_DEBUG=1` : chaque decision poussee au visage s'ecrit dans le
+#: journal, avec sa trace causale et ce que le moteur en a REELLEMENT fait.
+#: Silencieux par defaut — une ligne par decision est du bruit en production,
+#: et une information precieuse le jour ou un visage surprend.
+DEBUG = os.environ.get("JARVIS_AVATAR_DEBUG", "").strip() not in ("", "0", "false")
+
 #: A wake older than this stops showing on the face. Matches
 #: `core_widget.WAKE_RING_MAX_AGE` deliberately: the ring and the face must
 #: acknowledge the same wake or they contradict each other.
@@ -93,6 +100,33 @@ def _state_word(snapshot: Snapshot) -> str:
     if snapshot.woke_at and (time.monotonic() - snapshot.woke_at) < WAKE_MAX_AGE_S:
         return "WAKING"
     return snapshot.assistant.value
+
+
+def _envelope(event: object) -> tuple[dict | None, float]:
+    """The directive and its age, from whatever shape carried them here.
+
+    Two shapes are accepted and that is deliberate. The store emits
+    `{"directive": {...}, "age": s}`. A bare directive is also taken, because
+    this widget used to be handed exactly that and dropped it: every intent
+    JARVIS sent died on this line, while the half before it and the half after
+    it each passed their own test. Accepting both means a caller written
+    against either contract reaches the Director.
+
+    A dict with no `directive` key is read as a bare directive only if it has
+    something a directive can have — an empty or foreign dict stays ignored.
+    """
+    if not isinstance(event, dict):
+        return None, 0.0
+    if "directive" in event:
+        directive = event.get("directive")
+        try:
+            age = max(0.0, float(event.get("age", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            age = 0.0
+        return (directive if isinstance(directive, dict) else None), age
+    if event and not {"type", "ts"} & set(event):
+        return event, 0.0
+    return None, 0.0
 
 
 class JarvisAvatarWidget(QWidget):
@@ -190,7 +224,10 @@ class JarvisAvatarWidget(QWidget):
 
         script = QWebEngineScript()
         script.setName("jarvis-manifest")
-        script.setSourceCode(f"window.JARVIS_MANIFEST = {manifest};")
+        # En mode diagnostic, la page enregistre aussi sa seance — rejouable
+        # dans le labo avec `window.JARVIS.recording()`. Voir recorder.js.
+        record = "window.JARVIS_RECORD = true;" if DEBUG else ""
+        script.setSourceCode(f"window.JARVIS_MANIFEST = {manifest};{record}")
         script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         script.setRunsOnSubFrames(False)
@@ -245,13 +282,16 @@ class JarvisAvatarWidget(QWidget):
 
     # ── what JARVIS chose, when he chose something ───────────────────────────
 
-    def set_intent(self, directive) -> None:  # noqa: ANN001
+    def set_intent(self, directive, age: float = 0.0) -> None:  # noqa: ANN001
         """An `avatar` event arrived from the server. Outranks the reflex.
 
         Pushed immediately rather than waiting for the next state change: the
         expression JARVIS picked for a sentence has to arrive with the sentence.
+
+        `age` backdates the intent to when JARVIS decided it, so its 25 s are
+        counted from the decision and not from the packet's arrival.
         """
-        self._director.set_intent(directive)
+        self._director.set_intent(directive, now=time.monotonic() - max(0.0, age))
 
         # Resolved against the state we are actually in, and NOT by clearing
         # `_last_state` to force the next tick to redo it. Two reasons, both
@@ -289,16 +329,19 @@ class JarvisAvatarWidget(QWidget):
         word costs a plainer face and never an error — and the face JARVIS falls
         back to is the one his machine state implies, which is still correct.
         """
-        directive = event.get("directive") if isinstance(event, dict) else None
-        if not isinstance(directive, dict):
+        directive, age = _envelope(event)
+        if directive is None:
             return
+        if DEBUG:
+            _log(f"WIRE = {json.dumps(directive, ensure_ascii=False)[:120]} "
+                 f"(decide il y a {age * 1000:.0f} ms)")
         try:
             from presence import parse
             parsed = parse(json.dumps(directive))
         except Exception:
             return
         if parsed is not None:
-            self.set_intent(parsed)
+            self.set_intent(parsed, age=age)
 
     # ── plumbing ─────────────────────────────────────────────────────────────
 
@@ -306,6 +349,31 @@ class JarvisAvatarWidget(QWidget):
         payload = json.dumps(performance.as_json(), separators=(",", ":"))
         self._run(f"window.JARVIS&&window.JARVIS.perform({payload})")
         self._last_gesture = performance.gesture.value
+        if DEBUG:
+            self._trace(performance)
+
+    def _trace(self, performance) -> None:  # noqa: ANN001
+        """La decision en lignes, puis ce que le moteur en a fait.
+
+        La trace dit ce que JARVIS a decide ; RENDER dit ce que le corps a joue
+        — `frozen` si `rig.motion` tenait le membre, `absent` si le modele n'a
+        pas l'os. C'est l'ecart entre les deux qu'on cherche quand un visage
+        surprend, et aucun des deux ne le montre seul.
+        """
+        try:
+            from presence.director import trace
+            for line in trace(performance):
+                _log(line)
+        except Exception as exc:
+            _log(f"TRACE indisponible ({exc})")
+        if not self._loaded:
+            return
+        try:
+            self._view.page().runJavaScript(
+                "JSON.stringify(window.__engine && window.__engine.decision)",
+                lambda raw: _log(_render_line(raw)))
+        except Exception:
+            pass
 
     def _run(self, script: str) -> None:
         if not self._loaded:
@@ -323,3 +391,35 @@ class JarvisAvatarWidget(QWidget):
             return
         self._last_state = ""
         self._push(self._director.resolve("ACTIVE"))
+        if DEBUG:
+            # Le profil MESURE du modele charge — ce que le moteur va piloter.
+            self._view.page().runJavaScript(
+                "window.JARVIS && window.JARVIS.profileText && window.JARVIS.profileText()",
+                lambda text: [_log(line) for line in str(text or "").splitlines()])
+
+
+def _log(line: str) -> None:
+    """Une ligne horodatee, en ASCII : la console Windows est cp1252."""
+    stamp = time.strftime("%H:%M:%S")
+    try:
+        print(f"[avatar] {stamp} " + line.encode("ascii", "replace").decode("ascii"),
+              flush=True)
+    except Exception:
+        pass
+
+
+def _render_line(raw) -> str:  # noqa: ANN001
+    try:
+        decision = json.loads(raw) if raw else None
+    except (TypeError, ValueError):
+        decision = None
+    if not decision:
+        # Le modele se charge encore : le pont (bridge.js) garde la derniere
+        # decision et la jouera des que le corps existe.
+        return "RENDER = en attente — modele en chargement, decision gardee par le pont"
+    played = decision.get("gesture_played")
+    status = "success" if played in ("procedural", "clip", "deja en cours") else played
+    accent = decision.get("accent")
+    return (f"RENDER = {status} ({decision.get('gesture')} {played}"
+            + (f", accent {accent} {'joue' if decision.get('accent_played') else 'NON joue'}"
+               if accent else "") + ")")

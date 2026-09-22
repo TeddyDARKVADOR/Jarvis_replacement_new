@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "id": "test/facecap",
+  "name": "facecap (tete de test)",
+  "version": "2026.09.22",
+  "file": "facecap.glb",
+  "sha256": "6bfce6d0fcbb5839f5102b79733007859fef7c5df6d9eb49e2264542810b5f64",
+  "size": 332808,
+  "license": "a verifier — exemple three.js",
+  "provenance": {
+    "source": "https://threejs.org/examples/models/gltf/facecap.glb",
+    "installed": "2026-09-22T20:45:09",
+    "installer": "presence.install_model"
+  },
+  "format": "GLB",
+  "compression": [
+    "meshopt",
+    "KTX2",
+    "quantization"
+  ],
+  "capabilities": {
+    "arkit": 52,
+    "visemes": [],
+    "eyes": "formes",
+    "head": true,
+    "limbs": [
+      "head"
+    ],
+    "animations": 4,
+    "vrm": ""
+  },
+  "calibration": {
+    "morphAliases": {
+      "eyeBlinkLeft": "eyeBlink_L",
+      "eyeLookDownLeft": "eyeLookDown_L",
+      "eyeLookInLeft": "eyeLookIn_L",
+      "eyeLookOutLeft": "eyeLookOut_L",
+      "eyeLookUpLeft": "eyeLookUp_L",
+      "eyeSquintLeft": "eyeSquint_L",
+      "eyeWideLeft": "eyeWide_L",
+      "eyeBlinkRight": "eyeBlink_R",
+      "eyeLookDownRight": "eyeLookDown_R",
+      "eyeLookInRight": "eyeLookIn_R",
+      "eyeLookOutRight": "eyeLookOut_R",
+      "eyeLookUpRight": "eyeLookUp_R",
+      "eyeSquintRight": "eyeSquint_R",
+      "eyeWideRight": "eyeWide_R",
+      "mouthSmileLeft": "mouthSmile_L",
+      "mouthSmileRight": "mouthSmile_R",
+      "mouthFrownLeft": "mouthFrown_L",
+      "mouthFrownRight": "mouthFrown_R",
+      "mouthDimpleLeft": "mouthDimple_L",
+      "mouthDimpleRight": "mouthDimple_R",
+      "mouthStretchLeft": "mouthStretch_L",
+      "mouthStretchRight": "mouthStretch_R",
+      "mouthPressLeft": "mouthPress_L",
+      "mouthPressRight": "mouthPress_R",
+      "mouthLowerDownLeft": "mouthLowerDown_L",
+      "mouthLowerDownRight": "mouthLowerDown_R",
+      "mouthUpperUpLeft": "mouthUpperUp_L",
+      "mouthUpperUpRight": "mouthUpperUp_R",
+      "browDownLeft": "browDown_L",
+      "browDownRight": "browDown_R",
+      "browOuterUpLeft": "browOuterUp_L",
+      "browOuterUpRight": "browOuterUp_R",
+      "cheekSquintLeft": "cheekSquint_L",
+      "cheekSquintRight": "cheekSquint_R",
+      "noseSneerLeft": "noseSneer_L",
+      "noseSneerRight": "noseSneer_R"
+    },
+    "bones": {
+      "head": "head",
+      "neck": "",
+      "spine": "",
+      "root": "",
+      "eyeLeft": "eyeLeft",
+      "eyeRight": "eyeRight"
+    },
+    "parts": [
+      "head"
+    ]
+  }
+}

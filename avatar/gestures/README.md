@@ -106,3 +106,19 @@ debout et un épouvantail. Si les bras tombent de travers sur un rig particulier
 ```jsonc
 "rig": { "armRest": { "shoulder": 1.13, "elbow": 0.16, "forward": 0.10 } }
 ```
+
+## Un clip `idle` installé devient le fond
+
+Installé comme n'importe quel geste (`"idle": { "clip": "idle.glb" }`), un clip
+`idle` n'est pas joué une fois : il tourne **en boucle** comme couche de fond
+dès le chargement (en `"motion": "full"` seulement). Chaque autre geste se fond
+par-dessus (0.25 s) et le corps revient à l'idle en fondu à la fin (0.35 s), au
+lieu de retomber en pose de bind. La pose de repos et la respiration des épaules
+s'effacent alors devant le clip.
+
+C'est ce qui rend l'ordre voulu — `idle` d'abord, puis `wave`, `point`,
+`explain` — praticable sans toucher au code ni au cerveau : les intentions
+demandent déjà ces gestes et se rabattent tant qu'ils manquent.
+
+Et la calibration de la pose de repos (`rig.armRest`) appartient au modèle : elle
+est rangée dans son profil quand on change de visage (voir `../models/README.md`).

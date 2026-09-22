@@ -3,9 +3,21 @@ presence/install_model.py — put a real character in, in one command.
 
     python -m presence.install_model --readyplayerme 64bfa15f0e72c63d7c3934a6
     python -m presence.install_model https://example.com/aven.glb
-    python -m presence.install_model C:/Downloads/james.vrm
+    python -m presence.install_model C:/Downloads/james.vrm --slot jarvis/male \
+        --license "CC-BY 4.0" --source "https://..." --name "JARVIS Male"
     python -m presence.install_model --demo
-    python -m presence.install_model --list
+    python -m presence.install_model --list          ou en trouver un
+    python -m presence.install_model --installed     ce qui est deja la
+    python -m presence.install_model --use jarvis/female
+    python -m presence.install_model --adopt jarvis/female/jarvis.glb
+
+CHANGER DE VISAGE, SANS TOUCHER AU CERVEAU
+    Chaque modele vit dans son dossier (`--slot jarvis/male`) avec un profil a
+    cote de lui — empreinte, licence, provenance, capacites mesurees et
+    calibration. Installer ou `--use` active un modele : sa calibration entre
+    dans le manifeste, celle de l'ancien est rangee dans SON profil, et les
+    preferences (camera, couleurs, `rig.motion`) ne bougent pas. Rien dans
+    `presence/` ni dans le moteur n'a a changer : voir `presence/models.py`.
 
 WHY A COMMAND AND NOT A PARAGRAPH IN A README
     Installing a model is four steps that are each easy to get wrong: fetch the
@@ -49,6 +61,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from presence import inspect as inspector  # noqa: E402
+from presence import models  # noqa: E402
 
 MODELS_DIR = BASE_DIR / "avatar" / "models"
 
@@ -144,16 +157,34 @@ def fetch(url: str, target: Path) -> Path:
     return target
 
 
-def install(source: str, *, rpm: bool = False, name: str | None = None) -> int:
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+def install(source: str, *, rpm: bool = False, name: str | None = None,
+            slot: str | None = None, license: str | None = None,
+            provenance: str | None = None, label: str | None = None,
+            version: str | None = None, activate: bool = True,
+            adopt: bool = False) -> int:
+    """Mettre un fichier dans `avatar/models/`, le mesurer, le profiler, l'activer.
 
-    if rpm:
+    `adopt` : le fichier est deja en place et le manifeste actuel le decrit —
+    on lui ecrit son profil avec la calibration qu'il a deja, sans rien copier.
+    """
+    target_dir = MODELS_DIR / slot if slot else MODELS_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    if adopt:
+        path = models.find(source) or Path(source)
+        if not path.is_absolute() and not path.is_file():
+            path = MODELS_DIR / source
+        if not path.is_file():
+            raise SystemExit(f"  fichier introuvable : {source}")
+        print(f"  adopte          avatar/models/{models.relative(path)}")
+
+    elif rpm:
         avatar_id = source.strip().rstrip("/").split("/")[-1].split(".")[0].split("?")[0]
         if not avatar_id:
             raise SystemExit("  identifiant Ready Player Me vide")
         url = f"https://models.readyplayer.me/{avatar_id}.glb?{RPM_QUERY}"
-        target = MODELS_DIR / f"{name or avatar_id}.glb"
-        path = fetch(url, target)
+        path = fetch(url, target_dir / f"{name or avatar_id}.glb")
+        provenance = provenance or f"Ready Player Me {avatar_id} ({url})"
 
     elif source.startswith(("http://", "https://")):
         stem = source.split("?")[0].rstrip("/").split("/")[-1] or "model.glb"
@@ -165,15 +196,15 @@ def install(source: str, *, rpm: bool = False, name: str | None = None) -> int:
         # L'erreur la plus courante, et la plus silencieuse : coller l'URL d'un
         # avatar Ready Player Me telle quelle. Sans `morphTargets=ARKit`, le
         # meme avatar arrive avec huit blendshapes au lieu de cinquante-deux —
-        # il se charge, il s'affiche, et son visage ne bouge pas. Rien ne le
-        # signale nulle part.
+        # il se charge, il s'affiche, et son visage ne bouge pas.
         if "readyplayer.me" in source and "morphTargets" not in source:
             joiner = "&" if "?" in source else "?"
             source = f"{source}{joiner}{RPM_QUERY}"
             print("  complete       morphTargets=ARKit ajoute a l'URL "
                   "(sans lui : 8 blendshapes au lieu de 52)")
 
-        path = fetch(source, MODELS_DIR / (name or stem))
+        path = fetch(source, target_dir / (name or stem))
+        provenance = provenance or source
 
     else:
         local = Path(source).expanduser()
@@ -181,14 +212,24 @@ def install(source: str, *, rpm: bool = False, name: str | None = None) -> int:
             raise SystemExit(f"  fichier introuvable : {local}")
         if local.suffix.lower() not in ALLOWED_SUFFIXES:
             raise SystemExit(f"  extension non geree : {local.suffix}")
-        path = MODELS_DIR / (name or local.name)
+        path = target_dir / (name or local.name)
         if local.resolve() != path.resolve():
             shutil.copy2(local, path)
-        print(f"  copie           avatar/models/{path.name}  ({_human(path.stat().st_size)})")
+        print(f"  copie           avatar/models/{models.relative(path)}  ({_human(path.stat().st_size)})")
+        provenance = provenance or f"fichier local {local.name}"
 
-    # ── ce qui est reellement dedans, et le manifeste qui en decoule ────────
+    # ── ce qui est reellement dedans ────────────────────────────────────────
+    # Les alias de forme notes pour CE fichier (reinstallation, adoption)
+    # participent a la lecture : un alias manuel qui trouve encore sa cible
+    # ne doit pas disparaitre parce qu'on a relu le fichier.
+    previous = models.read_profile(path)
+    manifest = models.read_json(inspector.MANIFEST)
+    if adopt:
+        aliases = (manifest.get("model") or {}).get("morphAliases")
+    else:
+        aliases = (previous.get("calibration") or {}).get("morphAliases")
     try:
-        data = inspector.report(path)
+        data = inspector.report(path, aliases)
     except Exception as exc:
         raise SystemExit(f"  fichier illisible comme glTF : {exc}")
 
@@ -198,8 +239,7 @@ def install(source: str, *, rpm: bool = False, name: str | None = None) -> int:
     vrm = data.get("vrm_facts") or {}
     if vrm:
         # Un VRM sans nom ARKit n'est pas un modele casse : c'est un modele
-        # qui parle une autre langue, et body_vrm.js la traduit. Crier
-        # "aucun blendshape" enverrait chercher un probleme inexistant.
+        # qui parle une autre langue, et body_vrm.js la traduit.
         if vrm["native_arkit"]:
             print(f"  VRM portant {len(vrm['native_arkit'])} expressions ARKit"
                   " natives — pleine fidelite." + chr(10))
@@ -216,20 +256,57 @@ def install(source: str, *, rpm: bool = False, name: str | None = None) -> int:
         print(f"  seulement {matched}/52 blendshapes ARKit — les expressions seront")
         print("  approximatives. Un modele avec le jeu complet vaut mieux.\n")
 
-    inspector.write_manifest(path, data)
+    profile, manifest = models.install_file(
+        path, data, adopt=adopt, license=license, source=provenance,
+        name=label, version=version, activate_now=activate)
 
-    frame = "face" if data["parts"] == ["head"] else "bust"
-    manifest = json.loads(inspector.MANIFEST.read_text(encoding="utf-8"))
-    manifest.setdefault("camera", {})["frame"] = frame
-    manifest["camera"].setdefault("fov", 24)
-    inspector.MANIFEST.write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-    print(f"  cadrage         {frame}")
+    print(f"  profil          avatar/models/{models.relative(models.profile_path(path))}")
+    print(f"                  {profile['id']} v{profile['version']} · licence : {profile['license']}")
+    print(f"                  empreinte {profile['sha256'][:16]}…")
+    if activate:
+        print(f"  actif           {manifest['model']['file']}  "
+              f"(cadrage {manifest['camera'].get('frame')}, motion "
+              f"{manifest['rig'].get('motion', 'full')})")
+    else:
+        print("  installe sans l'activer — `--use` pour le porter")
     print("\n  Verifier maintenant :")
     print("      python -m presence.selftest")
     print("      avatar/lab.html          (charger, inspecter, tester au curseur)")
     print()
+    return 0
+
+
+def list_installed() -> int:
+    manifest = models.read_json(inspector.MANIFEST)
+    active = ((manifest.get("model") or {}).get("file") or "").strip()
+    rows = models.installed()
+    if not rows:
+        print("\n  aucun modele profile — `--adopt <fichier>` pour un modele deja en place\n")
+        return 0
+    print()
+    for model, profile in rows:
+        mark = "*" if models.relative(model) == active else " "
+        caps = profile.get("capabilities", {})
+        ok, why = models.check_profile(model)
+        print(f"  {mark} {profile['id']:<28} v{profile.get('version', '?'):<10} "
+              f"{caps.get('arkit', 0)}/52 ARKit · visemes {len(caps.get('visemes', []))} · "
+              f"{'/'.join(caps.get('limbs', []))} · {profile.get('license')}")
+        if not ok:
+            print(f"      ! {why}")
+    print("\n  * = actif\n")
+    return 0
+
+
+def use(target: str) -> int:
+    model = models.find(target)
+    if model is None:
+        raise SystemExit(f"  aucun modele installe ne correspond a {target!r} — voir --installed")
+    ok, why = models.check_profile(model)
+    if not ok:
+        print(f"  attention : {why}")
+    profile, manifest = models.use(model)
+    print(f"  actif           {manifest['model']['file']}  ({profile['id']} v{profile.get('version')})")
+    print("  calibration du modele precedent rangee dans son profil.\n")
     return 0
 
 
@@ -254,22 +331,44 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args[0] == "--list":
         return print_sources()
+    if args[0] == "--installed":
+        return list_installed()
 
-    name = None
-    if "--name" in args:
-        index = args.index("--name")
-        name = args[index + 1] if index + 1 < len(args) else None
-        del args[index:index + 2]
+    options: dict[str, str | None] = {}
+    for flag in ("--name", "--slot", "--license", "--source", "--label", "--version"):
+        if flag in args:
+            index = args.index(flag)
+            options[flag] = args[index + 1] if index + 1 < len(args) else None
+            del args[index:index + 2]
+    activate = "--no-activate" not in args
+    args = [a for a in args if a != "--no-activate"]
+    common = dict(name=options.get("--name"), slot=options.get("--slot"),
+                  license=options.get("--license"), provenance=options.get("--source"),
+                  label=options.get("--label"), version=options.get("--version"),
+                  activate=activate)
+
+    if args[0] == "--use":
+        if len(args) < 2:
+            raise SystemExit("  usage : --use <dossier, identifiant ou fichier>")
+        return use(args[1])
+
+    if args[0] == "--adopt":
+        if len(args) < 2:
+            raise SystemExit("  usage : --adopt <fichier deja dans avatar/models/>")
+        return install(args[1], adopt=True, **common)
 
     if args[0] == "--demo":
-        return install(DEMO_URL, name="facecap.glb")
+        common["name"] = common["name"] or "facecap.glb"
+        common["slot"] = common["slot"] or "test"
+        common["provenance"] = common["provenance"] or DEMO_URL
+        return install(DEMO_URL, **common)
 
     if args[0] in ("--readyplayerme", "--rpm"):
         if len(args) < 2:
             raise SystemExit("  usage : --readyplayerme <identifiant>")
-        return install(args[1], rpm=True, name=name)
+        return install(args[1], rpm=True, **common)
 
-    return install(args[0], name=name)
+    return install(args[0], **common)
 
 
 if __name__ == "__main__":

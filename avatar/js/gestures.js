@@ -37,6 +37,8 @@
  */
 
 import { Idle } from './idle.js';
+import { Rng } from './rng.js';
+import { GESTURE_NEEDS } from './catalog.js';
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
@@ -161,8 +163,12 @@ const POSTURES = {
 };
 
 /** A small head turn following the eyes. The eyes do most of the work — a head
- *  that turns as far as the gaze looks like a security camera. */
-const GAZE_HEAD = {
+ *  that turns as far as the gaze looks like a security camera.
+ *
+ *  Exported: `gaze.js` reads it as the head's share of each gaze and moves the
+ *  head there itself, late and slow, while the eyes lead. `gestures.js` only
+ *  falls back to it when no gaze controller is wired. */
+export const GAZE_HEAD = {
   user:   { headRy: 0, headRx: 0 },
   screen: { headRy: 9 * DEG, headRx: -1 * DEG },
   away:   { headRy: -12 * DEG, headRx: -5 * DEG },
@@ -170,6 +176,18 @@ const GAZE_HEAD = {
   around: { headRy: 0, headRx: -2 * DEG },
   closed: { headRy: 0, headRx: 3 * DEG },
 };
+
+/**
+ * Gestures during which the eyes keep their target while the head moves.
+ *
+ * Nodding while looking at someone is the ordinary case: the head moves, the
+ * gaze does not. `look_away`, `turn`, `think` and `look_around` are the
+ * opposite — the head moving IS the gaze moving — so they are not here.
+ */
+const KEEPS_EYE_CONTACT = new Set([
+  'nod', 'shake_head', 'tilt_head', 'look_at_user', 'lean_in', 'lean_back',
+  'blink_slow', 'sigh', 'shrug', 'bow',
+]);
 
 /** Ease in and out — for gestures that go and come back. */
 function env(p) {
@@ -192,8 +210,10 @@ export class Gestures {
   /**
    * @param {object} body  exposes `nodes` ({head, neck, spine, root}), and
    *                       optionally `mixer` + `clips` for the glTF backend.
+   * @param {Rng} [rng]    the engine's randomness — see rng.js.
    */
-  constructor(body) {
+  constructor(body, rng) {
+    this.rng = rng || new Rng();
     this.body = body;
     this.nodes = body.nodes || {};
     this.rest = new Map();
@@ -221,7 +241,20 @@ export class Gestures {
 
     // Le repos. Il tourne en permanence, y compris pendant un clip : une
     // animation qui fige la respiration se lit comme un blocage.
-    this.idle = new Idle(this.nodes);
+    this.idle = new Idle(this.nodes, this.rng.fork('idle'));
+
+    // Ce que les autres couches ajoutent a la tete, pose par le moteur a
+    // chaque image : la part de tete du regard (gaze.js, en retard sur les
+    // yeux), l'inclinaison tenue de l'etat de presence (states.js), et
+    // l'accent de l'intention (accents.js).
+    this.gazeHead = null;
+    this.gazeDecided = false;
+    this.stateHead = { rx: 0, rz: 0 };
+    this.accentHead = null;
+    /** La rotation de tete que les yeux doivent compenser, en sortie. */
+    this.vorHead = { rx: 0, ry: 0 };
+    /** Ce que le dernier `play()` a reellement fait. */
+    this.lastPlay = { name: 'idle', via: 'procedural' };
 
     // Vitesse des gestes, venue de l'affect. 1.0 = nominal.
     this.tempo = 1.0;
@@ -229,7 +262,7 @@ export class Gestures {
     // La pose de repos des bras, appliquee une fois et poursuivie tant qu'aucun
     // clip ne joue. Voir `_restArms`.
     this.armRest = (body.manifest && body.manifest.rig && body.manifest.rig.armRest) || {};
-    this._armPhase = Math.random() * TAU;
+    this._armPhase = this.rng.next() * TAU;
     this._restArms();
 
     /**
@@ -250,6 +283,32 @@ export class Gestures {
      */
     const rig = (body.manifest && body.manifest.rig) || {};
     this.faceOnly = String(rig.motion || 'full').toLowerCase() === 'face';
+
+    /**
+     * Un clip `idle` installe devient la couche de fond, en boucle.
+     *
+     * Ce n'est pas utilise aujourd'hui — aucun clip n'est installe, et le mode
+     * visage n'en jouerait pas. C'est la preparation de `"motion": "full"` :
+     * le jour ou un idle Mixamo arrive, il tourne en permanence, chaque geste
+     * se fond PAR-DESSUS et le corps revient a lui a la fin, au lieu de
+     * retomber en pose de bind. Le cerveau n'en sait rien.
+     */
+    this.base = null;
+    const idleClip = body.clips && body.clips.idle;
+    if (idleClip && body.mixer && !this.faceOnly) {
+      this.base = body.mixer.clipAction(idleClip);
+      this.base.setLoop(2201 /* THREE.LoopRepeat */, Infinity);
+      this.base.play();
+    }
+    if (body.mixer && body.mixer.addEventListener) {
+      body.mixer.addEventListener('finished', (event) => {
+        if (event.action !== this.action) return;
+        // Un geste fini rend la main a l'idle, en fondu — ou a la pose de
+        // repos s'il n'y en a pas.
+        if (this.base) this.base.reset().play().crossFadeFrom(this.action, 0.35, true);
+        this.action = null;
+      });
+    }
   }
 
   /**
@@ -297,7 +356,7 @@ export class Gestures {
 
   /** A breath in the shoulders. Stops the rest pose reading as a mannequin. */
   _swayArms(dt) {
-    if (this.action) return;          // un clip pilote les bras : ne pas le contredire
+    if (this.action || this.base) return;   // un clip pilote les bras : ne pas le contredire
     this._armPhase += dt;
     const sway = Math.sin(this._armPhase * 0.55) * 0.012;
     for (const [key, sign] of [['armLeftUpper', -1], ['armRightUpper', 1]]) {
@@ -316,25 +375,62 @@ export class Gestures {
     return Object.prototype.hasOwnProperty.call(PROCEDURAL, name);
   }
 
+  /**
+   * Play a gesture, and say what actually happened.
+   *
+   * Returns `{name, via}` where `via` is `clip`, `procedural`, `frozen` (the
+   * gesture needs a limb that `rig.motion: "face"` holds still — nothing plays),
+   * `absent` (the model has no bone to move) or `none` (nothing can play it). The lab prints this, not the request: a
+   * gesture announced as played and zeroed on the next frame is the one lie
+   * the lab exists to prevent.
+   */
   play(name) {
-    if (!name) return;
+    if (!name) return this.lastPlay;
+
+    const needs = GESTURE_NEEDS[name] || 'head';
+    if (this.faceOnly && needs !== 'head') {
+      this.lastPlay = { name, via: 'frozen' };
+      return this.lastPlay;
+    }
+    // Un geste de tete sans os de tete ne tourne rien. Le dire, plutot que
+    // d'annoncer un hochement que personne ne verra : c'est le modele qui n'a
+    // pas la capacite, et le profil l'affiche deja (`HEAD ✗`).
+    const bone = needs === 'head' ? (this.nodes.head || this.nodes.neck)
+      : needs === 'torso' ? (this.nodes.spine || this.nodes.root) : true;
+    if (name !== 'idle' && !bone && !(this.body.clips && this.body.clips[name])) {
+      this.lastPlay = { name, via: 'absent' };
+      return this.lastPlay;
+    }
 
     const clip = this.body.clips && this.body.clips[name];
-    if (clip && this.body.mixer) {
+    if (clip && this.body.mixer && name !== 'idle') {
       const next = this.body.mixer.clipAction(clip);
       next.reset();
       next.setLoop(2200 /* THREE.LoopOnce */, 1);
       next.clampWhenFinished = false;
-      if (this.action && this.action !== next) next.crossFadeFrom(this.action, 0.25, true);
+      const from = this.action && this.action !== next ? this.action : this.base;
+      if (from) next.crossFadeFrom(from, 0.25, true);
       next.play();
       this.action = next;
       this.active = null;
-      return;
+      this.lastPlay = { name, via: 'clip' };
+      return this.lastPlay;
     }
 
     const spec = PROCEDURAL[name];
-    if (spec === undefined) return;          // pas jouable : le catalogue a deja substitue
+    if (spec === undefined) {                // pas jouable : le catalogue a deja substitue
+      this.lastPlay = { name, via: 'none' };
+      return this.lastPlay;
+    }
     this.active = spec ? { name, t: 0, duration: spec.duration, f: spec.f } : null;
+    this.lastPlay = { name, via: 'procedural' };
+    return this.lastPlay;
+  }
+
+  /** The gesture moving the body right now, or null. */
+  get playing() {
+    if (this.active) return this.active.name;
+    return this.action ? (this.lastPlay && this.lastPlay.name) : null;
   }
 
   setPosture(name) {
@@ -354,11 +450,28 @@ export class Gestures {
     // du poids que `idle._weightShift` calcule — `smoothed.rootRy` restait a
     // zero pour toujours, et `_write` ecrivait ce zero. La couche etait
     // documentee, mesuree, et morte.
-    const out = { headRx: 0, headRy: 0, headRz: 0, spineRx: 0, spineRy: 0,
-                  rootY: 0, rootZ: 0, rootRy: 0 };
+    // Reutilise d'une image a l'autre. Les cles doivent toutes y etre : `add()`
+    // ne copie que les cles deja presentes — c'est exactement ce qui avait tue
+    // `rootRy`.
+    const out = this._out || (this._out = { headRx: 0, headRy: 0, headRz: 0,
+      spineRx: 0, spineRy: 0, rootY: 0, rootZ: 0, rootRy: 0 });
+    for (const key in out) out[key] = 0;
 
     add(out, POSTURES[this.posture]);
-    add(out, GAZE_HEAD[this.gaze]);
+    if (this.gazeHead) {
+      // La part de tete du regard, deja en retard sur les yeux : gaze.js.
+      out.headRx += this.gazeHead.rx;
+      out.headRy += this.gazeHead.ry;
+    } else {
+      add(out, GAZE_HEAD[this.gaze]);
+    }
+    out.headRx += this.stateHead.rx;
+    out.headRz += this.stateHead.rz;
+
+    // Ce que les yeux compensent : le repos, les gestes « en regardant », et
+    // les accents. Pas la part du regard — celle-la, les yeux la suivent.
+    let vorRx = 0;
+    let vorRy = 0;
 
     if (this.active) {
       // Le tempo accelere les gestes procedures comme il accelere les clips :
@@ -369,12 +482,35 @@ export class Gestures {
       if (p >= 1) {
         this.active = null;
       } else {
-        add(out, this.active.f(p));
+        const moved = this.active.f(p);
+        add(out, moved);
+        // Un regard DECIDE (explicite, intention) garde sa cible meme quand le
+        // geste emporte la tete : `investigate` + `gaze: user` tourne la tete
+        // vers l'ecran et garde les yeux sur l'utilisateur. Sans ca, un geste
+        // derive de l'intention deplacait un regard que JARVIS avait nomme.
+        if (this.gazeDecided || KEEPS_EYE_CONTACT.has(this.active.name)) {
+          vorRx += moved.headRx || 0;
+          vorRy += moved.headRy || 0;
+        }
+      }
+    }
+
+    if (this.accentHead) {
+      out.headRx += this.accentHead.rx;
+      out.headRy += this.accentHead.ry;
+      out.headRz += this.accentHead.rz;
+      if (this.accentHead.keepsEyes !== false) {
+        vorRx += this.accentHead.rx;
+        vorRy += this.accentHead.ry;
       }
     }
 
     this.idle.update(dt);
     add(out, this.idle.offsets);
+    vorRx += this.idle.offsets.headRx;
+    vorRy += this.idle.offsets.headRy;
+    this.vorHead.rx = vorRx;
+    this.vorHead.ry = vorRy;
     this._swayArms(dt);
 
     // Mode visage : tout ce qui est sous la nuque retombe a zero, quelle que

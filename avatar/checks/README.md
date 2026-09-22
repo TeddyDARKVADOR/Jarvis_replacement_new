@@ -2,25 +2,91 @@
 
 `python -m presence.selftest` tourne **sans GPU, sans navigateur, sans écran**,
 et c'est une propriété qu'on garde : c'est ce qui permet de le lancer partout,
-tout le temps, y compris sur le VPS.
+tout le temps, y compris sur le VPS. Le prix est qu'il ne peut pas exécuter le
+JavaScript ni mesurer un mouvement : il lit les tables et compare les sources.
 
-Le prix est qu'il ne peut ni exécuter le JavaScript, ni rendre une image, ni
-mesurer un mouvement. Il lit les tables et il compare les sources. Ces cinq
-vérifications-là comblent le reste, et demandent `PyQt6-WebEngine`.
+Deux familles comblent le reste.
+
+**Sous Node** (≥ 18) — rapides, déterministes, sans GPU. Le vrai moteur tourne
+sur un corps sans rendu (`js/body_null.js`) avec une graine fixée :
 
 ```bash
-pip install PyQt6-WebEngine
-
-python avatar/checks/adapter_contract.py    # le modèle est-il interchangeable
-python avatar/checks/affect_parity.py       # Python et JS décident-ils pareil
-python avatar/checks/behaviour.py           # le labo dérive-t-il comme Python
-python avatar/checks/idle_motion.py         # le repos bouge-t-il vraiment
-python avatar/checks/face_first.py          # le corps tient-il vraiment en place
+node   avatar/checks/engine_test.mjs        # le moteur, mesuré par sa sortie (28)
+python avatar/checks/director_parity.py     # le labo décide-t-il comme le panneau (2 288)
+python avatar/checks/chain_test.py          # de set_presence au modèle, 43 chaînes
+python avatar/checks/model_swap.py          # changer de visage sans toucher au cerveau
 ```
 
-Elles ne sont **pas** un garde-fou permanent : rien ne les lance à votre place.
-Elles sont à relancer après avoir touché ce qu'elles couvrent, et le code le dit
-à l'endroit concerné plutôt que de vous laisser le deviner.
+**Dans QtWebEngine** (`pip install PyQt6-WebEngine`) — le vrai modèle, la vraie
+page, le vrai GPU :
+
+```bash
+python avatar/checks/adapter_contract.py    # le modèle est-il interchangeable
+python avatar/checks/affect_parity.py       # Python et JS dérivent-ils pareil
+python avatar/checks/behaviour.py           # le labo joue-t-il ce que le panneau jouerait
+python avatar/checks/facial_performance.py  # le temps d'un visage, sur les écritures réelles
+python avatar/checks/idle_motion.py         # le repos bouge-t-il, sans aucune décision
+python avatar/checks/face_first.py          # le corps tient-il vraiment en place
+python avatar/checks/asset_robustness.py    # 15 modèles incomplets, aucun ne tombe
+```
+
+`model_swap.py` tourne aussi dans le selftest (il n'a besoin de rien).
+Les autres ne sont **pas** un garde-fou permanent : rien ne les lance à votre
+place. Ils sont à relancer après avoir touché ce qu'ils couvrent.
+
+`fixtures.py` n'est pas un contrôle : il fabrique les GLB et VRM synthétiques
+dont les autres ont besoin — un triangle, et exactement ce qu'un fichier
+DÉCLARE (noms de formes, os, extensions).
+
+## Ce que chacune prouve
+
+### `engine_test.mjs` — le moteur, par sa sortie
+
+Vingt-huit mesures sur ce que le corps a REÇU, pas sur les tables : qu'un visage
+part à vitesse nulle, que la surprise est vive et retombe, que l'ironie se
+compose, que les yeux partent avant la tête et se posent, qu'ils tiennent
+l'utilisateur pendant un hochement, qu'un regard décidé n'est jamais déplacé,
+que la tête ne s'accumule pas, que rien ne bouge sous la nuque en mode visage,
+que le sourire survit à la parole et que la parole ferme une mâchoire ouverte
+par l'émotion, que la bouche se referme sans claquer, les priorités, les NaN,
+l'identité des gestes, les seize intentions discernables **à la sortie**, et
+qu'une séance se rejoue à l'identique.
+
+### `director_parity.py` — le labo décide comme le panneau
+
+`js/director.js` refait `presence/director.py` pour le labo. Confrontés sur
+2 288 décisions — directives de toutes formes, onze états, intention vivante et
+expirée, corps visage et complet — même JSON, champ par champ (les nombres au
+millième, l'arrondi du fil).
+
+### `chain_test.py` — de l'appel d'outil au modèle
+
+`set_presence` → événement → trame `/ws` → `JarvisClient` → store →
+`set_intent_json` → Director → repli → JSON → moteur → sortie effective, à
+travers le VRAI code de chaque maillon. C'est le contrôle qui aurait vu que
+**aucune intention n'atteignait le visage** : chaque maillon avait son test,
+aucun ne regardait la couture.
+
+### `model_swap.py` — le visage est interchangeable
+
+Féminin → masculin (autre convention de noms, autres os, visèmes) → féminin →
+masculin, dans un répertoire temporaire : 136 décisions identiques, calibration
+rangée et rendue, préférences intactes, empreinte vérifiée.
+
+### `asset_robustness.py` — un modèle incomplet coûte une capacité
+
+Sans blendshapes, partiel, quatre conventions de noms, sans yeux, humanoïde sans
+tête, tête sans os, squelette Mixamo, texture introuvable, animations, VRM, VRM
+non conforme, GLB compressé : chacun chargé dans le vrai labo, joué, et relu —
+profil honnête, zéro valeur invalide, aucune erreur JavaScript imprévue.
+
+### `facial_performance.py` — le temps d'un visage, dans le navigateur
+
+Intercepte l'écriture du rig — la dernière ligne avant la géométrie — et
+reconstitue chaque image (le rig n'écrit que ce qui change). Chaque forme
+demandée arrive (jugée au pic : la surprise retombe d'elle-même), aucune ne
+saute, `amused` et `thinking` se composent, `surprised` arrive d'un bloc,
+`hold_s` relâche.
 
 ## Ce que chacune prouve
 
@@ -57,17 +123,14 @@ Corrigé à la racine — l'arrondi est sorti du calcul et ne vit plus qu'au bor
 fil. **Le remettre dans une dérivation casse cette vérification**, ce qui est
 exactement ce qu'on veut.
 
-### `behaviour.py` — le labo dit la vérité
+### `behaviour.py` — le labo joue ce que le panneau jouerait
 
-Décrit six situations au laboratoire comportemental, et compare sa dérivation à
-celle de Python, champ par champ. Un labo qui montre autre chose que ce que le
-panneau jouera est pire qu'absent.
-
-Puis les **seize intentions**, une par une. Le selftest compare les deux tables
-`INTENTS` au repos ; celui-ci les confronte **en marche** — et il vérifie le
-geste et le regard, qui ne se dérivent pas de l'affect. Ce sont eux qui prouvent
-que c'est bien la table du JavaScript qui a parlé, et pas une dérivation tombée
-juste par hasard.
+Pilote `lab.html` comme une personne — la demande collée, « Exécuter » — sur le
+modèle installé, et confronte au vrai Director Python : la décision (visage,
+intensité, regard et sa provenance, posture, tempo), le **repli** (le geste joué,
+pas demandé : `greet` → `wave → nod`), l'accent, et la **sortie** que le moteur
+rapporte (geste joué, pas gelé ni absent). Six situations, seize intentions, et
+les raffinements explicites.
 
 ### `idle_motion.py` — le repos est vivant
 

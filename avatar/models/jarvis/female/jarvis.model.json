@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "id": "jarvis/female/jarvis",
+  "name": "JARVIS (visage feminin)",
+  "version": "2026.09.22",
+  "file": "jarvis.glb",
+  "sha256": "63c645a2a863b9972e9a9c2ed576a1de4c390b8475508e1473e69c87a3ee299c",
+  "size": 36815920,
+  "license": "inconnue — a renseigner",
+  "provenance": {
+    "source": "installe le 2026-09-22, avant le suivi de provenance ; maillages nommes a la maniere de MPFB/MakeHuman (base, high-poly, mind_eyebrows_02, teeth_base, tongue01)",
+    "installed": "2026-09-22T20:45:09",
+    "installer": "presence.install_model"
+  },
+  "format": "GLB",
+  "compression": [],
+  "capabilities": {
+    "arkit": 52,
+    "visemes": [
+      "viseme_PP",
+      "viseme_FF",
+      "viseme_TH",
+      "viseme_DD",
+      "viseme_kk",
+      "viseme_CH",
+      "viseme_SS",
+      "viseme_nn",
+      "viseme_RR",
+      "viseme_aa",
+      "viseme_E",
+      "viseme_I",
+      "viseme_O",
+      "viseme_U"
+    ],
+    "eyes": "formes",
+    "head": true,
+    "limbs": [
+      "arms",
+      "head",
+      "legs",
+      "torso"
+    ],
+    "animations": 0,
+    "vrm": ""
+  },
+  "calibration": {
+    "muteMeshes": [
+      "tongue01"
+    ],
+    "scale": 1.0,
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "armRest": {
+      "shoulder": -0.45,
+      "elbow": 0.0,
+      "forward": 0.0
+    },
+    "morphAliases": {},
+    "bones": {
+      "head": "Head",
+      "neck": "Neck",
+      "spine": "Spine2",
+      "root": "Hips",
+      "eyeLeft": "LeftEye",
+      "eyeRight": "RightEye"
+    },
+    "parts": [
+      "arms",
+      "head",
+      "legs",
+      "torso"
+    ]
+  }
+}
