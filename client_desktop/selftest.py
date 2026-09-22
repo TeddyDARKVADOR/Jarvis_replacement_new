@@ -25,6 +25,11 @@ Checks 42-43 are the device capabilities, and they are the same kind of check
 one level up: a capability is a promise the router acts on, so every declared
 name must be a real action that actually imported here.
 
+Checks 46-48 are the arrival of an `avatar` directive - the face JARVIS chose
+for what he is saying. They cover the one thing that is genuinely easy to get
+wrong: `/ws` replays its last 50 events to a client that connects, and a face
+replayed at noon is a reaction to nothing.
+
 Run it with `python -m client_desktop --selftest`.
 """
 
@@ -633,6 +638,116 @@ def run() -> bool:  # noqa: C901
         )
     except Exception as exc:
         report.fail("45 MARK LIII is untouched", f"git unavailable: {exc}")
+
+    # -- 46-48. the face JARVIS chose, arriving over the wire ----------------
+    #
+    # `presence/` resolves the reflex locally — listening, thinking, speaking —
+    # and needs nothing from the server to do it. What the server sends is the
+    # *intent*, and these three checks cover the whole of its arrival: it is
+    # read, it is dropped when late, and it only ever reaches a body.
+
+    try:
+        import json as _json
+        import time as _time
+
+        from client_desktop.net import JarvisClient
+        from client_desktop.state import JarvisStore
+
+        store = JarvisStore()
+        seen: list[object] = []
+        store.subscribe(
+            lambda kind, payload: seen.append(payload) if kind == "avatar" else None
+        )
+        client = JarvisClient(
+            config_mod.Settings(host="h.ts.net", device_token="tok"),
+            store,
+            speaker=None,
+            on_connected=lambda: None,
+            on_disconnected=lambda _r, _f: None,
+        )
+        directive = {"valence": 0.45, "attention": 0.9, "gesture": "nod"}
+
+        client._handle_event(
+            _json.dumps({"type": P.EV_AVATAR, "ts": _time.time(),
+                         "directive": directive})
+        )
+        fresh_arrived = seen == [directive]
+
+        # Late, and therefore not a face any more. `/ws` replays its last 50
+        # events to every client that connects, so this is not a hypothetical:
+        # it is what a laptop that reconnects at noon is handed.
+        client._handle_event(
+            _json.dumps({"type": P.EV_AVATAR,
+                         "ts": _time.time() - P.AVATAR_FRESH_SECONDS - 5,
+                         "directive": directive})
+        )
+        stale_dropped = len(seen) == 1
+
+        # Malformed, and from a server that may be newer than this client.
+        # Ignored in silence, never raised: the socket carrying this event is
+        # also carrying JARVIS's voice.
+        for bad in ('{"type":"avatar"}',
+                    '{"type":"avatar","directive":"amused"}',
+                    '{"type":"avatar","ts":"soon","directive":{"gesture":"nod"}}'):
+            client._handle_event(bad)
+        malformed_survived = len(seen) == 2   # le troisieme a un ts illisible : livre
+
+        report.check(
+            "46 an avatar directive arrives, and a stale one does not",
+            fresh_arrived and stale_dropped and malformed_survived,
+            f"fresh={fresh_arrived} stale_dropped={stale_dropped} "
+            f"malformed={malformed_survived}",
+        )
+    except Exception as exc:
+        report.fail("46 an avatar directive arrives", repr(exc))
+
+    # -- 47. the client's copy of the window matches the server's ------------
+    try:
+        server_window = None
+        source = (_REPO_ROOT / "plugins" / "presence.py").read_text(encoding="utf-8")
+        for line in source.splitlines():
+            if line.startswith("FRESH_S"):
+                server_window = float(line.split("=", 1)[1].strip())
+                break
+        report.check(
+            "47 the freshness window is the server's number, not a guess",
+            server_window == P.AVATAR_FRESH_SECONDS,
+            f"client {P.AVATAR_FRESH_SECONDS} vs tool {server_window}",
+        )
+    except Exception as exc:
+        report.fail("47 the freshness window matches the server", repr(exc))
+
+    # -- 48. only a body is offered an intent --------------------------------
+    #
+    # Read from the source rather than built, because building it needs Qt, a
+    # display and a WebEngine process — none of which this file is allowed to
+    # require. What matters is structural anyway: the panel must ask whether the
+    # core can take an intent instead of assuming it can, or a 2D install dies
+    # on the first directive.
+    try:
+        panel_source = (
+            _REPO_ROOT / "client_desktop" / "ui" / "panel.py"
+        ).read_text(encoding="utf-8")
+        app_source = (
+            _REPO_ROOT / "client_desktop" / "app.py"
+        ).read_text(encoding="utf-8")
+        asks_first = (
+            'getattr(self._core, "set_intent_json"' in panel_source
+            and "def set_avatar_intent" in panel_source
+        )
+        # And it must be handled above the notifications setting: an expression
+        # makes no sound and raises no toast, so switching notifications off
+        # must not also take JARVIS's face away.
+        above_notifications = app_source.index('kind == "avatar"') < app_source.index(
+            "if not self.settings.notifications:"
+        )
+        report.check(
+            "48 an intent is offered to a body, and never to the 2D core",
+            asks_first and above_notifications,
+            f"asks_first={asks_first} above_notifications={above_notifications}",
+        )
+    except Exception as exc:
+        report.fail("48 an intent is offered to a body only", repr(exc))
 
     total = report.passed + report.failed
     print(f"\n{report.passed}/{total}")

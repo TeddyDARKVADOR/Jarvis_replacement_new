@@ -6,7 +6,7 @@ Supprimer le dossier rend JARVIS identique à ce qu'il était : une voix avec un
 cœur 2D.
 
 ```
-python -m presence.selftest                      37 contrôles, sans clé, sans micro, sans GPU
+python -m presence.selftest                      39 contrôles, sans clé, sans micro, sans GPU
 python -m presence.install_model --demo          installer un modèle qui marche
 python -m presence.install_model --list          où trouver un vrai personnage
 python -m presence.inspect                       ce qu'il y a réellement dans le modèle
@@ -148,6 +148,69 @@ c'est le seul vrai risque de ce format.
 > que la directive exprimait — et le symptôme est « la forme état ne fait
 > rien », sans erreur nulle part.
 
+## Par où la directive arrive vraiment, dans **ce** JARVIS
+
+Le bloc clos ci-dessus est la forme d'un assistant qui **écrit** un texte qu'on
+fait ensuite lire à une voix de synthèse. `strip()` existe pour cette chaîne-là,
+et la retire avant que la voix la voie.
+
+Ce JARVIS n'a pas cette chaîne. `main.py` ouvre Gemini Live en
+`response_modalities=["AUDIO"]` : le modèle **parle**, et le texte qui nous
+revient est `output_transcription` — la transcription d'un son que l'utilisateur
+a déjà entendu. Un bloc dans ce flux est un bloc que JARVIS a lu à voix haute,
+et le retirer après coup change le journal, pas la pièce.
+
+La directive passe donc par la seule chose qu'un modèle peut émettre sans que
+personne ne l'entende : **un appel de fonction**.
+
+```
+JARVIS appelle set_presence(valence=0.45, attention=0.9, gesture="tilt_head")
+        │
+        ▼
+  plugins/presence.py        l'outil — vocabulaire généré depuis le catalogue,
+        │                    puis valide avec parse(), horodate, refuse le reste
+        ▼
+  HeadlessUI.emit_event()    la porte de sortie, la même que tout le reste
+        │
+        ▼
+  dashboard.broadcast()      {"type":"avatar","ts":…,"directive":{…}}  → /ws
+        │
+        ▼
+  client_desktop/net.py      jette ce qui a plus de 25 s (/ws rejoue ses 50
+        │                    derniers messages à qui se connecte)
+        ▼
+  avatar_view.set_intent_json()   re-lit avec le MÊME parse(), puis Director
+```
+
+Quatre choses méritent d'être dites sur ce chemin :
+
+- **Les arguments de l'outil sont la directive, telle quelle.** `parse()`
+  accepte déjà l'objet nu — un chemin écrit pour un modèle qui oublie sa clôture,
+  et qui se trouve être la route principale ici. Il n'y a donc pas de second
+  format, et pas de second lecteur : les deux bouts appellent la même fonction.
+- **L'outil valide et ne résout pas.** Résoudre demande le catalogue, et le
+  catalogue appartient au corps qui jouera la directive — lequel est sur le
+  client, et n'est pas forcément celui dont cette machine a le manifeste. Ce qui
+  traverse le fil est donc la *demande* de JARVIS, pas un rendu. Deux clients
+  aux corps différents obéissent chacun aussi bien que son corps le permet.
+- **Un visage en retard est jeté.** C'est la seule chose sur `/ws` qu'on
+  abandonne quand elle arrive tard : tout le reste est un enregistrement, et un
+  enregistrement reste vrai après une reconnexion. Un visage, non.
+- **Rien n'importe `server/`.** L'outil tient dans un fichier — la déclaration,
+  la validation et le transport — parce que `server/__init__.py` déclare que
+  rien, « ni action ni plugin », n'importe ce paquet. Cette flèche à sens unique
+  est ce qui garde `python main.py` identique à ce qu'il était, et une exception
+  faite pour la commodité est la façon dont ce genre d'invariant meurt.
+
+`prompt_fragment()` reste ce qu'il est — le paragraphe de prompt système pour un
+hôte qui, lui, produit du texte. Il n'est pas utilisé par ce chemin, et il ne
+doit pas l'être : il enseigne le bloc.
+
+> Supprimer `plugins/presence.py` retire l'outil au prochain démarrage et rien
+> d'autre. JARVIS garde un visage qui suit son état machine — écoute, réflexion,
+> parole — que le `Director` du client résout tout seul, sans que le serveur y
+> soit pour quoi que ce soit.
+
 ## Le vocabulaire est plus large que ce qui est installé
 
 `Gesture` liste **30 gestes** : ce que JARVIS a le droit de *vouloir*.
@@ -210,3 +273,24 @@ Cette dernière est la plus importante : c'est elle qui décide si un modèle
 acheté est exploitable ou pas. `browDown_L` et `browDownLeft` sont la même
 forme, et un matcher qui l'ignore jette 36 blendshapes sur 52 — à cause d'un
 tiret bas.
+
+### Le chemin jusqu'au corps, lui, est vérifié ailleurs
+
+`presence/selftest.py` ne connaît ni le serveur ni le client — c'est ce qui lui
+permet de tourner partout. Les six contrôles de la couture vivent donc là où
+elle vit :
+
+```bash
+python -m server.selftest            # 6 contrôles : validation, fraîcheur,
+                                     #   déclaration d'outil, transport
+python -m client_desktop --selftest  # 3 contrôles : arrivée, péremption,
+                                     #   et qu'un intent n'atteigne qu'un corps
+```
+
+Celui qui compte le plus est le plus ennuyeux : **la fenêtre de fraîcheur existe
+en trois exemplaires** — `presence.director.INTENT_TTL_S`,
+`plugins.presence.FRESH_S`, `client_desktop.protocol.AVATAR_FRESH_SECONDS` —
+et aucun des trois ne peut importer les deux autres. `presence/` est
+supprimable ; le client tourne sur une machine qui n'a jamais vu ce dépôt. Un
+contrôle compare les trois et échoue à la moindre dérive, ce qui est ce qui rend
+la copie sûre au lieu de fragile.

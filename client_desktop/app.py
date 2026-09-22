@@ -435,6 +435,15 @@ class JarvisDesktop(QObject):
         if kind == "message" and getattr(payload, "from_jarvis", False):
             self._last_jarvis_at = time.monotonic()
 
+        # Also above the notifications setting, and for a stronger reason than
+        # bookkeeping: an expression is not a notification. It makes no sound,
+        # raises no toast and asks for nothing. Someone who turned notifications
+        # off wanted to stop being interrupted, not to give JARVIS a blank face.
+        if kind == "avatar":
+            if isinstance(payload, dict):
+                self.panel.set_avatar_intent(payload)
+            return
+
         if not self.settings.notifications:
             return
         snapshot: Snapshot = self.store.snapshot()

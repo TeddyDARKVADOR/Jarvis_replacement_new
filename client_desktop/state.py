@@ -297,6 +297,22 @@ class JarvisStore:
             )
         self._emit("log", stamped)
 
+    def set_avatar_intent(self, directive: dict) -> None:
+        """JARVIS chose a face for what he is saying. An event, never state.
+
+        Deliberately absent from `Snapshot`. A directive has a lifetime of its
+        own — `presence.director.INTENT_TTL_S` — and the object that owns that
+        lifetime is the `Director` inside the avatar widget. Putting it in the
+        snapshot would create a second, slower copy of the same truth: one that
+        expires on the paint timer, contradicts the first for a frame or two,
+        and has to be cleared by somebody.
+
+        Nothing here inspects the payload. The client's own `presence` decides
+        what it means, and a client built without a body ignores the event —
+        which is the same answer as a client that has never heard of it.
+        """
+        self._emit("avatar", directive)
+
     # ── counters ─────────────────────────────────────────────────────────────
 
     def count_sent(self, byte_count: int) -> None:
