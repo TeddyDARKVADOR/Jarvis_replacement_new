@@ -79,6 +79,13 @@ export class ProceduralBody {
     this._buildEyes(main, accent);
     this._buildMouth(main);
 
+    // Les yeux, nommes comme sur un vrai rig : la camera se place a leur
+    // hauteur (stage.js) pour que « regarder l'utilisateur » atteigne la
+    // camera. Ce ne sont que des reperes — le regard, lui, passe par les
+    // formes eyeLook* comme partout.
+    this.nodes.eyeLeft = this.eyes[0].group;
+    this.nodes.eyeRight = this.eyes[1].group;
+
     this.t = 0;
   }
 
@@ -97,6 +104,8 @@ export class ProceduralBody {
       gaze: true,
       gazeBy: 'primitives',
       lipsync: true,
+      visemes: 'arkit',
+      head: true,
       gesture: true,
       posture: true,
     };

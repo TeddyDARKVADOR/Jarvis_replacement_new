@@ -1,8 +1,8 @@
 {
-  "version": 1,
-  "name": "JARVIS — jarvis (face-first)",
+  "version": 2,
+  "name": "JARVIS — JARVIS (visage feminin)",
   "model": {
-    "file": "jarvis.glb",
+    "file": "jarvis/female/jarvis.glb",
     "scale": 1.0,
     "position": [
       0,
@@ -13,7 +13,8 @@
     "morphAliases": {},
     "muteMeshes": [
       "tongue01"
-    ]
+    ],
+    "profile": "jarvis/female/jarvis.model.json"
   },
   "rig": {
     "parts": [
@@ -35,11 +36,12 @@
       "shoulder": -0.45,
       "elbow": 0.0,
       "forward": 0.0
-    }
+    },
+    "gaze": {}
   },
   "camera": {
     "fov": 24,
-    "frame": "bust"
+    "frame": "portrait"
   },
   "look": {
     "hologram": true,

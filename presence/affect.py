@@ -63,7 +63,7 @@ import math
 from dataclasses import dataclass, replace
 from enum import Enum
 
-from .model import Expression, Gaze, Gesture, Intent, Posture
+from .model import Accent, Expression, Gaze, Gesture, Intent, Posture
 
 
 class SocialMode(str, Enum):
@@ -406,6 +406,36 @@ _INTENTS: dict[Intent, tuple[float, float, float, float, float, Gesture, Gaze | 
     Intent.REPORT_FAILURE: (-0.52,  0.58,  0.92,  0.38,  0.48, Gesture.SIGH,         Gaze.USER),
     Intent.APOLOGISE:      (-0.58,  0.32,  0.90,  0.30,  0.25, Gesture.BOW,          Gaze.DOWN),
 }
+
+
+#: Le geste facial qui accompagne une intention, quand elle en a un.
+#:
+#: Quatre seulement, et chacun est la pour une paire que la sortie reelle
+#: confondait en mode visage — mesure, pas suppose :
+#:
+#:     greet / report_success     happy 0.68 · user · nod     -> brow_flash / chin_up
+#:     farewell / agree           amused ~0.4 · user · nod    -> brow_flash / (rien)
+#:     acknowledge / explain      neutral · user · nod        -> (rien) / beat
+#:
+#: `head_down` n'est pas la pour une paire : `apologise` demande `bow`, qui se
+#: rabat sur un hochement — le geste de l'accord, pas celui de l'excuse.
+#:
+#: Une intention absente d'ici n'a pas d'accent, et c'est le cas normal : son
+#: visage, son regard et son mouvement suffisent deja a la distinguer.
+_INTENT_ACCENTS: dict[Intent, Accent] = {
+    Intent.GREET:          Accent.BROW_FLASH,
+    Intent.FAREWELL:       Accent.BROW_FLASH,
+    Intent.REPORT_SUCCESS: Accent.CHIN_UP,
+    Intent.EXPLAIN:        Accent.BEAT,
+    Intent.APOLOGISE:      Accent.HEAD_DOWN,
+}
+
+
+def accent_for_intent(intent: Intent | None) -> Accent | None:
+    """Le geste facial de cette intention, ou None."""
+    if intent is None:
+        return None
+    return _INTENT_ACCENTS.get(intent)
 
 
 def affect_for_intent(intent: Intent, base: Affect | None = None) -> Affect:

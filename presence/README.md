@@ -6,10 +6,11 @@ Supprimer le dossier rend JARVIS identique à ce qu'il était : une voix avec un
 cœur 2D.
 
 ```
-python -m presence.selftest                      45 contrôles, sans clé, sans micro, sans GPU
+python -m presence.selftest                      57 contrôles, sans clé, sans micro, sans GPU
 python -m presence.install_model --demo          installer un modèle qui marche
 python -m presence.install_model --list          où trouver un vrai personnage
 python -m presence.inspect                       ce qu'il y a réellement dans le modèle
+python -m presence.install_model --installed     les visages installés, et l'actif
 ```
 
 ## L'idée en une phrase
@@ -95,17 +96,18 @@ Et l'affect **décroît** au lieu d'expirer : un JARVIS qui passe de préoccupé
 parfaitement neutre en une image a l'air d'avoir redémarré ; le même qui y
 revient en quarante secondes a l'air de s'être calmé.
 
-## Les sept fichiers
+## Les huit fichiers
 
 | Fichier | Rôle | Dépendances |
 |---|---|---|
-| `model.py` | le vocabulaire : `Expression`, `Gesture`, `Gaze`, `Posture`, `Performance` | aucune |
+| `model.py` | le vocabulaire : `Intent`, `Expression`, `Gesture`, `Gaze`, `Posture`, `Accent`, `Performance` | aucune |
 | `affect.py` | l'état continu, et tout ce qui s'en dérive | `model` |
 | `vocabulary.py` | expression + intensité → 52 coefficients ARKit | `model` |
 | `catalog.py` | ce qui est **réellement** installé, lu dans `avatar/manifest.json` | `model` |
 | `director.py` | état + intention → une `Performance` jouable | `model`, `catalog`, `vocabulary` |
 | `inspect.py` | ce qu'un `.glb` / `.vrm` contient vraiment, et le manifeste qui en découle | `model`, `vocabulary` |
-| `install_model.py` | installer un personnage en une commande | `inspect` |
+| `models.py` | la bibliothèque des visages : profils, calibration, activation, empreinte | aucune (lit `inspect`) |
+| `install_model.py` | installer, adopter, changer de visage en une commande | `inspect`, `models` |
 
 ## Les deux autres formes
 
@@ -175,29 +177,36 @@ lisible.
 
 ### Les seize
 
-| intention | visage dérivé | regard | mouvement demandé |
-|---|---|---|---|
-| `greet` | happy 0.68 | user | `wave` |
-| `farewell` | amused 0.37 | user | `bow` |
-| `acknowledge` | neutral 0.34 | user | `nod` |
-| `wait` | neutral 0.30 | user | `lean_in` |
-| `investigate` | thinking 0.44 | screen | `turn` |
-| `think` | thinking 0.33 | away | `think` |
-| `explain` | neutral 0.40 | user | `explain` |
-| `agree` | amused 0.48 | user | `nod` |
-| `disagree` | serious 0.47 | user | `shake_head` |
-| `amuse` | amused 0.54 | user | `tilt_head` |
-| `confirm` | serious 0.54 | user | `look_at_user` |
-| `warn` | concerned 0.68 | user | `lean_in` |
-| `reassure` | amused 0.38 | user | `blink_slow` |
-| `report_success` | happy 0.68 | user | `thumbs_up` |
-| `report_failure` | concerned 0.63 | user | `sigh` |
-| `apologise` | sad 0.50 | down | `bow` |
+| intention | visage dérivé | regard | mouvement demandé | joué en mode visage | accent |
+|---|---|---|---|---|---|
+| `greet` | happy 0.68 | user | `wave` | `nod` | `brow_flash` |
+| `farewell` | amused 0.37 | user | `bow` | `nod` | `brow_flash` |
+| `acknowledge` | neutral 0.34 | user | `nod` | `nod` | |
+| `wait` | neutral 0.30 | user | `lean_in` | `look_at_user` | |
+| `investigate` | thinking 0.44 | screen | `turn` | `look_away` | |
+| `think` | thinking 0.33 | away | `think` | `tilt_head` | |
+| `explain` | neutral 0.40 | user | `explain` | `nod` | `beat` |
+| `agree` | amused 0.48 | user | `nod` | `nod` | |
+| `disagree` | serious 0.47 | user | `shake_head` | `shake_head` | |
+| `amuse` | amused 0.54 | user | `tilt_head` | `tilt_head` | |
+| `confirm` | serious 0.54 | user | `look_at_user` | `look_at_user` | |
+| `warn` | concerned 0.68 | user | `lean_in` | `look_at_user` | |
+| `reassure` | amused 0.38 | user | `blink_slow` | `blink_slow` | |
+| `report_success` | happy 0.68 | user | `thumbs_up` | `nod` | `chin_up` |
+| `report_failure` | concerned 0.63 | user | `sigh` | `blink_slow` | |
+| `apologise` | sad 0.50 | down | `bow` | `nod` | `head_down` |
 
 Sept visages pour seize intentions : le visage a le droit de se répéter, ce qui
-les sépare est le mouvement et le regard. **Le selftest le vérifie sur la
-sortie** — deux intentions qui produisent exactement le même triplet ne sont pas
-deux intentions, ce sont deux noms, et il refuse la paire.
+les sépare est le mouvement, le regard — et, quand le corps est tenu, l'accent.
+
+**Le selftest le vérifie sur ce qui JOUE**, sur les deux corps (tête seule, et
+corps complet avec tous les clips). La version précédente comparait le geste
+*demandé* : en mode visage, `greet` et `report_success` devenaient exactement le
+même comportement (happy 0.68, user, `nod`), comme `farewell`/`agree` et
+`acknowledge`/`explain` — un visage neutre n'écrit aucune forme. Le test
+passait, les intentions étaient indiscernables. Les **accents** — un bref geste
+facial, choisi par `presence/affect.py` et jamais par JARVIS — sont ce qui les
+sépare ; `avatar/checks/engine_test.mjs` le mesure à la sortie du moteur.
 
 ### Raffiner sans tout réécrire
 
@@ -206,7 +215,17 @@ L'intention pose la base, l'explicite corrige, champ par champ :
 ```jsonc
 {"intent": "investigate", "gaze": "user"}   // examiner sans le quitter des yeux
 {"intent": "warn", "confidence": 0.2}       // alerter, mais sans certitude
+{"intent": "agree", "expression": "proud"}  // approuver, avec fierté
+{"intent": "warn", "posture": "relaxed"}    // alerter, sans se crisper
 ```
+
+> **La règle ne tenait que pour le regard.** Un visage nommé à côté d'une
+> intention était remplacé par le visage que l'intention dérive (`agree` +
+> `proud` jouait `amused`), une posture nommée aussi : `expression` vaut
+> `neutral` quand rien n'est dit, et un défaut ne se distinguait pas d'un
+> choix. La `Directive` porte maintenant `expression_given` et
+> `intensity_given`. Et un mot de regard inconnu (`"gaze": "monitor"`) ne
+> vole plus le regard de l'intention.
 
 C'est l'ordre utile. Refuser cette nuance reviendrait à n'avoir que seize
 comportements possibles, là où on en a seize points de départ.
@@ -246,10 +265,13 @@ JARVIS appelle set_presence(valence=0.45, attention=0.9, gesture="tilt_head")
   dashboard.broadcast()      {"type":"avatar","ts":…,"directive":{…}}  → /ws
         │
         ▼
-  client_desktop/net.py      jette ce qui a plus de 25 s (/ws rejoue ses 50
-        │                    derniers messages à qui se connecte)
+  client_desktop/net.py      jette ce qui a plus de 25 s, ce qui est déjà
+        │                    joué ou plus ancien que le dernier joué (/ws
+        │                    rejoue ses 50 derniers messages à qui se connecte)
         ▼
-  avatar_view.set_intent_json()   re-lit avec le MÊME parse(), puis Director
+  avatar_view.set_intent_json()   re-lit avec le MÊME parse(), puis Director —
+                                  l'intention datée de la DÉCISION, pas de
+                                  l'arrivée : 20 s de retard = 5 s de vie
 ```
 
 Quatre choses méritent d'être dites sur ce chemin :
@@ -280,6 +302,26 @@ doit pas l'être : il enseigne le bloc.
 > d'autre. JARVIS garde un visage qui suit son état machine — écoute, réflexion,
 > parole — que le `Director` du client résout tout seul, sans que le serveur y
 > soit pour quoi que ce soit.
+
+## Ce que la Performance porte au moteur
+
+Au-delà du visage, du regard et du geste, quatre champs disent au moteur
+*comment* jouer — et le laissent seul juge du reste :
+
+| champ | pourquoi |
+|---|---|
+| `state` | l'état machine (`SPEAKING`…). Le moteur en tire le comportement de fond — clignements, coups d'œil, inclinaison d'écoute — que personne n'a à décider image par image |
+| `gaze_source` | qui a choisi le regard : `explicit`, `intent`, `affect`, `reflex`, `safety`. Un regard décidé n'est jamais déplacé par un comportement de fond |
+| `gesture_id` | l'identité de la DÉCISION. Le moteur rejouait un geste seulement si son nom changeait : pendant la parole (réflexe `nod`), le hochement d'`agree` était avalé |
+| `accent` | le geste facial de l'intention, voir plus haut |
+
+Et `hold_s` n'appartient plus qu'au visage réflexe : une intention arrivée
+pendant WAKING héritait des 1.2 s de la surprise et relâchait son visage.
+
+`director.trace(performance)` rend la décision en lignes lisibles (INTENT,
+AFFECT, GAZE, MODEL CAPABILITY, BODY ACTION, FALLBACK, FACIAL TARGET,
+ACCENT) ; le client les écrit avec `JARVIS_AVATAR_DEBUG=1`, suivies de ce que
+le moteur en a réellement fait. Voir `avatar/README.md`, « Diagnostic ».
 
 ## Le corps qu'on a, et celui qu'on bouge
 
@@ -322,23 +364,41 @@ lieu, donc la fenêtre de debug peut dire *« a demandé facepalm, a joué
 shake_head, facepalm n'est pas installé »* — la ligne la plus utile qui soit
 quand on ajoute des clips.
 
-## Installer un personnage
+## Installer un personnage — et en changer
 
 ```bash
-python -m presence.install_model --demo                    # tête humaine, 52 ARKit
-python -m presence.install_model --readyplayerme <id>      # corps entier + ARKit + visèmes
-python -m presence.install_model C:/Downloads/aven.glb     # un asset acheté
-python -m presence.install_model mon_avatar.vrm            # un VRM (VRoid Studio)
+python -m presence.install_model --demo                                  # tête de test, 52 ARKit
+python -m presence.install_model --readyplayerme <id> --slot jarvis/male
+python -m presence.install_model C:/Downloads/aven.glb --slot jarvis/male \
+    --license "…" --source "…" --label "JARVIS (visage masculin)"
+python -m presence.install_model --use jarvis/female                     # changer de visage
+python -m presence.install_model --installed                             # l'inventaire
 ```
 
-La commande télécharge, inspecte le fichier **lui-même**, affiche un barème
-— corps entier, rig facial, visèmes, yeux, animations — et écrit dans
-`avatar/manifest.json` ce qu'elle y a trouvé : les alias de blendshapes, les
-membres réellement présents, les os. Ce qu'un humain garde la main dessus —
-caméra, couleurs, échelle — n'est pas touché.
+La commande copie, **mesure** le fichier lui-même, affiche un barème, écrit le
+**profil** du modèle à côté de lui (`<modèle>.model.json` : empreinte, licence,
+provenance, capacités mesurées, calibration) et l'active.
 
-> Les modèles ne sont **pas** versionnés (`.gitignore`) : ils appartiennent à
-> quelqu'un d'autre et pèsent plusieurs mégaoctets. Le manifeste, lui, l'est.
+`models.py` sépare ce que le manifeste mélangeait :
+
+| | vit où | exemples |
+|---|---|---|
+| **préférences** | le manifeste, toujours | caméra, couleurs, `rig.motion` |
+| **calibration** | le profil de CHAQUE modèle, recopiée dans le manifeste quand il est actif | alias de formes, `muteMeshes`, `armRest`, signes du regard, os forcés |
+
+Changer de visage range la calibration de l'actuel dans son profil et rend
+celle du suivant ; un modèle neuf ne reçoit jamais la calibration d'un autre (la
+sourdine `tongue01` du visage actuel ne peut plus éteindre une forme du
+suivant). Le cadrage n'est choisi que s'il n'y en a pas. Un manifeste de
+version 1 est migré sans rien perdre.
+
+`avatar/checks/model_swap.py` — aussi dans le selftest — installe un visage
+masculin synthétique à côté du féminin : **136 décisions identiques** avant et
+après, calibration rangée puis rendue, préférences intactes.
+
+> Les binaires ne sont **pas** versionnés (`.gitignore`) : ils appartiennent à
+> quelqu'un d'autre et pèsent plusieurs mégaoctets. Le manifeste et les profils,
+> eux, le sont.
 
 ## Ce qui est vérifié, et pourquoi
 
@@ -352,7 +412,11 @@ moindre différence :
 - les 8 visèmes (`avatar/js/visemes.js`)
 - les 12 expressions, 6 regards, 7 familles de courbe (`avatar/js/expressions.js`)
 - les 12 ancres, 27 seuils et 4 registres de l'affect (`avatar/js/affect.js`)
-- les 30 gestes, 16 procéduraux, 30 exigences de rig, 5 postures
+- les 30 gestes, 16 procéduraux, 30 exigences de rig, 30 chaînes de repli, 5 postures
+  (`avatar/js/catalog.js`)
+- les 4 accents et les 5 intentions qui en portent un (`accents.js`, `affect.js`)
+- les tables du directeur — réflexe, affect réflexe, posture d'un visage, plafond
+  de la colère, durée de vie d'une intention (`avatar/js/director.js`)
 - **la règle de normalisation des noms**, sur 13 conventions d'export réelles
 
 Le test lit les tables ; il ne peut pas exécuter le JavaScript. Cet écart a été
@@ -399,8 +463,10 @@ elle vit :
 ```bash
 python -m server.selftest            # 6 contrôles : validation, fraîcheur,
                                      #   déclaration d'outil, transport
-python -m client_desktop --selftest  # 3 contrôles : arrivée, péremption,
-                                     #   et qu'un intent n'atteigne qu'un corps
+python -m client_desktop --selftest  # 5 contrôles : arrivée, péremption,
+                                     #   qu'un intent n'atteigne qu'un corps,
+                                     #   qu'il atteigne VRAIMENT le Director,
+                                     #   et qu'une reconnexion ne rejoue rien
 ```
 
 Celui qui compte le plus est le plus ennuyeux : **la fenêtre de fraîcheur existe

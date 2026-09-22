@@ -1,8 +1,8 @@
 """
 presence/inspect.py — what is actually inside a model, before trusting a word of it.
 
-    python -m presence.inspect avatar/models/Michelle.glb
-    python -m presence.inspect avatar/models/facecap.glb --write
+    python -m presence.inspect test/Michelle.glb
+    python -m presence.inspect jarvis/female/jarvis.glb --write
 
 WHY THIS EXISTS
     `avatar/manifest.json` tells `catalog.py` what JARVIS may ask for: which
@@ -410,22 +410,52 @@ def report(path: Path, aliases: dict[str, str] | None = None) -> dict:
         # declares, pas devines.
         parts = {RigPart(value) for value in vrm["parts"]}
 
+    # Ce que le profil du modele porte — mesure ici, jamais declare. Voir
+    # `presence/models.py`. Les memes questions que `avatar/js/profile.js`
+    # pose au corps charge, pour que l'installation et le rendu disent la meme
+    # chose du meme fichier.
+    normalised = {normalise(n) for n in every_morph}
+    visemes = [v for v in OCULUS_VISEMES if normalise(v) in normalised]
+    if vrm and not visemes:
+        visemes = [v for v in ("aa", "ih", "ou", "ee", "oh") if v in vrm["expressions"]]
+    eyes_by = ("formes" if any(k.startswith("eyeLook") for k in matched)
+               else "os" if (bones.get("eyeLeft") or bones.get("eyeRight"))
+               else "VRMLookAt" if vrm else "aucun")
+    used = gltf.get("extensionsUsed", [])
+    compression = [label for ext, label in _COMPRESSION.items() if ext in used]
+    fmt = (vrm["version"] if vrm else "glTF" if path.suffix.lower() == ".gltf" else "GLB")
+
     return {
         "file": path.name,
         "size_kb": path.stat().st_size // 1024,
         "vrm": is_vrm(gltf),
         "vrm_facts": vrm,
+        "format": fmt,
+        "compression": compression,
         "meshes": meshes,
         "morph_total": len(every_morph),
         "arkit_matched": matched,
         "arkit_missing": [n for n in ARKIT_52 if n not in matched],
         "unmatched_morphs": [n for n in every_morph
                              if n not in set(matched.values())],
+        "visemes": visemes,
+        "eyes": eyes_by,
+        "head_bone": bool(bones.get("head") or bones.get("neck")),
         "parts": sorted(p.value for p in parts),
         "bones": bones,
+        "node_names": [n.get("name") for n in gltf.get("nodes", []) if n.get("name")],
         "animations": animations,
         "nodes": len(gltf.get("nodes", [])),
     }
+
+
+#: Les extensions de compression, telles que les nomme le profil.
+_COMPRESSION = {
+    "KHR_draco_mesh_compression": "DRACO",
+    "EXT_meshopt_compression": "meshopt",
+    "KHR_texture_basisu": "KTX2",
+    "KHR_mesh_quantization": "quantization",
+}
 
 
 def _print(data: dict) -> None:
@@ -483,40 +513,28 @@ def _print(data: dict) -> None:
 
 
 def write_manifest(path: Path, data: dict) -> None:
-    """Fold the findings into `avatar/manifest.json`, keeping taste intact.
+    """Fold the findings into `avatar/manifest.json`, through the model's profile.
 
-    Only the derived fields are touched — model file, rig parts, bones and the
-    aliases needed to reach a shape the renderer would otherwise miss. Camera,
-    colours, scale and `rig.motion` are decisions nobody can read off a mesh, so
-    they survive untouched.
+    This used to overwrite the aliases and the bones in place and keep every
+    other field — including the calibration of whatever model was there
+    before, which then applied to this one. It now goes through
+    `presence.models.install_file`: the file gets its own profile, the
+    previous model's calibration is put away in ITS profile, and the
+    preferences (camera, colours, `rig.motion`) are left alone.
 
-    `rig.motion` is the one worth naming here, because it sits beside a field
-    this function DOES overwrite. `rig.parts` is what the model has and is read
-    off the skeleton; `rig.motion` is what someone decided to animate, and
-    reinstalling a model is not a reason to start moving arms that were
-    deliberately held still.
+    When the file is the one the manifest already describes, its current
+    calibration is adopted rather than reset — that is what `--write` on the
+    installed model has always meant.
     """
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    from presence import models
 
-    manifest.setdefault("model", {})
-    manifest["model"]["file"] = path.name
-    manifest["model"].setdefault("scale", 1.0)
-    manifest["model"].setdefault("position", [0, 0, 0])
-    manifest["model"]["morphAliases"] = {
-        arkit: real for arkit, real in data["arkit_matched"].items() if arkit != real
-    }
-
-    manifest.setdefault("rig", {})
-    manifest["rig"]["parts"] = data["parts"]
-    manifest["rig"]["bones"] = {
-        key: data["bones"].get(key, "")
-        for key in ("head", "neck", "spine", "root", "eyeLeft", "eyeRight")
-    }
-    manifest["name"] = f"JARVIS — {path.stem}"
-
-    MANIFEST.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-                        encoding="utf-8")
-    print(f"  avatar/manifest.json mis a jour depuis {path.name}\n")
+    manifest = models.read_json(MANIFEST)
+    current = ((manifest.get("model") or {}).get("file") or "").strip()
+    root = BASE_DIR / "avatar" / "models"
+    adopt = bool(current) and (root / current).resolve() == path.resolve()
+    models.install_file(path, data, adopt=adopt)
+    print(f"  avatar/manifest.json mis a jour depuis {path.name} "
+          f"(profil {models.profile_path(path).name})\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -524,9 +542,11 @@ def main(argv: list[str] | None = None) -> int:
     write = "--write" in args
     args = [a for a in args if not a.startswith("--")]
 
+    root = BASE_DIR / "avatar" / "models"
     if not args:
-        models = sorted((BASE_DIR / "avatar" / "models").glob("*.gl*")) \
-            + sorted((BASE_DIR / "avatar" / "models").glob("*.vrm"))
+        # Recursif : les modeles vivent dans leurs dossiers (`jarvis/female/`).
+        models = sorted(p for p in root.rglob("*")
+                        if p.suffix.lower() in (".glb", ".gltf", ".vrm"))
         if not models:
             print("\n  aucun modele dans avatar/models/ — voir avatar/models/README.md\n")
             return 1
@@ -535,7 +555,9 @@ def main(argv: list[str] | None = None) -> int:
     for name in args:
         path = Path(name)
         if not path.is_absolute():
-            path = BASE_DIR / path
+            # Relatif a la racine du depot, ou a `avatar/models/` — les deux
+            # formes que la documentation et le manifeste emploient.
+            path = BASE_DIR / path if (BASE_DIR / path).is_file() else root / path
         if not path.is_file():
             print(f"  introuvable : {path}")
             return 1

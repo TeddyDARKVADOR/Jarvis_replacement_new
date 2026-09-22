@@ -59,6 +59,7 @@ from dataclasses import replace
 from .affect import (
     Affect,
     SocialMode,
+    accent_for_intent,
     affect_for_intent,
     expression_for,
     gaze_for,
@@ -191,6 +192,11 @@ class Director:
         self._intent_at: float = 0.0
         self._affect: Affect | None = None
         self._affect_at: float = 0.0
+        #: Numero de la derniere intention recue. Il fait `gesture_id` : deux
+        #: intentions successives qui demandent `nod` sont deux hochements, et
+        #: la meme intention re-resolue a chaque changement d'etat n'en est
+        #: qu'un.
+        self._intent_seq: int = 0
 
     # ── ce que JARVIS exprime ────────────────────────────────────────────────
 
@@ -204,6 +210,7 @@ class Director:
         stamp = time.monotonic() if now is None else now
         self._intent = directive
         self._intent_at = stamp
+        self._intent_seq += 1
         if isinstance(getattr(directive, "affect", None), Affect):
             self._affect = directive.affect
             self._affect_at = stamp
@@ -255,6 +262,8 @@ class Director:
         affect = _REFLEX_AFFECT.get(word, Affect())
         reason = f"reflex:{word}"
         derived = False
+        gaze_source = "reflex"
+        gesture_id = f"reflex:{word}"
 
         # ── 2. l'affect, s'il y en a un ──────────────────────────────────────
         live = self.affect_now(now)
@@ -268,6 +277,7 @@ class Director:
                       f"att{affect.attention:.2f} conf{affect.confidence:.2f} "
                       f"urg{affect.urgency:.2f}")
             derived = True
+            gaze_source = "affect"
 
         # ── 3. l'intention nommee ────────────────────────────────────────────
         intent = self._intent
@@ -277,7 +287,8 @@ class Director:
         # mot a l'intention qu'il nomme — un « il a voulu investigate » affiche
         # une minute apres que l'intention a expire.
         chosen_intent = None
-        if intent is not None and (now - self._intent_at) <= INTENT_TTL_S:
+        active = intent is not None and (now - self._intent_at) <= INTENT_TTL_S
+        if active:
             chosen_intent = getattr(intent, "intent", None)
             # Une intention qui ne portait QUE de l'affect a deja tout dit a
             # l'etape 2 ; la reecraser avec ses defauts (neutral, 0.5, idle)
@@ -287,8 +298,21 @@ class Director:
                 intensity = _clamp(intent.intensity)
                 posture = intent.posture or _POSTURE_OF.get(expression, posture)
                 reason = intent.reason or f"intent:{expression.value}"
-            elif intent.reason:
-                reason = intent.reason
+            else:
+                if intent.reason:
+                    reason = intent.reason
+                # L'intention a pose la base ; ce que JARVIS a NOMME a cote la
+                # corrige, champ par champ — c'est la regle annoncee, et elle ne
+                # tenait que pour le regard. Un visage nomme gagne sur le visage
+                # derive ; son intensite aussi quand elle est donnee, sinon
+                # c'est celle de l'etat qui reste.
+                if getattr(intent, "expression_given", False):
+                    expression = intent.expression
+                    if getattr(intent, "intensity_given", False):
+                        intensity = _clamp(intent.intensity)
+                    posture = _POSTURE_OF.get(expression, posture)
+                if intent.posture is not None:
+                    posture = intent.posture
             # Le geste vient toujours de l'intention : l'affect faconne, il ne
             # designe pas. « amuse » ne veut pas dire « hausse un sourcil ».
             gesture = intent.gesture
@@ -306,6 +330,20 @@ class Director:
             # pas qu'il existe un ecran.
             if intent.gaze is not None:
                 gaze = intent.gaze
+                gaze_source = getattr(intent, "gaze_from", "") or "explicit"
+
+            # Le geste appartient a CETTE decision, pas a son nom. Voir
+            # `Performance.gesture_id`.
+            gesture_id = f"intent#{self._intent_seq}"
+
+        # `hold_s` est une propriete du VISAGE REFLEXE : WAKING tient une
+        # surprise 1.2 s, ERROR une inquietude 2 s. Il etait pourtant transmis
+        # quel que soit le visage — une intention arrivee pendant WAKING
+        # relachait donc son visage au bout de 1.2 s au lieu de le tenir. Un
+        # visage decide par l'affect ou par JARVIS tient jusqu'a la decision
+        # suivante ; c'est l'affect qui decroit, et l'intention qui expire.
+        if derived or active:
+            hold = 0.0
 
         # ── 4. ce qui prime sur tout ─────────────────────────────────────────
         if word == "SLEEPING":
@@ -314,6 +352,7 @@ class Director:
             # yeux ouverts.
             gaze = Gaze.CLOSED
             posture = Posture.DORMANT
+            gaze_source = "safety"
 
         if expression is Expression.ANGRY:
             intensity = min(intensity, ANGRY_CEILING)
@@ -342,7 +381,51 @@ class Director:
             # est une capacite qu'on croit avoir.
             intent=chosen_intent,
             reason=reason,
+            state=word,
+            gaze_source=gaze_source,
+            gesture_id=gesture_id,
+            accent=accent_for_intent(chosen_intent),
         )
+
+
+def trace(performance: Performance, cat: Catalogue | None = None) -> list[str]:
+    """Pourquoi ce visage — la decision en lignes lisibles, dans l'ordre causal.
+
+        INTENT = investigate
+        AFFECT = thinking 0.44 (v+0.00 a0.55 att0.30 conf0.55 urg0.15)
+        GAZE = screen (intent)
+        MODEL CAPABILITY = face
+        BODY ACTION = turn
+        FALLBACK = look_away
+        FACIAL TARGET = thinking 0.44
+        ACCENT = -
+
+    C'est la reponse a « pourquoi Jarvis a fait cela », sans rejouer la
+    conversation. `avatar/js/director.js` produit la meme trace dans le labo ;
+    le moteur y ajoute RENDER, ce qu'il a reellement fait du geste.
+    """
+    cat = cat or catalogue()
+    p = performance
+    lines = [f"STATE = {p.state or '-'}",
+             f"INTENT = {p.intent.value if p.intent is not None else '-'}"]
+    if p.affect is not None:
+        a = p.affect
+        lines.append(f"AFFECT = {p.expression.value} {p.intensity:.2f} "
+                     f"(v{a.valence:+.2f} a{a.arousal:.2f} att{a.attention:.2f} "
+                     f"conf{a.confidence:.2f} urg{a.urgency:.2f})")
+    lines.append(f"GAZE = {p.gaze.value} ({p.gaze_source})")
+    lines.append(f"MODEL CAPABILITY = {cat.motion}")
+    requested = p.requested_gesture or p.gesture
+    lines.append(f"BODY ACTION = {requested.value}")
+    if requested is not p.gesture:
+        lines.append(f"FALLBACK = {p.gesture.value}")
+    lines.append(f"FACIAL TARGET = {p.expression.value} {p.intensity:.2f}")
+    lines.append(f"ACCENT = {p.accent.value if p.accent is not None else '-'}")
+    if p.hold_s:
+        lines.append(f"HOLD = {p.hold_s:.1f} s")
+    if p.reason:
+        lines.append(f"REASON = {p.reason[:80]}")
+    return lines
 
 
 # ── reading what the model wrote ─────────────────────────────────────────────
@@ -535,6 +618,14 @@ def _coerce(raw: dict) -> Directive | None:
     # modele qui ecrit {"intent": "investigate", "gaze": "user"} veut examiner
     # quelque chose SANS quitter l'utilisateur des yeux, et lui refuser cette
     # nuance reviendrait a n'avoir que seize comportements possibles.
+    # Le regard ECRIT par JARVIS, s'il est un vrai mot. Lu avant l'intention
+    # parce qu'il la raffine — et valide, parce qu'un mot inconnu
+    # (`"gaze": "monitor"`) bloquait auparavant le regard de l'intention sans
+    # rien imposer a la place : `investigate` perdait son ecran pour un regard
+    # derive de l'attention.
+    explicit_gaze = word("gaze", Gaze, None)
+    gaze_from = "explicit" if explicit_gaze is not None else ""
+
     intent = word("intent", Intent, None)
     if intent is not None:
         base = affect_for_intent(intent, affect)
@@ -548,10 +639,11 @@ def _coerce(raw: dict) -> Directive | None:
         affect = base
         if not gesture_given:
             gesture = gesture_for_intent(intent)
-        if raw.get("gaze") is None:
+        if explicit_gaze is None:
             preferred = gaze_for_intent(intent)
             if preferred is not None:
                 raw = {**raw, "gaze": preferred.value}
+                gaze_from = "intent"
 
     if gesture is None:
         gesture = Gesture.IDLE
@@ -583,8 +675,8 @@ def _coerce(raw: dict) -> Directive | None:
         except ValueError:
             posture = None
 
-    intensity = _number(raw, "intensity", "emotionIntensity", "emotion_intensity",
-                        default=0.5)
+    given_intensity = _number(raw, "intensity", "emotionIntensity", "emotion_intensity")
+    intensity = 0.5 if given_intensity is None else given_intensity
 
     return Directive(
         expression=expression or Expression.NEUTRAL,
@@ -595,6 +687,9 @@ def _coerce(raw: dict) -> Directive | None:
         reason=str(raw.get("reason", ""))[:200],
         affect=affect,
         intent=intent,
+        gaze_from=gaze_from,
+        expression_given=expression is not None,
+        intensity_given=given_intensity is not None,
     )
 
 

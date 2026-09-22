@@ -269,6 +269,24 @@ export const INTENTS = {
   apologise     : [-0.58, 0.32, 0.90, 0.30, 0.25, 'bow', 'down'],
 };
 
+/**
+ * Le geste facial de chaque intention qui en a un. Miroir de `_INTENT_ACCENTS`
+ * (`presence/affect.py`) : chacun est la pour une paire que la sortie reelle
+ * confondait en mode visage.
+ */
+export const INTENT_ACCENTS = {
+  greet: 'brow_flash',
+  farewell: 'brow_flash',
+  report_success: 'chin_up',
+  explain: 'beat',
+  apologise: 'head_down',
+};
+
+/** Le geste facial de cette intention, ou `null`. */
+export function accentForIntent(name) {
+  return INTENT_ACCENTS[name] || null;
+}
+
 /** L'etat interieur ou cette intention met JARVIS. `null` si le mot est inconnu. */
 export function affectForIntent(name) {
   const row = INTENTS[name];

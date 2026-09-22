@@ -85,6 +85,14 @@ const SIDE_SEPARATED = /[._\s-]([lr])$/;
 const SIDE_WORD = /(left|right)$/;
 
 /**
+ * The Oculus viseme set, as Ready Player Me and most "game ready" exports name
+ * it: `viseme_aa`, `viseme_PP`... Normalised, so `Viseme_AA` and `viseme.aa`
+ * land on the same key. `presence/inspect.py` detects the same fifteen.
+ */
+export const OCULUS_VISEMES = ['sil', 'PP', 'FF', 'TH', 'DD', 'kk', 'CH', 'SS',
+  'nn', 'RR', 'aa', 'E', 'I', 'O', 'U'];
+
+/**
  * The one spelling of a name, whatever the exporter called it.
  *
  * Three things are removed, in this order, and the order matters:
@@ -145,6 +153,7 @@ export class GltfBody {
     this.scene.position.set(p[0] || 0, p[1] || 0, p[2] || 0);
 
     this.morphTargets = new Map();   // nom ARKit -> [{mesh, index}, ...]
+    this.visemeTargets = new Map();  // nom Oculus -> [{mesh, index}, ...]
     this.nodes = {};
     this.detectedParts = new Set(['head']);
     this.clips = Object.create(null);
@@ -167,6 +176,20 @@ export class GltfBody {
       return;
     }
     const targets = this.morphTargets.get(name);
+    if (!targets) return;
+    for (const { mesh, index } of targets) {
+      mesh.morphTargetInfluences[index] = weight;
+    }
+  }
+
+  /**
+   * One NATIVE viseme — an Oculus name, sculpted by the model's author.
+   *
+   * Only called when `capabilities().visemes` says `oculus`: the rig then
+   * writes these instead of approximating the mouth from ARKit shapes.
+   */
+  setViseme(name, weight) {
+    const targets = this.visemeTargets.get(name);
     if (!targets) return;
     for (const { mesh, index } of targets) {
       mesh.morphTargetInfluences[index] = weight;
@@ -308,6 +331,8 @@ export class GltfBody {
     // Table ARKit normalisee -> nom canonique, construite une fois.
     const canonical = new Map();
     for (const name of ARKIT_NAMES) canonical.set(normalise(name), name);
+    const visemes = new Map();
+    for (const name of OCULUS_VISEMES) visemes.set(normalise(`viseme_${name}`), name);
 
     /**
      * Un maillage est-il dans la liste du manifeste ?
@@ -350,7 +375,14 @@ export class GltfBody {
         // recours qu'une correspondance automatique peut ecraser n'en est pas un.
         const arkit = aliasByMeshName.get(key) || canonical.get(key);
 
-        if (!arkit) continue;
+        if (!arkit) {
+          const viseme = visemes.get(key);
+          if (viseme) {
+            if (!this.visemeTargets.has(viseme)) this.visemeTargets.set(viseme, []);
+            this.visemeTargets.get(viseme).push({ mesh: node, index });
+          }
+          continue;
+        }
         if (!this.morphTargets.has(arkit)) this.morphTargets.set(arkit, []);
         this.morphTargets.get(arkit).push({ mesh: node, index });
       }
@@ -382,6 +414,19 @@ export class GltfBody {
     for (const part in PART_HINTS) {
       if (PART_HINTS[part].some((hint) => byName.has(hint))) this.detectedParts.add(part);
     }
+
+    // Une tete seule sans os de tete — un scan, un buste exporte sans
+    // squelette. Le catalogue lui offre `nod`, et sans ceci `nod` ne
+    // tournerait rien. Pour un modele qui n'EST qu'une tete, faire tourner le
+    // modele entier est exactement tourner la tete. Les canaux du corps ne
+    // sont alors ecrits nulle part : la racine et la tete seraient le meme
+    // objet, et le report du poids ecraserait le lacet de la tete.
+    const bodyless = this.detectedParts.size === 1;
+    if (!this.nodes.head && !this.nodes.neck && bodyless) {
+      this.nodes.head = this.scene;
+      delete this.nodes.root;
+      this.headIsModel = true;
+    }
   }
 
   /**
@@ -397,13 +442,25 @@ export class GltfBody {
    */
   capabilities() {
     const mouth = ['jawOpen', 'mouthFunnel', 'mouthPucker', 'mouthClose'];
+    // Les visemes natifs ne comptent que s'ils couvrent l'essentiel : une
+    // bouche ouverte, arrondie et fermee. Deux formes isolees ne font pas un
+    // jeu de visemes, et les piloter a la place de l'approximation ARKit
+    // donnerait une bouche plus pauvre.
+    const native = ['aa', 'O', 'PP'].every((v) => this.visemeTargets.has(v));
+    const arkitMouth = mouth.some((n) => this.morphTargets.has(n));
+    // Une TETE, c'est un os qui tourne. Un modele sans os de tete ni de cou
+    // a peut-etre un visage, mais `nod` ne ferait rien : le dire ici est ce
+    // qui evite d'annoncer un hochement que personne ne verra.
+    const hasHead = !!(this.nodes.head || this.nodes.neck);
     return {
       expression: this.morphTargets.size > 0,
       gaze: this.gazeByBone || Object.keys(this.gaze).some((n) => this.morphTargets.has(n)),
       gazeBy: this.gazeByBone ? 'os' : (this.morphTargets.has('eyeLookInLeft') ? 'formes' : 'aucun'),
-      lipsync: mouth.some((n) => this.morphTargets.has(n)),
-      gesture: this.detectedParts.has('head'),
-      posture: this.detectedParts.has('torso'),
+      lipsync: arkitMouth || native,
+      visemes: native ? 'oculus' : (arkitMouth ? 'arkit' : 'none'),
+      head: hasHead,
+      gesture: hasHead,
+      posture: this.detectedParts.has('torso') && !!this.nodes.spine,
     };
   }
 
@@ -411,6 +468,7 @@ export class GltfBody {
   report() {
     return {
       morphsFound: this.morphTargets.size,
+      visemesFound: [...this.visemeTargets.keys()],
       morphsMissing: ARKIT_NAMES.filter((n) => !this.morphTargets.has(n)),
       bones: Object.keys(this.nodes).filter((k) => this.nodes[k]),
       parts: [...this.detectedParts],
@@ -442,7 +500,7 @@ export class GltfBody {
  * reason three.js itself is: a face that needs a CDN is a face missing on a bad
  * network day.
  */
-export function buildLoader(renderer) {
+export function buildLoader(renderer, { vrm = true } = {}) {
   // Avant toute construction de loader : c'est ce qui rend le transport XHR
   // au lieu de fetch, pour ces loaders comme pour tous les autres.
   useXhrLoading();
@@ -467,9 +525,33 @@ export function buildLoader(renderer) {
   // quelque chose que si le fichier porte l'extension VRMC_vrm. Le brancher
   // toujours evite d'avoir a deviner le format depuis l'extension, qui ment
   // (des VRM circulent en .glb).
-  enableVrm(loader);
+  if (vrm) enableVrm(loader);
 
   return loader;
+}
+
+/**
+ * Lire un modele, et survivre a un VRM non conforme.
+ *
+ * Le greffon VRM refuse EN BLOC un fichier auquel manque un os que la
+ * specification exige — un buste exporte sans jambes, par exemple. Tout le
+ * modele etait alors perdu pour une contrainte qui ne concerne que le
+ * squelette humanoide. Le fichier reste un glTF parfaitement lisible : on le
+ * relit sans le greffon, et on garde le maillage, la tete et les formes.
+ *
+ * @param {(loader) => Promise} read   comment lire (URL ou tampon)
+ */
+export async function readModel(renderer, read) {
+  try {
+    return await read(buildLoader(renderer));
+  } catch (err) {
+    if (!/VRM/i.test(String(err && err.message))) throw err;
+    console.warn(`[avatar] VRM non conforme (${err.message}) — relu en glTF simple, `
+               + 'sans squelette VRM ni expressions VRM');
+    const gltf = await read(buildLoader(renderer, { vrm: false }));
+    gltf.userData.vrmRejected = err.message;
+    return gltf;
+  }
 }
 
 /**
@@ -486,7 +568,8 @@ export function buildLoader(renderer) {
  */
 export async function loadGltfBody(manifest, baseUrl, renderer) {
   const loader = buildLoader(renderer);
-  const gltf = await loader.loadAsync(new URL(`models/${manifest.model.file}`, baseUrl).href);
+  const url = new URL(`models/${manifest.model.file}`, baseUrl).href;
+  const gltf = await readModel(renderer, (l) => l.loadAsync(url));
   // Le format decide de la classe, pas l'extension du fichier.
   const body = isVrm(gltf) ? new VrmBody(gltf, manifest) : new GltfBody(gltf, manifest);
 

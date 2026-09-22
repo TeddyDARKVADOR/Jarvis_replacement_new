@@ -830,7 +830,11 @@ def _adapter_contract():
     JavaScript.
     """
     #: Les seules questions que le moteur a le droit de poser a un corps.
-    expected = {"expression", "gaze", "gazeBy", "lipsync", "gesture", "posture"}
+    #: `visemes` dit si la bouche a ses propres formes de parole (et lesquelles),
+    #: `head` si un os tourne vraiment quand on hoche — la difference entre une
+    #: capacite reelle et une capacite supposee.
+    expected = {"expression", "gaze", "gazeBy", "lipsync", "visemes", "head",
+                "gesture", "posture"}
 
     bodies = {
         "body_gltf.js": "GltfBody",
@@ -851,7 +855,9 @@ def _adapter_contract():
             f"{sorted(keys)} au lieu de {sorted(expected)}")
 
     # Le moteur ne doit jamais nommer un modele en particulier.
-    engine = ["rig.js", "gestures.js", "idle.js", "lipsync.js", "main.js"]
+    engine = ["rig.js", "gestures.js", "idle.js", "lipsync.js", "main.js",
+              "engine.js", "performance.js", "gaze.js", "accents.js", "states.js",
+              "stage.js", "director.js", "catalog.js", "recorder.js", "lab.js"]
     leaks = []
     for filename in engine:
         source = (AVATAR_DIR / "js" / filename).read_text(encoding="utf-8")
@@ -978,16 +984,19 @@ def _js_expressions():
 
 @check("le labo connait le meme vocabulaire")
 def _lab_vocabulary():
-    """Three tables the lab mirrors from Python, all checked.
+    """Four tables the lab mirrors from Python, all checked — in `catalog.js`.
 
-    The lab has to decide, with no Python running, whether a gesture is playable
-    on the body that is loaded — otherwise it shows a requested gesture as if it
-    had played, which is exactly the silence its "execution" line exists to
-    break. Doing that means mirroring the gesture list, the procedural
-    repertoire and the rig requirements. Three more duplications, so three more
-    checks.
+    The lab has to decide, with no Python running, what a gesture becomes on
+    the body that is loaded. It used to decide with a rule of its own —
+    "requested, or idle" — and showed `wave -> idle` where the panel nodded,
+    because it had no `FALLBACK_CHAIN`. The tables now live in one module,
+    `catalog.js`, shared by the lab, the director mirror and the engine, and
+    the lab holds none of its own.
     """
-    source = (AVATAR_DIR / "js" / "lab.js").read_text(encoding="utf-8")
+    source = (AVATAR_DIR / "js" / "catalog.js").read_text(encoding="utf-8")
+    lab = (AVATAR_DIR / "js" / "lab.js").read_text(encoding="utf-8")
+    assert "const GESTURES = [" not in lab and "GESTURE_NEEDS = {" not in lab, (
+        "lab.js a de nouveau ses propres tables de gestes — une seconde verite")
 
     def array(marker, end):
         block = source[source.index(marker):source.index(end)]
@@ -995,29 +1004,39 @@ def _lab_vocabulary():
 
     known = {g.value for g in Gesture}
 
-    listed = array("const GESTURES = [", "/** Ce qu'un corps joue sans aucun clip")
+    listed = array("export const GESTURES = [", "/** Ce qu'un corps joue sans aucun clip")
     unknown = [n for n in listed if n not in known]
     assert not unknown, "gestes inconnus dans le labo : " + ", ".join(unknown)
     missing = sorted(known - set(listed))
     assert not missing, "gestes absents du labo : " + ", ".join(missing)
 
-    procedural = set(array("const PROCEDURAL_GESTURES = new Set([",
+    procedural = set(array("export const PROCEDURAL_GESTURES = new Set([",
                            "/** Ce que chaque geste demande au rig"))
     assert procedural == set(PROCEDURAL_GESTURES), (
         "repertoire procedural different : "
         f"labo seul {sorted(procedural - set(PROCEDURAL_GESTURES))}, "
         f"python seul {sorted(set(PROCEDURAL_GESTURES) - procedural)}")
 
-    needs_block = source[source.index("const GESTURE_NEEDS = {"):
-                         source.index("const FRAME_FRACTIONS")]
+    needs_block = source[source.index("export const GESTURE_NEEDS = {"):
+                         source.index("/** Ou un geste se rabat")]
     needs = dict(re.findall(r"(\w+): '(\w+)'", needs_block))
     expected_needs = {g.value: part.value for g, part in GESTURE_REQUIRES.items()}
     assert needs == expected_needs, (
         "exigences de rig differentes : "
         + ", ".join(k for k in expected_needs if needs.get(k) != expected_needs[k]))
 
+    chain_block = source[source.index("export const FALLBACK_CHAIN = {"):
+                         source.index("/** Ce que chaque `rig.motion`")]
+    chains = {name: tuple(re.findall(r"'(\w+)'", body))
+              for name, body in re.findall(r"^  (\w+): \[([^\]]*)\],", chain_block, re.MULTILINE)}
+    expected_chains = {g.value: tuple(c.value for c in chain)
+                       for g, chain in FALLBACK_CHAIN.items()}
+    assert chains == expected_chains, (
+        "chaine de repli differente : "
+        + ", ".join(k for k in expected_chains if chains.get(k) != expected_chains[k]))
+
     return (f"{len(listed)} gestes, {len(procedural)} procedurals, "
-            f"{len(needs)} exigences — accordes")
+            f"{len(needs)} exigences, {len(chains)} chaines de repli — accordes")
 
 
 @check("noms : la meme regle des deux cotes")
@@ -1199,10 +1218,15 @@ def _face_mode_js():
         assert channel in gestures.split("BODY_CHANNELS", 1)[1][:260], (
             f"{channel} n'est pas dans les canaux geles")
 
-    assert "drivenParts" in lab, (
-        "lab.js lit encore detectedParts directement — il annoncerait jouable "
-        "un geste que le moteur remet a zero")
-    assert 'rig.motion' in lab, "lab.js ne consulte pas rig.motion"
+    catalog_js = (AVATAR_DIR / "js" / "catalog.js").read_text(encoding="utf-8")
+    assert "face: ['head']" in catalog_js and "export function motionOf" in catalog_js, (
+        "catalog.js ne restreint plus le mode visage a la tete")
+    assert "motionOf(" in lab and "new Catalogue(" in lab, (
+        "lab.js ne resout plus contre le catalogue du corps charge — il "
+        "annoncerait jouable un geste que le moteur remet a zero")
+    # Et le moteur DIT qu'il a gele un geste, au lieu de l'annoncer joue.
+    assert "via: 'frozen'" in gestures, (
+        "gestures.js ne rapporte plus un geste gele : le labo l'afficherait joue")
 
     # Et le mot du manifeste est le meme des trois cotes.
     manifest = json.loads((AVATAR_DIR / "manifest.json").read_text(encoding="utf-8"))
@@ -1250,37 +1274,188 @@ def _js_intents():
 
 @check("deux intentions ne produisent jamais le meme comportement")
 def _intents_distinct():
-    """La regle qui garde la liste courte, verifiee sur la SORTIE.
+    """La regle qui garde la liste courte, verifiee sur ce qui JOUE.
 
     Une table de seize lignes toutes differentes ne prouve rien : ce qui compte
-    est que les seize se distinguent une fois derivees. Deux intentions qui
-    atterrissent sur le meme visage, le meme regard ET le meme mouvement ne sont
-    pas deux intentions, ce sont deux noms pour la meme chose — et le modele
-    apprendra a en choisir une au hasard.
+    est que les seize se distinguent une fois jouees par le corps qu'on a. Deux
+    intentions qui atterrissent sur le meme visage, le meme regard, le meme
+    mouvement ET le meme accent ne sont pas deux intentions, ce sont deux noms —
+    et le modele apprendra a en choisir une au hasard.
 
-    Le visage seul a le droit de se repeter : `agree` et `amuse` sourient tous
-    les deux, et ce qui les separe est le mouvement. C'est le triplet complet qui
-    doit etre unique.
+    CE QUE LA VERSION PRECEDENTE NE VOYAIT PAS
+        Elle comparait le geste DEMANDE. En mode visage, le mode livre, le geste
+        est rabattu avant de jouer : `wave` et `thumbs_up` deviennent tous deux
+        `nod`, et `greet` et `report_success` etaient le meme comportement a la
+        virgule pres (happy 0.68, user, nod). Idem `farewell`/`agree` et
+        `acknowledge`/`explain` — un visage neutre n'ecrit aucune forme. Le test
+        passait, les intentions etaient indiscernables.
+
+    Il est donc joue sur les deux corps : tete seule, et corps complet avec tous
+    les clips. Deux visages identiques dont l'intensite differe de moins de
+    0.15 comptent comme un seul — personne ne distingue 0.37 de 0.48 sur un
+    panneau de 300 pixels.
     """
-    from presence.affect import affect_for_intent, gaze_for, gaze_for_intent, gesture_for_intent
+    face_cat = _cat({RigPart.HEAD}, set())
+    full_cat = _cat({RigPart.HEAD, RigPart.TORSO, RigPart.ARMS, RigPart.LEGS},
+                    set(Gesture))
 
-    seen: dict[tuple, Intent] = {}
-    for intent in Intent:
-        affect = affect_for_intent(intent)
-        signature = (
-            expression_for(affect),
-            gaze_for_intent(intent) or gaze_for(affect),
-            gesture_for_intent(intent),
-        )
-        clash = seen.get(signature)
-        assert clash is None, (
-            f"{intent.value} et {clash.value} produisent exactement "
-            f"{signature[0].value} / regard {signature[1].value} / "
-            f"{signature[2].value} — c'est une intention de trop")
-        seen[signature] = intent
+    def played(cat: Catalogue) -> dict[Intent, Performance]:
+        out = {}
+        for intent in Intent:
+            director = Director(cat)
+            director.set_intent(parse(json.dumps({"intent": intent.value})), now=0.0)
+            out[intent] = director.resolve("SPEAKING", now=0.1)
+        return out
 
-    faces = {expression_for(affect_for_intent(i)) for i in Intent}
-    return f"{len(Intent)} intentions distinctes, sur {len(faces)} visages"
+    closest = None
+    for label, cat in (("visage", face_cat), ("complet", full_cat)):
+        rows = played(cat)
+        intents = list(rows)
+        for i, a in enumerate(intents):
+            for b in intents[i + 1:]:
+                p, q = rows[a], rows[b]
+                same = (p.expression is q.expression and p.gaze is q.gaze
+                        and p.gesture is q.gesture and p.accent == q.accent)
+                gap = abs(p.intensity - q.intensity)
+                assert not (same and gap < 0.15), (
+                    f"[{label}] {a.value} et {b.value} jouent le meme comportement : "
+                    f"{p.expression.value} {p.intensity:.2f}/{q.intensity:.2f} · "
+                    f"{p.gaze.value} · {p.gesture.value} · accent "
+                    f"{p.accent.value if p.accent else '-'} — c'est une intention "
+                    f"de trop, ou il lui manque un signal que ce corps peut jouer")
+                if same and (closest is None or gap < closest[0]):
+                    closest = (gap, f"{a.value}/{b.value} [{label}]")
+
+    faces = {p.expression for p in played(face_cat).values()}
+    tail = (f" ; paire la plus proche {closest[1]} a {closest[0]:.2f}"
+            if closest else "")
+    return (f"{len(Intent)} intentions distinctes en mode visage et complet, "
+            f"sur {len(faces)} visages{tail}")
+
+
+@check("une nouvelle decision rejoue son geste, une ancienne jamais")
+def _gesture_identity():
+    """`gesture_id` : ce qui distingue une decision d'une re-resolution.
+
+    Le moteur ne rejouait un geste que si son NOM changeait. Or en mode visage
+    le reflexe SPEAKING se rabat sur `nod`, et sept intentions aussi : pendant
+    la parole — c'est-a-dire quand JARVIS appelle l'outil — `agree` arrivait
+    sous le meme nom que ce qui venait de jouer, et le hochement etait avale.
+    """
+    director = Director(_cat({RigPart.HEAD}, set()))
+    speaking = director.resolve("SPEAKING", now=0.0)
+    director.set_intent(parse('{"intent": "agree"}'), now=1.0)
+    agree = director.resolve("SPEAKING", now=1.0)
+    assert speaking.gesture is agree.gesture is Gesture.NOD, "le cas teste a change"
+    assert agree.gesture_id != speaking.gesture_id, (
+        "agree porte le meme identifiant que le reflexe : son hochement sera avale")
+
+    # La meme intention, re-resolue a un changement d'etat : un seul hochement.
+    again = director.resolve("LISTENING", now=3.0)
+    assert again.gesture_id == agree.gesture_id, (
+        "une re-resolution change l'identifiant : le geste rejouerait a chaque etat")
+
+    # Deux intentions successives au meme geste : deux hochements.
+    director.set_intent(parse('{"intent": "acknowledge"}'), now=5.0)
+    second = director.resolve("SPEAKING", now=5.0)
+    assert second.gesture is Gesture.NOD and second.gesture_id != agree.gesture_id, (
+        "deux decisions successives partagent un identifiant")
+
+    # Et l'intention expiree rend la main au reflexe, qui a le sien.
+    expired = director.resolve("SPEAKING", now=5.0 + INTENT_TTL_S + 1)
+    assert expired.gesture_id == "reflex:SPEAKING", expired.gesture_id
+
+    assert "gesture_id" in second.as_json(), "l'identifiant ne part pas sur le fil"
+    return (f"reflexe {speaking.gesture_id} -> {agree.gesture_id} -> "
+            f"{second.gesture_id}, re-resolution stable")
+
+
+@check("ce que JARVIS nomme a cote d'une intention gagne sur ce qu'elle derive")
+def _explicit_refines_intent():
+    """« L'intention pose la base, l'explicite corrige, champ par champ. »
+
+    Ca ne tenait que pour le regard. `{"intent": "agree", "expression":
+    "proud"}` jouait `amused` : le visage NOMME etait remplace par le visage
+    DERIVE de l'intention, parce qu'un visage absent et un visage choisi
+    avaient la meme valeur par defaut. Meme chose pour une posture explicite.
+    """
+    cat = _cat({RigPart.HEAD}, set())
+
+    def play(text):
+        director = Director(cat)
+        director.set_intent(parse(text), now=0.0)
+        return director.resolve("SPEAKING", now=0.1)
+
+    named = play('{"intent": "agree", "expression": "proud"}')
+    assert named.expression is Expression.PROUD, f"visage nomme ignore : {named.expression.value}"
+    assert named.intent is Intent.AGREE and named.gesture is Gesture.NOD, "l'intention a ete perdue"
+    derived = play('{"intent": "agree"}')
+    assert abs(named.intensity - derived.intensity) < 1e-9, (
+        "sans intensite nommee, c'est celle de l'etat qui doit rester")
+    strong = play('{"intent": "warn", "expression": "serious", "intensity": 0.9}')
+    assert strong.expression is Expression.SERIOUS and abs(strong.intensity - 0.9) < 1e-9
+    posture = play('{"intent": "warn", "posture": "relaxed"}')
+    assert posture.posture is Posture.RELAXED, f"posture nommee ignoree : {posture.posture.value}"
+    # Et une intention sans rien de nomme garde son visage derive.
+    assert derived.expression is Expression.AMUSED
+    return "visage, intensite et posture nommes gagnent ; le reste vient de l'intention"
+
+
+@check("hold_s appartient au visage reflexe, pas aux decisions")
+def _hold_belongs_to_reflex():
+    """WAKING tient une surprise 1.2 s ; une intention recue pendant WAKING non.
+
+    `hold_s` etait transmis quel que soit le visage. Depuis que le moteur le lit
+    (`avatar/js/performance.js`), une intention arrivee pendant le reveil
+    relachait son visage au bout de 1.2 s au lieu de le tenir.
+    """
+    director = Director(_cat({RigPart.HEAD}, set()))
+    assert director.resolve("WAKING", now=0.0).hold_s == 1.2
+    director.set_intent(parse('{"intent": "warn"}'), now=0.0)
+    assert director.resolve("WAKING", now=0.1).hold_s == 0.0, (
+        "une intention pendant WAKING herite des 1.2 s du reflexe")
+
+    director = Director(_cat({RigPart.HEAD}, set()))
+    director.set_affect(Affect(valence=-0.5, arousal=0.7), now=0.0)
+    assert director.resolve("ERROR", now=0.1).hold_s == 0.0, (
+        "un visage d'affect herite du hold_s du reflexe ERROR")
+    return "reflexe WAKING 1.2 s ; intention et affect : tenus jusqu'a la suite"
+
+
+@check("le regard dit qui l'a choisi, et un mot inconnu ne vole pas celui de l'intention")
+def _gaze_provenance():
+    """`gaze_source` : explicite, intention, affect, reflexe, surete.
+
+    Le moteur s'en sert pour une regle : un regard DECIDE n'est jamais deplace
+    par un comportement de fond. Et un mot de regard invalide ne doit plus
+    bloquer celui de l'intention — `investigate` perdait son ecran pour
+    `"gaze": "monitor"`.
+    """
+    cat = _cat({RigPart.HEAD}, set())
+
+    def source_of(text, state="SPEAKING"):
+        director = Director(cat)
+        director.set_intent(parse(text), now=0.0)
+        return director.resolve(state, now=0.1)
+
+    explicit = source_of('{"intent": "investigate", "gaze": "user"}')
+    assert (explicit.gaze, explicit.gaze_source) == (Gaze.USER, "explicit"), explicit
+    by_intent = source_of('{"intent": "investigate"}')
+    assert (by_intent.gaze, by_intent.gaze_source) == (Gaze.SCREEN, "intent")
+    junk = source_of('{"intent": "investigate", "gaze": "monitor"}')
+    assert junk.gaze is Gaze.SCREEN, (
+        f"un mot de regard inconnu a vole le regard de l'intention ({junk.gaze.value})")
+    asleep = source_of('{"intent": "investigate", "gaze": "user"}', state="SLEEPING")
+    assert (asleep.gaze, asleep.gaze_source) == (Gaze.CLOSED, "safety")
+
+    director = Director(cat)
+    assert director.resolve("THINKING", now=0.0).gaze_source == "reflex"
+    director.set_affect(Affect(attention=0.2), now=0.0)
+    assert director.resolve("THINKING", now=0.1).gaze_source == "affect"
+
+    payload = explicit.as_json()
+    assert payload["gaze_source"] == "explicit" and payload["state"] == "SPEAKING"
+    return "explicit · intent · affect · reflex · safety, tous sur le fil"
 
 
 @check("une intention traverse toute la chaine, jusqu'au JSON")
@@ -1331,6 +1506,277 @@ def _intent_chain():
 
     return "lu -> calcule -> derive -> rabattu -> visible -> transmis -> expire"
 
+
+# ── 10. le temps d'un visage ─────────────────────────────────────────────────
+
+
+@check("chaque visage a une signature temporelle, et elle vise de vraies formes")
+def _facial_signatures():
+    """`avatar/js/performance.js` decide QUAND chaque partie du visage part.
+
+    Deux pannes muettes a garder fermees, et les deux se lisent ici :
+
+      * une expression SANS entree dans la table arrive d'un bloc, et personne
+        ne le remarque — c'est exactement l'etat d'avant ce fichier ;
+      * un groupe mal orthographie (`mouths`, `brows`) ne correspond a aucun
+        prefixe ARKit, donc son decalage ne s'applique a rien. La ligne existe,
+        elle se lit bien, et elle ne fait rien.
+
+    Le temps lui-meme se mesure dans le navigateur —
+    `avatar/checks/facial_performance.py` chronometre les coefficients
+    reellement ecrits. Ce controle-ci garde la table.
+    """
+    source = (AVATAR_DIR / "js" / "performance.js").read_text(encoding="utf-8")
+    block = source[source.index("export const SIGNATURES = {"):source.index("MAX_DELAY_S =")]
+
+    signatures: dict[str, dict[str, float]] = {}
+    for name, body in re.findall(r"^  (\w+):\s*\{([^}]*)\},", block, re.MULTILINE):
+        signatures[name] = {
+            group: float(value)
+            for group, value in re.findall(r"(\w+):\s*(-?[0-9.]+)", body)
+        }
+    assert signatures, "table SIGNATURES introuvable"
+
+    missing = sorted(e.value for e in Expression if e.value not in signatures)
+    assert not missing, (
+        f"sans signature, donc arrivant d'un bloc : {missing}")
+
+    ceiling = float(re.search(r"MAX_DELAY_S = ([0-9.]+)", source).group(1))
+
+    # Les groupes reels, lus dans les formes que les expressions ecrivent
+    # vraiment. Une liste en dur ici serait une deuxieme table a garder juste.
+    real = set()
+    for expression in Expression:
+        for shape in face(expression, 0.8, Gaze.USER):
+            real.add(re.match(r"[a-z]+", shape).group(0))
+
+    for name, groups in signatures.items():
+        for group, delay in groups.items():
+            assert group in real, (
+                f"{name}.{group} ne correspond a aucun prefixe ARKit "
+                f"({sorted(real)}) — ce decalage ne s'applique a rien")
+            assert 0.0 <= delay <= ceiling, (
+                f"{name}.{group} = {delay}, hors de [0, {ceiling}]")
+
+    # Ce qui fait qu'un visage SE COMPOSE est son retard le plus long, pas la
+    # somme de ses retards : un groupe non nomme part a zero, donc l'ecart
+    # visible est simplement max(delais). Sommer recompenserait une signature
+    # qui nomme beaucoup de groupes pour rien.
+    spread = {name: max(groups.values(), default=0.0)
+              for name, groups in signatures.items()}
+
+    # Une surprise qui se compose n'est pas une surprise. C'est le seul visage
+    # dont le « snap » est juste, et la table doit le dire.
+    composed = [n for n, v in spread.items() if n not in ("neutral", "surprised")]
+    assert spread["surprised"] < min(spread[n] for n in composed), (
+        f"surprised ({spread['surprised']:.2f} s) n'arrive pas plus vite que "
+        f"tous les autres — c'est pourtant le seul qui doit arriver d'un bloc")
+
+    # Et l'ironie doit trainer : sans le retard de la bouche, `amused` se lit
+    # comme de la joie, ce qui est le contresens le plus courant du lot.
+    assert spread["amused"] >= 0.10, (
+        f"amused ne compose plus ({spread['amused']:.2f} s) — la bouche doit "
+        "arriver apres les yeux, c'est ce qui le distingue de happy")
+
+    slowest = max(spread, key=lambda n: spread[n])
+    return (f"{len(signatures)} signatures, {len(real)} groupes reels, "
+            f"surprised {spread['surprised']:.2f} s -> {slowest} "
+            f"{spread[slowest]:.2f} s")
+
+
+
+# ── 11. le moteur et son miroir ──────────────────────────────────────────────
+
+
+@check("les accents existent des deux cotes, et visent de vraies formes")
+def _js_accents():
+    """`Accent` (Python) et `ACCENTS` (accents.js), `_INTENT_ACCENTS` et son miroir.
+
+    Un accent nomme en Python et absent du JS est un salut qui ne joue rien —
+    la panne exacte que cette couche existe pour corriger.
+    """
+    from presence.affect import _INTENT_ACCENTS
+    from presence.model import Accent
+
+    source = (AVATAR_DIR / "js" / "accents.js").read_text(encoding="utf-8")
+    block = source[source.index("export const ACCENTS = {"):source.index("export class Accents")]
+    names = set(re.findall(r"^  (\w+): \{", block, re.MULTILINE))
+    assert names == {a.value for a in Accent}, (
+        f"accents JS {sorted(names)} vs Python {sorted(a.value for a in Accent)}")
+    for shape in re.findall(r"(\w+): [0-9.]+", "".join(re.findall(r"shapes: \{([^}]*)\}", block))):
+        assert shape in ARKIT_52, f"accent : {shape} n'est pas une forme ARKit"
+
+    affect_js = (AVATAR_DIR / "js" / "affect.js").read_text(encoding="utf-8")
+    table = affect_js[affect_js.index("export const INTENT_ACCENTS = {"):]
+    table = table[:table.index("};")]
+    mirrored = dict(re.findall(r"^  (\w+): '(\w+)',", table, re.MULTILINE))
+    expected = {i.value: a.value for i, a in _INTENT_ACCENTS.items()}
+    assert mirrored == expected, f"accents d'intention : JS {mirrored} vs Python {expected}"
+    return f"{len(names)} accents, {len(expected)} intentions accentuees, formes ARKit"
+
+
+@check("le directeur du labo porte les tables du panneau")
+def _js_director_tables():
+    """`avatar/js/director.js` refait `resolve()` pour le labo. Tables comparees.
+
+    Le comportement, lui, est confronte en marche par
+    `avatar/checks/director_parity.py` (Node) : meme directive, meme JSON.
+    """
+    from presence.director import _POSTURE_OF, _REFLEX, _REFLEX_AFFECT
+
+    source = (AVATAR_DIR / "js" / "director.js").read_text(encoding="utf-8")
+    assert f"INTENT_TTL_S = {INTENT_TTL_S}" in source, "INTENT_TTL_S differe"
+    assert f"ANGRY_CEILING = {ANGRY_CEILING}" in source, "ANGRY_CEILING differe"
+
+    block = source[source.index("export const REFLEX = {"):source.index("const DEFAULT_REFLEX")]
+    rows = {}
+    for word, body in re.findall(r"^  (\w+):\s*\[([^\]]+)\],", block, re.MULTILINE):
+        parts = [x.strip().strip("'") for x in body.split(",")]
+        rows[word] = (parts[0], float(parts[1]), parts[2], parts[3], parts[4], float(parts[5]))
+    expected = {w: (e.value, i, g.value, z.value, p.value, h)
+                for w, (e, i, g, z, p, h) in _REFLEX.items()}
+    assert rows == expected, (
+        "reflexe different : " + ", ".join(k for k in expected if rows.get(k) != expected[k]))
+
+    block = source[source.index("export const REFLEX_AFFECT = {"):source.index("/** Miroir de `_POSTURE_OF`")]
+    for word, affect in _REFLEX_AFFECT.items():
+        body = re.search(rf"^  {word}:\s*\{{([^}}]*)\}}", block, re.MULTILINE)
+        assert body, f"REFLEX_AFFECT.{word} absent de director.js"
+        given = dict(re.findall(r"(\w+): (-?[0-9.]+)", body.group(1)))
+        for axis in ("valence", "arousal", "attention", "confidence", "urgency"):
+            want = getattr(affect, axis)
+            got = float(given.get(axis, {"valence": 0.05, "arousal": 0.22, "attention": 0.80,
+                                         "confidence": 0.72, "urgency": 0.0}[axis]))
+            assert abs(got - want) < 1e-9, f"REFLEX_AFFECT.{word}.{axis} : {got} vs {want}"
+
+    block = source[source.index("export const POSTURE_OF = {"):]
+    block = block[:block.index("};")]
+    postures = dict(re.findall(r"(\w+): '(\w+)'", block))
+    assert postures == {e.value: p.value for e, p in _POSTURE_OF.items()}, "POSTURE_OF differe"
+    return f"{len(rows)} reflexes, {len(postures)} postures, TTL et plafond accordes"
+
+
+@check("chaque etat machine a un comportement de fond")
+def _presence_states():
+    """`avatar/js/states.js` : ce que fait un visage selon ce qu'il fait.
+
+    Un mot d'etat inconnu de cette table retombe sur `idle` — donc un JARVIS
+    qui parle clignerait comme un JARVIS au repos. Et les deux relations que
+    la litterature fixe doivent tenir : on cligne plus en parlant qu'en
+    ecoutant, et un regard qui ecoute ne s'echappe pas plus souvent qu'un
+    regard qui parle.
+    """
+    from presence.director import _REFLEX
+
+    source = (AVATAR_DIR / "js" / "states.js").read_text(encoding="utf-8")
+    mapping = source[source.index("export const STATE_OF = {"):source.index("/**\n * Le comportement")]
+    words = set(re.findall(r"^  (\w+): '", mapping, re.MULTILINE))
+    missing = sorted(set(_REFLEX) - words)
+    assert not missing, f"etats machine sans comportement de fond : {missing}"
+
+    block = source[source.index("export const BEHAVIOURS = {"):source.index("/** Duree du fondu")]
+    blink = {name: float(v) for name, v in re.findall(r"^  (\w+):\s+\{ blinkPerMin: ([0-9.]+)", block, re.MULTILINE)}
+    for state in ("idle", "listening", "thinking", "speaking", "reacting",
+                  "unavailable", "loading"):
+        assert state in blink, f"etat {state} sans parametres"
+    assert blink["speaking"] > blink["idle"] > blink["listening"], (
+        f"clignements {blink} : parler > repos > ecouter est ce que la mesure humaine donne")
+    return f"{len(words)} mots d'etat -> {len(blink)} comportements, parler {blink['speaking']:.0f}/min"
+
+
+@check("chaque visage a un rythme, et la surprise est la plus breve")
+def _facial_envelopes():
+    """`ENVELOPES` (performance.js) : montee, maintien, relache, par visage.
+
+    Sans ligne, un visage prend le rythme par defaut — l'ancien lissage, qui
+    fait arriver une surprise a la vitesse d'une pensee.
+    """
+    source = (AVATAR_DIR / "js" / "performance.js").read_text(encoding="utf-8")
+    block = source[source.index("export const ENVELOPES = {"):source.index("/** Le comportement d'avant")]
+    envelopes = {}
+    for name, body in re.findall(r"^  (\w+):\s*\{([^}]*)\},", block, re.MULTILINE):
+        envelopes[name] = {k: float(v) for k, v in re.findall(r"(\w+): ([0-9.]+)", body)}
+    missing = sorted(e.value for e in Expression if e.value not in envelopes)
+    assert not missing, f"visages sans rythme : {missing}"
+    for name, env in envelopes.items():
+        assert 0.05 <= env["attack"] <= 1.5 and 0.1 <= env["release"] <= 2.0, (
+            f"{name} : attaque {env['attack']} / relache {env['release']} hors bornes")
+    fastest = min(envelopes, key=lambda n: envelopes[n]["attack"])
+    assert fastest == "surprised", f"le visage le plus rapide est {fastest}, pas surprised"
+    assert "hold" in envelopes["surprised"], "la surprise se tient indefiniment"
+    assert envelopes["thinking"]["attack"] > envelopes["happy"]["attack"], (
+        "la reflexion s'installe plus vite que la joie")
+    assert envelopes["amused"]["release"] > envelopes["amused"]["attack"], (
+        "l'ironie repart plus vite qu'elle n'arrive")
+    return (f"{len(envelopes)} rythmes ; surprised {envelopes['surprised']['attack']} s "
+            f"-> tenue {envelopes['surprised']['hold']} s ; thinking {envelopes['thinking']['attack']} s")
+
+
+@check("le moteur ne tire son hasard que de sa graine")
+def _seeded_engine():
+    """Aucun `Math.random()` dans le moteur, hors `rng.js`.
+
+    Un seul appel suffit a rendre une seance impossible a rejouer : les
+    clignements divergent, et « pourquoi ce visage a 12:42:11 » n'a plus de
+    reponse. `avatar/checks/engine_test.mjs` prouve le rejeu exact ; ceci
+    empeche qu'on le casse sans s'en apercevoir.
+    """
+    engine = ["rig.js", "gestures.js", "idle.js", "lipsync.js", "engine.js",
+              "performance.js", "gaze.js", "accents.js", "states.js", "recorder.js"]
+    offenders = []
+    for filename in engine:
+        source = (AVATAR_DIR / "js" / filename).read_text(encoding="utf-8")
+        code = "\n".join(line for line in source.split("\n")
+                         if not line.lstrip().startswith(("*", "//", "/*")))
+        if "Math.random" in code:
+            offenders.append(filename)
+    assert not offenders, "hasard hors graine : " + ", ".join(offenders)
+    return f"{len(engine)} fichiers moteur, tout le hasard passe par rng.js"
+
+
+# ── 12. le visage est interchangeable ────────────────────────────────────────
+
+
+@check("le modele actif est bien celui que decrit son profil")
+def _active_profile():
+    """Empreinte, licence, provenance, mesures : le profil dit-il encore vrai ?
+
+    Un profil decrit un fichier precis. Remplace sous le meme nom, le fichier
+    rendrait fausses la calibration et les capacites annoncees — sans qu'aucune
+    erreur ne le dise, seulement un visage legerement faux.
+    """
+    from presence import models
+
+    manifest = json.loads((AVATAR_DIR / "manifest.json").read_text(encoding="utf-8"))
+    name = (manifest.get("model") or {}).get("file")
+    if not name:
+        return "corps procedural — aucun profil a verifier"
+    path = AVATAR_DIR / "models" / name
+    if not path.is_file():
+        return f"skipped ({name} absent : modeles non versionnes)"
+    ok, why = models.check_profile(path)
+    assert ok, f"{name} : {why}"
+    assert manifest.get("version") == models.MANIFEST_VERSION, "manifeste non migre"
+    assert (manifest["model"].get("profile") ==
+            models.relative(models.profile_path(path))), "le manifeste ne pointe pas son profil"
+    return why
+
+
+@check("changer de visage ne change aucune decision, et ne perd rien")
+def _model_swap():
+    """Feminin -> masculin -> feminin, dans un repertoire temporaire.
+
+    Le test de qualite de l'architecture : un nouveau visage est une
+    installation, pas un chantier. Detail dans `avatar/checks/model_swap.py`.
+    """
+    sys.path.insert(0, str(AVATAR_DIR / "checks"))
+    try:
+        import model_swap
+    finally:
+        sys.path.pop(0)
+    ok, detail = model_swap.run()
+    assert ok, detail
+    return detail
 
 # ── report ───────────────────────────────────────────────────────────────────
 

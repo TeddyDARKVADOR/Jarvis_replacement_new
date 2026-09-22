@@ -36,6 +36,8 @@
  *   deplace pas non plus le personnage : marcher est un geste, pas un repos.
  */
 
+import { Rng } from './rng.js';
+
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
 
@@ -77,11 +79,17 @@ export class Idle {
    * @param {object} nodes  les os, tels que `body.nodes` les expose. Ce qui
    *                        manque est simplement ignore : un corps sans jambes
    *                        ne reporte pas son poids, et c'est tout.
+   * @param {Rng} [rng]     le hasard, avec sa graine — voir rng.js. Sans lui
+   *                        une seance ne peut pas etre rejouee.
    */
-  constructor(nodes = {}) {
+  constructor(nodes = {}, rng) {
     this.hasLegs = !!(nodes.armLeftUpper || nodes.root);
+    this.rng = rng || new Rng();
     this.t = 0;
-    this.seed = Math.random() * 100;
+    this.seed = this.rng.next() * 100;
+    // Frequence des micro-expressions voulue par l'etat de presence : on en
+    // fait moins en parlant, davantage en cherchant. Voir states.js.
+    this.microRate = 1;
 
     // Ce que l'affect impose. Valeurs de repos en attendant la premiere
     // Performance : un corps ne doit jamais demarrer parfaitement immobile.
@@ -97,7 +105,7 @@ export class Idle {
     // ── micro-expressions ────────────────────────────────────────────────
     this.micro = null;
     this.microAge = 0;
-    this.nextMicro = 2 + Math.random() * 4;
+    this.nextMicro = 2 + this.rng.next() * 4;
 
     this.offsets = {
       headRx: 0, headRy: 0, headRz: 0,
@@ -199,9 +207,9 @@ export class Idle {
     g.next -= dt;
     if (g.next <= 0) {
       const reach = (0.4 + move * 0.6);
-      g.tx = (Math.random() * 2 - 1) * 2.2 * DEG * reach;
-      g.ty = (Math.random() * 2 - 1) * 1.4 * DEG * reach;
-      g.next = this.gazeHold * (0.6 + Math.random() * 0.8);
+      g.tx = this.rng.spread(2.2 * DEG * reach);
+      g.ty = this.rng.spread(1.4 * DEG * reach);
+      g.next = this.gazeHold * (0.6 + this.rng.next() * 0.8);
     }
     // Retour lent vers la cible : un saut de tete serait une saccade, et les
     // saccades appartiennent aux yeux.
@@ -230,21 +238,24 @@ export class Idle {
       } else {
         // Monte et redescend : une micro-expression qui se coupe net se voit.
         const envelope = Math.sin(p * Math.PI) * (0.45 + move * 0.55);
-        const shapes = Object.create(null);
+        // Reutilise : une micro-expression dure une demi-seconde, et allouer
+        // un objet par image pour elle etait l'allocation la plus frequente
+        // du repos.
+        const shapes = this.shapes;
         for (const name in this.micro.shapes) {
           shapes[name] = this.micro.shapes[name] * envelope;
         }
-        this.shapes = shapes;
       }
       return;
     }
 
-    this.nextMicro -= dt;
+    this.nextMicro -= dt * this.microRate;
     if (this.nextMicro <= 0) {
-      this.micro = MICRO[Math.floor(Math.random() * MICRO.length)];
+      this.micro = this.rng.pick(MICRO);
       this.microAge = 0;
+      this.shapes = Object.create(null);
       // Immobile : rarement. Active : souvent.
-      this.nextMicro = (2.2 + Math.random() * 5.0) * (0.4 + this.stillness * 1.6);
+      this.nextMicro = (2.2 + this.rng.next() * 5.0) * (0.4 + this.stillness * 1.6);
     }
   }
 }
