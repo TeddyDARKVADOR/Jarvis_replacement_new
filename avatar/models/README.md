@@ -36,18 +36,73 @@ visage.
 | **ArtStation** (James, Casual Man) | payant | rig facial dédié, 52 ARKit, lip-sync préparé |
 | **MetaHuman** | gratuit | le plus réaliste, mais passe par Unreal puis FBX → GLB |
 
-### Ready Player Me, en pratique
+### Ready Player Me, pas à pas
 
-Créer un avatar sur readyplayer.me, copier l'identifiant depuis l'URL du `.glb`,
-puis :
+C'est le chemin recommandé pour le corps définitif de JARVIS : gratuit, corps
+entier, jeu ARKit complet, et il coche tout le barème sauf parfois les
+animations.
 
-```bash
-python -m presence.install_model --readyplayerme 64bfa15f0e72c63d7c3934a6
+**1. Créer l'avatar**
+
+Aller sur [readyplayer.me](https://readyplayer.me), créer un avatar **corps
+entier** (*full body*, pas *half body* — sans jambes, JARVIS ne se verra jamais
+proposer les gestes qui en demandent). À la fin, le site donne une URL de la
+forme :
+
+```
+https://models.readyplayer.me/68f1c0a4b2e5d70012345678.glb
 ```
 
-La chaîne de requête compte. L'installateur demande
-`morphTargets=ARKit,Oculus Visemes` — **sans elle, le même avatar arrive avec 8
-blendshapes au lieu de 52** et le visage ne bouge presque pas.
+L'identifiant est la partie avant `.glb`.
+
+**2. Installer**
+
+```bash
+python -m presence.install_model --readyplayerme 68f1c0a4b2e5d70012345678
+```
+
+Ou, si on préfère coller l'URL entière :
+
+```bash
+python -m presence.install_model "https://models.readyplayer.me/68f1c0a4b2e5d70012345678.glb"
+```
+
+Les deux formes sont sûres. **La chaîne de requête compte** : sans
+`morphTargets=ARKit`, le même avatar arrive avec **8 blendshapes au lieu de
+52** — il se charge, il s'affiche, et son visage ne bouge pas. Rien ne le
+signale. L'installateur l'ajoute donc lui-même, y compris quand on colle une
+URL nue, et il le dit dans sa sortie.
+
+**3. Vérifier**
+
+La commande affiche le barème toute seule. On veut voir :
+
+```
+    [x] corps entier            arms, head, legs, torso
+    [x] rig facial              52/52 blendshapes ARKit
+    [ ] visemes                 aucun — lip-sync approxime depuis les formes ARKit
+    [x] yeux pilotables         os ou blendshapes de regard
+    [ ] animations embarquees   aucune — installer un idle Mixamo
+```
+
+Les deux `[ ]` sont normaux et sans gravité : le lip-sync fonctionne par
+approximation ARKit, et l'idle procédural évite la T-pose en attendant un clip
+Mixamo (`../gestures/README.md`).
+
+Puis :
+
+```bash
+python -m presence.selftest     # doit rester à 39/39
+```
+
+et ouvrir `../lab.html` : bouger les cinq curseurs d'état et vérifier que le
+visage, le regard et la posture suivent.
+
+> **Les yeux de Ready Player Me sont des os, pas des blendshapes.** L'adaptateur
+> (`../js/body_gltf.js`) le détecte seul et convertit les huit formes ARKit de
+> regard en rotations. Si le regard part du mauvais côté sur un rig particulier,
+> `rig.gaze.signY` / `signX` dans le manifeste inversent les axes — même
+> principe que `rig.armRest`, et le labo est où on le vérifie en trois clics.
 
 ## Un mot sur Iron Man / JARVIS
 

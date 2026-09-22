@@ -216,8 +216,24 @@ export class VrmBody {
     };
   }
 
+  /** Les memes questions que GltfBody.capabilities, les memes reponses. */
+  capabilities() {
+    return {
+      expression: this.available.size > 0,
+      // Un VRM a toujours un VRMLookAt : le regard est natif et normalise, ce
+      // qui est l'un des rares endroits ou VRM est plus simple que glTF.
+      gaze: !!this.vrm.lookAt,
+      gazeBy: this.vrm.lookAt ? 'VRMLookAt' : 'aucun',
+      lipsync: ['aa', 'ih', 'ou', 'ee', 'oh'].some((v) => this.available.has(v))
+        || this.direct,
+      gesture: true,
+      posture: true,
+    };
+  }
+
   report() {
     return {
+      capabilities: this.capabilities(),
       morphsFound: this.direct ? this.native.length : Object.keys(TO_VRM).length,
       morphsMissing: this.direct
         ? ARKIT_NAMES.filter((n) => !this.available.has(n))

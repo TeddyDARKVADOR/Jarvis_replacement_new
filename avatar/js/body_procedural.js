@@ -84,6 +84,24 @@ export class ProceduralBody {
 
   get object3D() { return this.root; }
 
+  /**
+   * Les memes questions que les vrais corps, et des reponses honnetes.
+   *
+   * Ce corps n'a ni bras ni jambes, et il le dit. C'est ce qui fait que le
+   * moteur ne lui proposera jamais `wave` — pas un cas particulier quelque
+   * part, juste une capacite absente.
+   */
+  capabilities() {
+    return {
+      expression: true,
+      gaze: true,
+      gazeBy: 'primitives',
+      lipsync: true,
+      gesture: true,
+      posture: true,
+    };
+  }
+
   /** The rig writes here. Unknown names are accepted and ignored — see header. */
   setMorph(name, weight) {
     this.morphs[name] = weight;

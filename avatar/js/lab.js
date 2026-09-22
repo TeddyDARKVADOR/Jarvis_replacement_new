@@ -229,6 +229,15 @@ function report(body, label) {
     `animations : ${(body.embedded || []).length}`,
   ];
   if (r.vrm) lines.push(`VRM        : ${r.vrm}`);
+  if (r.capabilities) {
+    // Ce que le moteur comportemental voit de ce modele — et la seule chose
+    // qu'il en voit. `gazeBy` repond a « pourquoi les yeux ne bougent pas ».
+    const c = r.capabilities;
+    const yes = (v) => (v ? '✓' : '✗');
+    lines.push('', `capacites  : ${yes(c.expression)} expression  `
+      + `${yes(c.gaze)} regard (${c.gazeBy})  ${yes(c.lipsync)} lip-sync`,
+      `             ${yes(c.gesture)} geste  ${yes(c.posture)} posture`);
+  }
   if (found === 0) {
     lines.push('', '<span class="bad">aucune forme reconnue : le visage restera figé.</span>',
       'Console → liste des morphs, puis model.morphAliases.');

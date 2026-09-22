@@ -152,12 +152,20 @@ export class GltfBody {
 
     this._mapMorphs();
     this._mapBones();
+    this._setupGaze();
   }
 
   get object3D() { return this.scene; }
 
   /** Same signature as ProceduralBody.setMorph. That is the entire contract. */
   setMorph(name, weight) {
+    // Les regards sont interceptes AVANT les morphs quand ce modele pilote ses
+    // yeux par des os. Voir `_setupGaze` : c'est la seule chose que cet
+    // adaptateur traduit autrement qu'en ecrivant une forme.
+    if (this.gazeByBone && name in this.gaze) {
+      this.gaze[name] = weight;
+      return;
+    }
     const targets = this.morphTargets.get(name);
     if (!targets) return;
     for (const { mesh, index } of targets) {
@@ -170,7 +178,98 @@ export class GltfBody {
     this.clips[gesture] = clip;
   }
 
-  update() { /* le mixer est avance par gestures.js, qui possede dt */ }
+  /**
+   * One frame. Applies the bone gaze, when this model needs one.
+   *
+   * Called after `rig.update()` by design — the rig has written every shape by
+   * then, so the eight `eyeLook*` weights are complete and can be resolved into
+   * two rotations in one go.
+   */
+  update() {
+    if (this.gazeByBone) this._applyBoneGaze();
+    // Le mixer est avance par gestures.js, qui possede dt.
+  }
+
+  // ── le regard, quand les yeux sont des os ────────────────────────────────
+
+  /**
+   * Decide comment ce modele regarde, et le decider une fois.
+   *
+   * POURQUOI C'EST NECESSAIRE
+   *   `rig.js` parle ARKit et rien d'autre : il ecrit `eyeLookInLeft` et huit
+   *   formes voisines, point. Beaucoup de modeles humanoides — Ready Player Me
+   *   en particulier — n'ont PAS ces huit formes : leurs yeux sont des os,
+   *   `LeftEye` et `RightEye`, qu'on fait tourner.
+   *
+   *   Sans traduction ici, le regard de JARVIS ne bougerait que la tete sur ces
+   *   modeles-la. Pas d'erreur, pas de message : des yeux qui fixent droit
+   *   devant pendant que la tete se tourne, ce qui est precisement l'effet
+   *   « mannequin » que tout le reste du systeme essaie d'eviter.
+   *
+   * POURQUOI ICI ET PAS DANS LE RIG
+   *   C'est la definition meme de l'adaptateur. Le moteur comportemental
+   *   connait des capacites abstraites — expression, regard, posture, geste,
+   *   lip-sync — et ne doit jamais savoir que CE modele-ci a des os a la place
+   *   de deux formes. Changer de modele ne doit toucher que ce fichier.
+   *
+   * POURQUOI LES SIGNES SONT REGLABLES
+   *   L'axe qui fait tourner un oeil depend de l'orientation dans laquelle le
+   *   rig a ete construit. La convention par defaut ci-dessous couvre les
+   *   modeles orientes vers +Z, ce qui est le cas de glTF par specification et
+   *   de Ready Player Me en pratique. `manifest.rig.gaze` est la sortie de
+   *   secours pour le reste — meme raison que `rig.armRest`, et le labo est ou
+   *   on le verifie en trois clics.
+   */
+  _setupGaze() {
+    this.gaze = {
+      eyeLookInLeft: 0, eyeLookOutLeft: 0, eyeLookUpLeft: 0, eyeLookDownLeft: 0,
+      eyeLookInRight: 0, eyeLookOutRight: 0, eyeLookUpRight: 0, eyeLookDownRight: 0,
+    };
+
+    const hasMorphs = Object.keys(this.gaze).some((n) => this.morphTargets.has(n));
+    const hasBones = !!(this.nodes.eyeLeft || this.nodes.eyeRight);
+
+    // Les formes gagnent quand elles existent : elles sont plus fines, et
+    // l'auteur du modele les a reglees lui-meme.
+    this.gazeByBone = !hasMorphs && hasBones;
+
+    const tuning = (this.manifest.rig && this.manifest.rig.gaze) || {};
+    //: Amplitude a poids 1. ~26 degres : au-dela un oeil humain ne va pas, et
+    //: on voit le blanc.
+    this.gazeReach = tuning.reach !== undefined ? tuning.reach : 0.45;
+    this.gazeSignY = tuning.signY !== undefined ? tuning.signY : 1;
+    this.gazeSignX = tuning.signX !== undefined ? tuning.signX : 1;
+
+    this.eyeRest = new Map();
+    for (const side of ['eyeLeft', 'eyeRight']) {
+      const node = this.nodes[side];
+      if (node) this.eyeRest.set(side, { x: node.rotation.x, y: node.rotation.y });
+    }
+  }
+
+  _applyBoneGaze() {
+    const g = this.gaze;
+    // Modele face a +Z : une rotation positive autour de Y vise +X, une
+    // rotation positive autour de X vise vers le bas.
+    //
+    // « In » est anatomique : l'oeil gauche qui rentre va vers le nez, donc
+    // vers +X ; l'oeil droit qui rentre va vers -X. C'est pour ca que les deux
+    // yeux ne prennent pas le meme signe.
+    const pairs = [
+      ['eyeLeft', (g.eyeLookInLeft - g.eyeLookOutLeft),
+        (g.eyeLookDownLeft - g.eyeLookUpLeft)],
+      ['eyeRight', (g.eyeLookOutRight - g.eyeLookInRight),
+        (g.eyeLookDownRight - g.eyeLookUpRight)],
+    ];
+
+    for (const [side, horizontal, vertical] of pairs) {
+      const node = this.nodes[side];
+      if (!node) continue;
+      const rest = this.eyeRest.get(side);
+      node.rotation.y = rest.y + horizontal * this.gazeReach * this.gazeSignY;
+      node.rotation.x = rest.x + vertical * this.gazeReach * this.gazeSignX;
+    }
+  }
 
   // ── mapping ─────────────────────────────────────────────────────────────
 
@@ -232,6 +331,29 @@ export class GltfBody {
     }
   }
 
+  /**
+   * What this model can do, in the only vocabulary the engine knows.
+   *
+   * C'est le contrat de l'adaptateur, dans les deux sens : le moteur demande
+   * « sais-tu regarder ? » et non « as-tu un os LeftEye ? ». Changer de modele
+   * change les reponses, jamais les questions.
+   *
+   * `gazeBy` dit COMMENT, pour une seule raison : c'est la premiere chose
+   * qu'on veut savoir quand un regard ne bouge pas, et la seule que ni la
+   * liste des os ni celle des formes ne donne directement.
+   */
+  capabilities() {
+    const mouth = ['jawOpen', 'mouthFunnel', 'mouthPucker', 'mouthClose'];
+    return {
+      expression: this.morphTargets.size > 0,
+      gaze: this.gazeByBone || Object.keys(this.gaze).some((n) => this.morphTargets.has(n)),
+      gazeBy: this.gazeByBone ? 'os' : (this.morphTargets.has('eyeLookInLeft') ? 'formes' : 'aucun'),
+      lipsync: mouth.some((n) => this.morphTargets.has(n)),
+      gesture: this.detectedParts.has('head'),
+      posture: this.detectedParts.has('torso'),
+    };
+  }
+
   /** What `main.js` prints so the manifest can be corrected from evidence. */
   report() {
     return {
@@ -240,6 +362,7 @@ export class GltfBody {
       bones: Object.keys(this.nodes).filter((k) => this.nodes[k]),
       parts: [...this.detectedParts],
       clips: Object.keys(this.clips),
+      capabilities: this.capabilities(),
     };
   }
 }
