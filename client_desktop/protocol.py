@@ -77,6 +77,22 @@ EV_CONTENT = "content"              # {"title","text"}
 EV_CONFIRM = "confirm"              # {"id","title","detail","timeout_s"}
 EV_CONFIRM_HIDE = "confirm_hide"    # no payload - take the banner down
 EV_AUDIO_FORMAT = "audio_format"    # first frame of /ws/phone-out
+EV_AVATAR = "avatar"                # {"ts", "directive": {...}} - see below
+
+#: How long an `avatar` directive is worth obeying, counted from the `ts` the
+#: server stamped on it.
+#:
+#: The guard is not optional. `/ws` replays the last 50 events to every client
+#: that connects, which is right for a transcript and wrong for a face: a laptop
+#: that reconnects at noon would otherwise put on the expression JARVIS chose at
+#: nine and wear it for twenty-five seconds, as a reaction to nothing.
+#:
+#: This is a deliberate copy of `plugins.presence.FRESH_S`, which is itself
+#: a copy of `presence.director.INTENT_TTL_S`. The client does not import from
+#: the server — it has to work against a host whose filesystem it has never seen
+#: — so the number is mirrored and a check in `selftest.py` fails if the copies
+#: ever drift apart.
+AVATAR_FRESH_SECONDS = 25.0
 
 # ── Client -> server ─────────────────────────────────────────────────────────
 CMD_COMMAND = "command"

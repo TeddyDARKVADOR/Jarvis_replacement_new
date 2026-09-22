@@ -252,8 +252,53 @@ class JarvisAvatarWidget(QWidget):
         expression JARVIS picked for a sentence has to arrive with the sentence.
         """
         self._director.set_intent(directive)
-        self._last_state = ""      # force la prochaine resolution
-        self._push(self._director.resolve(self._last_state or "ACTIVE"))
+
+        # Resolved against the state we are actually in, and NOT by clearing
+        # `_last_state` to force the next tick to redo it. Two reasons, both
+        # visible: resolving against "ACTIVE" while JARVIS is mid-sentence is
+        # resolving against the wrong state, and letting the next tick push a
+        # second performance 16 ms later restarts the gesture that this one just
+        # began — a nod that begins twice reads as a stutter.
+        #
+        # The speech level is carried across for the same kind of reason.
+        # `Performance.speech_level` defaults to 0, and `main.js` feeds it
+        # straight to the lip-sync, so pushing without it shuts the mouth in the
+        # middle of the sentence the expression was chosen FOR. It reopens on
+        # the next `speak()`, 40 ms later, which is long enough to see.
+        self._push(self._director.resolve(
+            self._last_state or "ACTIVE",
+            speech_level=max(0.0, self._last_speech),
+        ))
+
+    def set_intent_json(self, event: dict) -> None:
+        """The same thing, straight off the wire.
+
+        The event carries the directive as JARVIS asked for it — not as anything
+        resolved — and it is read here with `presence.parse`, the same function
+        the server validated it with. That is the point: one definition of the
+        form, used at both ends, so the wire cannot carry something one side
+        calls a directive and the other does not.
+
+        `parse` takes text rather than a mapping, which looks like a detour and
+        is not: the bare-object path it grew for a model that forgot its fence
+        is exactly this shape, so re-serialising costs a few microseconds and
+        buys the guarantee that no second parser exists to drift from the first.
+
+        A directive that does not survive the parse is dropped in silence. That
+        is the designed answer everywhere else in `presence/` — an unrecognised
+        word costs a plainer face and never an error — and the face JARVIS falls
+        back to is the one his machine state implies, which is still correct.
+        """
+        directive = event.get("directive") if isinstance(event, dict) else None
+        if not isinstance(directive, dict):
+            return
+        try:
+            from presence import parse
+            parsed = parse(json.dumps(directive))
+        except Exception:
+            return
+        if parsed is not None:
+            self.set_intent(parsed)
 
     # ── plumbing ─────────────────────────────────────────────────────────────
 

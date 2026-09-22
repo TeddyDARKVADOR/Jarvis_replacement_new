@@ -45,6 +45,21 @@ Le cœur 2D reste le défaut : l'avatar est un processus Chromium et un contexte
 GPU pour toute la durée de la session, ce qui est un prix juste pour un visage
 et un mauvais prix pour une machine qui compile.
 
+### Qui décide de ce que ce corps fait
+
+Deux sources, et la première suffit.
+
+**Le réflexe** est résolu sur le client, à chaque changement d'état — écoute,
+réflexion, parole — par `presence.Director`, sans que le serveur y soit pour
+quoi que ce soit. Un JARVIS branché sur un Oracle qui n'a jamais entendu parler
+de `presence/` a donc déjà un visage qui vit.
+
+**L'intention** est ce que JARVIS choisit pour *cette phrase-là*. Elle arrive du
+serveur en un événement `avatar` sur `/ws`, parce qu'il l'a demandée par un
+appel d'outil — `plugins/presence.py`. Le chemin complet, et la raison pour
+laquelle ce n'est pas le bloc clos que `presence/README.md` décrit, sont dans
+ce même fichier, section « Par où la directive arrive vraiment ».
+
 ### Le labo comportemental
 
 Ouvrir `avatar/lab.html`. Il ne montre pas seulement ce que le moteur a exécuté,

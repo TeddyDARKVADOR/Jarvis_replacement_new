@@ -290,6 +290,25 @@ class JarvisClient:
         elif kind == P.EV_CONFIRM_HIDE:
             self._store.clear_confirmation()
 
+        elif kind == P.EV_AVATAR:
+            # The one event on this socket that is thrown away when it is late.
+            # Every other kind here is a record — a line of transcript, a state,
+            # a pending question — and a record that arrives after a reconnect
+            # is still true. A face is not: it is a reaction to a sentence that
+            # finished, and `/ws` replays its last 50 events to anyone who
+            # connects. `protocol.AVATAR_FRESH_SECONDS` carries the argument.
+            directive = event.get("directive")
+            if not isinstance(directive, dict):
+                return
+            stamp = event.get("ts")
+            if stamp is not None:
+                try:
+                    if (time.time() - float(stamp)) > P.AVATAR_FRESH_SECONDS:
+                        return
+                except (TypeError, ValueError):
+                    pass
+            self._store.set_avatar_intent(directive)
+
     # ── /ws/phone-out — JARVIS's voice ───────────────────────────────────────
 
     async def _downlink_loop(self, endpoint: ServerEndpoint) -> None:
