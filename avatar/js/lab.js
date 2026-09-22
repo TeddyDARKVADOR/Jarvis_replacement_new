@@ -1,42 +1,46 @@
 /**
- * lab.js — the workbench. Same renderer as the panel, everything exposed.
+ * lab.js — l'etabli. Meme moteur que le panneau, tout expose.
  *
- * THE ONE RULE
- *   Import what `main.js` imports. The lab builds the same `GltfBody`, the same
- *   `Rig`, the same `Gestures`, the same `LipSync`, and resolves expressions
- *   with the same table. A lab with its own rendering path would be a lab that
- *   can be green while the product is broken — and the whole reason to have one
- *   is to trust it when the panel misbehaves.
+ * LA REGLE
+ *   Importer ce qu'importe `main.js`. Le labo construit le meme `GltfBody`, le
+ *   meme `Rig`, les memes `Gestures`, le meme `Idle`, et derive un comportement
+ *   avec la meme table que Python. Un labo avec son propre chemin de rendu
+ *   serait un labo qui peut etre vert pendant que le produit est casse — et la
+ *   seule raison d'en avoir un est de pouvoir s'y fier quand le panneau se
+ *   comporte mal.
  *
- * WHAT IT ADDS, AND ONLY THIS
- *   - a file picker and a drop target, so a model can be judged before it is
- *     installed
- *   - one slider per ARKit shape, because "does this model have a working
- *     browInnerUp" is a question no amount of reading the manifest answers
- *   - the twelve expressions and the gesture vocabulary as buttons
- *   - a text box holding the exact JSON the director puts on the wire
- *   - a line saying what is executing right now
+ * CE QU'IL MONTRE, ET QUI EST LE POINT
+ *   Pas seulement ce que le moteur a execute : ce que JARVIS a DECIDE, et le
+ *   chemin de l'un a l'autre.
  *
- * WHY MODELS ARE READ FROM A FILE AND NEVER INSTALLED
- *   Dropping a file here changes nothing on disk. `avatar/manifest.json` is
- *   written by `presence.install_model`, deliberately, because that is the step
- *   that has to also derive the aliases and the rig parts. The lab is for
- *   looking; installing is a decision.
+ *       situation   ce qu'on lui a decrit
+ *       etat        six nombres continus
+ *       decision    visage, regard, posture, rythme — CALCULES depuis l'etat
+ *       execution   ce qui a reellement joue, substitutions comprises
+ *
+ *   La derniere ligne est celle qui se gagne le plus : c'est elle qui dit
+ *   « facepalm demande, shake_head joue » quand un clip manque, et sans elle ce
+ *   genre de substitution est parfaitement invisible.
+ *
+ * POURQUOI LES MODELES NE SONT JAMAIS INSTALLES ICI
+ *   Deposer un fichier ne change rien sur le disque. `avatar/manifest.json` est
+ *   ecrit par `presence.install_model`, qui doit aussi deriver les alias et les
+ *   membres du rig. Le labo sert a regarder ; installer est une decision.
  */
 
 import * as THREE from 'three';
 import { RoomEnvironment } from '../vendor/environments/RoomEnvironment.js';
 import { GltfBody, buildLoader } from './body_gltf.js';
-import { ARKIT_NAMES } from './arkit.js';
 import { VrmBody, isVrm } from './body_vrm.js';
+import { ARKIT_NAMES } from './arkit.js';
 import { ProceduralBody } from './body_procedural.js';
 import { Rig } from './rig.js';
 import { LipSync } from './lipsync.js';
 import { Gestures } from './gestures.js';
 import { EXPRESSIONS, GAZES, face } from './expressions.js';
+import { BASELINE, SOCIAL_MODES, deriveFrom } from './affect.js';
 
-/** The gesture vocabulary, mirrored from `presence/model.py`. Checked by the
- *  selftest, like every other table that exists on both sides. */
+/** Le vocabulaire de gestes, miroir de `presence/model.py`. Verifie par le test. */
 const GESTURES = [
   'idle', 'look_at_user', 'look_away', 'look_around', 'nod', 'shake_head',
   'tilt_head', 'lean_in', 'lean_back', 'blink_slow', 'sigh',
@@ -46,26 +50,57 @@ const GESTURES = [
   'stand', 'sit', 'walk', 'step_aside',
 ];
 
+/** Ce qu'un corps joue sans aucun clip. Miroir de `PROCEDURAL_GESTURES`. */
+const PROCEDURAL_GESTURES = new Set([
+  'idle', 'look_at_user', 'look_away', 'look_around', 'nod', 'shake_head',
+  'tilt_head', 'blink_slow', 'lean_in', 'lean_back', 'sigh', 'shrug',
+  'turn', 'bow', 'stretch', 'think',
+]);
+
+/** Ce que chaque geste demande au rig. Miroir de `GESTURE_REQUIRES`. */
+const GESTURE_NEEDS = {
+  idle: 'head', look_at_user: 'head', look_away: 'head', look_around: 'head',
+  nod: 'head', shake_head: 'head', tilt_head: 'head', blink_slow: 'head',
+  lean_in: 'torso', lean_back: 'torso', sigh: 'torso', shrug: 'torso',
+  turn: 'torso', bow: 'torso', stretch: 'torso',
+  wave: 'arms', point: 'arms', present: 'arms', explain: 'arms', think: 'arms',
+  thumbs_up: 'arms', cross_arms: 'arms', facepalm: 'arms', salute: 'arms',
+  type: 'arms', count_off: 'arms',
+  stand: 'legs', sit: 'legs', walk: 'legs', step_aside: 'legs',
+};
+
 const FRAME_FRACTIONS = {
   humanoid: { face: 0.16, bust: 0.38, full: 1.0 },
   bust: { face: 0.42, bust: 0.80, full: 1.0 },
   head: { face: 1.0, bust: 1.0, full: 1.0 },
 };
 
+/** Les cinq axes continus, avec de quoi les lire. */
+const AXES = [
+  ['valence', -1, 1, 'désagréable → agréable'],
+  ['arousal', 0, 1, 'calme → activé'],
+  ['attention', 0, 1, 'ailleurs → sur l\'utilisateur'],
+  ['confidence', 0, 1, 'hésitant → assuré'],
+  ['urgency', 0, 1, 'rien ne presse → il faut agir'],
+];
+
 const $ = (id) => document.getElementById(id);
 
-/** Exposed on purpose: the lab's own state has to be readable from the
- *  console, and from the test bench that drives this page. */
+/** Expose a dessein : l'etat du labo doit etre lisible depuis la console et
+ *  depuis le banc d'essai qui pilote cette page. */
 const app = window.__lab = {
   body: null,
   rig: null,
   lipsync: null,
   gestures: null,
-  manual: Object.create(null),   // ce que les curseurs forcent
-  decision: {
-    expression: 'neutral', intensity: 0.6, gaze: 'user',
-    gesture: 'idle', posture: 'attentive', speech_level: 0,
-  },
+  manual: Object.create(null),          // ce que les curseurs de formes forcent
+  affect: Object.assign({}, BASELINE, { social_mode: 'professional' }),
+  forced: null,                          // {expression, intensity} ou null
+  gaze: null,                            // force, sinon derive
+  gesture: 'idle',
+  speech: 0,
+  situation: '',
+  decision: null,                        // la derniere decision derivee
   frame: 'face',
   babble: null,
 };
@@ -92,7 +127,7 @@ rim.position.set(-1.6, 0.6, -1.2);
 scene.add(key, rim, new THREE.AmbientLight(0xffffff, 0.12));
 
 const camera = new THREE.PerspectiveCamera(24, 1, 0.01, 60);
-let framing = { target: new THREE.Vector3(), half: 0.4, z: 0 };
+const framing = { target: new THREE.Vector3(), half: 0.4, z: 0 };
 
 function resize() {
   const w = Math.max(1, canvas.clientWidth);
@@ -109,7 +144,7 @@ function resize() {
 }
 new ResizeObserver(resize).observe(canvas);
 
-// ── loading ──────────────────────────────────────────────────────────────────
+// ── le corps ─────────────────────────────────────────────────────────────────
 
 function mount(body, label) {
   if (app.body) scene.remove(app.body.object3D);
@@ -117,8 +152,8 @@ function mount(body, label) {
   scene.add(body.object3D);
 
   app.rig = new Rig((name, weight) => {
-    // Un curseur pousse ecrase la couche expression : c'est ce que l'on veut
-    // d'un curseur, et c'est la seule facon d'isoler une forme.
+    // Un curseur pousse ecrase la couche expression : c'est ce qu'on attend
+    // d'un curseur, et la seule facon d'isoler une forme.
     const forced = app.manual[name];
     body.setMorph(name, forced !== undefined ? forced : weight);
   });
@@ -133,10 +168,9 @@ function mount(body, label) {
 }
 
 function reframe() {
-  const body = app.body;
-  const bounds = new THREE.Box3().setFromObject(body.object3D);
+  const bounds = new THREE.Box3().setFromObject(app.body.object3D);
   const size = bounds.getSize(new THREE.Vector3());
-  const parts = body.detectedParts ? [...body.detectedParts] : ['head', 'torso'];
+  const parts = app.body.detectedParts ? [...app.body.detectedParts] : ['head', 'torso'];
   const kind = parts.includes('legs') ? 'humanoid'
     : (parts.includes('torso') || parts.includes('arms')) ? 'bust' : 'head';
   const keep = FRAME_FRACTIONS[kind][app.frame];
@@ -153,22 +187,24 @@ function reframe() {
 }
 
 async function loadFile(file) {
-  const label = file.name;
-  $('report').textContent = `lecture de ${label}…`;
+  $('report').textContent = `lecture de ${file.name}…`;
   const started = performance.now();
   try {
     const buffer = await file.arrayBuffer();
     const loader = buildLoader(renderer);
     const gltf = await new Promise((res, rej) => loader.parse(buffer, '', res, rej));
-    const manifest = { model: { file: label, scale: 1, position: [0, 0, 0], morphAliases: {} }, rig: {} };
+    const manifest = {
+      model: { file: file.name, scale: 1, position: [0, 0, 0], morphAliases: {} },
+      rig: {},
+    };
     const body = isVrm(gltf) ? new VrmBody(gltf, manifest) : new GltfBody(gltf, manifest);
     if (!body.embedded) body.embedded = (gltf.animations || []).map((c) => c.name);
-    // Les clips du modele deviennent jouables tels quels dans le labo : c'est
-    // la facon la plus rapide de voir ce qu'un asset Mixamo contient vraiment.
+    // Les clips du modele deviennent jouables tels quels : c'est la facon la
+    // plus rapide de voir ce qu'un asset Mixamo contient vraiment.
     for (const clip of gltf.animations || []) body.addClip(clip.name, clip);
-    mount(body, `${label} — ${Math.round(performance.now() - started)} ms`);
+    mount(body, `${file.name} — ${Math.round(performance.now() - started)} ms`);
   } catch (err) {
-    $('report').innerHTML = `<span class="bad">echec : ${escapeHtml(err.message)}</span>`;
+    $('report').innerHTML = `<span class="bad">échec : ${escapeHtml(err.message)}</span>`;
     console.error(err);
   }
 }
@@ -177,37 +213,33 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 }
 
-// ── report ───────────────────────────────────────────────────────────────────
-
 function report(body, label) {
   const r = body.report ? body.report() : null;
   if (!r) {
-    $('report').textContent = 'corps procedural (aucun modele)';
+    $('report').textContent = 'corps procédural (aucun modèle)';
     return;
   }
   const found = r.morphsFound;
   const cls = found >= 40 ? 'ok' : found > 0 ? '' : 'bad';
   const lines = [
-    label,
-    '',
-    `<span class="${cls}">ARKit reconnus : ${found}/52</span>`,
-    `membres          : ${[...body.detectedParts].join(', ')}`,
-    `os               : ${r.bones.join(', ') || 'aucun'}`,
-    `animations       : ${(body.embedded || []).length}`,
+    label, '',
+    `<span class="${cls}">formes pilotables : ${found}/52</span>`,
+    `membres    : ${[...body.detectedParts].join(', ')}`,
+    `os         : ${r.bones.join(', ') || 'aucun'}`,
+    `animations : ${(body.embedded || []).length}`,
   ];
-  if (r.morphsMissing.length && found > 0) {
-    lines.push('', `manquants (${r.morphsMissing.length}) :`,
-      r.morphsMissing.slice(0, 12).join(', ') + (r.morphsMissing.length > 12 ? ' …' : ''));
-  }
+  if (r.vrm) lines.push(`VRM        : ${r.vrm}`);
   if (found === 0) {
-    lines.push('', '<span class="bad">aucun blendshape ARKit : le visage restera fige.</span>',
-      'Ouvrir la console pour la liste des morphs du modele,',
-      'puis les declarer dans model.morphAliases.');
+    lines.push('', '<span class="bad">aucune forme reconnue : le visage restera figé.</span>',
+      'Console → liste des morphs, puis model.morphAliases.');
+  } else if (r.morphsMissing.length) {
+    lines.push('', `manquantes (${r.morphsMissing.length}) :`,
+      r.morphsMissing.slice(0, 10).join(', ') + (r.morphsMissing.length > 10 ? ' …' : ''));
   }
   $('report').innerHTML = lines.join('\n');
 }
 
-// ── sliders, one per shape ───────────────────────────────────────────────────
+// ── un curseur par forme ─────────────────────────────────────────────────────
 
 function buildShapeSliders(body) {
   const host = $('shapes');
@@ -220,7 +252,7 @@ function buildShapeSliders(body) {
     wrap.className = 'slider';
     wrap.dataset.name = name.toLowerCase();
     wrap.innerHTML = `
-      <label class="${has ? 'live' : ''}" for="s-${name}">${name}${has ? '' : ' — absent'}</label>
+      <label class="${has ? 'live' : ''}" for="s-${name}">${name}${has ? '' : ' — absente'}</label>
       <input type="range" id="s-${name}" min="0" max="1" step="0.01" value="0" ${has ? '' : 'disabled'}>
       <output>0.00</output>`;
     const input = wrap.querySelector('input');
@@ -252,8 +284,6 @@ $('reset-shapes').addEventListener('click', () => {
   }
 });
 
-// ── the model's own clips ────────────────────────────────────────────────────
-
 function buildClipButtons(body) {
   const host = $('clips');
   host.innerHTML = '';
@@ -264,94 +294,210 @@ function buildClipButtons(body) {
   }
   for (const name of names) {
     const button = document.createElement('button');
-    // Les noms Mixamo sont interminables ; on garde la fin, qui est le nom utile.
-    button.textContent = name.length > 22 ? '…' + name.slice(-20) : name;
+    button.textContent = name.length > 20 ? '…' + name.slice(-18) : name;
     button.title = name;
     button.addEventListener('click', () => {
       app.gestures.play(name);
-      say(`clip · ${name}`, 'animation du modèle, jouée telle quelle');
+      $('trace-exec').innerHTML =
+        `<span class="ok">▸</span> clip du modèle · <b>${escapeHtml(name)}</b>`;
     });
     host.appendChild(button);
   }
 }
 
-// ── the decision ─────────────────────────────────────────────────────────────
+// ── l'etat interieur ─────────────────────────────────────────────────────────
+
+function buildAffectSliders() {
+  const host = $('affect');
+  for (const [name, min, max, hint] of AXES) {
+    const wrap = document.createElement('div');
+    wrap.className = 'slider affect';
+    wrap.innerHTML = `
+      <label for="a-${name}">${name} <span class="hint">${hint}</span></label>
+      <input type="range" id="a-${name}" min="${min}" max="${max}" step="0.01"
+             value="${app.affect[name]}">
+      <output>${Number(app.affect[name]).toFixed(2)}</output>`;
+    const input = wrap.querySelector('input');
+    const out = wrap.querySelector('output');
+    input.addEventListener('input', () => {
+      app.affect[name] = Number(input.value);
+      out.textContent = app.affect[name].toFixed(2);
+      // Toucher l'etat rend la main a la derivation : c'est tout le propos.
+      app.forced = null;
+      app.gaze = null;
+      apply();
+    });
+    host.appendChild(wrap);
+  }
+
+  const social = $('social');
+  for (const mode of SOCIAL_MODES) {
+    const option = document.createElement('option');
+    option.value = mode;
+    option.textContent = `registre : ${mode}`;
+    social.appendChild(option);
+  }
+  social.value = app.affect.social_mode;
+  social.addEventListener('change', () => {
+    app.affect.social_mode = social.value;
+    apply();
+  });
+}
+
+// ── la decision, et sa trace ─────────────────────────────────────────────────
 
 function apply() {
-  const d = app.decision;
-  const blendshapes = d.blendshapes || face(d.expression, d.intensity, d.gaze);
+  const derived = deriveFrom(app.affect);
+  app.decision = derived;
 
-  app.rig.setExpression(blendshapes, d.gaze);
-  app.rig.setSlowBlink(d.expression === 'tired' || d.posture === 'dormant');
-  app.gestures.setPosture(d.posture || 'attentive');
-  app.gestures.setGaze(d.gaze || 'user');
-  app.gestures.play(d.gesture || 'idle');
-  app.lipsync.setLevel(d.speech_level || 0);
+  const expression = app.forced ? app.forced.expression : derived.expression;
+  const intensity = app.forced ? app.forced.intensity : derived.intensity;
+  const gaze = app.gaze || derived.gaze;
+  const posture = derived.posture;
+
+  const blendshapes = face(expression, intensity, gaze);
+
+  app.rig.setExpression(blendshapes, gaze);
+  app.rig.setSlowBlink(expression === 'tired' || posture === 'dormant');
+  app.gestures.setPosture(posture);
+  app.gestures.setGaze(gaze);
+  app.gestures.setAffect({
+    tempo: derived.tempo,
+    stillness: derived.stillness,
+    gazeHold: derived.gaze_hold_s,
+  });
+
+  const played = playable(app.gesture);
+  app.gestures.play(played);
+  app.lipsync.setLevel(app.speech);
 
   $('json').value = JSON.stringify({
-    expression: d.expression,
-    intensity: Number(d.intensity.toFixed ? d.intensity.toFixed(2) : d.intensity),
-    gesture: d.gesture,
-    gaze: d.gaze,
-    posture: d.posture,
-    speech_level: d.speech_level,
-  }, null, 1).replace(/\n\s*/g, ' ');
+    emotion: { valence: round(app.affect.valence), arousal: round(app.affect.arousal) },
+    attention: round(app.affect.attention),
+    confidence: round(app.affect.confidence),
+    urgency: round(app.affect.urgency),
+    socialMode: app.affect.social_mode,
+    gesture: app.gesture,
+  }, null, 1).replace(/\n\s+/g, ' ');
 
-  say(`${d.expression} ${Number(d.intensity).toFixed(2)} · ${d.gesture}`,
-      `regard ${d.gaze} · posture ${d.posture} · ${Object.keys(blendshapes).length} formes actives`);
-  markActive();
+  drawTrace(derived, { expression, intensity, gaze, posture, played, blendshapes });
+  markActive(expression, gaze);
 }
 
-function say(title, why) {
-  $('now-title').textContent = title;
-  $('now-why').textContent = why || '';
+const round = (v) => Math.round(v * 100) / 100;
+
+/**
+ * Le geste que CE corps peut reellement jouer.
+ *
+ * Miroir de `Catalogue.can` : un clip installe, ou un geste procedural, et dans
+ * les deux cas les os qu'il exige. Sans ca, le labo afficherait un geste demande
+ * comme s'il avait joue — exactement le silence que la ligne « exécution »
+ * existe pour rompre.
+ */
+function playable(name) {
+  const parts = app.body.detectedParts || new Set(['head', 'torso']);
+  const clips = app.body.clips || {};
+  const needs = GESTURE_NEEDS[name] || 'head';
+  if (!parts.has(needs)) return 'idle';
+  if (clips[name] || PROCEDURAL_GESTURES.has(name)) return name;
+  return 'idle';
 }
 
-function markActive() {
-  const d = app.decision;
-  for (const [host, value] of [['expressions', d.expression], ['gazes', d.gaze], ['gestures', d.gesture]]) {
-    for (const button of $(host).children) {
-      button.classList.toggle('on', button.dataset.value === value);
-    }
+function drawTrace(derived, played) {
+  $('situation-line').textContent = app.situation || '— aucune situation décrite —';
+
+  const a = derived.affect;
+  $('trace-affect').innerHTML =
+    `valence <span class="num">${a.valence >= 0 ? '+' : ''}${a.valence.toFixed(2)}</span> · ` +
+    `arousal <span class="num">${a.arousal.toFixed(2)}</span> · ` +
+    `attention <span class="num">${a.attention.toFixed(2)}</span> · ` +
+    `confiance <span class="num">${a.confidence.toFixed(2)}</span> · ` +
+    `urgence <span class="num">${a.urgency.toFixed(2)}</span> · ` +
+    `<span class="off">${a.social_mode}</span>`;
+
+  const source = app.forced
+    ? '<span class="sub">visage forcé</span>'
+    : '<span class="off">dérivé de l\'état</span>';
+  $('trace-decision').innerHTML =
+    `<b>${played.expression}</b> <span class="num">${played.intensity.toFixed(2)}</span> · ` +
+    `regard <b>${played.gaze}</b> · posture <b>${played.posture}</b> · ` +
+    `tempo <span class="num">${derived.tempo.toFixed(2)}</span> · ` +
+    `immobilité <span class="num">${derived.stillness.toFixed(2)}</span> &nbsp; ${source}`;
+
+  const shapes = Object.keys(played.blendshapes).length;
+  const substitution = played.played !== app.gesture
+    ? `<span class="sub">✗ ${app.gesture} injouable → ${played.played}</span>`
+    : `<span class="ok">✓</span> geste <b>${played.played}</b>`;
+  $('trace-exec').innerHTML =
+    `<span class="ok">✓</span> ${shapes} formes · ` +
+    `<span class="ok">✓</span> regard · <span class="ok">✓</span> posture · ` +
+    `${substitution} · ` +
+    (app.speech > 0.01 ? '<span class="ok">✓</span> voix'
+                       : '<span class="off">voix silencieuse</span>');
+}
+
+function markActive(expression, gaze) {
+  for (const button of $('expressions').children) {
+    button.classList.toggle('on', !!app.forced && button.dataset.value === expression);
+  }
+  for (const button of $('gazes').children) {
+    button.classList.toggle('on', !!app.gaze && button.dataset.value === gaze);
+  }
+  for (const button of $('gestures').children) {
+    button.classList.toggle('on', button.dataset.value === app.gesture);
   }
 }
 
-function buttons(host, values, field) {
+// ── les boutons ──────────────────────────────────────────────────────────────
+
+function buttons(host, values, onPick) {
   const node = $(host);
   for (const value of values) {
     const button = document.createElement('button');
     button.textContent = value;
     button.dataset.value = value;
-    button.addEventListener('click', () => {
-      app.decision[field] = value;
-      delete app.decision.blendshapes;   // le choix par mot reprend la main
-      apply();
-    });
+    button.addEventListener('click', () => { onPick(value); apply(); });
     node.appendChild(button);
   }
 }
 
-buttons('expressions', EXPRESSIONS, 'expression');
-buttons('gazes', GAZES, 'gaze');
-buttons('gestures', GESTURES, 'gesture');
+buttons('expressions', EXPRESSIONS, (value) => {
+  app.forced = { expression: value, intensity: Number($('intensity').value) };
+});
+buttons('gazes', GAZES, (value) => { app.gaze = value; });
+buttons('gestures', GESTURES, (value) => { app.gesture = value; });
 
-$('intensity').addEventListener('input', (e) => {
-  app.decision.intensity = Number(e.target.value);
-  delete app.decision.blendshapes;
-  $('intensity-out').textContent = app.decision.intensity.toFixed(2);
+$('unforce').addEventListener('click', () => {
+  app.forced = null;
+  app.gaze = null;
   apply();
 });
 
+$('intensity').addEventListener('input', (e) => {
+  $('intensity-out').textContent = Number(e.target.value).toFixed(2);
+  if (app.forced) {
+    app.forced.intensity = Number(e.target.value);
+    apply();
+  }
+});
+
+$('situation').addEventListener('input', (e) => {
+  app.situation = e.target.value;
+  $('situation-line').textContent = app.situation || '— aucune situation décrite —';
+});
+
 $('speech').addEventListener('input', (e) => {
-  app.decision.speech_level = Number(e.target.value);
-  $('speech-out').textContent = app.decision.speech_level.toFixed(2);
-  app.lipsync.setLevel(app.decision.speech_level);
+  app.speech = Number(e.target.value);
+  $('speech-out').textContent = app.speech.toFixed(2);
+  app.lipsync.setLevel(app.speech);
 });
 
 $('babble').addEventListener('click', (e) => {
   if (app.babble) {
-    clearInterval(app.babble); app.babble = null;
+    clearInterval(app.babble);
+    app.babble = null;
     e.target.classList.remove('on');
+    app.speech = 0;
     app.lipsync.setLevel(0);
     return;
   }
@@ -359,21 +505,68 @@ $('babble').addEventListener('click', (e) => {
   let t = 0;
   app.babble = setInterval(() => {
     t += 0.06;
-    app.lipsync.setLevel(Math.max(0, Math.sin(t * 7) * Math.sin(t * 1.7)) * 0.8);
+    app.speech = Math.max(0, Math.sin(t * 7) * Math.sin(t * 1.7)) * 0.8;
+    app.lipsync.setLevel(app.speech);
   }, 60);
 });
 
+/**
+ * Executer une decision brute — les deux formes que JARVIS peut emettre.
+ *
+ * La forme « etat » remplit les curseurs et rend la main a la derivation ; la
+ * forme « visage » force. C'est exactement ce que fait `presence/director.py`,
+ * et c'est ce qui rend ce champ utile : on y colle ce que le modele a
+ * reellement produit, et on voit ce que le panneau en aurait fait.
+ */
 $('send').addEventListener('click', () => {
+  let parsed;
   try {
-    const parsed = JSON.parse($('json').value);
-    app.decision = Object.assign({
-      expression: 'neutral', intensity: 0.5, gaze: 'user',
-      gesture: 'idle', posture: 'attentive', speech_level: 0,
-    }, parsed);
-    apply();
+    parsed = JSON.parse($('json').value);
   } catch (err) {
-    say('JSON invalide', err.message);
+    $('trace-exec').innerHTML =
+      `<span class="sub">JSON invalide : ${escapeHtml(err.message)}</span>`;
+    return;
   }
+
+  const inner = (parsed.emotion && typeof parsed.emotion === 'object') ? parsed.emotion : parsed;
+  let touched = false;
+  for (const [name] of AXES) {
+    const value = inner[name] !== undefined ? inner[name] : parsed[name];
+    if (typeof value === 'number') {
+      app.affect[name] = value;
+      const input = $(`a-${name}`);
+      input.value = value;
+      input.nextElementSibling.textContent = Number(value).toFixed(2);
+      touched = true;
+    }
+  }
+  const mode = parsed.socialMode || parsed.social_mode;
+  if (mode && SOCIAL_MODES.includes(mode)) {
+    app.affect.social_mode = mode;
+    $('social').value = mode;
+    touched = true;
+  }
+
+  const named = typeof parsed.expression === 'string' ? parsed.expression
+    : (typeof parsed.emotion === 'string' ? parsed.emotion : null);
+  if (named && EXPRESSIONS.includes(named)) {
+    app.forced = {
+      expression: named,
+      intensity: typeof parsed.intensity === 'number' ? parsed.intensity : 0.5,
+    };
+  } else if (touched) {
+    app.forced = null;
+  }
+
+  if (typeof parsed.gaze === 'string' && GAZES.includes(parsed.gaze)) app.gaze = parsed.gaze;
+  if (typeof parsed.gesture === 'string' && GESTURES.includes(parsed.gesture)) {
+    app.gesture = parsed.gesture;
+  }
+  if (typeof parsed.reason === 'string') {
+    app.situation = parsed.reason;
+    $('situation').value = parsed.reason;
+  }
+  apply();
 });
 
 for (const button of document.querySelectorAll('[data-frame]')) {
@@ -386,7 +579,7 @@ for (const button of document.querySelectorAll('[data-frame]')) {
   });
 }
 
-// ── file input ───────────────────────────────────────────────────────────────
+// ── fichiers ─────────────────────────────────────────────────────────────────
 
 const picker = document.createElement('input');
 picker.type = 'file';
@@ -406,26 +599,24 @@ window.addEventListener('drop', (e) => {
   if (file) loadFile(file);
 });
 
-// ── boot ─────────────────────────────────────────────────────────────────────
+// ── demarrage ────────────────────────────────────────────────────────────────
 
 /**
- * Start on the installed model when one can be read, and on the procedural
- * body otherwise. Reading it is best-effort on purpose: the lab's job starts
- * the moment a file is dropped on it, and refusing to open because
- * `manifest.json` is missing would make it useless in exactly the situation
- * where someone is trying to work out what to install.
+ * Demarre sur le modele installe quand il est lisible, sur le corps procedural
+ * sinon. La lecture est au mieux, volontairement : le travail du labo commence
+ * des qu'on y depose un fichier, et refuser d'ouvrir parce que `manifest.json`
+ * manque le rendrait inutile exactement quand on cherche quoi installer.
  */
 async function boot() {
+  buildAffectSliders();
   $('intensity-out').textContent = Number($('intensity').value).toFixed(2);
   document.querySelector('[data-frame="face"]').classList.add('on');
 
-  let manifest = null;
-  if (window.JARVIS_MANIFEST) {
-    manifest = window.JARVIS_MANIFEST;
-  } else {
-    // XHR et pas fetch : sous `jarvis://` fetch echoue, et le labo doit
-    // pouvoir montrer le modele DEJA installe — c'est la premiere chose qu'on
-    // lui demande apres une installation.
+  let manifest = window.JARVIS_MANIFEST || null;
+  if (!manifest) {
+    // XHR et pas fetch : sous `jarvis://` fetch echoue, et le labo doit pouvoir
+    // montrer le modele DEJA installe — c'est la premiere chose qu'on lui
+    // demande apres une installation. Voir avatar/js/xhr_loader.js.
     manifest = await new Promise((resolve) => {
       try {
         const url = new URL('manifest.json', new URL('../', import.meta.url)).href;
@@ -442,7 +633,8 @@ async function boot() {
 
   if (manifest && manifest.model && manifest.model.file) {
     try {
-      const url = new URL(`models/${manifest.model.file}`, new URL('../', import.meta.url)).href;
+      const url = new URL(`models/${manifest.model.file}`,
+                          new URL('../', import.meta.url)).href;
       const loader = buildLoader(renderer);
       const gltf = await loader.loadAsync(url);
       const body = isVrm(gltf) ? new VrmBody(gltf, manifest) : new GltfBody(gltf, manifest);
@@ -452,7 +644,7 @@ async function boot() {
       renderer.setAnimationLoop(frame);
       return;
     } catch (err) {
-      console.warn('[labo] modele installe illisible :', err.message);
+      console.warn('[labo] modèle installé illisible :', err.message);
     }
   }
 
@@ -464,8 +656,11 @@ const clock = new THREE.Clock();
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.1);
   app.lipsync.update(dt);
-  app.rig.update(dt);
+  // L'ordre compte : les gestes avancent le repos, qui produit les
+  // micro-expressions que le rig doit combiner dans la meme image.
   app.gestures.update(dt);
+  app.rig.setMicro(app.gestures.idle.shapes);
+  app.rig.update(dt);
   if (app.body.update) app.body.update(dt);
   renderer.render(scene, camera);
 }

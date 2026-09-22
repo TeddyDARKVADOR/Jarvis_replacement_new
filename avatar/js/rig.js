@@ -24,8 +24,9 @@
  *
  * THE LAYERS, AND HOW THEY COMBINE
  *   expression   what the director sent
+ *   micro        micro-expressions from the idle layer (idle.js)
  *   viseme       what the mouth is doing while speaking
- *   life         blink / saccade / breath, generated here
+ *   life         blink / saccade, generated here
  *
  *   Combined with max(), never by adding. Two layers that both raise a brow
  *   must not sum past 1.0 and clip — and max() is what lets JARVIS keep smiling
@@ -60,6 +61,7 @@ export class Rig {
     this.expression = Object.create(null); // ce que le directeur a demande
     this.viseme = Object.create(null);     // ce que la bouche fait
     this.visemeCurrent = Object.create(null);
+    this.micro = Object.create(null);      // ce que le repos ajoute, voir idle.js
 
     this.gaze = 'user';
     this.closed = false;      // Gaze.CLOSED — les paupieres restent baissees
@@ -93,6 +95,19 @@ export class Rig {
     this.viseme = weights || Object.create(null);
   }
 
+  /**
+   * Micro-expressions from the idle layer.
+   *
+   * A separate input from `setExpression` on purpose: these change several
+   * times a second and must not be smoothed against, or replaced by, what the
+   * director decided. They are combined with max() like every other layer —
+   * which is what lets a 0.08 brow flicker happen on top of a held smile
+   * without either one eating the other.
+   */
+  setMicro(shapes) {
+    this.micro = shapes || Object.create(null);
+  }
+
   /** Slow, heavy blinks — TIRED and SLEEPING ask for these. */
   setSlowBlink(on) {
     this.slowBlink = !!on;
@@ -110,6 +125,9 @@ export class Rig {
 
     const target = Object.create(null);
     for (const name in this.expression) target[name] = this.expression[name];
+    for (const name in this.micro) {
+      target[name] = Math.max(target[name] || 0, this.micro[name]);
+    }
     for (const name in this.visemeCurrent) {
       target[name] = Math.max(target[name] || 0, this.visemeCurrent[name]);
     }
