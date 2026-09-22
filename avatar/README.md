@@ -37,7 +37,7 @@ avatar/
 
 ```bash
 python -m presence.install_model --demo     # une tête humaine, 52 blendshapes ARKit
-python -m presence.selftest                 # 42 contrôles
+python -m presence.selftest                 # 45 contrôles
 ```
 
 Puis, dans le client de bureau, activer `avatar_enabled` dans les réglages.
@@ -75,6 +75,12 @@ EXÉCUTION         ✓ 8 formes · ✓ regard · ✓ posture · ✓ geste tilt_h
 
 Cinq curseurs pour l'état, un sélecteur de registre, et tout le reste se
 calcule. Forcer un visage court-circuite la dérivation — le bandeau le dit.
+
+**Seize boutons d'intention**, aussi : cliquer `investigate` pose l'état, le
+geste et le regard exactement comme `presence/director.py` le ferait, et les
+curseurs suivent. C'est le seul endroit où on peut répondre à « à quoi
+ressemble `investigate` » sans parler à Gemini — et `avatar/checks/behaviour.py`
+confronte les seize au Python, en marche, pour que la réponse soit fiable.
 
 Il répond aussi aux questions que le panneau cache :
 

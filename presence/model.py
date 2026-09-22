@@ -149,6 +149,75 @@ class Posture(str, Enum):
     DORMANT   = "dormant"     # affaissé, immobile — SLEEPING
 
 
+class Intent(str, Enum):
+    """*Pourquoi* JARVIS fait quelque chose. Le seul mot qu'il ait à trouver.
+
+    LA COUCHE QUE CECI AJOUTE, ET CE QU'ELLE RÈGLE
+        Les deux formes existantes demandent à JARVIS de traduire une situation
+        soit en six coordonnées (`valence`, `arousal`, …), soit en apparence
+        (`expression: "thinking"`). Les deux marchent, et les deux lui font
+        faire un travail qui n'est pas le sien : il sait ce qu'il est en train
+        de faire bien avant de savoir à quoi ça ressemble.
+
+        Une intention nomme la situation. L'état intérieur, le visage,
+        l'intensité, le regard, la posture, le tempo et l'immobilité en
+        découlent — par la même arithmétique que le reste, sans une branche de
+        plus.
+
+            JARVIS décide POURQUOI   →   `investigate`
+            presence choisit COMMENT →   attention basse, confiance moyenne
+                                         → visage `thinking`, regard `screen`
+            avatar joue CE QU'IL PEUT →  `turn` si le corps est libre,
+                                         `look_away` si `rig.motion: "face"`
+
+        C'est cette dernière ligne qui justifie la couche. Le même mot produit
+        un mouvement d'écran aujourd'hui et un déplacement du buste le jour où
+        les clips arrivent, **sans que JARVIS change une virgule** : il n'a
+        jamais nommé le moyen.
+
+    POURQUOI UNE INTENTION N'EST PAS UNE TREIZIÈME EXPRESSION
+        Une expression est un point d'arrivée, une intention un point de
+        départ. Deux intentions peuvent atterrir sur le même visage —
+        `acknowledge` et `agree` sourient tous les deux — et rester deux
+        intentions, parce que le geste et le regard les séparent. L'inverse
+        n'est pas vrai : un visage ne dit pas pourquoi il est là.
+
+    POURQUOI SEIZE, ET PAS QUARANTE
+        Même règle que pour `Expression`, pour la même raison : deux intentions
+        qui produisent le même comportement ne sont pas deux intentions, ce sont
+        deux noms. Le selftest le vérifie sur la *sortie* — pas sur la table —
+        et refuse une paire indiscernable.
+    """
+
+    # ── ouvrir et fermer ─────────────────────────────────────────────────────
+    GREET          = "greet"            # bonjour — début de session
+    FAREWELL       = "farewell"         # fin de session, bonne soirée
+
+    # ── recevoir ─────────────────────────────────────────────────────────────
+    ACKNOWLEDGE    = "acknowledge"      # bien reçu, c'est noté
+    WAIT           = "wait"             # il attend une réponse de l'utilisateur
+
+    # ── chercher et dire ─────────────────────────────────────────────────────
+    INVESTIGATE    = "investigate"      # examiner un écran, un fichier, un résultat
+    THINK          = "think"            # raisonner, calculer — le regard part
+    EXPLAIN        = "explain"          # développer, détailler
+
+    # ── se positionner ───────────────────────────────────────────────────────
+    AGREE          = "agree"            # approuver
+    DISAGREE       = "disagree"         # contredire, refuser
+    AMUSE          = "amuse"            # ironie légère — le registre par défaut
+
+    # ── prévenir ─────────────────────────────────────────────────────────────
+    CONFIRM        = "confirm"          # demander confirmation — irréversible
+    WARN           = "warn"             # alerter d'un risque
+    REASSURE       = "reassure"         # calmer — « tout va bien »
+
+    # ── rendre compte ────────────────────────────────────────────────────────
+    REPORT_SUCCESS = "report_success"   # la tâche a réussi
+    REPORT_FAILURE = "report_failure"   # la tâche a échoué
+    APOLOGISE      = "apologise"        # une erreur de sa part
+
+
 #: Where a gesture degrades when it is not installed. Walked until something in
 #: the catalogue is reached; `IDLE` terminates every chain and is always
 #: performable, including by the procedural body that ships with no assets.
@@ -250,7 +319,10 @@ class Directive:
     expression: Expression = Expression.NEUTRAL
     intensity: float = 0.5
     gesture: Gesture = Gesture.IDLE
-    gaze: Gaze = Gaze.USER
+    #: `None` = « je n'ai pas dit ou regarder », et le regard se derive de
+    #: l'attention. Un defaut a `USER` rendrait les deux cas indiscernables, et
+    #: c'est ce qui faisait jeter en silence un regard que JARVIS avait nomme.
+    gaze: Gaze | None = None
     posture: Posture | None = None
     reason: str = ""
 
@@ -262,6 +334,16 @@ class Directive:
     #: un visage est plus sur quand JARVIS veut exactement celui-la, decrire un
     #: etat est plus riche et se prete a l'idle. Aucune n'est obligatoire.
     affect: object | None = None
+
+    #: Pourquoi JARVIS fait ca — la troisieme forme, et celle qu'on prefere.
+    #:
+    #: Elle est deja RESOLUE quand elle arrive ici : `director.parse()` a lu le
+    #: mot, en a tire l'affect, le geste et le regard, et a rempli les champs
+    #: ci-dessus. Le mot est garde tel quel pour une seule raison — pouvoir
+    #: ecrire « il a voulu investigate » dans le labo et dans le journal. Sans
+    #: lui, la question « pourquoi ce visage » n'a de reponse qu'en six nombres,
+    #: ce qui est vrai et illisible.
+    intent: object | None = None
 
 
 @dataclass(frozen=True)
@@ -322,6 +404,16 @@ class Performance:
     requested_gesture: Gesture | None = None
     reason: str = ""
 
+    #: L'intention qui a produit tout ce qui precede, quand il y en avait une.
+    #:
+    #: Transportee jusqu'ici parce qu'une capacite qui ne se voit pas au bout de
+    #: la chaine est une capacite qu'on croit avoir. C'est la lecon de `rootRy` :
+    #: le report du poids etait declare, calcule, documente et mesure — et jete
+    #: en silence a l'avant-derniere etape. Un mot qui traverse jusqu'au JSON
+    #: est un mot qu'on peut voir arriver, donc dont on peut prouver qu'il
+    #: arrive.
+    intent: object | None = None
+
     def as_json(self) -> dict:
         """The wire form. Flat, short keys stay long — this travels once per
         decision, not once per frame, so readability beats a few bytes."""
@@ -342,6 +434,8 @@ class Performance:
             payload["affect"] = self.affect.as_json()
         if self.requested_gesture is not None and self.requested_gesture is not self.gesture:
             payload["requested_gesture"] = self.requested_gesture.value
+        if self.intent is not None:
+            payload["intent"] = self.intent.value
         if self.reason:
             payload["reason"] = self.reason[:200]
         return payload

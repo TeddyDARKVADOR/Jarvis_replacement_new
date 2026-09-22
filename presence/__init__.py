@@ -8,7 +8,7 @@ the folder and JARVIS is what it was before — a voice with a 2D core.
 
     python -m presence.selftest
 
-    model.py        le vocabulaire : Expression, Gesture, Gaze, Posture
+    model.py        le vocabulaire : Intent, Expression, Gesture, Gaze, Posture
     affect.py       l'etat interieur continu, d'ou tout le reste derive
     vocabulary.py   expression + intensite -> 52 coefficients ARKit
     catalog.py      ce qui est reellement installe, lu dans avatar/manifest.json
@@ -33,6 +33,7 @@ from .model import (
     Expression,
     Gaze,
     Gesture,
+    Intent,
     Performance,
     Posture,
     RigPart,
@@ -49,6 +50,7 @@ __all__ = [
     "Expression",
     "Gaze",
     "Gesture",
+    "Intent",
     "Performance",
     "Posture",
     "RigPart",
