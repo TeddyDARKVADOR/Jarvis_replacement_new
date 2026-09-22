@@ -5,7 +5,7 @@ et c'est une propriété qu'on garde : c'est ce qui permet de le lancer partout,
 tout le temps, y compris sur le VPS.
 
 Le prix est qu'il ne peut ni exécuter le JavaScript, ni rendre une image, ni
-mesurer un mouvement. Il lit les tables et il compare les sources. Ces quatre
+mesurer un mouvement. Il lit les tables et il compare les sources. Ces cinq
 vérifications-là comblent le reste, et demandent `PyQt6-WebEngine`.
 
 ```bash
@@ -15,6 +15,7 @@ python avatar/checks/adapter_contract.py    # le modèle est-il interchangeable
 python avatar/checks/affect_parity.py       # Python et JS décident-ils pareil
 python avatar/checks/behaviour.py           # le labo dérive-t-il comme Python
 python avatar/checks/idle_motion.py         # le repos bouge-t-il vraiment
+python avatar/checks/face_first.py          # le corps tient-il vraiment en place
 ```
 
 Elles ne sont **pas** un garde-fou permanent : rien ne les lance à votre place.
@@ -78,3 +79,36 @@ Attendu : chaque axe croît avec l'agitation, et le tempo suit.
 Les valeurs bougent d'un run à l'autre — le bruit est aléatoire par
 construction. C'est l'**écart entre les deux lignes** qui est la mesure, pas les
 chiffres eux-mêmes.
+
+### `face_first.py` — le corps tient vraiment en place
+
+`rig.motion: "face"` gèle tout ce qui est sous la nuque. La moitié Python se
+vérifie sans navigateur — `presence/selftest.py` prouve que le vocabulaire
+rétrécit aux huit mouvements de tête, donc que les gestes de corps ne sont plus
+*demandés*.
+
+L'autre moitié ne se vérifie qu'ici. Quatre couches écrivent encore sur les
+mêmes os — la posture, le regard, le repos, et le labo qui peut tout jouer à la
+main. Un gel qui n'attraperait que les gestes laisserait le buste dériver et les
+hanches se balancer, ce qui est exactement ce qu'on a décidé de ne pas faire.
+
+Donc on mesure les os, pas les intentions :
+
+| | tête | corps | épaule |
+|---|---|---|---|
+| `"full"` | 2.98° | 2.22° | 1.37° |
+| `"face"` | 2.92° | **0.00°** | 1.38° |
+
+Trois assertions, et la deuxième est celle qui mérite d'exister : le corps doit
+être immobile en mode visage, **et** avoir bougé en mode complet. Sans elle, le
+contrôle passerait tout aussi bien sur un corps qui ne bougeait de toute façon
+jamais — c'est-à-dire précisément le bug qu'on vient de corriger dans
+`gestures.js`.
+
+La troisième vérifie que la tête, elle, vit encore : geler le corps en gelant
+tout serait la façon la plus simple de faire passer les deux premières.
+
+> Un seul chargement, et le drapeau `faceOnly` basculé en cours de route. Deux
+> pages voudraient dire deux modèles chargés et deux bruits aléatoires
+> différents ; ici le corps, l'état et la graine sont les mêmes des deux côtés,
+> et le seul facteur qui change est celui qu'on teste.

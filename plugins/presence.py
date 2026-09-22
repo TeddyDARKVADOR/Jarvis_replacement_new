@@ -290,16 +290,55 @@ _POSTURES = _vocabulary(Posture)
 _MODES = _vocabulary(SocialMode)
 
 
+def _body_sentence() -> str:
+    """What to tell the model it is wearing, which is not always a whole body.
+
+    `rig.motion: "face"` holds everything below the neck at rest — see
+    `presence/catalog.py`. Announcing "tu as un vrai corps" in that mode would
+    be false in the one direction that costs something: a model told it has a
+    body reaches for body words, and every one of them comes back as a head
+    movement through `FALLBACK_CHAIN`. Telling it the truth costs one sentence
+    and buys gestures that were actually chosen.
+    """
+    try:
+        face_only = catalogue().motion == "face"
+    except Exception:
+        face_only = False
+    if face_only:
+        return (
+            "Tu as un vrai visage a l'ecran. Ton corps est la mais reste au\n"
+            "repos : tout ce que tu exprimes passe par ton visage, ton regard et\n"
+            "ta tete. C'est un choix et non une limite a contourner — les\n"
+            "mouvements listes plus bas sont les seuls qui existent pour toi."
+        )
+    return "Tu as un vrai visage et un vrai corps a l'ecran."
+
+
+def _gesture_sentence() -> str:
+    """The `gesture` field's own label, which is a head in face mode.
+
+    "Ce que le corps fait", offered beside a list of eight head movements, is
+    the kind of small inconsistency a model resolves by assuming the list is
+    incomplete — and then asking for the body word it expected to find.
+    """
+    try:
+        face_only = catalogue().motion == "face"
+    except Exception:
+        face_only = False
+    return ("Ce que ta tete fait." if face_only else "Ce que le corps fait.")
+
+
 #: Written to the model in French, because `presence.director.prompt_fragment`
 #: chose French for everything JARVIS reads about his own body, and a second
 #: language here would be a second voice.
-_DESCRIPTION = f"""Donne a ton visage et a ton corps l'etat qui va avec ce que tu dis.
+_DESCRIPTION = f"""Donne a ton visage l'etat qui va avec ce que tu dis.
 
-Tu as un vrai visage et un vrai corps a l'ecran. Personne ne choisit leur
-expression a ta place. Appelle cet outil AU MOMENT ou ta reaction compte autant
-que ta reponse : une mauvaise nouvelle, une plaisanterie, un doute, une action
-irreversible. N'annonce jamais cet appel a voix haute et ne le commente pas —
-il ne s'entend pas, il se voit.
+{_body_sentence()}
+
+Personne ne choisit ton expression a ta place. Appelle cet outil AU MOMENT ou ta
+reaction compte autant que ta reponse : une mauvaise nouvelle, une plaisanterie,
+un doute, une action irreversible. N'annonce jamais cet appel a voix haute et ne
+le commente pas — il ne s'entend pas, il se voit.
 
 DEUX FACONS DE L'APPELER, au choix.
 
@@ -376,8 +415,8 @@ PLUGIN = {
                 "type": "STRING",
                 "enum": _GESTURES,
                 "description": (
-                    "Ce que le corps fait. Ceux-ci sont installes sur ce "
-                    "corps-ci : " + ", ".join(_GESTURES) + "."
+                    _gesture_sentence() + " Ceux-ci, et aucun autre : "
+                    + ", ".join(_GESTURES) + "."
                 ),
             },
             "gaze": {

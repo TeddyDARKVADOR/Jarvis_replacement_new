@@ -487,8 +487,14 @@ def write_manifest(path: Path, data: dict) -> None:
 
     Only the derived fields are touched — model file, rig parts, bones and the
     aliases needed to reach a shape the renderer would otherwise miss. Camera,
-    colours and scale are decisions nobody can read off a mesh, so they survive
-    untouched.
+    colours, scale and `rig.motion` are decisions nobody can read off a mesh, so
+    they survive untouched.
+
+    `rig.motion` is the one worth naming here, because it sits beside a field
+    this function DOES overwrite. `rig.parts` is what the model has and is read
+    off the skeleton; `rig.motion` is what someone decided to animate, and
+    reinstalling a model is not a reason to start moving arms that were
+    deliberately held still.
     """
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
 

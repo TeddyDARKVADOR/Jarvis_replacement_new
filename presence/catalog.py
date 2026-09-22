@@ -65,12 +65,38 @@ _TTL_S = 5.0
 #: unreadable, or lists no gestures.
 _PROCEDURAL_PARTS = frozenset({RigPart.HEAD, RigPart.TORSO})
 
+#: What each `rig.motion` setting is willing to drive.
+#:
+#: WHY "FACE" EXISTS
+#:   A downloaded humanoid arrives with arms, hands and legs, and nothing to
+#:   move them with: `wave`, `point` and `explain` need Mixamo clips, retargeted
+#:   and blended. Until those exist, offering them means JARVIS picks `wave` and
+#:   gets a neck movement — a body doing an arm gesture with its head, which
+#:   reads worse than a body that simply keeps still.
+#:
+#:   `"face"` is the honest answer in the meantime: hold everything below the
+#:   neck at its rest pose and put every bit of behaviour into the face, the
+#:   gaze and the head, which are the parts that are actually finished. It is
+#:   not a downgrade path — it is the setting a 52-blendshape model deserves
+#:   before a single clip is installed, and `"full"` is one word away the day
+#:   they are.
+#:
+#:   The torso is absent from `"face"` on purpose. It removes the torso
+#:   *gestures* — lean_in, shrug, bow — and leaves the idle breath alone, which
+#:   is not a gesture and is what stops a still body reading as a mannequin.
+_MOTION_PARTS: dict[str, frozenset[RigPart]] = {
+    "full": frozenset({RigPart.HEAD, RigPart.TORSO, RigPart.ARMS, RigPart.LEGS}),
+    "face": frozenset({RigPart.HEAD}),
+}
+
 
 @dataclass(frozen=True)
 class Catalogue:
     """The inventory, resolved once and cached for `_TTL_S`."""
 
-    #: Which parts of a body this model actually has.
+    #: Which parts of a body we are willing to DRIVE. Usually everything the
+    #: model has; narrower when `rig.motion` says so — see `frozen` at the
+    #: bottom of this class.
     parts: frozenset[RigPart]
     #: Gesture clips present in `avatar/gestures/` AND named by the manifest.
     installed: frozenset[Gesture]
@@ -82,6 +108,20 @@ class Catalogue:
     model: str
     #: True when nothing is installed and the procedural body is in charge.
     procedural: bool
+
+    #: Parts the model carries and that we deliberately hold at rest.
+    #:
+    #: A body with no arms has no arms; a body whose arms we chose not to
+    #: animate is a different statement, and only the second one is a decision
+    #: somebody can revisit. Keeping the two apart is what lets the lab and the
+    #: selftest say *"il a des bras, on ne les bouge pas"* instead of leaving
+    #: the next reader to wonder why `wave` never plays on a model that
+    #: visibly has hands.
+    frozen: frozenset[RigPart] = frozenset()
+
+    #: `"full"` or `"face"` — `rig.motion` in the manifest, echoed here so the
+    #: reason for a narrow vocabulary is readable wherever the vocabulary is.
+    motion: str = "full"
 
     def can(self, gesture: Gesture) -> bool:
         """Is this gesture performable right now?
@@ -134,14 +174,36 @@ _cached: tuple[float, Catalogue] | None = None
 
 
 def _parse(raw: dict, gesture_dir: Path) -> Catalogue:
+    rig = raw.get("rig", {}) or {}
+
     parts: set[RigPart] = set()
-    for name in raw.get("rig", {}).get("parts", []):
+    for name in rig.get("parts", []):
         try:
             parts.add(RigPart(str(name).strip().lower()))
         except ValueError:
             continue
     if not parts:
         parts = set(_PROCEDURAL_PARTS)
+
+    # `rig.motion` — the one field that says what we MOVE, next to `rig.parts`
+    # which says what exists. Absent or unknown means "full", so no manifest
+    # written before this field existed changes behaviour.
+    #
+    # WHY THIS IS A SINGLE WORD AND NOT A LIST OF PARTS
+    #   A per-part list invites "arms but not legs", which is four more states
+    #   nobody has a use for and every consumer has to reason about. There are
+    #   really two answers today — animate the body, or animate the face and
+    #   hold the body still — and naming them costs one word each.
+    motion = str(rig.get("motion", "") or "full").strip().lower()
+    if motion not in _MOTION_PARTS:
+        motion = "full"
+    driven = parts & _MOTION_PARTS[motion]
+    # HEAD is never removable. Every fallback chain terminates in a head
+    # gesture, and `resolve()` promises it cannot return None — a catalogue
+    # with no head would break that promise rather than express a preference.
+    driven |= {RigPart.HEAD}
+    frozen = parts - driven
+    parts = driven
 
     model = str(raw.get("model", {}).get("file", "") or "").strip()
     procedural = not model
@@ -168,6 +230,8 @@ def _parse(raw: dict, gesture_dir: Path) -> Catalogue:
         unknown=tuple(unknown),
         model=model,
         procedural=procedural,
+        frozen=frozenset(frozen),
+        motion=motion,
     )
 
 

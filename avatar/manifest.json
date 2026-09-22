@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "name": "JARVIS — jarvis",
+  "name": "JARVIS — jarvis (face-first)",
   "model": {
     "file": "jarvis.glb",
     "scale": 1.0,
@@ -22,6 +22,7 @@
       "legs",
       "torso"
     ],
+    "motion": "face",
     "bones": {
       "head": "Head",
       "neck": "Neck",

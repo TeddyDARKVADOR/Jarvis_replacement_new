@@ -12,7 +12,7 @@ avatar/
   models/             le personnage (non versionné)
   gestures/           les clips Mixamo (non versionnés)
   checks/             ce que le selftest ne peut pas verifier
-                      (adaptateur, parite Python/JS, repos, labo)
+                      (adaptateur, parite Python/JS, repos, labo, gel du corps)
   vendor/             three.js + KTX2 + DRACO + meshopt + VRM, en local
   js/
     main.js           amorçage, cadrage, boucle de rendu
@@ -37,7 +37,7 @@ avatar/
 
 ```bash
 python -m presence.install_model --demo     # une tête humaine, 52 blendshapes ARKit
-python -m presence.selftest                 # 37 contrôles
+python -m presence.selftest                 # 42 contrôles
 ```
 
 Puis, dans le client de bureau, activer `avatar_enabled` dans les réglages.
@@ -113,7 +113,8 @@ main — sauf les champs que seul le goût décide.
     "muteMeshes": ["tongue01"]    // à la main : défauts de l'asset, voir plus bas
   },
   "rig": {
-    "parts": ["arms","head","legs","torso"],  // dérivé
+    "parts": ["arms","head","legs","torso"],  // dérivé : ce que le corps A
+    "motion": "face",                         // à la main : ce qu'on lui fait FAIRE
     "bones": { "head": "Head" },              // dérivé
     "armRest": { "shoulder": -0.45 },         // à la main, mesuré
     "gaze": { "signY": 1 }                    // à la main, si les yeux s'inversent
@@ -123,17 +124,92 @@ main — sauf les champs que seul le goût décide.
 }
 ```
 
-### Les trois champs qu'aucune inspection ne peut deviner
+### Les quatre champs qu'aucune inspection ne peut deviner
 
-`morphAliases`, `parts` et `bones` sont **dérivés** du fichier. Les trois
+`morphAliases`, `parts` et `bones` sont **dérivés** du fichier. Les quatre
 suivants sont des jugements, et ils existent parce qu'un modèle réel n'est
-jamais parfait :
+jamais parfait — ou parce qu'on décide de ne pas tout utiliser :
 
 | champ | quand s'en servir |
 |---|---|
+| `rig.motion` | `"face"` gèle tout ce qui est sous la nuque — voir plus bas |
 | `model.muteMeshes` | un maillage porte une forme correctement nommée et **mal transférée** |
 | `rig.armRest.shoulder` | les bras ne tombent pas naturellement (valeur négative si le rig est livré en pose A) |
 | `rig.gaze.signY` / `signX` | les yeux partent du mauvais côté, sur un modèle dont les yeux sont des os |
+
+`rig.parts` dit ce que le modèle **a** ; `rig.motion` dit ce qu'on **bouge**. Un
+installateur peut déduire le premier d'un fichier, jamais le second, et la
+différence est ce qui permet de dire « il a des bras, on ne les anime pas »
+plutôt que de laisser quelqu'un chercher pourquoi `wave` ne joue jamais.
+
+## Le mode visage — le corps est là, on ne le bouge pas
+
+C'est le réglage livré (`"motion": "face"`), et ce n'est pas un repli.
+
+Un humanoïde téléchargé arrive avec des bras, des mains et des jambes, et rien
+pour les animer : `wave`, `point`, `explain` demandent des clips Mixamo,
+retargetés et fondus. Tant qu'ils n'existent pas, les offrir quand même signifie
+que JARVIS choisit `wave` et obtient **un mouvement de nuque** — un corps qui
+salue avec sa tête, ce qui se lit plus mal qu'un corps qui se tient tranquille.
+
+Le visage, lui, est déjà fini : 52/52 ARKit, douze expressions dérivées d'un
+état continu, le regard, les clignements, le lip-sync. `"face"` met tout le
+comportement là, et tient le reste en place.
+
+| | en mode `face` |
+|---|---|
+| visage, bouche | actifs — expressions, visèmes, micro-expressions |
+| yeux, regard | actifs — dérive, retour, clignements |
+| tête, nuque | actives — hochements, inclinaisons, dérive du repos |
+| torse, hanches | **tenus** — aucune dérive, aucun report du poids |
+| bras, mains, jambes | **tenus** à la pose de repos (`rig.armRest`) |
+| épaules | une respiration, et rien d'autre |
+
+La respiration des épaules reste, délibérément : un corps parfaitement rigide
+se lit comme un mannequin, ce que `_restArms` existe précisément pour éviter.
+
+### Ce que ça change, et où
+
+Un seul mot dans le manifeste, et les deux bouts en tirent les conséquences
+tout seuls :
+
+```
+"motion": "face"
+      │
+      ├── presence/catalog.py    pilote = {head}, figés = {arms, legs, torso}
+      │        └── le vocabulaire passe de 16 gestes à 8
+      │              └── l'outil set_presence n'en propose plus que 8
+      │              └── prompt_fragment() n'en annonce plus que 8
+      │              └── FALLBACK_CHAIN rabat les autres sur une tête
+      │
+      └── avatar/js/gestures.js  BODY_CHANNELS remis à zéro à chaque image
+               └── posture, regard, geste et repos confondus
+```
+
+Les deux moitiés sont nécessaires. La première fait que les gestes de corps ne
+sont plus **demandés** ; la seconde fait que ce qui arrive quand même — une
+posture, une dérive de repos, le labo qui peut tout jouer à la main — ne
+descend pas sous la nuque non plus.
+
+Mesuré sur le vrai moteur, même corps, même état, même bruit :
+
+| | tête | corps | épaule |
+|---|---|---|---|
+| `"full"` | 2.98° | 2.22° | 1.37° |
+| `"face"` | 2.92° | **0.00°** | 1.38° |
+
+`python avatar/checks/face_first.py` produit ce tableau. Il bascule le drapeau
+en cours de route plutôt que de charger deux pages, pour que le seul facteur qui
+change soit celui qu'on teste.
+
+### Revenir en arrière
+
+`"motion": "full"`, et tout revient — le vocabulaire, les gestes de buste, le
+report du poids. Rien n'a été supprimé, et l'absence du champ vaut `"full"`,
+donc un manifeste écrit avant que ce champ existe ne perd pas son corps.
+
+C'est ce qui rend ce choix réversible le jour où les clips arrivent :
+`avatar/gestures/README.md` décrit les deux étapes, et aucune ne touche au code.
 
 **`muteMeshes` mérite un mot**, parce que le symptôme est déroutant. Sur
 l'avatar installé, le maillage `tongue01` porte son propre `jawOpen` — mais il
@@ -191,9 +267,17 @@ l'affect, aux fréquences incommensurables — elle ne boucle jamais :
 |---|---|
 | respiration | l'immobilité ralentit *et* creuse |
 | micro-mouvements | dérive lente de la tête et du buste |
-| report du poids | seulement si le modèle a des jambes |
+| report du poids | des jambes, et `rig.motion: "full"` |
 | dérive du regard | le regard **revient**, il ne se verrouille pas |
 | micro-expressions | brèves, < 0.12 d'amplitude — au-delà c'est une grimace |
+
+> **Le report du poids n'a longtemps rien fait.** `idle.js` calculait bien son
+> `rootRy`, mais l'accumulateur de `gestures.js` ne déclarait pas cette clé — et
+> `add()` ne copie que les clés déjà présentes dans sa cible. La valeur était
+> donc jetée en silence à chaque image, `smoothed.rootRy` restait à zéro, et
+> `_write` écrivait ce zéro. Une couche documentée, mesurée, et morte : c'est le
+> genre de panne qu'aucun test d'amplitude de tête ne peut voir, et qu'on ne
+> trouve qu'en mesurant l'os qu'on croyait piloter.
 
 Mesuré sur le vrai moteur, neuf secondes par état :
 
