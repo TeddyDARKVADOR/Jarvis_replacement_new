@@ -70,6 +70,15 @@ def _run_app(open_debug: bool) -> int:
         print("JARVIS est déjà en cours d'exécution — instance existante affichée.")
         return 0
 
+    # Before the QApplication, and it has to be: Chromium builds its scheme
+    # registry once at startup, so a scheme declared afterwards is accepted by
+    # the API and then ignored. This is what lets the 3D body be served from a
+    # real origin instead of file://, and it costs nothing when the body is off
+    # or WebEngine is absent — see `ui/avatar_scheme.py`.
+    from .ui import avatar_scheme
+
+    avatar_scheme.register()
+
     app = QApplication(sys.argv)
     app.setApplicationName("JARVIS Desktop")
     app.setOrganizationName("MARK LIII")

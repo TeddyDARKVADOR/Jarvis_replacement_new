@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JARVIS</title>
+
+<!--
+  The page is deliberately almost empty.
+
+  WHY THE BACKGROUND IS TRANSPARENT AND NOT DARK
+    This canvas is hosted inside `client_desktop`'s panel, which already draws
+    its own frame, and later inside a phone's WebView. A page that painted its
+    own background would put a black rectangle inside a rounded, translucent
+    panel — the one visual bug that makes an embedded view look embedded.
+
+  WHY AN IMPORT MAP AND NOT A BUNDLER
+    There is no build step in this project and adding one for a face would be a
+    poor trade: a toolchain to install, a lockfile to keep, and a `dist/` that
+    can disagree with the source. The import map does the one thing a bundler
+    was needed for — letting `import * as THREE from 'three'` resolve — using
+    the vendored copy in `avatar/vendor/`, which is why this works with no
+    network at all.
+
+  WHY three.js IS VENDORED RATHER THAN LOADED FROM A CDN
+    JARVIS runs on a workstation that is sometimes offline, behind Tailscale,
+    or started before the network is up. A face that depends on jsdelivr is a
+    face that is missing exactly when the machine is having a bad day.
+-->
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
+</script>
+
+<style>
+  :root {
+    --jarvis: #7DD3FC;
+    --dim: #1E4C63;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    /* Le corps est un decor, pas un document : aucune selection, aucun menu
+       contextuel, aucun rebond de defilement sur telephone. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+
+  /* Le panneau hote gere deja le clic et le glisser : laisser passer les
+     evenements evite que l'avatar rende une zone du panneau non deplacable. */
+  body { pointer-events: none; }
+
+  #stage {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /* Apparition douce : un avatar qui surgit d'un coup au chargement du
+       panneau attire l'oeil exactement quand il ne faut pas. */
+    opacity: 0;
+    transition: opacity 600ms ease-out;
+  }
+  body.ready #stage { opacity: 1; }
+
+  /* Le libelle de debug / demo. Invisible tant qu'il est vide. */
+  #label {
+    position: fixed;
+    left: 50%;
+    bottom: 10px;
+    transform: translateX(-50%);
+    font: 500 11px/1.4 ui-monospace, "Cascadia Mono", Consolas, monospace;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--jarvis);
+    opacity: 0;
+    transition: opacity 240ms ease;
+    white-space: nowrap;
+    text-shadow: 0 0 12px rgba(125, 211, 252, 0.45);
+  }
+  #label.on { opacity: 0.78; }
+
+  /* Dernier recours : si le moteur ne demarre pas du tout, on laisse une trace
+     visible plutot qu'un rectangle vide que personne ne saura diagnostiquer. */
+  body.failed::after {
+    content: "corps indisponible";
+    position: fixed;
+    inset: auto 0 12px 0;
+    text-align: center;
+    font: 500 11px ui-monospace, monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #F87171;
+    opacity: 0.7;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #stage { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+  <div id="label" aria-hidden="true"></div>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

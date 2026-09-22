@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "name": "JARVIS — facecap",
+  "model": {
+    "file": "facecap.glb",
+    "scale": 1.0,
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "morphPrefix": "",
+    "morphAliases": {
+      "eyeBlinkLeft": "eyeBlink_L",
+      "eyeLookDownLeft": "eyeLookDown_L",
+      "eyeLookInLeft": "eyeLookIn_L",
+      "eyeLookOutLeft": "eyeLookOut_L",
+      "eyeLookUpLeft": "eyeLookUp_L",
+      "eyeSquintLeft": "eyeSquint_L",
+      "eyeWideLeft": "eyeWide_L",
+      "eyeBlinkRight": "eyeBlink_R",
+      "eyeLookDownRight": "eyeLookDown_R",
+      "eyeLookInRight": "eyeLookIn_R",
+      "eyeLookOutRight": "eyeLookOut_R",
+      "eyeLookUpRight": "eyeLookUp_R",
+      "eyeSquintRight": "eyeSquint_R",
+      "eyeWideRight": "eyeWide_R",
+      "mouthSmileLeft": "mouthSmile_L",
+      "mouthSmileRight": "mouthSmile_R",
+      "mouthFrownLeft": "mouthFrown_L",
+      "mouthFrownRight": "mouthFrown_R",
+      "mouthDimpleLeft": "mouthDimple_L",
+      "mouthDimpleRight": "mouthDimple_R",
+      "mouthStretchLeft": "mouthStretch_L",
+      "mouthStretchRight": "mouthStretch_R",
+      "mouthPressLeft": "mouthPress_L",
+      "mouthPressRight": "mouthPress_R",
+      "mouthLowerDownLeft": "mouthLowerDown_L",
+      "mouthLowerDownRight": "mouthLowerDown_R",
+      "mouthUpperUpLeft": "mouthUpperUp_L",
+      "mouthUpperUpRight": "mouthUpperUp_R",
+      "browDownLeft": "browDown_L",
+      "browDownRight": "browDown_R",
+      "browOuterUpLeft": "browOuterUp_L",
+      "browOuterUpRight": "browOuterUp_R",
+      "cheekSquintLeft": "cheekSquint_L",
+      "cheekSquintRight": "cheekSquint_R",
+      "noseSneerLeft": "noseSneer_L",
+      "noseSneerRight": "noseSneer_R"
+    }
+  },
+  "rig": {
+    "parts": [
+      "head"
+    ],
+    "bones": {
+      "head": "head",
+      "neck": "",
+      "spine": "",
+      "root": "",
+      "eyeLeft": "eyeLeft",
+      "eyeRight": "eyeRight"
+    }
+  },
+  "camera": {
+    "fov": 24,
+    "frame": "face"
+  },
+  "look": {
+    "hologram": true,
+    "colour": "#7DD3FC",
+    "dim": "#1E4C63",
+    "accent": "#C4B5FD",
+    "background": "transparent",
+    "scanlines": true,
+    "grain": 0.06
+  },
+  "gestures": {}
+}

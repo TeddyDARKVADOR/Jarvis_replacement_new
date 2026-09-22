@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS — Labo avatar</title>
+
+<!--
+  The lab. Everything the panel hides, on purpose.
+
+  WHY A SECOND PAGE AND NOT A DEBUG MODE IN THE FIRST
+    `index.html` is furniture: transparent, no chrome, no pointer events, sized
+    to a corner of a screen. Every one of those decisions is wrong for the job
+    of "why does this model not smile", and bolting a panel of sliders onto it
+    would mean the shipping page carries a debug UI it must never show.
+
+    Two pages, one renderer. `lab.js` imports exactly the modules `main.js`
+    imports — same loader, same rig, same director vocabulary — so what the lab
+    proves is true of the panel. A lab with its own rendering path would be a
+    lab that can be green while the product is broken.
+
+  WHAT IT ANSWERS
+    - does this file load at all, and how long does it take
+    - which morph targets does it have, and which ARKit names did they match
+    - which animations does it carry
+    - what does blendshape N actually do          (one slider per shape)
+    - what does expression X at intensity Y look like
+    - what does this JARVIS decision look like    (paste the JSON)
+    - which decision is executing right now
+-->
+
+<style>
+  :root {
+    --ink: #05070C;
+    --panel: #0A101A;
+    --surface: #111A28;
+    --outline: #1E293B;
+    --text: #CBD5E1;
+    --muted: #64748B;
+    --sky: #7DD3FC;
+    --violet: #C4B5FD;
+    --mint: #6EE7B7;
+    --rose: #F87171;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--ink);
+    color: var(--text);
+    font: 13px/1.5 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    overflow: hidden;
+  }
+
+  #app {
+    display: grid;
+    grid-template-columns: minmax(280px, 340px) 1fr minmax(280px, 360px);
+    height: 100%;
+  }
+  /* Responsive : sous 1100 px la scene passe en haut et les panneaux dessous,
+     parce qu'un labo ouvert sur un demi-ecran reste un labo. */
+  @media (max-width: 1100px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 46vh 1fr; overflow: auto; }
+    #left, #right { max-height: none; }
+    body { overflow: auto; }
+  }
+
+  aside {
+    background: var(--panel);
+    border-right: 1px solid var(--outline);
+    overflow-y: auto;
+    padding: 14px;
+  }
+  #right { border-right: 0; border-left: 1px solid var(--outline); }
+
+  main {
+    position: relative;
+    background:
+      radial-gradient(ellipse at 50% 35%, #101a2b 0%, var(--ink) 70%);
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  h1 {
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--sky); margin: 0 0 12px;
+  }
+  h2 {
+    font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--muted); margin: 18px 0 8px;
+    border-top: 1px solid var(--outline); padding-top: 10px;
+  }
+  h2:first-of-type { border-top: 0; margin-top: 4px; }
+
+  button, select, input[type=text], textarea {
+    font: inherit;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--outline);
+    border-radius: 6px;
+    padding: 6px 9px;
+    width: 100%;
+  }
+  button { cursor: pointer; text-align: left; }
+  button:hover { border-color: var(--sky); color: #fff; }
+  button.on { border-color: var(--sky); color: var(--sky); }
+  textarea { font-family: ui-monospace, Consolas, monospace; font-size: 12px; resize: vertical; }
+
+  .row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .row > * { flex: 1; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 5px;
+  }
+  .grid button { text-align: center; padding: 6px 4px; font-size: 12px; }
+
+  .slider {
+    display: grid; grid-template-columns: 1fr 34px; gap: 6px;
+    align-items: center; margin-bottom: 3px;
+  }
+  .slider label {
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+    color: var(--muted); grid-column: 1 / -1; margin-bottom: -2px;
+  }
+  .slider label.live { color: var(--sky); }
+  .slider input[type=range] { width: 100%; accent-color: var(--sky); }
+  .slider output {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    color: var(--muted); text-align: right;
+  }
+
+  #report {
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+    white-space: pre-wrap; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--outline);
+    border-radius: 6px; padding: 8px; max-height: 190px; overflow: auto;
+  }
+  #report .ok { color: var(--mint); }
+  #report .bad { color: var(--rose); }
+
+  #now {
+    position: absolute; left: 14px; bottom: 14px; right: 14px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+    color: var(--sky); background: rgba(5,7,12,.72);
+    border: 1px solid var(--outline); border-radius: 8px; padding: 9px 11px;
+    pointer-events: none;
+  }
+  #now b { color: #fff; font-weight: 600; }
+  #now .why { color: var(--muted); display: block; margin-top: 3px; }
+
+  #drop {
+    position: absolute; inset: 0;
+    display: none; place-items: center;
+    background: rgba(5,7,12,.86);
+    border: 2px dashed var(--sky); border-radius: 12px;
+    color: var(--sky); letter-spacing: .1em; text-transform: uppercase;
+    font-size: 12px;
+  }
+  #drop.on { display: grid; }
+
+  .hint { color: var(--muted); font-size: 11px; margin: 6px 0 0; }
+  .search { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <aside id="left">
+    <h1>Modèle</h1>
+    <div class="row">
+      <button id="pick">Ouvrir un GLB / GLTF / VRM…</button>
+    </div>
+    <p class="hint">Ou glisser le fichier sur la scène. Rien n'est copié : le
+      labo lit le fichier en mémoire, le manifeste n'est pas touché.</p>
+
+    <h2>Ce qui a été trouvé</h2>
+    <div id="report">aucun modèle chargé</div>
+
+    <h2>Animations du modèle</h2>
+    <div id="clips" class="grid"></div>
+
+    <h2>Cadrage</h2>
+    <div class="row">
+      <button data-frame="face">visage</button>
+      <button data-frame="bust">buste</button>
+      <button data-frame="full">entier</button>
+    </div>
+  </aside>
+
+  <main>
+    <canvas id="stage"></canvas>
+    <div id="drop">déposer le modèle</div>
+    <div id="now">
+      <b id="now-title">—</b>
+      <span class="why" id="now-why"></span>
+    </div>
+  </main>
+
+  <aside id="right">
+    <h1>Décision JARVIS</h1>
+
+    <h2>Expressions</h2>
+    <div id="expressions" class="grid"></div>
+    <div class="slider" style="margin-top:8px">
+      <label for="intensity">intensité</label>
+      <input type="range" id="intensity" min="0" max="1" step="0.01" value="0.6">
+      <output id="intensity-out">0.60</output>
+    </div>
+
+    <h2>Regard</h2>
+    <div id="gazes" class="grid"></div>
+
+    <h2>Gestes</h2>
+    <div id="gestures" class="grid"></div>
+
+    <h2>Voix (lip-sync)</h2>
+    <div class="slider">
+      <label for="speech">niveau de parole</label>
+      <input type="range" id="speech" min="0" max="1" step="0.01" value="0">
+      <output id="speech-out">0.00</output>
+    </div>
+    <div class="row">
+      <button id="babble">Parler en boucle</button>
+    </div>
+
+    <h2>Décision brute</h2>
+    <textarea id="json" rows="6" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:6px">
+      <button id="send">Exécuter</button>
+    </div>
+    <p class="hint">Exactement ce que <code>presence.Performance.as_json()</code>
+      met sur le fil. Le champ <code>blendshapes</code> est recalculé ici si absent.</p>
+
+    <h2>Blendshapes ARKit</h2>
+    <input class="search" type="text" id="search" placeholder="filtrer… (brow, mouth, eye)">
+    <div class="row">
+      <button id="reset-shapes">Tout remettre à zéro</button>
+    </div>
+    <div id="shapes"></div>
+  </aside>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
+</script>
+<script type="module" src="./js/lab.js"></script>
+</body>
+</html>
