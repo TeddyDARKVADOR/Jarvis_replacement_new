@@ -64,7 +64,25 @@ python -m presence.inspect                   # tous les modèles présents
 python -m presence.inspect mon_modele.glb    # un seul
 ```
 
-Le rapport dit ce qu'il y a **vraiment** dedans : combien de blendshapes ARKit
+Le rapport se termine par un **barème** : ce modèle fait-il l'affaire comme
+corps définitif de JARVIS ?
+
+```
+  Ce modele comme corps definitif de JARVIS
+
+    [ ] corps entier            head
+    [x] rig facial              52/52 blendshapes ARKit
+    [ ] visemes                 aucun — lip-sync approxime depuis les formes ARKit
+    [x] yeux pilotables         os ou blendshapes de regard
+    [x] animations embarquees   4 clip(s)
+```
+
+Rien n'y est bloquant : un « non » coûte une capacité, jamais le chargement. Et
+un modèle à qui il ne manque qu'une animation d'attente est à deux minutes
+d'être parfait — le barème le dit plutôt que de laisser repartir en chercher un
+autre.
+
+Le rapport complet dit ce qu'il y a **vraiment** dedans : combien de blendshapes ARKit
 sont atteignables et sous quels noms, quels membres le squelette porte, quelles
 animations sont embarquées. Si le compte est bas, la liste des morphs non
 reconnus est affichée — l'un d'eux est souvent un ARKit sous un autre nom, à

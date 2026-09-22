@@ -291,6 +291,109 @@ def vrm_facts(gltf: dict) -> dict:
     }
 
 
+#: Les visemes Oculus, tels que Ready Player Me et la plupart des exports
+#: "game ready" les nomment. Detectes mais pas encore joues : `lipsync.js`
+#: pilote les formes ARKit, ce qui marche partout. Un modele qui porte ces
+#: quinze-la peut faire mieux — c'est une vraie amelioration a brancher, pas
+#: une case a cocher pour faire joli, et le rapport le dit plutot que de le
+#: laisser deviner.
+OCULUS_VISEMES = (
+    "viseme_sil", "viseme_PP", "viseme_FF", "viseme_TH", "viseme_DD",
+    "viseme_kk", "viseme_CH", "viseme_SS", "viseme_nn", "viseme_RR",
+    "viseme_aa", "viseme_E", "viseme_I", "viseme_O", "viseme_U",
+)
+
+
+def scorecard(data: dict) -> list[tuple[str, bool, str]]:
+    """Ce modele fait-il l'affaire comme corps definitif de JARVIS ?
+
+    POURQUOI UN BARÈME ET PAS UN RAPPORT DE PLUS
+        Le rapport dit ce qu'il y a dedans. Il ne dit pas si c'est SUFFISANT, et
+        c'est la seule question au moment de choisir. Un mesh superbe sans rig
+        facial donne un JARVIS avec un corps et pas de visage ; un modele avec
+        52 blendshapes mais sans jambes ne pourra jamais saluer. Ces deux
+        verdicts sont evidents ici et invisibles dans une liste de morphs.
+
+    Chaque ligne est (critere, satisfait, ce qu'on a trouve). Rien n'est
+    bloquant : un « non » coute une capacite, jamais le chargement.
+    """
+    parts = set(data["parts"])
+    vrm = data.get("vrm_facts") or {}
+    morphs = [n for names in data["meshes"].values() for n in names]
+    normalised = {normalise(n) for n in morphs}
+
+    if vrm:
+        expressions = len(vrm["expressions"])
+        native = len(vrm["native_arkit"])
+        face_ok = native >= 40 or expressions >= 12
+        face_note = (f"{native}/52 ARKit natifs" if native
+                     else f"{expressions} expressions VRM, traduites")
+    else:
+        matched = len(data["arkit_matched"])
+        face_ok = matched >= 40
+        face_note = f"{matched}/52 blendshapes ARKit"
+
+    visemes = [v for v in OCULUS_VISEMES if normalise(v) in normalised]
+    if vrm:
+        vrm_visemes = [v for v in ("aa", "ih", "ou", "ee", "oh")
+                       if v in vrm["expressions"]]
+        visemes = visemes or vrm_visemes
+
+    eyes = bool(data["bones"].get("eyeLeft") or data["bones"].get("eyeRight"))
+    if not eyes:
+        eyes = any(normalise(f"eyeLook{d}{s}") in normalised
+                   for d in ("Up", "Down", "In", "Out") for s in ("Left", "Right"))
+
+    return [
+        ("corps entier",
+         {"arms", "legs", "torso"} <= parts,
+         ", ".join(sorted(parts)) or "rien"),
+        ("rig facial",
+         face_ok,
+         face_note),
+        ("visemes",
+         bool(visemes),
+         f"{len(visemes)} trouves" if visemes
+         else "aucun — lip-sync approxime depuis les formes ARKit"),
+        ("yeux pilotables",
+         eyes,
+         "os ou blendshapes de regard" if eyes else "le regard ne bougera que la tete"),
+        ("animations embarquees",
+         bool(data["animations"]),
+         f"{len(data['animations'])} clip(s)" if data["animations"]
+         else "aucune — installer un idle Mixamo, voir avatar/gestures/README.md"),
+    ]
+
+
+def print_scorecard(data: dict) -> bool:
+    """Affiche le bareme. Rend True si le modele coche tout.
+
+    Le verdict est nuance a dessein : « utilisable » n'est pas « definitif », et
+    un modele a qui il manque seulement une animation d'attente est a deux
+    minutes d'etre parfait — le dire evite de repartir en chercher un autre.
+    """
+    rows = scorecard(data)
+    print("  Ce modele comme corps definitif de JARVIS\n")
+    width = max(len(name) for name, _, _ in rows)
+    for name, ok, note in rows:
+        print(f"    [{'x' if ok else ' '}] {name.ljust(width)}   {note}")
+
+    missing = [name for name, ok, _ in rows if not ok]
+    print()
+    if not missing:
+        print("  Tout y est.\n")
+        return True
+    if missing == ["animations embarquees"]:
+        print("  Utilisable tout de suite. Il ne lui manque qu'une animation")
+        print("  d'attente — deux etapes, zero code : avatar/gestures/README.md\n")
+        return False
+    print(f"  Il manque : {', '.join(missing)}.")
+    print("  Pour un corps definitif, chercher : humanoid · rigged · PBR ·")
+    print("  52 ARKit blendshapes · visemes · GLB/GLTF/VRM · compatible Mixamo")
+    print("  (`python -m presence.install_model --list`)\n")
+    return False
+
+
 def report(path: Path, aliases: dict[str, str] | None = None) -> dict:
     gltf = read_gltf(path)
     meshes = morph_names(gltf)
@@ -369,6 +472,9 @@ def _print(data: dict) -> None:
     print("  os :")
     for key in ("root", "spine", "neck", "head", "eyeLeft", "eyeRight"):
         print(f"    {key:<9} {data['bones'].get(key, '— absent —')}")
+    print()
+    print_scorecard(data)
+
 
     print(f"\n  animations ({len(data['animations'])}) : "
           + (", ".join(data["animations"][:10]) or "aucune")
