@@ -10,6 +10,7 @@ import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -45,6 +46,21 @@ import java.util.concurrent.atomic.AtomicInteger
 class JarvisClient(
     private val auth: AuthManager,
     private val listener: Listener,
+    /**
+     * Runs a command the server routed here, and returns what to say about it.
+     *
+     * Injected rather than imported so this file stays a transport: it knows
+     * that a command has an action and parameters and that something answers
+     * it, and nothing about what any capability does. Adding a torch to the
+     * phone must not change a network class.
+     *
+     * The default refuses everything, which is the honest behaviour for any
+     * caller that has not wired an executor — and keeps every existing
+     * construction of this class compiling unchanged.
+     */
+    private val execute: (String, JSONObject) -> String = { action, _ ->
+        "Refusé : « $action » n'est pas implémenté sur ce téléphone."
+    },
 ) {
 
     interface Listener {
@@ -92,6 +108,17 @@ class JarvisClient(
      */
     @Volatile private var deviceChannel: WebSocket? = null
 
+    /**
+     * One thread, for the lifetime of this client, that runs routed commands.
+     *
+     * Serial on purpose: two capabilities running at once on a phone means two
+     * activities racing for the foreground, and the user watching the wrong one
+     * win. Daemon, so it can never be the reason the process stays alive.
+     */
+    private val commands = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "jarvis-device-commands").apply { isDaemon = true }
+    }
+
     @Volatile private var eventsOpen = false
     @Volatile private var downlinkOpen = false
     @Volatile private var announced = false
@@ -104,8 +131,45 @@ class JarvisClient(
      *
      * Returns normally once the sockets have been *requested*; [Listener
      * .onConnected] fires when both are actually open.
+     *
+     * ## Why this is synchronized
+     *
+     * `ReconnectManager.connectNow` cancels the previous attempt with
+     * `connectJob?.cancel()` and launches the next one immediately. Cancelling
+     * a coroutine only takes effect at a suspension point, and this function
+     * has none: it is blocking Java — an HTTP login and four `newWebSocket`
+     * calls. The cancelled attempt therefore keeps running, side by side with
+     * its replacement.
+     *
+     * Two of them interleave like this:
+     *
+     * ```
+     *   A: closeSockets ── login ── register ── open A's sockets
+     *   B:        closeSockets ── login ── register ── open B's sockets
+     *                              ↑
+     *                    closes the sockets A just opened
+     * ```
+     *
+     * Either order leaves one attempt's sockets torn down by the other's
+     * cleanup, and the observed result was a device that registered twice,
+     * opened two control channels, and ended with none — `/ws/device` closed on
+     * both sides while `/api/device-register` had succeeded. The server saw
+     * "online, online, offline, offline" and routing then refused every command
+     * with "son canal de commande n'est pas ouvert".
+     *
+     * The lock makes the attempts queue instead of racing. The `generation`
+     * counter already neutralises the *callbacks* of a superseded attempt; this
+     * is the other half — it stops two attempts from owning the socket fields
+     * at the same time. The wait costs one login round-trip on the IO
+     * dispatcher, which is where a blocking connect belongs anyway.
+     *
+     * `closeSockets` is deliberately NOT synchronized: it also runs from OkHttp
+     * callback threads, and making those wait on a lock held across a network
+     * login would block the dispatcher that delivers the very failures this
+     * class reacts to.
      */
     @Throws(Exception::class)
+    @Synchronized
     fun connect() {
         val gen = generation.incrementAndGet()
         closeSockets("reconnecting")
@@ -140,6 +204,8 @@ class JarvisClient(
         }
     }
 
+    /** Synchronized with [connect] so a teardown cannot interleave with a setup. */
+    @Synchronized
     fun disconnect() {
         generation.incrementAndGet()        // every in-flight callback is now stale
         closeSockets("client disconnect")
@@ -290,30 +356,73 @@ class JarvisClient(
     /**
      * Answer a command the server routed to this phone.
      *
-     * Today that answer is always a refusal, and that is correct rather than
-     * unfinished: [Protocol.CAPABILITIES] is empty, so the server should never
-     * send one. Replying instead of ignoring it means a misrouted command fails
-     * *visibly*, with a sentence JARVIS can say, rather than timing out forty-
-     * five seconds later with nothing to explain it.
+     * This is the second barrier the design asks for. The server has already
+     * decided the target; these two checks exist for the case where that
+     * decision was wrong or a message was misdelivered, and two independent
+     * refusals are what make a wrong-device execution need two simultaneous
+     * faults instead of one.
      *
-     * This is the second barrier the design asks for. When phone capabilities
-     * land, they get dispatched here — one `when` branch each.
+     * **Every path answers.** A refusal is sent just like a success: a command
+     * that is silently dropped costs the user forty-five seconds of nothing,
+     * then a timeout with no sentence to explain it.
+     *
+     * **The work does not happen on this thread.** OkHttp calls us on the
+     * socket's reader thread, and enumerating the launcher on a phone with two
+     * hundred apps is tens of milliseconds today and could be a camera shutter
+     * tomorrow. [commands] runs them one at a time, off this thread, so a slow
+     * capability can never wedge the channel it answers on — and the ordering
+     * stays the server's.
      */
     private fun answerDeviceCommand(json: JSONObject) {
-        val ws = deviceChannel ?: return
+        if (deviceChannel == null) return
         val id = json.optString("id")
         val action = json.optString("action")
         val target = json.optString("target_device_id")
+        val parameters = json.optJSONObject("parameters") ?: JSONObject()
 
-        val result = when {
+        val refusal = when {
             target.isNotBlank() && target != auth.deviceId ->
                 "Refusé : cette commande est destinée à $target, pas à ce téléphone."
             action !in Protocol.CAPABILITIES ->
                 "Refusé : « $action » ne fait pas partie des capacités de ce téléphone."
-            else ->
-                "Refusé : « $action » n'est pas encore implémenté sur ce téléphone."
+            else -> null
         }
-        try {
+
+        if (refusal != null) {
+            replyToDeviceCommand(id, refusal)
+            return
+        }
+
+        commands.execute {
+            val result = try {
+                execute(action, parameters)
+            } catch (e: Exception) {
+                // `execute` is documented never to throw, and an assistant that
+                // goes quiet because it did anyway is the failure this catch is
+                // here to make impossible.
+                Log.w(TAG, "executor threw on $action: ${e.message}")
+                "L'action « $action » a échoué : ${e.message}"
+            }
+            replyToDeviceCommand(id, result)
+        }
+    }
+
+    /**
+     * Send one `device_result`, re-reading the socket: it may have gone since.
+     *
+     * Every outcome is logged, including the ones that are nobody's fault. The
+     * server's only other signal is a forty-five second timeout, and "the phone
+     * did not answer" is the same sentence whether the socket died, the id was
+     * empty or the send was refused. One line in logcat is the difference
+     * between three candidate causes and one.
+     */
+    private fun replyToDeviceCommand(id: String, result: String) {
+        val ws = deviceChannel
+        if (ws == null) {
+            Log.w(TAG, "device_result abandonne: pas de canal (id=$id)")
+            return
+        }
+        val sent = try {
             ws.send(
                 JSONObject()
                     .put("type", Protocol.CMD_DEVICE_RESULT)
@@ -321,9 +430,12 @@ class JarvisClient(
                     .put("result", result)
                     .toString()
             )
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             // The socket went away mid-answer; the server's own timeout covers it.
+            Log.w(TAG, "device_result refuse (id=$id): ${e.message}")
+            false
         }
+        Log.i(TAG, "device_result id=$id envoye=$sent")
     }
 
     private inner class SocketListener(

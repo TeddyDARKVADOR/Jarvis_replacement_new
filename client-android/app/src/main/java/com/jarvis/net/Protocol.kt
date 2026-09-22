@@ -180,14 +180,28 @@ object Protocol {
     const val DEVICE_TYPE = "android"
 
     /**
-     * Capabilities this client can actually execute: none, today.
+     * Open an application on this phone, by the name a person would say.
      *
-     * Deliberately empty rather than aspirational. A capability is a promise
-     * the server routes on — declaring `phone.camera` before it exists would
-     * send camera commands to a client that can only refuse them, on a device
-     * the user deliberately chose. They get added one at a time, as they land.
+     * The string is `actions/open_app.py`'s tool name, and that is not a
+     * coincidence: `server/routing.py` routes on the action name, so the PC and
+     * the phone claiming the *same* name is what lets `server/targeting.py`
+     * arbitrate between them — origin by default, the named device when the
+     * user says one, a question when neither rule settles it. A phone-only tool
+     * name would have moved that decision into the model, which picks a device
+     * by picking a tool and never sees the rules at all.
      */
-    val CAPABILITIES: List<String> = emptyList()
+    const val CAP_OPEN_APP = "open_app"
+
+    /**
+     * Capabilities this BUILD implements — not what this phone will declare.
+     *
+     * A capability is a promise the server routes on, so the list that goes on
+     * the wire is [com.jarvis.device.DeviceCapabilities.granted], which keeps
+     * only the entries whose precondition actually holds on this device. This
+     * one is the catalogue behind it; it grows one name at a time, and a name
+     * arrives here only once something in `device/` can carry it out.
+     */
+    val CAPABILITIES: List<String> = listOf(CAP_OPEN_APP)
 
     const val EV_DEVICE_COMMAND = "device_command"
     const val CMD_DEVICE_RESULT = "device_result"
