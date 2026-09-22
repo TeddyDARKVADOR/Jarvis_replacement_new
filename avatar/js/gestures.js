@@ -42,6 +42,15 @@ const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
 
 /**
+ * Les canaux qui vivent sous la nuque, et que le mode visage remet a zero.
+ *
+ * La tete (`headRx/Ry/Rz`) n'y est evidemment pas. `rootRy` si : c'est le
+ * report du poids d'une jambe sur l'autre, et geler les jambes sans lui serait
+ * geler les jambes a moitie.
+ */
+const BODY_CHANNELS = ['spineRx', 'spineRy', 'rootY', 'rootZ', 'rootRy'];
+
+/**
  * The procedural repertoire. Each entry is a duration and a function of
  * normalised time `p` (0..1) returning small rotations in radians.
  *
@@ -222,6 +231,25 @@ export class Gestures {
     this.armRest = (body.manifest && body.manifest.rig && body.manifest.rig.armRest) || {};
     this._armPhase = Math.random() * TAU;
     this._restArms();
+
+    /**
+     * `rig.motion: "face"` — le corps est la, on ne le bouge pas.
+     *
+     * POURQUOI CE N'EST PAS UN REPLI MAIS UN CHOIX
+     *   Un humanoide telecharge arrive avec des bras, des mains et des jambes,
+     *   et rien pour les animer : `wave`, `point` et `explain` demandent des
+     *   clips Mixamo, retargetes et fondus. Tant qu'ils n'existent pas, offrir
+     *   ces gestes fait que JARVIS choisit `wave` et obtient un mouvement de
+     *   nuque — un corps qui salue avec sa tete, ce qui se lit plus mal qu'un
+     *   corps qui se tient tranquille.
+     *
+     *   `presence/catalog.py` lit le meme champ et retire ces gestes du
+     *   vocabulaire, donc ils ne sont plus demandes. Ce garde-ci est la
+     *   deuxieme moitie : ce qui arrive quand meme — une posture, une derive de
+     *   repos, le labo — ne descend pas sous la nuque non plus.
+     */
+    const rig = (body.manifest && body.manifest.rig) || {};
+    this.faceOnly = String(rig.motion || 'full').toLowerCase() === 'face';
   }
 
   /**
@@ -321,7 +349,13 @@ export class Gestures {
     this.t += dt;
     if (this.body.mixer) this.body.mixer.update(dt);
 
-    const out = { headRx: 0, headRy: 0, headRz: 0, spineRx: 0, spineRy: 0, rootY: 0, rootZ: 0 };
+    // `rootRy` appartient a cette liste : `add()` ne copie que les cles deja
+    // presentes dans la cible, donc son absence ici jetait en silence le report
+    // du poids que `idle._weightShift` calcule — `smoothed.rootRy` restait a
+    // zero pour toujours, et `_write` ecrivait ce zero. La couche etait
+    // documentee, mesuree, et morte.
+    const out = { headRx: 0, headRy: 0, headRz: 0, spineRx: 0, spineRy: 0,
+                  rootY: 0, rootZ: 0, rootRy: 0 };
 
     add(out, POSTURES[this.posture]);
     add(out, GAZE_HEAD[this.gaze]);
@@ -342,6 +376,22 @@ export class Gestures {
     this.idle.update(dt);
     add(out, this.idle.offsets);
     this._swayArms(dt);
+
+    // Mode visage : tout ce qui est sous la nuque retombe a zero, quelle que
+    // soit la couche qui l'a ecrit — posture, regard, geste ou repos.
+    //
+    // POURQUOI ICI ET PAS DANS CHAQUE COUCHE
+    //   C'est le seul endroit ou les quatre sources sont deja additionnees. Un
+    //   garde par couche serait quatre endroits a retrouver le jour ou une
+    //   cinquieme arrive, et la cinquieme est celle qu'on oublierait.
+    //
+    //   La respiration des epaules (`_swayArms`) et celle de la poitrine ne
+    //   sont pas ici : ce ne sont pas des canaux d'os du buste, et un corps
+    //   parfaitement rigide se lit comme un mannequin — c'est exactement ce que
+    //   `_restArms` existe pour eviter.
+    if (this.faceOnly) {
+      for (const key of BODY_CHANNELS) out[key] = 0;
+    }
 
     // 90 ms : assez rapide pour qu'un hochement reste un hochement, assez lent
     // pour qu'aucune transition ne claque.

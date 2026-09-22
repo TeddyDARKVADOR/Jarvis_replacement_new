@@ -6,7 +6,7 @@ Supprimer le dossier rend JARVIS identique à ce qu'il était : une voix avec un
 cœur 2D.
 
 ```
-python -m presence.selftest                      39 contrôles, sans clé, sans micro, sans GPU
+python -m presence.selftest                      42 contrôles, sans clé, sans micro, sans GPU
 python -m presence.install_model --demo          installer un modèle qui marche
 python -m presence.install_model --list          où trouver un vrai personnage
 python -m presence.inspect                       ce qu'il y a réellement dans le modèle
@@ -210,6 +210,29 @@ doit pas l'être : il enseigne le bloc.
 > d'autre. JARVIS garde un visage qui suit son état machine — écoute, réflexion,
 > parole — que le `Director` du client résout tout seul, sans que le serveur y
 > soit pour quoi que ce soit.
+
+## Le corps qu'on a, et celui qu'on bouge
+
+`catalog.py` lit deux champs du manifeste, et la différence entre les deux est
+une décision et non une déduction :
+
+| champ | qui l'écrit | ce qu'il dit |
+|---|---|---|
+| `rig.parts` | `install_model`, depuis le fichier | ce que le modèle **a** |
+| `rig.motion` | un humain | ce qu'on **bouge** |
+
+`"motion": "face"` — le réglage livré — retire `arms`, `legs` et `torso` des
+membres pilotés. Le vocabulaire tombe de 16 gestes à 8, tous de tête, et
+`Catalogue.frozen` garde la liste de ce qu'on a choisi de ne pas animer.
+
+C'est une réponse honnête à un état de fait : le visage est fini — 52 formes
+ARKit, douze expressions dérivées — et le corps n'a aucun clip. Offrir `wave` à
+un JARVIS qui n'a pas de clip de salut, c'est lui faire saluer avec sa nuque.
+
+Rien n'est perdu : `FALLBACK_CHAIN` rabat chaque geste de corps sur le
+mouvement de tête le plus proche, `requested_gesture` garde la demande
+d'origine, et `"motion": "full"` rend tout le corps en un mot. Le raisonnement
+complet, et ce que ça change côté rendu, sont dans `avatar/README.md`.
 
 ## Le vocabulaire est plus large que ce qui est installé
 

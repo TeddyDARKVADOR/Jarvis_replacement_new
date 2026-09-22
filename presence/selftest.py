@@ -1085,6 +1085,130 @@ def _installed_model():
     return (f"{name} : {matched}/52 ARKit, membres {', '.join(data['parts'])}, "
             f"{len(data['animations'])} animations")
 
+
+# ── 8. le mode visage : le corps est la, on ne le bouge pas ──────────────────
+
+
+@check("le mode visage retrecit le vocabulaire a la tete")
+def _face_mode_vocabulary():
+    """`rig.motion: "face"` doit couter les gestes du corps, et rien d'autre.
+
+    Le point a prouver n'est pas que la liste raccourcit — c'est qu'elle
+    raccourcit a la BONNE chose. Un mode visage qui retirerait `nod` ou `idle`
+    laisserait JARVIS sans aucun mouvement, et un qui laisserait passer `shrug`
+    ferait bouger un buste qu'on a decide de tenir tranquille.
+    """
+    from presence.catalog import _parse
+
+    raw = json.loads((AVATAR_DIR / "manifest.json").read_text(encoding="utf-8"))
+    raw["rig"] = dict(raw.get("rig") or {})
+    raw["rig"]["parts"] = ["arms", "head", "legs", "torso"]
+    gesture_dir = AVATAR_DIR / "gestures"
+
+    raw["rig"]["motion"] = "full"
+    full = _parse(raw, gesture_dir)
+    raw["rig"]["motion"] = "face"
+    face = _parse(raw, gesture_dir)
+
+    assert full.motion == "full" and not full.frozen, "le mode complet fige quelque chose"
+    assert face.motion == "face"
+    assert face.parts == frozenset({RigPart.HEAD}), f"pilote {face.parts}"
+    assert face.frozen == frozenset({RigPart.TORSO, RigPart.ARMS, RigPart.LEGS}), (
+        "les membres figes ne sont pas ceux qu'on croit — et c'est cette liste "
+        "que le labo affiche pour expliquer pourquoi `wave` ne joue pas")
+
+    offered = set(face.vocabulary)
+    assert Gesture.IDLE in offered and Gesture.NOD in offered, (
+        "le mode visage a retire des mouvements de tete — JARVIS n'aurait plus "
+        "rien du tout")
+    for gone in (Gesture.WAVE, Gesture.EXPLAIN, Gesture.SHRUG, Gesture.LEAN_IN,
+                 Gesture.THINK_POSE, Gesture.TURN):
+        assert gone not in offered, f"{gone.value} est encore offert en mode visage"
+    for kept in offered:
+        assert GESTURE_REQUIRES.get(kept, RigPart.HEAD) is RigPart.HEAD, (
+            f"{kept.value} demande autre chose qu'une tete")
+
+    # Un mot inconnu vaut "full" : un manifeste ecrit avant ce champ, ou avec
+    # une faute de frappe, ne doit pas perdre son corps en silence.
+    raw["rig"]["motion"] = "visage"
+    assert _parse(raw, gesture_dir).motion == "full", "un mot inconnu fige le corps"
+    raw["rig"].pop("motion")
+    assert _parse(raw, gesture_dir).motion == "full", "l'absence du champ fige le corps"
+
+    return (f"{len(full.vocabulary)} gestes -> {len(offered)}, tous de tete ; "
+            f"champ absent ou inconnu = complet")
+
+
+@check("aucun geste ne devient injouable, il devient un autre")
+def _face_mode_fallback():
+    """Le corps fige ne doit jamais produire un `None` ni un trou.
+
+    C'est la propriete qui rend le mode visage sans danger : JARVIS peut
+    continuer a vouloir `facepalm` — le vocabulaire ne le lui propose plus, mais
+    une directive ecrite a la main, un client plus vieux ou un modele qui
+    improvise le demanderont quand meme. Chaque chaine doit alors terminer sur
+    un mouvement de tete, en gardant l'intention.
+    """
+    face = _cat({RigPart.HEAD}, set())
+
+    for gesture in Gesture:
+        landed = face.resolve(gesture)
+        assert face.can(landed), f"{gesture.value} atterrit sur {landed.value}, injouable"
+        assert GESTURE_REQUIRES.get(landed, RigPart.HEAD) is RigPart.HEAD, (
+            f"{gesture.value} -> {landed.value}, qui n'est pas un mouvement de tete")
+
+    # Et l'intention survit a la substitution, ce qui est toute la difference
+    # entre « degrade » et « perdu ».
+    assert face.resolve(Gesture.FACEPALM) is Gesture.SHAKE_HEAD, "le non a disparu"
+    assert face.resolve(Gesture.WAVE) is Gesture.NOD, "le salut a disparu"
+
+    director = Director(face)
+    director.set_intent(Directive(expression=Expression.AMUSED, gesture=Gesture.WAVE),
+                        now=0.0)
+    performance = director.resolve("ACTIVE", now=0.1)
+    assert performance.gesture is Gesture.NOD
+    assert performance.requested_gesture == Gesture.WAVE.value, (
+        "la demande d'origine n'est plus lisible — c'est la ligne qui dit quel "
+        "clip vaut le coup d'etre installe ensuite")
+    return f"{len(Gesture)} gestes, tous atterrissent sur une tete, demande gardee"
+
+
+@check("les deux cotes JS lisent le mode, pas seulement Python")
+def _face_mode_js():
+    """Le gel a deux moities en JS, et aucune ne suffit seule.
+
+    `gestures.js` remet les canaux du buste et des hanches a zero — c'est ce qui
+    tient le corps quoi qu'ecrive la posture, le regard ou le repos. `lab.js`,
+    lui, doit filtrer ce qu'il annonce comme jouable : sans ca, le labo dirait
+    « ✓ geste shrug » pendant que le moteur remet le buste a zero a l'image
+    suivante — un labo qui montre un mouvement que le panneau ne fera pas, ce
+    qui est la seule chose qu'un labo n'a pas le droit de faire.
+
+    Lu dans la source plutot qu'execute, parce que ce fichier tourne sans
+    navigateur. La mesure, elle, est dans `avatar/checks/face_first.py`.
+    """
+    gestures = (AVATAR_DIR / "js" / "gestures.js").read_text(encoding="utf-8")
+    lab = (AVATAR_DIR / "js" / "lab.js").read_text(encoding="utf-8")
+
+    assert "faceOnly" in gestures, "gestures.js ne connait pas le mode visage"
+    assert "BODY_CHANNELS" in gestures, "aucune liste de canaux a geler"
+    # `rootRy` porte le report du poids. L'oublier gelerait les jambes a moitie,
+    # et c'est exactement la cle qui manquait a l'accumulateur.
+    for channel in ("spineRx", "spineRy", "rootY", "rootZ", "rootRy"):
+        assert channel in gestures.split("BODY_CHANNELS", 1)[1][:260], (
+            f"{channel} n'est pas dans les canaux geles")
+
+    assert "drivenParts" in lab, (
+        "lab.js lit encore detectedParts directement — il annoncerait jouable "
+        "un geste que le moteur remet a zero")
+    assert 'rig.motion' in lab, "lab.js ne consulte pas rig.motion"
+
+    # Et le mot du manifeste est le meme des trois cotes.
+    manifest = json.loads((AVATAR_DIR / "manifest.json").read_text(encoding="utf-8"))
+    motion = (manifest.get("rig") or {}).get("motion", "full")
+    return f"gestures.js + lab.js accordes ; manifeste livre en \"{motion}\""
+
+
 # ── report ───────────────────────────────────────────────────────────────────
 
 def main() -> int:

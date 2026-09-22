@@ -213,6 +213,21 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 }
 
+/**
+ * Ce qu'on a choisi de ne pas animer, dit a l'endroit ou on lit ce qu'il y a.
+ *
+ * Un corps qui a des bras et ne les bouge pas est une decision ; sans cette
+ * ligne, c'est une panne, et c'est l'heure suivante passee a chercher pourquoi
+ * `wave` ne fait rien sur un modele qui a visiblement des mains.
+ */
+function frozenNote(body) {
+  const rig = (body.manifest && body.manifest.rig) || {};
+  if (String(rig.motion || 'full').toLowerCase() !== 'face') return '';
+  const frozen = [...(body.detectedParts || [])].filter((p) => p !== 'head');
+  if (!frozen.length) return '';
+  return `   <span class="bad">au repos : ${frozen.join(', ')}</span>`;
+}
+
 function report(body, label) {
   const r = body.report ? body.report() : null;
   if (!r) {
@@ -224,7 +239,7 @@ function report(body, label) {
   const lines = [
     label, '',
     `<span class="${cls}">formes pilotables : ${found}/52</span>`,
-    `membres    : ${[...body.detectedParts].join(', ')}`,
+    `membres    : ${[...body.detectedParts].join(', ')}${frozenNote(body)}`,
     `os         : ${r.bones.join(', ') || 'aucun'}`,
     `animations : ${(body.embedded || []).length}`,
   ];
@@ -404,12 +419,31 @@ const round = (v) => Math.round(v * 100) / 100;
  * existe pour rompre.
  */
 function playable(name) {
-  const parts = app.body.detectedParts || new Set(['head', 'torso']);
+  const parts = drivenParts();
   const clips = app.body.clips || {};
   const needs = GESTURE_NEEDS[name] || 'head';
   if (!parts.has(needs)) return 'idle';
   if (clips[name] || PROCEDURAL_GESTURES.has(name)) return name;
   return 'idle';
+}
+
+/**
+ * Les membres qu'on PILOTE, qui ne sont pas toujours ceux que le modele a.
+ *
+ * `rig.motion: "face"` tient tout ce qui est sous la nuque au repos. Sans ce
+ * filtre, le labo lirait `detectedParts` — donc « ce corps a des bras » — et
+ * annoncerait `shrug` comme joue, alors que `gestures.js` remet le canal du
+ * buste a zero a l'image suivante. Le labo montrerait un mouvement que le
+ * panneau ne fera pas : exactement le silence que la ligne « exécution » existe
+ * pour rompre.
+ *
+ * Miroir de l'intersection que fait `presence/catalog.py`.
+ */
+function drivenParts() {
+  const parts = app.body.detectedParts || new Set(['head', 'torso']);
+  const rig = (app.body.manifest && app.body.manifest.rig) || {};
+  if (String(rig.motion || 'full').toLowerCase() !== 'face') return parts;
+  return new Set(['head']);
 }
 
 function drawTrace(derived, played) {
