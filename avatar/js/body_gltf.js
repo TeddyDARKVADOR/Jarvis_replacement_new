@@ -274,7 +274,30 @@ export class GltfBody {
   // ── mapping ─────────────────────────────────────────────────────────────
 
   _mapMorphs() {
-    const aliases = (this.manifest.model && this.manifest.model.morphAliases) || {};
+    const model = this.manifest.model || {};
+    const aliases = model.morphAliases || {};
+
+    /**
+     * Des maillages dont on ignore les formes, nommes par le manifeste.
+     *
+     * POURQUOI C'EST NECESSAIRE
+     *   Un modele peut porter une forme correctement nommee et mal transferee.
+     *   Sur l'avatar MPFB installe ici, le maillage `tongue01` a son propre
+     *   `jawOpen` — mais il ne fait pas suivre la langue a la machoire, il la
+     *   pousse HORS de la bouche. Le moteur ecrit `jawOpen` pour la parole, et
+     *   JARVIS tire la langue a chaque phrase.
+     *
+     *   Rien dans le systeme n'est fautif : le nom est bon, la forme existe,
+     *   elle deforme bien quelque chose. C'est l'asset qui est mal fait, et un
+     *   defaut d'asset se corrige dans le manifeste — jamais dans le moteur,
+     *   qui ne doit pas connaitre l'existence d'un maillage appele `tongue01`.
+     *
+     *   Les dents, elles, ont aussi `jawOpen` et le font correctement. D'ou une
+     *   liste et non une regle.
+     */
+    const muted = new Set(
+      (model.muteMeshes || []).map((n) => normalise(n)),
+    );
     // L'alias est ecrit "ARKit -> nom dans le mesh" dans le manifeste, parce
     // que c'est le sens dans lequel un humain le lit. On l'inverse ici.
     const aliasByMeshName = new Map();
@@ -286,9 +309,39 @@ export class GltfBody {
     const canonical = new Map();
     for (const name of ARKIT_NAMES) canonical.set(normalise(name), name);
 
+    /**
+     * Un maillage est-il dans la liste du manifeste ?
+     *
+     * Comparaison par SUFFIXE, et ce n'est pas de la souplesse gratuite :
+     * three.js supprime les points des noms — ils sont reserves dans sa syntaxe
+     * de liaison d'animation. Le noeud glTF `Human.tongue01` arrive donc comme
+     * `Humantongue01`, sans separateur, et `normalise` n'a plus rien ou couper.
+     * Une egalite stricte ne trouve jamais rien, silencieusement.
+     *
+     * Le suffixe est sur ici parce que la liste est ECRITE A LA MAIN : c'est un
+     * choix explicite sur un modele precis, pas une heuristique appliquee a
+     * tout. Un nom trop court y attraperait trop de choses — le rapport dit
+     * donc ce qui a ete mis en sourdine, pour que ce soit verifiable.
+     */
+    const isMuted = (name) => {
+      const key = normalise(name);
+      for (const wanted of muted) {
+        if (key === wanted || key.endsWith(wanted)) return true;
+      }
+      return false;
+    };
+
+    this.muted = [];
     this.scene.traverse((node) => {
       const dict = node.morphTargetDictionary;
       if (!dict || !node.morphTargetInfluences) return;
+      if (isMuted(node.name)) {
+        // Garde une trace : un maillage mis en sourdine sans que personne ne le
+        // sache est la prochaine heure perdue a chercher pourquoi une forme
+        // n'a aucun effet.
+        this.muted.push(node.name);
+        return;
+      }
 
       for (const raw in dict) {
         const index = dict[raw];

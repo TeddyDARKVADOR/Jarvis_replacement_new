@@ -41,6 +41,7 @@ import { Gestures } from './gestures.js';
 import { Bridge } from './bridge.js';
 import { ProceduralBody } from './body_procedural.js';
 import { loadGltfBody } from './body_gltf.js';
+import { ARKIT_NAMES } from './arkit.js';
 
 const BASE = new URL('../', import.meta.url);
 
@@ -370,6 +371,31 @@ async function boot() {
     frame: mode,
   });
 
+  /**
+   * Fige le corps sur un jeu de formes, et rien d'autre.
+   *
+   * Arrete la boucle, met les 52 coefficients a zero, ecrit ceux qu'on donne,
+   * rend une image. C'est le seul moyen de repondre a « quelle forme fait CA » :
+   * en marche, le repos, le lip-sync et les micro-expressions reecrivent tout a
+   * chaque image, et une capture montre la somme au lieu de la cause.
+   *
+   * `setAnimated(true)` rend la main.
+   */
+  window.JARVIS.freeze = (shapes) => {
+    renderer.setAnimationLoop(null);
+    for (const name of ARKIT_NAMES) state.body.setMorph(name, 0);
+    for (const name in (shapes || {})) state.body.setMorph(name, shapes[name]);
+    if (state.body.update) state.body.update(0);
+    renderer.render(scene, camera);
+  };
+
+  /** Le moteur de gestes, pour regler une pose de repos sans relancer la page. */
+  window.JARVIS.armRest = (shoulder) => {
+    state.gestures.armRest.shoulder = shoulder;
+    state.gestures._restArms();
+    renderer.render(scene, camera);
+  };
+
   window.JARVIS.setAnimated = (on) => {
     if (!on) { renderer.setAnimationLoop(null); return; }
     clock.getDelta();
@@ -398,6 +424,7 @@ async function boot() {
   // est la seule facon de repondre a "pourquoi ce modele rend-il blanc".
   window.__scene = scene;
   window.__gestures = state.gestures;
+  window.__body = state.body;
 
   renderer.setAnimationLoop(frame);
   document.body.classList.add('ready');

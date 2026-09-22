@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "name": "JARVIS — facecap",
+  "name": "JARVIS — jarvis",
   "model": {
-    "file": "facecap.glb",
+    "file": "jarvis.glb",
     "scale": 1.0,
     "position": [
       0,
@@ -10,61 +10,35 @@
       0
     ],
     "morphPrefix": "",
-    "morphAliases": {
-      "eyeBlinkLeft": "eyeBlink_L",
-      "eyeLookDownLeft": "eyeLookDown_L",
-      "eyeLookInLeft": "eyeLookIn_L",
-      "eyeLookOutLeft": "eyeLookOut_L",
-      "eyeLookUpLeft": "eyeLookUp_L",
-      "eyeSquintLeft": "eyeSquint_L",
-      "eyeWideLeft": "eyeWide_L",
-      "eyeBlinkRight": "eyeBlink_R",
-      "eyeLookDownRight": "eyeLookDown_R",
-      "eyeLookInRight": "eyeLookIn_R",
-      "eyeLookOutRight": "eyeLookOut_R",
-      "eyeLookUpRight": "eyeLookUp_R",
-      "eyeSquintRight": "eyeSquint_R",
-      "eyeWideRight": "eyeWide_R",
-      "mouthSmileLeft": "mouthSmile_L",
-      "mouthSmileRight": "mouthSmile_R",
-      "mouthFrownLeft": "mouthFrown_L",
-      "mouthFrownRight": "mouthFrown_R",
-      "mouthDimpleLeft": "mouthDimple_L",
-      "mouthDimpleRight": "mouthDimple_R",
-      "mouthStretchLeft": "mouthStretch_L",
-      "mouthStretchRight": "mouthStretch_R",
-      "mouthPressLeft": "mouthPress_L",
-      "mouthPressRight": "mouthPress_R",
-      "mouthLowerDownLeft": "mouthLowerDown_L",
-      "mouthLowerDownRight": "mouthLowerDown_R",
-      "mouthUpperUpLeft": "mouthUpperUp_L",
-      "mouthUpperUpRight": "mouthUpperUp_R",
-      "browDownLeft": "browDown_L",
-      "browDownRight": "browDown_R",
-      "browOuterUpLeft": "browOuterUp_L",
-      "browOuterUpRight": "browOuterUp_R",
-      "cheekSquintLeft": "cheekSquint_L",
-      "cheekSquintRight": "cheekSquint_R",
-      "noseSneerLeft": "noseSneer_L",
-      "noseSneerRight": "noseSneer_R"
-    }
+    "morphAliases": {},
+    "muteMeshes": [
+      "tongue01"
+    ]
   },
   "rig": {
     "parts": [
-      "head"
+      "arms",
+      "head",
+      "legs",
+      "torso"
     ],
     "bones": {
-      "head": "head",
-      "neck": "",
-      "spine": "",
-      "root": "",
-      "eyeLeft": "eyeLeft",
-      "eyeRight": "eyeRight"
+      "head": "Head",
+      "neck": "Neck",
+      "spine": "Spine2",
+      "root": "Hips",
+      "eyeLeft": "LeftEye",
+      "eyeRight": "RightEye"
+    },
+    "armRest": {
+      "shoulder": -0.45,
+      "elbow": 0.0,
+      "forward": 0.0
     }
   },
   "camera": {
     "fov": 24,
-    "frame": "face"
+    "frame": "bust"
   },
   "look": {
     "hologram": true,
