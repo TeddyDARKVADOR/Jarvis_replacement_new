@@ -7,7 +7,7 @@ le fait vivre.
 ```
 avatar/
   index.html          le corps, tel que le panneau l'affiche (fond transparent)
-  lab.html            le labo : charger, inspecter, tester au curseur
+  lab.html            le labo comportemental : état → décision → exécution
   manifest.json       QUEL modèle, QUELS gestes — le seul point d'extension
   models/             le personnage (non versionné)
   gestures/           les clips Mixamo (non versionnés)
@@ -22,6 +22,9 @@ avatar/
     body_gltf.js      charge un .glb/.gltf, reconnaît ses blendshapes
     body_vrm.js       charge un .vrm, traduit ARKit → expressions VRM
     body_procedural.js  le dernier recours, quand aucun modèle n'est installé
+    idle.js           le repos : respiration, dérive, report du poids,
+                      micro-expressions — paramétré par l'état intérieur
+    affect.js         la dérivation du comportement (généré depuis presence/affect.py)
     expressions.js    les 12 visages (généré depuis presence/vocabulary.py)
     arkit.js          les 52 noms
     visemes.js        les 8 formes de bouche
@@ -32,7 +35,7 @@ avatar/
 
 ```bash
 python -m presence.install_model --demo     # une tête humaine, 52 blendshapes ARKit
-python -m presence.selftest                 # 26 contrôles
+python -m presence.selftest                 # 37 contrôles
 ```
 
 Puis, dans le client de bureau, activer `avatar_enabled` dans les réglages.
@@ -40,17 +43,33 @@ Le cœur 2D reste le défaut : l'avatar est un processus Chromium et un contexte
 GPU pour toute la durée de la session, ce qui est un prix juste pour un visage
 et un mauvais prix pour une machine qui compile.
 
-### Le labo
+### Le labo comportemental
 
-Ouvrir `avatar/lab.html`. Il répond aux questions que le panneau cache :
+Ouvrir `avatar/lab.html`. Il ne montre pas seulement ce que le moteur a exécuté,
+mais **ce que JARVIS a décidé**, et le chemin de l'un à l'autre :
+
+```
+SITUATION         « J'ai trouvé quelque chose d'intéressant. »
+ÉTAT INTÉRIEUR    valence +0.35 · arousal 0.55 · attention 0.92 · confiance 0.70
+DÉCISION          amused 0.56 · regard user · posture attentive
+                  tempo 0.97 · immobilité 0.66        ← dérivé de l'état
+EXÉCUTION         ✓ 8 formes · ✓ regard · ✓ posture · ✓ geste tilt_head
+```
+
+Cinq curseurs pour l'état, un sélecteur de registre, et tout le reste se
+calcule. Forcer un visage court-circuite la dérivation — le bandeau le dit.
+
+Il répond aussi aux questions que le panneau cache :
 
 - ce fichier se charge-t-il, et en combien de temps
 - quels morph targets a-t-il, et lesquels ont été reconnus comme ARKit
 - quelles animations porte-t-il
 - que fait la forme `browInnerUp` — **un curseur par blendshape**
-- à quoi ressemble `surprised` à 0.7
-- à quoi ressemble *cette* décision JARVIS — coller le JSON
-- quelle décision s'exécute en ce moment
+- à quoi ressemble *cette* décision JARVIS — coller le JSON, les deux formes
+
+La ligne **exécution** est celle qui se gagne le plus : c'est elle qui dit
+`✗ facepalm injouable → shake_head` quand un clip manque. Sans elle, ce genre de
+substitution est parfaitement invisible.
 
 On peut y **glisser un `.glb`, `.gltf` ou `.vrm`** pour le juger avant de
 l'installer. Rien n'est écrit sur le disque : installer est une décision, et
@@ -108,6 +127,34 @@ premier.
 Quinze gestes marchent **sans aucun fichier** — tout ce qu'un cou et un buste
 peuvent faire est calculé (`PROCEDURAL_GESTURES`). Les clips gagnent pour tout
 ce qui a des bras.
+
+## Le repos, qui est 95 % du temps
+
+JARVIS passe l'essentiel de sa vie **entre** deux décisions. Un corps qui ne
+bouge qu'aux ordres est figé 95 % du temps, et les utilisateurs rapportent ça
+comme « il a planté » — pas comme « il est calme ».
+
+`idle.js` n'est donc pas une banque de clips (elle boucle, et elle ne sait rien
+de l'état). C'est une **somme de couches continues**, chacune paramétrée par
+l'affect, aux fréquences incommensurables — elle ne boucle jamais :
+
+| couche | pilotée par |
+|---|---|
+| respiration | l'immobilité ralentit *et* creuse |
+| micro-mouvements | dérive lente de la tête et du buste |
+| report du poids | seulement si le modèle a des jambes |
+| dérive du regard | le regard **revient**, il ne se verrouille pas |
+| micro-expressions | brèves, < 0.12 d'amplitude — au-delà c'est une grimace |
+
+Mesuré sur le vrai moteur, neuf secondes par état :
+
+| | Rx | Ry | Rz | immobilité | tempo |
+|---|---|---|---|---|---|
+| calme | 1.42° | 1.88° | 0.12° | 0.94 | 0.76 |
+| agité | 2.48° | 3.03° | 0.85° | 0.40 | 1.59 |
+
+Les clignements ne sont **pas** ici : `rig.js` possède les paupières, avec sa
+propre horloge, parce qu'un clignement lissé n'est plus un clignement.
 
 ## Trois choses apprises en construisant ça
 

@@ -21,7 +21,13 @@ What it checks:
   7. Intent outranks reflex, expires, and never keeps a sleeping JARVIS's eyes
      open.
   8. Directive parsing survives prose, truncation and invented words.
-  9. The three tables duplicated into JavaScript still match the Python ones —
+  9. The affect space is consistent: every anchor reprojects to itself, the
+     derivation is total, the register caps expression, and the state decays
+     toward a baseline instead of expiring.
+ 10. The three layers rank correctly — affect beats reflex, a named face
+     beats affect — and an affect-only directive is not erased by its own
+     unset defaults.
+ 11. The tables duplicated into JavaScript still match the Python ones —
      parsed out of the .js files, the way context/selftest.py reads the Kotlin
      heartbeat.
 """
@@ -40,6 +46,17 @@ if str(BASE_DIR) not in sys.path:
 
 from presence import catalog as catalog_mod            # noqa: E402
 from presence.catalog import Catalogue                 # noqa: E402
+from presence.affect import (                           # noqa: E402
+    Affect,
+    SocialMode,
+    expression_for,
+    gaze_for,
+    gaze_hold_for,
+    intensity_for,
+    posture_for,
+    stillness_for,
+    tempo_for,
+)
 from presence.director import (                        # noqa: E402
     ANGRY_CEILING,
     INTENT_TTL_S,
@@ -416,6 +433,232 @@ def _prompt():
     return f"{len(text)} caracteres, {len(cat.vocabulary)} gestes annonces"
 
 
+@check("chaque ancre se retrouve elle-meme")
+def _anchors_consistent():
+    """The twelve anchors must be mutually consistent, not merely plausible.
+
+    Each anchor is a point that is supposed to MEAN one expression. Project it
+    back and you must get that expression — otherwise two anchors overlap, one
+    of the twelve is unreachable, and JARVIS has a word he can never cash.
+    That is invisible by inspection and obvious here.
+    """
+    from presence.affect import _ANCHORS
+
+    wrong = []
+    for expression, (valence, arousal, confidence, urgency) in _ANCHORS.items():
+        affect = Affect(valence=valence, arousal=arousal,
+                        confidence=confidence, urgency=urgency)
+        got = expression_for(affect)
+        if got is not expression:
+            wrong.append(f"{expression.value} -> {got.value}")
+    assert not wrong, "ancres qui se recouvrent : " + ", ".join(wrong)
+    assert len(_ANCHORS) == len(Expression), (
+        f"{len(_ANCHORS)} ancres pour {len(Expression)} expressions")
+    return f"{len(_ANCHORS)} ancres, toutes atteignables"
+
+
+@check("la derivation est totale")
+def _derivation_total():
+    """Nothing in the affect space may raise, or produce an invalid value.
+
+    JARVIS writes these numbers. He will eventually write 1.5, or -3, or a
+    string — and the answer to that has to be a plainer face, never a traceback
+    on the path of a spoken sentence.
+    """
+    steps = [-1.0, -0.5, 0.0, 0.5, 1.0]
+    levels = [0.0, 0.25, 0.5, 0.75, 1.0]
+    count = 0
+    for valence in steps:
+        for arousal in levels:
+            for attention in levels:
+                for confidence in levels:
+                    for urgency in (0.0, 0.5, 1.0):
+                        affect = Affect(valence=valence, arousal=arousal,
+                                        attention=attention, confidence=confidence,
+                                        urgency=urgency)
+                        assert isinstance(expression_for(affect), Expression)
+                        assert isinstance(gaze_for(affect), Gaze)
+                        assert isinstance(posture_for(affect), Posture)
+                        assert 0.0 <= intensity_for(affect) <= 1.0
+                        assert 0.5 <= tempo_for(affect) <= 1.9
+                        assert 0.0 <= stillness_for(affect) <= 1.0
+                        count += 1
+
+    # Les valeurs aberrantes sont ramenees, pas refusees.
+    wild = Affect(valence=9, arousal=-4, attention="x", confidence=None, urgency=7)  # type: ignore[arg-type]
+    assert wild.valence == 1.0 and wild.arousal == 0.0 and wild.urgency == 1.0
+    assert wild.attention == 0.0 and wild.confidence == 0.0
+    return f"{count} points de l'espace, plus les valeurs aberrantes"
+
+
+@check("le registre plafonne l'expression")
+def _social_ceiling():
+    """A smile at 0.9 during a delete confirmation is not expressive, it is wrong."""
+    from presence.affect import _CEILING
+
+    delighted = dict(valence=0.95, arousal=0.95)
+    intensities = {
+        mode: intensity_for(Affect(social_mode=mode, **delighted))
+        for mode in SocialMode
+    }
+    for mode, value in intensities.items():
+        assert value <= _CEILING[mode] + 1e-9, f"{mode.value} depasse son plafond"
+    assert intensities[SocialMode.FORMAL] < intensities[SocialMode.PROFESSIONAL] \
+        < intensities[SocialMode.CASUAL] <= intensities[SocialMode.INTIMATE], (
+        "les registres ne sont pas ordonnes")
+    return " · ".join(f"{m.value[:4]} {v:.2f}" for m, v in intensities.items())
+
+
+@check("l'affect retombe au lieu de s'eteindre")
+def _decay():
+    """An inner state that snapped back to neutral would read as a reboot."""
+    from presence.affect import BASELINE, DECAY_HALF_LIFE_S
+
+    upset = Affect(valence=-0.9, arousal=0.9, attention=0.2, confidence=0.2, urgency=0.9)
+
+    half = upset.decayed(DECAY_HALF_LIFE_S)
+    midpoint = BASELINE["valence"] + (upset.valence - BASELINE["valence"]) * 0.5
+    assert abs(half.valence - midpoint) < 1e-6, "la demi-vie n'est pas respectee"
+
+    # L'urgence retombe plus vite que le reste : une urgence qui traine n'en
+    # etait pas une.
+    assert half.urgency < upset.urgency * 0.5 + 1e-9, "l'urgence ne retombe pas plus vite"
+
+    far = upset.decayed(DECAY_HALF_LIFE_S * 10)
+    for key, target in BASELINE.items():
+        assert abs(getattr(far, key) - target) < 0.02, f"{key} ne rejoint pas la base"
+    assert far.social_mode is upset.social_mode, "le registre a decru — c'est une decision"
+    assert upset.decayed(0) is upset, "une decroissance nulle alloue inutilement"
+    return f"demi-vie {DECAY_HALF_LIFE_S:.0f} s, urgence deux fois plus vite"
+
+
+@check("affect > reflexe, intention > affect")
+def _layer_order():
+    """The three layers, in the order that makes JARVIS able to contradict himself.
+
+    Without the last step he could not be serious in the middle of a good mood —
+    which is most of what "an irreversible action just came up" looks like.
+    """
+    director = Director(_cat({RigPart.HEAD, RigPart.TORSO, RigPart.ARMS}, set(Gesture)))
+
+    reflex = director.resolve("THINKING", now=100.0)
+    assert reflex.expression is Expression.THINKING
+    assert reflex.affect is not None, "meme le reflexe doit porter un affect nominal"
+
+    director.set_affect(Affect(valence=0.7, arousal=0.65, attention=0.9,
+                               confidence=0.85, social_mode=SocialMode.CASUAL),
+                        now=100.0)
+    derived = director.resolve("THINKING", now=100.0)
+    assert derived.expression is not Expression.THINKING, "l'affect n'a pas prime"
+    assert derived.expression in (Expression.HAPPY, Expression.PROUD, Expression.AMUSED)
+    assert derived.reason.startswith("affect:"), derived.reason
+
+    director.set_intent(Directive(expression=Expression.SERIOUS, intensity=0.8,
+                                  gesture=Gesture.NOD, reason="action irreversible"),
+                        now=100.0)
+    named = director.resolve("THINKING", now=100.5)
+    assert named.expression is Expression.SERIOUS, "l'intention n'a pas prime sur l'affect"
+    assert named.reason == "action irreversible"
+
+    # L'intention expire, l'affect reste (en decroissance).
+    after = director.resolve("THINKING", now=100.0 + INTENT_TTL_S + 1)
+    assert after.expression is not Expression.SERIOUS, "l'intention n'a pas expire"
+    assert after.affect is not None
+    return "reflexe -> affect -> intention, et l'intention seule expire"
+
+
+@check("une intention d'affect n'est pas ecrasee par ses defauts")
+def _affect_intent_survives():
+    """The trap this guards is subtle and total.
+
+    A directive that carried ONLY an affect still has `expression=NEUTRAL` and
+    `intensity=0.5` sitting in its unset fields. Applied blindly after the
+    affect derivation, those defaults erase exactly what the directive was
+    expressing — and the symptom is "the affect form does nothing", with no
+    error anywhere.
+    """
+    director = Director(_cat({RigPart.HEAD, RigPart.TORSO}, set()))
+    directive = parse('{"emotion": {"valence": -0.7, "arousal": 0.3}, '
+                      '"confidence": 0.5, "reason": "mauvaise nouvelle"}')
+    assert directive is not None and directive.affect is not None
+    assert directive.expression is Expression.NEUTRAL, "le defaut devrait etre neutral"
+
+    director.set_intent(directive, now=0.0)
+    performance = director.resolve("SPEAKING", now=0.5)
+    assert performance.expression is Expression.SAD, (
+        f"la forme affect a ete ecrasee : {performance.expression.value}")
+    assert performance.reason == "mauvaise nouvelle"
+    return "la raison est gardee, le visage vient bien de l'etat"
+
+
+@check("l'etat faconne le repos")
+def _continuous_params():
+    """tempo, stillness and gaze_hold have to actually differ, or they are decoration."""
+    calm = Affect(valence=0.1, arousal=0.10, attention=0.85, confidence=0.9)
+    urgent = Affect(valence=-0.3, arousal=0.85, attention=0.95, confidence=0.6, urgency=0.9)
+
+    assert tempo_for(urgent) > tempo_for(calm) * 1.3, "l'urgence n'accelere pas les gestes"
+    assert stillness_for(calm) > stillness_for(urgent) + 0.25, (
+        "le calme n'est pas plus immobile que l'agitation")
+
+    distracted = Affect(attention=0.1)
+    attentive = Affect(attention=0.98)
+    assert gaze_hold_for(attentive) > gaze_hold_for(distracted) * 2, (
+        "l'attention ne tient pas le regard plus longtemps")
+    assert gaze_for(attentive) is Gaze.USER
+    assert gaze_for(distracted) is not Gaze.USER
+
+    # L'urgence ramene le regard, meme distrait : c'est ce que fait quelqu'un
+    # qui vient de comprendre que ca compte.
+    assert gaze_for(Affect(attention=0.1, urgency=0.8)) is Gaze.USER
+    return (f"tempo {tempo_for(calm):.2f}->{tempo_for(urgent):.2f}, "
+            f"immobilite {stillness_for(calm):.2f}->{stillness_for(urgent):.2f}")
+
+
+@check("lecture de la forme affect")
+def _parse_affect():
+    full = parse('```jarvis-presence\n'
+                 '{"emotion": {"valence": 0.45, "arousal": 0.25}, "attention": 0.91,\n'
+                 ' "confidence": 0.76, "urgency": 0.12, "socialMode": "professional",\n'
+                 ' "gesture": "tilt_head", "reason": "meme commande"}\n```')
+    assert full is not None and full.affect is not None
+    assert abs(full.affect.valence - 0.45) < 1e-6
+    assert full.affect.social_mode is SocialMode.PROFESSIONAL
+    assert full.gesture is Gesture.TILT_HEAD
+
+    flat = parse('{"valence": -0.6, "arousal": 0.8, "urgency": 0.9}')
+    assert flat is not None and flat.affect is not None
+    assert abs(flat.affect.urgency - 0.9) < 1e-6
+
+    word = parse('{"emotion": "amused", "intensity": 0.35}')
+    assert word is not None and word.expression is Expression.AMUSED
+    assert word.affect is None, "un mot seul ne doit pas inventer un etat"
+
+    snake = parse('{"valence": 0.2, "social_mode": "formal"}')
+    assert snake is not None and snake.affect.social_mode is SocialMode.FORMAL
+
+    # Rien de reconnaissable : pas d'affect invente.
+    for junk in ('{"emotion": "ecstatic"}', '{"mood": 0.4}', "{}", "prose"):
+        directive = parse(junk)
+        assert directive is None or directive.affect is None, (
+            f"{junk!r} a produit un etat interieur invente")
+    return "bloc, forme plate, mot seul, snake_case, et rien d'invente"
+
+
+@check("le prompt enseigne les deux formes")
+def _prompt_both_forms():
+    cat = _cat({RigPart.HEAD, RigPart.TORSO}, set(), procedural=True)
+    text = prompt_fragment(cat)
+    for needed in ("valence", "arousal", "attention", "confidence", "urgency",
+                   "socialMode", "expression", "gaze"):
+        assert needed in text, f"{needed} absent du prompt"
+    for mode in SocialMode:
+        assert mode.value in text, f"registre {mode.value} absent"
+    assert "wave" not in text, "propose de saluer a un corps sans bras"
+    assert text.index("FORME 1") < text.index("FORME 2"), (
+        "la forme affect doit etre presentee en premier")
+    return f"{len(text)} caracteres, les deux formes, {len(cat.vocabulary)} gestes"
+
 # ── 5. the two languages ─────────────────────────────────────────────────────
 
 @check("ARKit identique en JS")
@@ -489,6 +732,82 @@ def _js_gestures():
     )
     return f"{len(implemented)} gestes, {len(postures)} postures, {len(gazes)} regards — accordes"
 
+
+@check("affect identique en JS")
+def _js_affect():
+    """`avatar/js/affect.js` is generated from `affect.py`. Tables verified here.
+
+    What this CANNOT do is run the JavaScript, so it checks the tables — anchors,
+    weights, ceilings, baseline, and all 27 thresholds — and nothing about the
+    shape of the functions.
+
+    That gap was closed separately and deliberately: the two derivations were run
+    side by side over 20 000 points of the affect space, 140 000 comparisons, and
+    agreed exactly (`scratchpad/bench_affect_parity.py`). Getting there is why
+    neither side rounds any more — rounding is a presentation concern, and having
+    it inside the calculation made exact comparison impossible.
+    """
+    from presence.affect import BASELINE, DECAY_HALF_LIFE_S, TUNING, _ANCHORS, _CEILING, _WEIGHTS
+
+    source = (AVATAR_DIR / "js" / "affect.js").read_text(encoding="utf-8")
+
+    def table(name, end_marker):
+        block = source[source.index(f"export const {name} = {{"):source.index(end_marker)]
+        return {k: float(v) for k, v in re.findall(r"^  (\w+): (-?[0-9.]+),", block, re.MULTILINE)}
+
+    ceiling = table("CEILING", "/** Vers quoi l'affect retombe")
+    assert ceiling == {m.value: v for m, v in _CEILING.items()}, (
+        f"plafonds differents : {ceiling}")
+
+    baseline = table("BASELINE", "/** Demi-vie")
+    assert baseline == {k: float(v) for k, v in BASELINE.items()}, (
+        f"base differente : {baseline}")
+
+    half = float(re.search(r"DECAY_HALF_LIFE_S = ([0-9.]+)", source).group(1))
+    assert half == DECAY_HALF_LIFE_S, f"demi-vie {half} contre {DECAY_HALF_LIFE_S}"
+
+    tuning = table("TUNING", "/**\n * Les douze ancres")
+    assert tuning == {k: float(v) for k, v in TUNING.items()}, (
+        "seuils differents : "
+        + ", ".join(sorted(set(tuning) ^ set(TUNING))
+                    or [k for k in TUNING if tuning.get(k) != TUNING[k]]))
+
+    anchors_block = source[source.index("export const ANCHORS = {"):source.index("/** Ce que chaque axe pese")]
+    anchors = {
+        name: tuple(float(v) for v in values.split(","))
+        for name, values in re.findall(r"^  (\w+): \[([^\]]+)\],", anchors_block, re.MULTILINE)
+    }
+    expected_anchors = {e.value: tuple(a) for e, a in _ANCHORS.items()}
+    assert anchors == expected_anchors, (
+        "ancres differentes : "
+        + ", ".join(k for k in expected_anchors if anchors.get(k) != expected_anchors[k]))
+
+    weights = tuple(float(v) for v in
+                    re.search(r"WEIGHTS = \[([^\]]+)\]", source).group(1).split(","))
+    assert weights == tuple(_WEIGHTS), f"poids {weights} contre {_WEIGHTS}"
+
+    # L'arrondi ne doit jamais revenir dans la derivation : c'est ce qui rendait
+    # les deux implementations incomparables.
+    assert "roundTo" not in source and "Math.round" not in source, (
+        "un arrondi est revenu dans affect.js — les deux derivations ne seront "
+        "plus comparables a l'identique")
+
+    return (f"{len(anchors)} ancres, {len(tuning)} seuils, {len(ceiling)} registres, "
+            "aucun arrondi")
+
+
+@check("le JS ne derive nulle part ailleurs")
+def _no_stray_rounding():
+    """Python's own derivation must stay unrounded too, for the same reason."""
+    source = (Path(__file__).parent / "affect.py").read_text(encoding="utf-8")
+    body = source[source.index("def intensity_for("):]
+    assert "round(" not in body, (
+        "un arrondi est revenu dans les derivations de affect.py")
+    # Le fil, lui, arrondit — c'est le bon endroit.
+    model = (Path(__file__).parent / "model.py").read_text(encoding="utf-8")
+    assert '"tempo":        round(' in model, (
+        "Performance.as_json n'arrondit plus : le fil devient bavard")
+    return "derivations en pleine precision, arrondi au bord du fil seulement"
 
 @check("le moteur 3D est local")
 def _vendored():
@@ -569,15 +888,46 @@ def _js_expressions():
 
 @check("le labo connait le meme vocabulaire")
 def _lab_vocabulary():
+    """Three tables the lab mirrors from Python, all checked.
+
+    The lab has to decide, with no Python running, whether a gesture is playable
+    on the body that is loaded — otherwise it shows a requested gesture as if it
+    had played, which is exactly the silence its "execution" line exists to
+    break. Doing that means mirroring the gesture list, the procedural
+    repertoire and the rig requirements. Three more duplications, so three more
+    checks.
+    """
     source = (AVATAR_DIR / "js" / "lab.js").read_text(encoding="utf-8")
-    block = source[source.index("const GESTURES = ["):source.index("const FRAME_FRACTIONS")]
-    names = re.findall(r"'([a-z_]+)'", block)
+
+    def array(marker, end):
+        block = source[source.index(marker):source.index(end)]
+        return re.findall(r"'([a-z_]+)'", block)
+
     known = {g.value for g in Gesture}
-    unknown = [n for n in names if n not in known]
+
+    listed = array("const GESTURES = [", "/** Ce qu'un corps joue sans aucun clip")
+    unknown = [n for n in listed if n not in known]
     assert not unknown, "gestes inconnus dans le labo : " + ", ".join(unknown)
-    missing = sorted(known - set(names))
+    missing = sorted(known - set(listed))
     assert not missing, "gestes absents du labo : " + ", ".join(missing)
-    return f"{len(names)} gestes, exactement ceux de model.py"
+
+    procedural = set(array("const PROCEDURAL_GESTURES = new Set([",
+                           "/** Ce que chaque geste demande au rig"))
+    assert procedural == set(PROCEDURAL_GESTURES), (
+        "repertoire procedural different : "
+        f"labo seul {sorted(procedural - set(PROCEDURAL_GESTURES))}, "
+        f"python seul {sorted(set(PROCEDURAL_GESTURES) - procedural)}")
+
+    needs_block = source[source.index("const GESTURE_NEEDS = {"):
+                         source.index("const FRAME_FRACTIONS")]
+    needs = dict(re.findall(r"(\w+): '(\w+)'", needs_block))
+    expected_needs = {g.value: part.value for g, part in GESTURE_REQUIRES.items()}
+    assert needs == expected_needs, (
+        "exigences de rig differentes : "
+        + ", ".join(k for k in expected_needs if needs.get(k) != expected_needs[k]))
+
+    return (f"{len(listed)} gestes, {len(procedural)} procedurals, "
+            f"{len(needs)} exigences — accordes")
 
 
 @check("noms : la meme regle des deux cotes")

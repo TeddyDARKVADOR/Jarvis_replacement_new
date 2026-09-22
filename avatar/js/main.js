@@ -384,8 +384,11 @@ async function boot() {
     const dt = Math.min(clock.getDelta(), 0.1);
 
     state.lipsync.update(dt);
-    state.rig.update(dt);
+    // L'ordre compte : les gestes avancent le repos, qui produit les
+    // micro-expressions que le rig doit combiner dans la meme image.
     state.gestures.update(dt);
+    state.rig.setMicro(state.gestures.idle.shapes);
+    state.rig.update(dt);
     if (state.body.update) state.body.update(dt);
 
     renderer.render(scene, camera);
@@ -394,6 +397,7 @@ async function boot() {
   // Exposee pour le labo et pour les sondes de diagnostic : lire la scene
   // est la seule facon de repondre a "pourquoi ce modele rend-il blanc".
   window.__scene = scene;
+  window.__gestures = state.gestures;
 
   renderer.setAnimationLoop(frame);
   document.body.classList.add('ready');
@@ -413,6 +417,15 @@ function applyPerformance(perf, setLabel) {
 
   if (perf.posture) state.gestures.setPosture(perf.posture);
   if (perf.gaze) state.gestures.setGaze(perf.gaze);
+
+  // Les parametres continus derives de l'affect. Ce sont eux qui font qu'entre
+  // deux decisions le personnage RESSEMBLE a son etat au lieu de simplement
+  // bouger. Voir presence/affect.py et avatar/js/idle.js.
+  state.gestures.setAffect({
+    tempo: perf.tempo,
+    stillness: perf.stillness,
+    gazeHold: perf.gaze_hold_s,
+  });
 
   const gesture = perf.gesture || 'idle';
   if (gesture !== state.lastGesture) {

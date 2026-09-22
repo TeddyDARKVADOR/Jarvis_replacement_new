@@ -3,30 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>JARVIS — Labo avatar</title>
+<title>JARVIS — Labo comportemental</title>
 
 <!--
-  The lab. Everything the panel hides, on purpose.
+  Le labo. Tout ce que le panneau cache, volontairement.
 
-  WHY A SECOND PAGE AND NOT A DEBUG MODE IN THE FIRST
-    `index.html` is furniture: transparent, no chrome, no pointer events, sized
-    to a corner of a screen. Every one of those decisions is wrong for the job
-    of "why does this model not smile", and bolting a panel of sliders onto it
-    would mean the shipping page carries a debug UI it must never show.
+  POURQUOI UNE SECONDE PAGE ET PAS UN MODE DEBUG DANS LA PREMIERE
+    `index.html` est du mobilier : transparent, sans chrome, sans evenements de
+    souris, dimensionne pour un coin d'ecran. Chacune de ces decisions est
+    mauvaise pour le travail « pourquoi ce modele ne sourit-il pas », et y
+    greffer un panneau de curseurs voudrait dire que la page livree transporte
+    une interface de debug qu'elle ne doit jamais montrer.
 
-    Two pages, one renderer. `lab.js` imports exactly the modules `main.js`
-    imports — same loader, same rig, same director vocabulary — so what the lab
-    proves is true of the panel. A lab with its own rendering path would be a
-    lab that can be green while the product is broken.
+    Deux pages, un seul moteur. `lab.js` importe exactement les modules
+    qu'importe `main.js` — meme chargeur, meme rig, meme derivation d'affect —
+    donc ce que le labo prouve est vrai du panneau. Un labo avec son propre
+    chemin de rendu serait un labo qui peut etre vert pendant que le produit est
+    casse.
 
-  WHAT IT ANSWERS
-    - does this file load at all, and how long does it take
-    - which morph targets does it have, and which ARKit names did they match
-    - which animations does it carry
-    - what does blendshape N actually do          (one slider per shape)
-    - what does expression X at intensity Y look like
-    - what does this JARVIS decision look like    (paste the JSON)
-    - which decision is executing right now
+  CE QU'IL MONTRE, ET QUI EST LE POINT
+    Pas seulement ce que le moteur a execute : ce que JARVIS a DECIDE, et
+    comment on est passe de l'un a l'autre.
+
+        SITUATION          ce qu'on lui a decrit
+        ETAT INTERIEUR     six nombres continus
+        DECISION DERIVEE   visage, regard, posture, rythme — calcules
+        EXECUTION          ce qui a reellement joue, substitutions comprises
+
+    C'est la seule facon de tester la philosophie du projet : on decrit une
+    situation, et JARVIS choisit lui-meme comment se comporter.
 -->
 
 <style>
@@ -40,6 +45,7 @@
     --sky: #7DD3FC;
     --violet: #C4B5FD;
     --mint: #6EE7B7;
+    --amber: #FBBF6B;
     --rose: #F87171;
   }
 
@@ -55,15 +61,13 @@
 
   #app {
     display: grid;
-    grid-template-columns: minmax(280px, 340px) 1fr minmax(280px, 360px);
+    grid-template-columns: minmax(270px, 320px) 1fr minmax(300px, 380px);
     height: 100%;
   }
-  /* Responsive : sous 1100 px la scene passe en haut et les panneaux dessous,
-     parce qu'un labo ouvert sur un demi-ecran reste un labo. */
-  @media (max-width: 1100px) {
-    #app { grid-template-columns: 1fr; grid-template-rows: 46vh 1fr; overflow: auto; }
-    #left, #right { max-height: none; }
-    body { overflow: auto; }
+  @media (max-width: 1150px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: 44vh auto auto; overflow: auto; }
+    html, body { overflow: auto; }
+    aside { max-height: none; }
   }
 
   aside {
@@ -76,8 +80,8 @@
 
   main {
     position: relative;
-    background:
-      radial-gradient(ellipse at 50% 35%, #101a2b 0%, var(--ink) 70%);
+    background: radial-gradient(ellipse at 50% 32%, #101a2b 0%, var(--ink) 70%);
+    min-height: 300px;
   }
   canvas { display: block; width: 100%; height: 100%; }
 
@@ -91,6 +95,7 @@
     border-top: 1px solid var(--outline); padding-top: 10px;
   }
   h2:first-of-type { border-top: 0; margin-top: 4px; }
+  h2 .tag { color: var(--violet); text-transform: none; letter-spacing: 0; }
 
   button, select, input[type=text], textarea {
     font: inherit;
@@ -109,69 +114,81 @@
   .row { display: flex; gap: 6px; margin-bottom: 6px; }
   .row > * { flex: 1; }
 
-  .grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 5px;
-  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 5px; }
   .grid button { text-align: center; padding: 6px 4px; font-size: 12px; }
 
   .slider {
-    display: grid; grid-template-columns: 1fr 34px; gap: 6px;
-    align-items: center; margin-bottom: 3px;
+    display: grid; grid-template-columns: 1fr 44px; gap: 6px;
+    align-items: center; margin-bottom: 4px;
   }
   .slider label {
     font-family: ui-monospace, Consolas, monospace; font-size: 11px;
-    color: var(--muted); grid-column: 1 / -1; margin-bottom: -2px;
+    color: var(--muted); grid-column: 1 / -1; margin-bottom: -3px;
   }
   .slider label.live { color: var(--sky); }
+  .slider label .hint { color: #475569; }
   .slider input[type=range] { width: 100%; accent-color: var(--sky); }
+  .slider.affect input[type=range] { accent-color: var(--violet); }
   .slider output {
     font-family: ui-monospace, monospace; font-size: 11px;
+    color: var(--text); text-align: right;
+  }
+
+  /* ── la trace : situation -> etat -> decision -> execution ──────────────── */
+  #trace {
+    position: absolute; left: 14px; right: 14px; bottom: 14px;
+    background: rgba(5, 7, 12, .86);
+    border: 1px solid var(--outline); border-radius: 10px;
+    padding: 11px 13px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+    pointer-events: none;
+    display: grid; gap: 7px;
+  }
+  #trace .step { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: baseline; }
+  #trace .k {
+    font-size: 9px; letter-spacing: .12em; text-transform: uppercase;
     color: var(--muted); text-align: right;
   }
+  #trace .v { color: var(--text); }
+  #trace .v b { color: #fff; }
+  #trace .v .num { color: var(--violet); }
+  #trace .v .ok { color: var(--mint); }
+  #trace .v .sub { color: var(--amber); }
+  #trace .v .off { color: var(--muted); }
+  #situation-line { color: var(--sky); }
 
   #report {
     font-family: ui-monospace, Consolas, monospace; font-size: 11px;
     white-space: pre-wrap; color: var(--muted);
     background: var(--surface); border: 1px solid var(--outline);
-    border-radius: 6px; padding: 8px; max-height: 190px; overflow: auto;
+    border-radius: 6px; padding: 8px; max-height: 180px; overflow: auto;
   }
   #report .ok { color: var(--mint); }
   #report .bad { color: var(--rose); }
-
-  #now {
-    position: absolute; left: 14px; bottom: 14px; right: 14px;
-    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
-    color: var(--sky); background: rgba(5,7,12,.72);
-    border: 1px solid var(--outline); border-radius: 8px; padding: 9px 11px;
-    pointer-events: none;
-  }
-  #now b { color: #fff; font-weight: 600; }
-  #now .why { color: var(--muted); display: block; margin-top: 3px; }
 
   #drop {
     position: absolute; inset: 0;
     display: none; place-items: center;
     background: rgba(5,7,12,.86);
     border: 2px dashed var(--sky); border-radius: 12px;
-    color: var(--sky); letter-spacing: .1em; text-transform: uppercase;
-    font-size: 12px;
+    color: var(--sky); letter-spacing: .1em; text-transform: uppercase; font-size: 12px;
   }
   #drop.on { display: grid; }
 
   .hint { color: var(--muted); font-size: 11px; margin: 6px 0 0; }
   .search { margin-bottom: 8px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 11px; }
 </style>
 </head>
 <body>
 
 <div id="app">
+  <!-- ── le modele ─────────────────────────────────────────────────────── -->
   <aside id="left">
     <h1>Modèle</h1>
-    <div class="row">
-      <button id="pick">Ouvrir un GLB / GLTF / VRM…</button>
-    </div>
-    <p class="hint">Ou glisser le fichier sur la scène. Rien n'est copié : le
-      labo lit le fichier en mémoire, le manifeste n'est pas touché.</p>
+    <div class="row"><button id="pick">Ouvrir un GLB / GLTF / VRM…</button></div>
+    <p class="hint">Ou glisser le fichier sur la scène. Rien n'est copié :
+      le manifeste n'est pas touché, installer est une décision.</p>
 
     <h2>Ce qui a été trouvé</h2>
     <div id="report">aucun modèle chargé</div>
@@ -185,27 +202,48 @@
       <button data-frame="bust">buste</button>
       <button data-frame="full">entier</button>
     </div>
+
+    <h2>Blendshapes ARKit</h2>
+    <input class="search" type="text" id="search" placeholder="filtrer… (brow, mouth, eye)">
+    <div class="row"><button id="reset-shapes">Tout remettre à zéro</button></div>
+    <div id="shapes"></div>
   </aside>
 
+  <!-- ── la scene ──────────────────────────────────────────────────────── -->
   <main>
     <canvas id="stage"></canvas>
     <div id="drop">déposer le modèle</div>
-    <div id="now">
-      <b id="now-title">—</b>
-      <span class="why" id="now-why"></span>
+    <div id="trace">
+      <div class="step"><span class="k">Situation</span><span class="v" id="situation-line">—</span></div>
+      <div class="step"><span class="k">État intérieur</span><span class="v" id="trace-affect">—</span></div>
+      <div class="step"><span class="k">Décision</span><span class="v" id="trace-decision">—</span></div>
+      <div class="step"><span class="k">Exécution</span><span class="v" id="trace-exec">—</span></div>
     </div>
   </main>
 
+  <!-- ── le comportement ───────────────────────────────────────────────── -->
   <aside id="right">
     <h1>Décision JARVIS</h1>
 
-    <h2>Expressions</h2>
+    <h2>Situation <span class="tag">— ce qu'on lui décrit</span></h2>
+    <input type="text" id="situation" placeholder="« J'ai trouvé quelque chose d'intéressant. »">
+
+    <h2>État intérieur <span class="tag">— six nombres</span></h2>
+    <div id="affect"></div>
+    <div class="row" style="margin-top:6px">
+      <select id="social"></select>
+    </div>
+    <p class="hint">Le visage, le regard, la posture, le rythme et l'immobilité
+      du repos en <b>découlent</b> — rien n'est choisi à la main ici.</p>
+
+    <h2>Forcer un visage <span class="tag">— court-circuite l'état</span></h2>
     <div id="expressions" class="grid"></div>
     <div class="slider" style="margin-top:8px">
-      <label for="intensity">intensité</label>
+      <label for="intensity">intensité forcée</label>
       <input type="range" id="intensity" min="0" max="1" step="0.01" value="0.6">
       <output id="intensity-out">0.60</output>
     </div>
+    <div class="row"><button id="unforce">Rendre la main à l'état</button></div>
 
     <h2>Regard</h2>
     <div id="gazes" class="grid"></div>
@@ -219,24 +257,14 @@
       <input type="range" id="speech" min="0" max="1" step="0.01" value="0">
       <output id="speech-out">0.00</output>
     </div>
-    <div class="row">
-      <button id="babble">Parler en boucle</button>
-    </div>
+    <div class="row"><button id="babble">Parler en boucle</button></div>
 
     <h2>Décision brute</h2>
-    <textarea id="json" rows="6" spellcheck="false"></textarea>
-    <div class="row" style="margin-top:6px">
-      <button id="send">Exécuter</button>
-    </div>
-    <p class="hint">Exactement ce que <code>presence.Performance.as_json()</code>
-      met sur le fil. Le champ <code>blendshapes</code> est recalculé ici si absent.</p>
-
-    <h2>Blendshapes ARKit</h2>
-    <input class="search" type="text" id="search" placeholder="filtrer… (brow, mouth, eye)">
-    <div class="row">
-      <button id="reset-shapes">Tout remettre à zéro</button>
-    </div>
-    <div id="shapes"></div>
+    <textarea id="json" rows="7" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:6px"><button id="send">Exécuter</button></div>
+    <p class="hint">Les deux formes que JARVIS peut émettre. Coller un
+      <code>{"emotion": {"valence": …}}</code> ou un
+      <code>{"expression": "amused"}</code>.</p>
   </aside>
 </div>
 

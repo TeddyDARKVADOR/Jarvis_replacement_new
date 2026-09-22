@@ -254,6 +254,15 @@ class Directive:
     posture: Posture | None = None
     reason: str = ""
 
+    #: L'etat interieur, quand JARVIS l'a exprime plutot que de nommer un
+    #: visage. Quand il est present il GAGNE sur les quatre champs ci-dessus,
+    #: qui sont alors derives — voir `presence/affect.py`.
+    #:
+    #: Les deux formes coexistent parce qu'elles servent a deux choses : nommer
+    #: un visage est plus sur quand JARVIS veut exactement celui-la, decrire un
+    #: etat est plus riche et se prete a l'idle. Aucune n'est obligatoire.
+    affect: object | None = None
+
 
 @dataclass(frozen=True)
 class Performance:
@@ -289,6 +298,26 @@ class Performance:
     #: something else arrives" — used for postures and for SLEEPING.
     hold_s: float = 0.0
 
+    # ── les parametres continus, derives de l'affect ─────────────────────────
+    #
+    # Ce ne sont pas des decorations : ce sont eux qui font qu'entre deux
+    # decisions le personnage reste vivant et RESSEMBLE a son etat. Un JARVIS
+    # calme et un JARVIS presse jouent le meme `nod` — mais pas a la meme
+    # vitesse, et pas sur le meme fond d'immobilite.
+
+    #: Vitesse des gestes, 1.0 = nominal.
+    tempo: float = 1.0
+    #: Immobilite du repos, 0 = agite, 1 = statue.
+    stillness: float = 0.7
+    #: Combien de temps le regard tient avant de deriver, en secondes.
+    gaze_hold_s: float = 4.0
+
+    #: L'etat interieur qui a produit tout ce qui precede, quand il y en avait
+    #: un. Transporte pour le labo et la fenetre de debug : sans lui, "pourquoi
+    #: ce visage" n'a pas de reponse qui ne demande pas de rejouer la
+    #: conversation.
+    affect: object | None = None
+
     #: What was asked for, when the catalogue could not honour it.
     requested_gesture: Gesture | None = None
     reason: str = ""
@@ -304,8 +333,13 @@ class Performance:
             "posture":      self.posture.value,
             "speech_level": round(self.speech_level, 3),
             "hold_s":       round(self.hold_s, 2),
+            "tempo":        round(self.tempo, 3),
+            "stillness":    round(self.stillness, 3),
+            "gaze_hold_s":  round(self.gaze_hold_s, 2),
             "blendshapes":  {k: round(v, 3) for k, v in self.blendshapes.items()},
         }
+        if self.affect is not None:
+            payload["affect"] = self.affect.as_json()
         if self.requested_gesture is not None and self.requested_gesture is not self.gesture:
             payload["requested_gesture"] = self.requested_gesture.value
         if self.reason:

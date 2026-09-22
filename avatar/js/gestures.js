@@ -27,13 +27,16 @@
  *   posture   a sustained offset. Outlives every gesture.
  *   gesture   a transient, windowed to its own duration.
  *   gaze      a small head turn, following the eyes.
- *   breath    always running.
+ *   idle      always running — respiration, derive, report du poids,
+ *             micro-expressions. Voir idle.js.
  *
  *   They are SUMMED onto the rest pose, not blended by priority. Priority would
  *   mean a nod cancels the lean-in that made the nod mean something. Summing is
  *   why JARVIS can lean in, watch the user and nod at the same time — which is
  *   what attention looks like, and is one gesture slot in a priority system.
  */
+
+import { Idle } from './idle.js';
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
@@ -204,7 +207,15 @@ export class Gestures {
 
     // Lisse entre deux gestes : passer d'un `look_away` tenu a un `nod` sans
     // interpolation fait claquer la nuque d'une image a l'autre.
-    this.smoothed = { headRx: 0, headRy: 0, headRz: 0, spineRx: 0, spineRy: 0, rootY: 0, rootZ: 0 };
+    this.smoothed = { headRx: 0, headRy: 0, headRz: 0, spineRx: 0, spineRy: 0,
+                      rootY: 0, rootZ: 0, rootRy: 0 };
+
+    // Le repos. Il tourne en permanence, y compris pendant un clip : une
+    // animation qui fige la respiration se lit comme un blocage.
+    this.idle = new Idle(this.nodes);
+
+    // Vitesse des gestes, venue de l'affect. 1.0 = nominal.
+    this.tempo = 1.0;
 
     // La pose de repos des bras, appliquee une fois et poursuivie tant qu'aucun
     // clip ne joue. Voir `_restArms`.
@@ -316,7 +327,10 @@ export class Gestures {
     add(out, GAZE_HEAD[this.gaze]);
 
     if (this.active) {
-      this.active.t += dt;
+      // Le tempo accelere les gestes procedures comme il accelere les clips :
+      // un JARVIS presse hoche la tete plus vite, sinon seul son visage est
+      // presse et le reste dement.
+      this.active.t += dt * this.tempo;
       const p = this.active.t / this.active.duration;
       if (p >= 1) {
         this.active = null;
@@ -325,7 +339,8 @@ export class Gestures {
       }
     }
 
-    this._breathe(out);
+    this.idle.update(dt);
+    add(out, this.idle.offsets);
     this._swayArms(dt);
 
     // 90 ms : assez rapide pour qu'un hochement reste un hochement, assez lent
@@ -336,21 +351,11 @@ export class Gestures {
     this._write();
   }
 
-  /**
-   * Breathing. Never stops, including while a clip plays — a clip that holds a
-   * pose on a body that has stopped breathing reads as a freeze, which users
-   * report as "it crashed".
-   */
-  _breathe(out) {
-    const slow = this.posture === 'dormant';
-    const rate = slow ? 0.18 : 0.26;          // Hz
-    const depth = slow ? 0.011 : 0.007;
-    const phase = this.t * TAU * rate;
-    out.rootY += Math.sin(phase) * depth;
-    out.spineRx += Math.sin(phase) * 0.9 * DEG;
-    // Tres leger contre-mouvement de la tete : une tete parfaitement solidaire
-    // du buste est une tete vissee.
-    out.headRx -= Math.sin(phase) * 0.45 * DEG;
+  /** What the affect asks of the idle. Passed straight through. */
+  setAffect(params) {
+    if (typeof params.tempo === 'number') this.tempo = Math.max(0.3, Math.min(2.5, params.tempo));
+    this.idle.setAffect(params);
+    if (this.body.mixer) this.body.mixer.timeScale = this.tempo;
   }
 
   _write() {
@@ -374,6 +379,7 @@ export class Gestures {
       const r = this.rest.get('root');
       root.position.y = r.py + s.rootY;
       root.position.z = r.pz + s.rootZ;
+      root.rotation.y = r.ry + s.rootRy;   // report du poids
     }
   }
 }
