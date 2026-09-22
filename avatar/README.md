@@ -90,21 +90,53 @@ main — sauf les champs que seul le goût décide.
 ```jsonc
 {
   "model": {
-    "file": "facecap.glb",        // dans models/ ; "" = corps procédural
+    "file": "jarvis.glb",         // dans models/ ; "" = corps procédural
     "scale": 1.0,
     "morphAliases": {             // dérivé : ce que CE mesh appelle chaque forme
       "browDownLeft": "browDown_L"
-    }
+    },
+    "muteMeshes": ["tongue01"]    // à la main : défauts de l'asset, voir plus bas
   },
   "rig": {
-    "parts": ["head"],            // dérivé : ce que JARVIS aura le droit de vouloir
-    "bones": { "head": "head" },  // dérivé
-    "armRest": {}                 // à la main, si les bras tombent de travers
+    "parts": ["arms","head","legs","torso"],  // dérivé
+    "bones": { "head": "Head" },              // dérivé
+    "armRest": { "shoulder": -0.45 },         // à la main, mesuré
+    "gaze": { "signY": 1 }                    // à la main, si les yeux s'inversent
   },
-  "camera": { "fov": 24, "frame": "face" },   // "face" | "bust" | "full"
+  "camera": { "fov": 24, "frame": "bust" },   // "face" | "bust" | "full"
   "gestures": {}                              // voir gestures/README.md
 }
 ```
+
+### Les trois champs qu'aucune inspection ne peut deviner
+
+`morphAliases`, `parts` et `bones` sont **dérivés** du fichier. Les trois
+suivants sont des jugements, et ils existent parce qu'un modèle réel n'est
+jamais parfait :
+
+| champ | quand s'en servir |
+|---|---|
+| `model.muteMeshes` | un maillage porte une forme correctement nommée et **mal transférée** |
+| `rig.armRest.shoulder` | les bras ne tombent pas naturellement (valeur négative si le rig est livré en pose A) |
+| `rig.gaze.signY` / `signX` | les yeux partent du mauvais côté, sur un modèle dont les yeux sont des os |
+
+**`muteMeshes` mérite un mot**, parce que le symptôme est déroutant. Sur
+l'avatar installé, le maillage `tongue01` porte son propre `jawOpen` — mais il
+ne fait pas suivre la langue à la mâchoire, il la pousse **hors de la bouche**.
+Le moteur écrit `jawOpen` pour parler, et JARVIS tire la langue à chaque phrase.
+
+Rien dans le système n'est fautif : le nom est bon, la forme existe, elle
+déforme bien quelque chose. C'est l'asset qui est mal fait — et un défaut
+d'asset se corrige dans le manifeste, jamais dans le moteur, qui n'a pas à
+connaître l'existence d'un maillage appelé `tongue01`. Les dents, elles, ont
+aussi `jawOpen` et le font correctement : d'où une liste et non une règle.
+
+> La comparaison se fait par **suffixe**, parce que three.js supprime les points
+> des noms (ils sont réservés dans sa syntaxe de liaison d'animation) : le nœud
+> glTF `Human.tongue01` arrive comme `Humantongue01`. Le rapport du labo affiche
+> ce qui a réellement été mis en sourdine — un maillage muet que personne ne
+> sait muet est l'heure suivante passée à chercher pourquoi une forme n'a aucun
+> effet.
 
 `rig.parts` est ce qui décide du vocabulaire offert à JARVIS. Un corps sans bras
 ne se verra jamais proposer `wave` — et ne pourra donc jamais le choisir et ne
