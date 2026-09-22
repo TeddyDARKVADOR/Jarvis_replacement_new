@@ -48,6 +48,20 @@ from server import auth
 
 host, port = sys.argv[1], sys.argv[2]
 token = auth.load_or_create()["device_token"]
+
+# L'identite du telephone du laboratoire, fixee ici.
+#
+# AuthManager.deviceId la frappe une fois et la garde dans CE fichier de
+# preferences -- celui qu'on est en train de reecrire. L'omettre en faisait
+# naitre une nouvelle a chaque appairage, et le registre du serveur finissait
+# avec cinq telephones dont trois se declaraient connectes. La docstring de
+# deviceId decrit exactement ce symptome comme la raison d'etre de la
+# persistance ; l'outil d'appairage l'annulait.
+#
+# Une valeur fixe plutot que l'ancienne relue : un laboratoire dont l'appareil
+# porte le meme nom a chaque campagne est un laboratoire dont les journaux se
+# comparent d'une campagne a l'autre.
+device_id = "android-lab"
 print(
     "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n"
     "<map>\n"
@@ -56,6 +70,7 @@ print(
     f'    <boolean name="tls" value="false" />\n'
     f'    <boolean name="wake_word_enabled" value="false" />\n'
     f'    <string name="device_token">{escape(token)}</string>\n'
+    f'    <string name="device_id">{escape(device_id)}</string>\n'
     "</map>"
 )
 PY
