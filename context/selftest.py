@@ -311,6 +311,22 @@ def _queue_still_held():
     return "la file rejoue la politique, elle ne suppose pas"
 
 
+@check("a caller releases only what it can deliver; the rest stays held")
+def _queue_deliverable():
+    policy, queue = ProactivityPolicy(), DeferralQueue()
+    queue.push("proactive", Priority.IMPORTANT, now=NOW)
+    queue.push({"title": "colis", "text": "livre"}, Priority.IMPORTANT, now=NOW)
+    awake = derive(_fresh(screen_on=True, headset=True), now=NOW)
+    ready = queue.release(awake, policy, now=NOW + 60,
+                          deliverable=lambda d: isinstance(d.payload, dict))
+    assert [d.payload["title"] for d in ready] == ["colis"], ready
+    assert [d.payload for d in queue.peek()] == ["proactive"], "l'element non delivrable a quitte la file"
+    assert queue.peek()[0].queued_at == NOW, "l'element garde a ete rajeuni"
+    everything = queue.release(awake, policy, now=NOW + 60)
+    assert len(everything) == 1 and len(queue) == 0, "sans predicat, comportement d'origine"
+    return "le marqueur reste, avec son age ; sans predicat rien ne change"
+
+
 @check("expired items are dropped, not delivered late")
 def _queue_expiry():
     queue = DeferralQueue(max_age_s=3600)
