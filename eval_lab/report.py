@@ -16,6 +16,8 @@ CLASS_TITLE = {
     "jarvis-crash": "JARVIS a leve une exception",
     "jarvis-candidate": "Candidats bugs JARVIS (propriete ou relation du projet violee)",
     "legacy-regression": "Tests existants qui echouent",
+    "superseded-legacy": "Tests existants remplaces par une decision (corpus/decisions.json)",
+    "inconclusive": "INCONCLUSIVE — aucun oracle explicite, aucun comportement impose",
     "oracle-disputed": "Desaccords avec un oracle ecrit par le labo — a trancher",
     "unstable": "Instables",
     "known": "Deja connus (corpus de regression)",

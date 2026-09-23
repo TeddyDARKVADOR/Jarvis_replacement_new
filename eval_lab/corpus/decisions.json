@@ -1,0 +1,19 @@
+{
+ "about": "Decisions du proprietaire du projet qui changent ce que le labo considere vrai. Chaque entree est datee ; la retirer demande un commit qui dit pourquoi.",
+ "decisions": {
+  "D2026-09-23-2": "REG-0001 est un bug confirme ; correction apres le premier run Opus.",
+  "D2026-09-23-3": "La detection de voiture par sous-chaine dans les noms Bluetooth est incorrecte (REG-0002).",
+  "D2026-09-23-4": "Une livraison sans canal ni sink disponible n'est jamais consideree delivree.",
+  "D2026-09-23-5": "Augmenter la priorite ne rend jamais, a elle seule, la delivrance moins immediate ni moins intrusive ; exceptions explicites seulement.",
+  "D2026-09-23-6": "Cooldown des alertes IMPORTANT : INCONCLUSIVE, aucun comportement impose sans oracle explicite.",
+  "D2026-09-23-7": "OFFLINE_DEVICE_MUST_NOT_BE_SELECTED devient une propriete ; pas de modification du code pour autant."
+ },
+ "superseded_legacy": {
+  "policy-a55c99407f53": {
+   "legacy_ref": "context/selftest.py :: no audio output -> notification instead of speech",
+   "property": "NO_DELIVERY_WITHOUT_SINK",
+   "decision": "D2026-09-23-4",
+   "why": "Le test attend NOTIFY avec route NONE ; la decision 4 dit qu'aucun sink n'existe alors. A reecrire avec la correction de JARVIS, dans le meme commit."
+  }
+ }
+}

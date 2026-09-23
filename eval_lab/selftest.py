@@ -128,10 +128,20 @@ def _legacy_pass():
     assert len(ids) == len(set(ids)), "doublons dans le corpus legacy"
     face = sum(1 for s in items if s["surface"] == "face")
     assert face == 1632, f"{face} situations visage, attendu 1632"
+    from eval_lab.triage import superseded
+    sup = superseded()
+    recs = []
     with tempfile.TemporaryDirectory() as tmp:
-        summary = run(items, Path(tmp) / "r.jsonl", resume=False)
-    assert summary.counts["PASS"] == len(items), summary.line()
-    return f"{len(items)} PASS dont 1632 visage"
+        run(items, Path(tmp) / "r.jsonl", resume=False, on_result=lambda s, r: recs.append(r))
+    bad = [r["id"] for r in recs if r["verdict"] != "PASS" and r["id"] not in sup]
+    assert not bad, f"legacy en echec : {bad[:5]}"
+    for r in recs:
+        if r["id"] in sup:
+            props = {p.get("property") for p in r["problems"] if p["kind"] == "property"}
+            assert r["verdict"] == "FAIL" and props == {sup[r["id"]]["property"]}, \
+                f"{r['id']} devait echouer par {sup[r['id']]['property']} seulement : {props}"
+    return f"{len(items) - len(sup)} PASS dont 1632 visage ; {len(sup)} remplace(s) par decision, " \
+        "en echec par sa seule propriete"
 
 
 # Each fault: a patch applied in a subprocess, then the OLD test and the NEW
@@ -166,8 +176,10 @@ _NEW = """{patch}
 import json, sys, tempfile
 from pathlib import Path
 from eval_lab.runner import load_jsonl, run
+from eval_lab.triage import superseded
+sup = superseded()   # already failing by decision: would make FAIL>0 trivially true
 items = [s for f in sorted(Path('eval_lab/corpus/legacy').glob('*.jsonl')) for s in load_jsonl(f)
-         if s['surface'] in {surfaces!r}]
+         if s['surface'] in {surfaces!r} and s['id'] not in sup]
 with tempfile.TemporaryDirectory() as tmp:
     out = Path(tmp) / 'r.jsonl'
     summary = run(items, out, resume=False)
@@ -283,14 +295,29 @@ def _crash_vs_infra():
     return "exception dans resolve -> CRASH ; exception dans la surface -> INFRA"
 
 
-@check("a soft property warns, it never fails")
-def _soft():
-    s = sc.make("policy", world={"force": {"situation": "ACTIVE", "route": "NONE"}},
-                stimulus={"priority": "IMPORTANT"}, expected={"channel": "NOTIFY"})
-    r = run_one(s)
-    warns = [p for p in r["problems"] if p["kind"] == "warning"]
-    assert r["verdict"] == "PASS" and warns, r
-    return f"PASS + {warns[0]['property']}"
+@check("the owner's decisions are wired: hard where decided, INCONCLUSIVE where not")
+def _decisions():
+    from eval_lab.properties import DECISIONS, REGISTRY
+    cited = " ".join(p.source for p in REGISTRY.values())
+    uncited = [d for d in DECISIONS if d not in cited]
+    assert not uncited, f"decisions sans propriete : {uncited}"
+    # 4 : no sink, no delivery
+    no_sink = run_one(sc.make("policy", world={"force": {"situation": "ACTIVE", "route": "NONE"}},
+                              stimulus={"priority": "IMPORTANT"}, oracle="implicit"))
+    assert no_sink["verdict"] == "FAIL" and "NO_DELIVERY_WITHOUT_SINK" in str(no_sink["problems"])
+    # 5 : the cooldown inversion found by the fuzzer is now a failure
+    inv = run_one(sc.make("policy", world={"phone": {"age_s": 0, "screen_on": True, "headset": True},
+                                           "delivered": [{"priority": "IMPORTANT", "ago_s": 60}]},
+                          stimulus={"priority": "USEFUL"}, oracle="implicit"))
+    assert inv["verdict"] == "FAIL" and "PRIORITY_MONOTONIC" in str(inv["problems"]), inv["problems"]
+    # 6 : a burst of spoken alerts is INCONCLUSIVE, never PASS, never FAIL
+    burst = run_one(sc.make("sequence", world={"phone": {"age_s": 0, "screen_on": True, "headset": True},
+                                                "system": {"desktop_audio": True}},
+                            events=[{"op": "alerts", "alerts": ["[MONITOR_ALERT] a\nHeadline: x",
+                                                                "[MONITOR_ALERT] b\nHeadline: y"]}],
+                            oracle="implicit"))
+    assert burst["verdict"] == "INCONCLUSIVE", (burst["verdict"], burst["problems"])
+    return "4 -> FAIL sans sink ; 5 -> inversion de priorite FAIL ; 6 -> rafale INCONCLUSIVE"
 
 
 @check("oracle operators mean what they say")

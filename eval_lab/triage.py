@@ -19,6 +19,10 @@ CLASSIFICATION — whose problem is it
                         decides which.
     legacy-regression   a legacy scenario (an existing test) fails: either a
                         real regression, or the code changed on purpose.
+    superseded-legacy   a legacy scenario whose oracle a dated decision of the
+                        project owner has overruled (corpus/decisions.json):
+                        expected to fail until JARVIS and the old test change.
+    inconclusive        only an explicitly undecided property is involved.
     lab                 INFRA — the simulator, a surface, Node.
     generator           INVALID — a scenario that should not exist.
     unstable            the representative does not reproduce identically.
@@ -41,8 +45,17 @@ from pathlib import Path
 from . import scenario as sc
 
 
+DECISIONS_FILE = Path(__file__).resolve().parent / "corpus" / "decisions.json"
+
+
+def superseded() -> dict:
+    if not DECISIONS_FILE.exists():
+        return {}
+    return json.loads(DECISIONS_FILE.read_text(encoding="utf-8")).get("superseded_legacy", {})
+
+
 def _first(rec: dict) -> dict | None:
-    order = {"property": 0, "relation": 1, "expected": 2, "forbidden": 3, "infra": 4}
+    order = {"property": 0, "relation": 1, "expected": 2, "forbidden": 3, "infra": 4, "inconclusive": 5}
     probs = [p for p in rec.get("problems") or [] if p["kind"] in order]
     return min(probs, key=lambda p: order[p["kind"]]) if probs else None
 
@@ -84,6 +97,11 @@ def classify(rec: dict, s: dict | None, known: set[str]) -> str:
         return "lab"
     if v == "INVALID":
         return "generator"
+    if v == "INCONCLUSIVE":
+        return "inconclusive"
+    sup = superseded().get((s or {}).get("id") or rec["id"])
+    if sup and sup["property"] in {p.get("property") for p in rec.get("problems") or []}:
+        return "superseded-legacy"
     kinds = {p["kind"] for p in rec.get("problems") or []}
     if kinds & {"property", "relation"}:
         return "jarvis-candidate"

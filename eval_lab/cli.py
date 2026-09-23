@@ -85,7 +85,7 @@ def cmd_run(args) -> int:
         (RUNS / args.run / "coverage.json").write_text(json.dumps(meta["coverage"], indent=1), encoding="utf-8")
     print(f"  {summary.line()}")
     print(f"  -> {out.relative_to(REPO)}  ({meta['bytes'] / 2 ** 20:.1f} Mo, pic {meta['peak_mb']} Mo)")
-    bad = summary.counts["FAIL"] + summary.counts["CRASH"] + summary.counts["INFRA"] + summary.counts["INVALID"]
+    bad = summary.counts["FAIL"] + summary.counts["CRASH"] + summary.counts["INFRA"] + summary.counts["INVALID"]  # INCONCLUSIVE is not bad
     return 1 if bad else 0
 
 

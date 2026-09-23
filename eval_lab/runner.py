@@ -11,6 +11,9 @@ THE VERDICTS, AND WHOSE PROBLEM EACH ONE IS
               The generator's problem. JARVIS never ran.
     INFRA     the lab itself broke (simulator, Node, a surface). The lab's
               problem. Counted apart so it can never inflate FAIL.
+    INCONCLUSIVE  only a property the project has explicitly left undecided
+              is involved (properties.py, strength "inconclusive"). No
+              behaviour is imposed; the trial is neither PASS nor FAIL.
 
     A scenario is judged in that order, and the first applicable verdict
     wins: an invalid scenario is never "also" a failure.
@@ -33,7 +36,7 @@ from pathlib import Path
 from . import scenario as sc
 from .world import SutCrash
 
-VERDICTS = ("PASS", "FAIL", "CRASH", "INVALID", "INFRA")
+VERDICTS = ("PASS", "FAIL", "INCONCLUSIVE", "CRASH", "INVALID", "INFRA")
 
 
 @dataclass
@@ -63,6 +66,8 @@ def verdict_of(problems: list[dict]) -> str:
         return "INFRA"
     if kinds & {"expected", "forbidden", "property", "relation"}:
         return "FAIL"
+    if "inconclusive" in kinds:
+        return "INCONCLUSIVE"
     return "PASS"
 
 
