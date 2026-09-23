@@ -1,0 +1,3 @@
+# Only for `python -m eval_lab llm`. JARVIS never needs it; the rest of the lab
+# (generation, runs, triage, replay of a recorded cassette) runs without it.
+anthropic

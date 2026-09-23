@@ -27,6 +27,7 @@ WHY THE REASONS ARE RETURNED
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -100,10 +101,19 @@ def time_state(now: datetime | None = None, th: Thresholds | None = None) -> Tim
 
 
 def _looks_like_car(names: list[str], patterns: list[str]) -> str:
+    """A pattern counts only as a whole word of the device name.
+
+    A substring match took "Oscar's AirPods" for a car ("car" in "oscar"),
+    and "Bose SyncBuds" too — and DRIVING outranks sleep and meetings, so the
+    headset made JARVIS speak at 3 a.m. and in meetings (REG-0002). Words are
+    delimited by anything that is not a letter or a digit, so "Peugeot CarKit",
+    "Ford SYNC", "Android Auto" and "My Car" still match.
+    """
     for name in names or []:
         low = str(name).lower()
         for pat in patterns:
-            if pat in low:
+            pat = str(pat).lower().strip()
+            if pat and re.search(rf"(?<![^\W_]){re.escape(pat)}(?![^\W_])", low):
                 return str(name)
     return ""
 

@@ -186,9 +186,7 @@ def resolve(
     proposed, if anything — it is treated exactly like a phrase in the text and
     validated the same way, never trusted on its own.
     """
-    hint = detect_hint(text)
-    if hint is None and model_hint:
-        hint = detect_hint(model_hint) or _parse_model_hint(model_hint)
+    hint = requested_hint(text, model_hint)
 
     # ── 1. EXPLICIT ──────────────────────────────────────────────────────────
     if hint is not None:
@@ -280,6 +278,19 @@ def resolve(
         rule="unknown-origin",
         question="Sur quel appareil : le PC ou le téléphone ?",
     )
+
+
+def requested_hint(text: str = "", model_hint: str = "") -> Hint | None:
+    """The target the user named — in the sentence first, else in what the
+    model passed on. None when nothing names a device.
+
+    Public because the router must know it BEFORE deciding whether the V1
+    local path applies: a named target is never replaced by local execution.
+    """
+    hint = detect_hint(text)
+    if hint is None and model_hint:
+        hint = detect_hint(model_hint) or _parse_model_hint(model_hint)
+    return hint
 
 
 def _parse_model_hint(raw: str) -> Hint | None:

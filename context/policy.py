@@ -164,6 +164,16 @@ class ProactivityPolicy:
             channel = Channel.DEFER
             why.append("reveil pour CRITIQUE desactive")
 
+        # UNKNOWN n'est pas "endormi", mais ce n'est pas non plus la preuve du
+        # contraire. La nuit, un telephone qui se tait (mise en veille) fait
+        # passer d'ASLEEP a UNKNOWN : sans cette regle, le silence de la nuit
+        # tombait avec lui et un IMPORTANT sonnait a 2 h. Seul CRITIQUE passe.
+        quiet = bool(getattr(snapshot.time, "quiet_hours", False))
+        if (situation is Situation.UNKNOWN and quiet and priority is not Priority.CRITICAL
+                and channel not in (Channel.DEFER, Channel.DROP)):
+            channel = Channel.DEFER
+            why.append("heures calmes, contexte inconnu -> differe")
+
         channel, why = self._apply_cooldown(priority, channel, now, why)
         channel, route, why = self._enforce_reality(channel, snapshot.route, why)
 
@@ -272,12 +282,18 @@ class DeferralQueue:
             self._items = self._items[-self._maxlen:]
 
     def release(self, snapshot: Snapshot, policy: ProactivityPolicy,
-                now: float | None = None) -> list[Deferred]:
+                now: float | None = None, deliverable=None) -> list[Deferred]:
         """Return everything the current situation would now let through.
 
         Re-runs the policy on each held item rather than assuming a deferred
         message is automatically deliverable later: waking up does not make a
         message deliverable if the user woke up in a meeting.
+
+        `deliverable(item) -> bool`, optional: what the CALLER can actually
+        deliver. Anything else stays held, with its original age. Without it a
+        caller that can only send notifications took the proactive check-in
+        marker out of the queue and dropped it (REG-0001): releasing is taking
+        responsibility, so only what can be honoured is released.
         """
         now = time.time() if now is None else now
         ready: list[Deferred] = []
@@ -285,6 +301,9 @@ class DeferralQueue:
         for item in self._items:
             if (now - item.queued_at) > self._max_age_s:
                 continue                      # perime : personne ne veut la meteo d'hier
+            if deliverable is not None and not deliverable(item):
+                keep.append(item)
+                continue
             decision = policy.decide(item.priority, snapshot, now=now)
             if decision.channel in (Channel.DROP, Channel.DEFER):
                 keep.append(item)
