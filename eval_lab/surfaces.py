@@ -124,6 +124,16 @@ def run_policy(s: dict) -> dict:
         d = sut("policy.decide", policy.decide, Priority(s["stimulus"]["priority"]), snap, clock.epoch)
         out = _snap_trace(snap)
         out.update(_decision_trace(d))
+        # The same world, all four priorities, each on a fresh policy with the
+        # same history: what "raising the priority alone" does (decision 5).
+        ladder = {}
+        for p in Priority:
+            fresh = _policy(world)
+            for h in world.get("delivered") or []:
+                fresh.note_delivered(Priority(h["priority"]), clock.epoch - float(h["ago_s"]))
+            dp = sut("policy.decide", fresh.decide, p, snap, clock.epoch)
+            ladder[p.value] = {"channel": dp.channel.value, "reason": dp.reason}
+        out["ladder"] = ladder
         return out
 
 

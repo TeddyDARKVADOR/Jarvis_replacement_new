@@ -57,6 +57,32 @@ def _commit() -> str:
         return "?"
 
 
+def _fps(value) -> list[str]:
+    """A manifest entry: one fingerprint (the original format) or several."""
+    return sorted(value) if isinstance(value, list) else [value]
+
+
+def _write(items: list[dict], reg_id: str) -> None:
+    man = manifest()
+    DIR.mkdir(parents=True, exist_ok=True)
+    with CORPUS.open("a", encoding="utf-8", newline="\n") as fh:
+        for s in items:
+            fh.write(sc.dumps(s) + "\n")
+    fps = sorted(sc.fingerprint(s) for s in items)
+    man[reg_id] = fps[0] if len(fps) == 1 else fps
+    MANIFEST.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+
+
+def _stamp(s: dict, reg: dict) -> dict:
+    s = json.loads(json.dumps(s))
+    s["source"] = "regression"
+    s["family"] = f"regression.{reg['id']}"
+    s["lineage"]["regression"] = reg
+    sc.restamp(s)
+    sc.validate(s)
+    return s
+
+
 def promote(cluster: dict, *, title: str, component: str, run: str, status: str = "open") -> dict:
     """Write the cluster's minimal reproducer into the regression corpus."""
     if status not in ("open", "fixed"):
@@ -64,31 +90,47 @@ def promote(cluster: dict, *, title: str, component: str, run: str, status: str 
     s = cluster.get("minimal")
     if s is None:
         raise ValueError(f"{cluster['cluster']} n'a pas de reproducteur minimal")
-    items, man = load(), manifest()
-    if cluster["signature"] in {x["lineage"]["regression"]["signature"] for x in items}:
+    if cluster["signature"] in known_signatures():
         raise ValueError("cette signature est deja une regression")
-    reg_id = f"REG-{len(man) + 1:04d}"
-    s = json.loads(json.dumps(s))
-    s["source"] = "regression"
-    s["family"] = f"regression.{reg_id}"
-    s["lineage"]["regression"] = {
+    reg_id = f"REG-{len(manifest()) + 1:04d}"
+    s = _stamp(s, {
         "id": reg_id, "status": status, "signature": cluster["signature"], "title": title,
         "component": component, "first_invariant": cluster.get("first_invariant"),
         "discovered": {"commit": _commit(), "date": _dt.date.today().isoformat(), "run": run,
                        "cluster": cluster["cluster"], "cluster_size": cluster["size"]},
-    }
-    sc.restamp(s)
-    sc.validate(s)
-    DIR.mkdir(parents=True, exist_ok=True)
-    with CORPUS.open("a", encoding="utf-8", newline="\n") as fh:
-        fh.write(sc.dumps(s) + "\n")
-    man[reg_id] = sc.fingerprint(s)
-    MANIFEST.write_text(json.dumps(man, indent=1, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    })
+    _write([s], reg_id)
     return s
 
 
+def add_decided(scenarios: list[dict], *, title: str, component: str, decision: str,
+                status: str = "open") -> list[dict]:
+    """A regression the project owner decided directly, one or more scenarios.
+
+    Each scenario carries the CORRECT behaviour as its oracle, so an open one
+    fails today with a signature recorded now; the day it passes, `check`
+    says "fixed?".
+    """
+    from .runner import run_one
+    from .triage import signature
+    reg_id = f"REG-{len(manifest()) + 1:04d}"
+    out = []
+    for s in scenarios:
+        rec = run_one(s)
+        if status == "open" and rec["verdict"] == "PASS":
+            raise ValueError(f"{s['id']} passe deja : ce n'est pas une regression ouverte")
+        out.append(_stamp(s, {
+            "id": reg_id, "status": status, "signature": signature(rec), "title": title,
+            "component": component, "first_invariant": None, "decision": decision,
+            "discovered": {"commit": _commit(), "date": _dt.date.today().isoformat(),
+                           "run": None, "cluster": None, "cluster_size": None},
+        }))
+    _write(out, reg_id)
+    return out
+
+
 def check() -> list[dict]:
-    """Run every regression and say what its status implies."""
+    """Run every regression scenario and say what its status implies."""
     from .runner import _run_face, run_one
     from .triage import signature
     out = []
@@ -97,12 +139,15 @@ def check() -> list[dict]:
         rec = _run_face([s])[0] if s["surface"] == "face" else run_one(s)
         same = rec["verdict"] != "PASS" and signature(rec) == reg["signature"]
         if reg["status"] == "open":
-            state = "open (still failing)" if same else \
-                "fixed? (passes now - confirm, then set status fixed)" if rec["verdict"] == "PASS" else \
-                "open, but fails DIFFERENTLY - look"
+            if same:
+                state = "open (still failing)"
+            elif rec["verdict"] == "PASS":
+                state = "fixed? (passes now - confirm, then set status fixed)"
+            else:
+                state = "open, but fails DIFFERENTLY - look"
         else:
             state = "ok (stays fixed)" if rec["verdict"] == "PASS" else "REGRESSED"
-        out.append({"id": reg["id"], "title": reg["title"], "status": reg["status"],
+        out.append({"id": reg["id"], "scenario": s["id"], "title": reg["title"], "status": reg["status"],
                     "verdict": rec["verdict"], "state": state})
     return out
 
@@ -110,19 +155,21 @@ def check() -> list[dict]:
 def check_manifest(committed: dict | None) -> list[str]:
     """Problems with the corpus vs. its manifest (and vs. the committed one)."""
     problems = []
-    items = {s["lineage"]["regression"]["id"]: s for s in load()}
+    by_id: dict[str, list[str]] = {}
+    for s in load():
+        by_id.setdefault(s["lineage"]["regression"]["id"], []).append(sc.fingerprint(s))
     man = manifest()
     for reg_id, fp in man.items():
-        if reg_id not in items:
+        if reg_id not in by_id:
             problems.append(f"{reg_id} dans le manifeste mais absent du corpus")
-        elif sc.fingerprint(items[reg_id]) != fp:
-            problems.append(f"{reg_id} : le scenario a change depuis sa promotion")
-    for reg_id in items:
+        elif sorted(by_id[reg_id]) != _fps(fp):
+            problems.append(f"{reg_id} : un scenario a change depuis sa promotion")
+    for reg_id in by_id:
         if reg_id not in man:
             problems.append(f"{reg_id} dans le corpus mais absent du manifeste")
     for reg_id, fp in (committed or {}).items():
         if reg_id not in man:
             problems.append(f"{reg_id} a disparu du manifeste depuis le dernier commit")
-        elif man[reg_id] != fp:
+        elif _fps(man[reg_id]) != _fps(fp):
             problems.append(f"{reg_id} : empreinte modifiee depuis le dernier commit")
     return problems

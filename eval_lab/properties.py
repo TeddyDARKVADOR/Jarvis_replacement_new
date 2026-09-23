@@ -11,24 +11,47 @@ EACH PROPERTY CITES ITS SOURCE
     with no source in the project would be the lab's opinion, and a failure
     against it would be a disagreement, not a bug.
 
-HARD AND SOFT
-    hard  the promise is explicit. A violation makes the trial FAIL.
-    soft  the code suggests it, but the project has not decided. A violation
-          is recorded as a WARNING on a passing trial and goes to the report
-          under "a trancher" — it is never counted as a bug by itself. Turning
-          a soft property hard is a human decision, taken in this file.
+HARD, SOFT, INCONCLUSIVE
+    hard          the promise is explicit — in the code, its documentation, or
+                  a dated decision of the project owner (DECISIONS below). A
+                  violation makes the trial FAIL.
+    soft          the code suggests it, the project has not decided. A WARNING
+                  on a passing trial, "a trancher" in the report.
+    inconclusive  the project decided NOT to decide yet: no explicit oracle
+                  exists. The trial is INCONCLUSIVE — never PASS, never FAIL,
+                  never a behaviour the lab imposes.
+    Changing a strength is a human decision, taken in this file, dated.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
+
+# Decisions of the project owner that turned a suggestion into a promise, or
+# explicitly refused to. Cited by the properties they govern.
+DECISIONS = {
+    "D2026-09-23-4": "une livraison sans canal ni sink disponible n'est jamais consideree delivree",
+    "D2026-09-23-5": "augmenter la priorite ne rend jamais, a elle seule, la delivrance moins "
+                     "immediate ni moins intrusive ; exceptions explicites seulement",
+    "D2026-09-23-6": "cooldown des alertes IMPORTANT : INCONCLUSIVE, pas d'oracle explicite",
+    "D2026-09-23-7": "un appareil hors ligne ne doit jamais etre selectionne (a verifier, "
+                     "pas encore de modification du code)",
+}
+
+# Exceptions to D2026-09-23-5, each with the line of the specification that
+# makes it one. Empty: no cooldown, override or setting is an exception today.
+MONOTONIC_EXCEPTIONS: dict[str, str] = {}
+
+INTRUSION = {"DROP": 0, "DEFER": 1, "NOTIFY_SILENT": 2, "NOTIFY": 3, "VOICE": 4, "INTERRUPT": 5}
+PRIO_ORDER = ["TRIVIAL", "USEFUL", "IMPORTANT", "CRITICAL"]
 
 
 @dataclass(frozen=True)
 class Property:
     name: str
     surfaces: tuple[str, ...]
-    strength: str            # hard | soft
+    strength: str            # hard | soft | inconclusive
     source: str
     fn: Callable[[dict, dict], str | None]
 
@@ -123,12 +146,36 @@ def _critical_cooldown(s, t):
     return None
 
 
-@prop("NO_DELIVERY_CHANNEL_WITHOUT_ROUTE", ("policy",), "soft",
-      "context/policy.py _enforce_reality — NOTIFY sans client joignable -> DEFER ; "
-      "mais VOICE sans sortie -> NOTIFY s'arrete la, meme quand route=NONE")
-def _no_route(s, t):
-    if t.get("route") == "NONE" and t.get("channel") in ("VOICE", "INTERRUPT", "NOTIFY", "NOTIFY_SILENT"):
-        return f"{t.get('channel')} alors que route=NONE (aucune sortie, aucun client ?)"
+_DELIVERING = ("VOICE", "INTERRUPT", "NOTIFY", "NOTIFY_SILENT")
+
+
+@prop("NO_DELIVERY_WITHOUT_SINK", ("policy", "sequence"), "hard",
+      "D2026-09-23-4 ; context/policy.py _enforce_reality : NOTIFY sans client joignable -> DEFER")
+def _no_sink(s, t):
+    if s["surface"] == "policy":
+        rows = [t]
+    else:
+        rows = [st for st in t.get("steps") or [] if st.get("op") == "decide"]
+    for st in rows:
+        if st.get("route") == "NONE" and st.get("channel") in _DELIVERING:
+            return f"{st.get('priority')} -> {st.get('channel')} alors qu'aucune sortie ni client (route NONE)"
+        if st.get("delivered") and st.get("route") == "NONE":
+            return "marque delivre alors qu'aucun sink n'existait"
+    return None
+
+
+@prop("PRIORITY_MONOTONIC", ("policy",), "hard",
+      "D2026-09-23-5 ; context/policy.py table (monotone par ligne)")
+def _monotonic(s, t):
+    ladder = t.get("ladder") or {}
+    for lo, hi in zip(PRIO_ORDER, PRIO_ORDER[1:]):
+        a, b = ladder.get(lo), ladder.get(hi)
+        if a is None or b is None or INTRUSION[b["channel"]] >= INTRUSION[a["channel"]]:
+            continue
+        why = b.get("reason", "")
+        if any(k in why for k in MONOTONIC_EXCEPTIONS):
+            continue
+        return f"{hi} -> {b['channel']} moins intrusif que {lo} -> {a['channel']} ({why})"
     return None
 
 
@@ -153,8 +200,8 @@ def _bounded(s, t):
     return None
 
 
-@prop("ALERT_BURST_RESPECTS_COOLDOWN", ("sequence",), "soft",
-      "context/policy.py _COOLDOWN_S IMPORTANT=900 s ; server/alerts.py n'appelle jamais note_delivered")
+@prop("ALERT_BURST_RESPECTS_COOLDOWN", ("sequence",), "inconclusive",
+      "D2026-09-23-6 ; context/policy.py _COOLDOWN_S IMPORTANT=900 s ; server/alerts.py n'appelle jamais note_delivered")
 def _burst(s, t):
     for i, step in enumerate(t.get("steps") or []):
         if step.get("op") == "alerts" and len(step.get("spoken") or []) > 1:
@@ -173,8 +220,8 @@ def _named(s, t):
     return None
 
 
-@prop("CHOSEN_DEVICE_IS_ONLINE", ("routing",), "hard",
-      "server/targeting.py regle 1 — hors ligne -> UNAVAILABLE")
+@prop("OFFLINE_DEVICE_MUST_NOT_BE_SELECTED", ("routing",), "hard",
+      "D2026-09-23-7 ; server/targeting.py regle 1 — hors ligne -> UNAVAILABLE")
 def _online(s, t):
     if t.get("kind") == "device" and t.get("device") not in (t.get("online") or []):
         return f"{t.get('device')} choisi alors qu'il est hors ligne"
@@ -309,6 +356,7 @@ def check_all(s: dict, trace: dict) -> list[dict]:
             msg = None
             out.append({"kind": "infra", "property": p.name, "got": f"{type(e).__name__}: {e}"})
         if msg:
-            out.append({"kind": "property" if p.strength == "hard" else "warning",
+            kind = {"hard": "property", "soft": "warning", "inconclusive": "inconclusive"}[p.strength]
+            out.append({"kind": kind,
                         "property": p.name, "got": msg, "source": p.source})
     return out

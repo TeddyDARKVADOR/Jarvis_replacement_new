@@ -29,8 +29,7 @@ from typing import Callable
 from . import space
 from .scenario import restamp
 
-INTRUSION = {"DROP": 0, "DEFER": 1, "NOTIFY_SILENT": 2, "NOTIFY": 3, "VOICE": 4, "INTERRUPT": 5}
-PRIO_ORDER = ["TRIVIAL", "USEFUL", "IMPORTANT", "CRITICAL"]
+from .properties import INTRUSION, MONOTONIC_EXCEPTIONS, PRIO_ORDER
 
 # ── knobs ────────────────────────────────────────────────────────────────────
 
@@ -247,13 +246,14 @@ def _r_wake(p, c, s):
     return None
 
 
-@relation("PRIORITY_RAISE_NEVER_LESS_INTRUSIVE", "soft",
-          "context/policy.py table (monotone par ligne) ; les cooldowns sont par niveau",
+@relation("PRIORITY_RAISE_NEVER_LESS_INTRUSIVE", "hard",
+          "D2026-09-23-5 (properties.DECISIONS) ; context/policy.py table (monotone par ligne)",
           lambda m: m["path"] == "stimulus.priority")
 def _r_monotone(p, c, s):
     a, b = PRIO_ORDER.index(p.get("priority")), PRIO_ORDER.index(c.get("priority"))
     lo, hi = (p, c) if a < b else (c, p)
-    if INTRUSION[hi["channel"]] < INTRUSION[lo["channel"]]:
+    if INTRUSION[hi["channel"]] < INTRUSION[lo["channel"]] and not any(
+            k in hi.get("reason", "") for k in MONOTONIC_EXCEPTIONS):
         return (f"{hi['priority']} -> {hi['channel']} moins intrusif que "
                 f"{lo['priority']} -> {lo['channel']} ({hi.get('reason', '')})")
     return None
