@@ -672,6 +672,48 @@ def _real_guard():
     return f"genere -> INVALID ; {len(suite)} scenarios humains valides, 0 execute"
 
 
+@check("a 400 is reported in the API's words, and a refused output format falls back once")
+def _provider_400():
+    try:
+        import anthropic
+        import httpx2
+    except ImportError:
+        return "SDK absent : non verifie ici"
+    from types import SimpleNamespace
+    from eval_lab.llm import AnthropicProvider
+
+    def bad(msg):
+        req = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+        resp = httpx2.Response(400, request=req, headers={"request-id": "req_test"})
+        return anthropic.BadRequestError(msg, response=resp,
+                                         body={"error": {"type": "invalid_request_error", "message": msg}})
+
+    ok = SimpleNamespace(stop_reason="end_turn", usage={"input_tokens": 1, "output_tokens": 1},
+                         content=[SimpleNamespace(type="text", text='Voici :\n```json\n{"scenarios": []}\n```')])
+    p = AnthropicProvider.__new__(AnthropicProvider)
+    p._anthropic, p.model, p.effort, p.structured, p.notes = anthropic, "m", "high", True, []
+    calls = []
+
+    def fake_call(system, user, schema):
+        calls.append(p.structured)
+        if p.structured:
+            raise bad("output_config.format: structured outputs are not supported for this model")
+        return ok
+    p._call = fake_call
+    r = p.complete("s", "u")
+    assert calls == [True, False] and r["text"] == '{"scenarios": []}' and r["structured"] is False, (calls, r)
+    assert p.notes and "request-id req_test" in p.notes[0], p.notes
+    p2 = AnthropicProvider.__new__(AnthropicProvider)
+    p2._anthropic, p2.model, p2.effort, p2.structured, p2.notes = anthropic, "m", "high", True, []
+
+    def other(system, user, schema):
+        raise bad("max_tokens: must be at most 8192")
+    p2._call = other
+    r2 = p2.complete("s", "u")
+    assert r2["error"] == "http_400" and "max_tokens: must be at most" in r2["detail"] and p2.structured, r2
+    return "format refuse -> une bascule, JSON extrait ; autre 400 -> message de l'API conserve"
+
+
 def main() -> int:
     # Redirected on Windows, stdout is cp1252: an arrow in a detail must not
     # turn a green run into a crash (server/selftest.py has exactly that bug).

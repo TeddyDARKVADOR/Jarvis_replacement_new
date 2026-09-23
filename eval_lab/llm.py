@@ -126,35 +126,102 @@ class AnthropicProvider:
         # sensitive work, so it is set explicitly. Thinking cannot be disabled
         # on this model and is left to its adaptive default.
         self.effort = effort
+        # Structured outputs (output_config.format) are guaranteed JSON. If the
+        # model refuses the parameter (a 400 naming the format), the provider
+        # switches ONCE to "schema in the prompt" and says so: the text is then
+        # parsed leniently, and everything still goes through the same
+        # validators — nothing downstream is relaxed.
+        self.structured = True
+        self.notes: list[str] = []
+
+    def _call(self, system: str, user: str, schema: dict):
+        config = {"effort": self.effort}
+        if self.structured:
+            config["format"] = {"type": "json_schema", "schema": schema}
+        else:
+            user = (user + "\n\nREPONDS UNIQUEMENT par un objet JSON conforme a ce schema, sans texte "
+                    "autour :\n" + json.dumps(schema, ensure_ascii=False))
+        return self.client.messages.create(
+            model=self.model,
+            max_tokens=16000,
+            # The large static part (JARVIS description, vocabulary, examples)
+            # is identical on every call: cached once, read at $0.20/M
+            # afterwards. Nothing volatile precedes it.
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user}],
+            output_config=config,
+        )
+
+    @staticmethod
+    def _detail(e) -> str:
+        """The API's own words — a bare status code explains nothing."""
+        body = getattr(e, "body", None)
+        msg = (body.get("error", {}).get("message") if isinstance(body, dict) else None) \
+            or getattr(e, "message", None) or str(e)
+        rid = getattr(getattr(e, "response", None), "headers", {}).get("request-id", "")
+        return f"{msg} (request-id {rid})" if rid else str(msg)
 
     def complete(self, system: str, user: str, schema: dict | None = None) -> dict:
         a = self._anthropic
         schema = schema or OUTPUT_SCHEMA
-        try:
-            r = self.client.messages.create(
-                model=self.model,
-                max_tokens=16000,
-                # The large static part (JARVIS description, vocabulary,
-                # examples) is identical on every call: cached once, read at
-                # $0.20/M afterwards. Nothing volatile precedes it.
-                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-                messages=[{"role": "user", "content": user}],
-                output_config={"effort": self.effort,
-                               "format": {"type": "json_schema", "schema": schema}},
-            )
-        except a.RateLimitError as e:
-            return {"error": "rate_limit", "detail": str(e)[:200]}
-        except a.APIStatusError as e:
-            return {"error": f"http_{e.status_code}", "detail": str(e)[:200]}
-        except a.APIConnectionError as e:
-            return {"error": "network", "detail": str(e)[:200]}
+        for attempt in (1, 2):
+            try:
+                r = self._call(system, user, schema)
+                break
+            except a.RateLimitError as e:
+                return {"error": "rate_limit", "detail": self._detail(e)}
+            except a.BadRequestError as e:
+                detail = self._detail(e)
+                about_format = any(w in detail.lower() for w in
+                                   ("output_config", "format", "json_schema", "structured"))
+                if attempt == 1 and self.structured and about_format:
+                    self.structured = False
+                    self.notes.append(f"sorties structurees refusees par {self.model} : {detail} "
+                                      "-> schema dans le prompt")
+                    continue
+                return {"error": "http_400", "detail": detail}
+            except a.APIStatusError as e:
+                return {"error": f"http_{e.status_code}", "detail": self._detail(e)}
+            except a.APIConnectionError as e:
+                return {"error": "network", "detail": str(e)[:300]}
         usage = r.usage.to_dict() if hasattr(r.usage, "to_dict") else dict(r.usage)
         if r.stop_reason == "refusal":
-            return {"error": "refusal", "usage": usage}
+            return {"error": "refusal", "usage": usage, "detail": str(getattr(r, "stop_details", ""))}
         if r.stop_reason == "max_tokens":
             return {"error": "max_tokens", "usage": usage}
         text = next((b.text for b in r.content if b.type == "text"), "")
-        return {"text": text, "usage": usage, "request_id": getattr(r, "_request_id", None)}
+        if not self.structured:
+            text = extract_json(text)
+        return {"text": text, "usage": usage, "request_id": getattr(r, "_request_id", None),
+                "structured": self.structured}
+
+
+def extract_json(text: str) -> str:
+    """The outermost JSON object in a free-text answer (fences, prose around it).
+    Returns the text unchanged when there is none: intake then files it as
+    unparseable, which is the honest outcome."""
+    start = text.find("{")
+    if start < 0:
+        return text
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        elif ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return text
 
 
 class Cassette:
@@ -402,12 +469,13 @@ def campaign(provider, *, mode: str, batches: int, per_batch: int, seed_corpus: 
             with Path(transcript).open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps({"batch": b, "system_sha": Cassette.key(system, ""), "user": user,
                                      "response": resp.get("text"), "error": resp.get("error"),
+                                     "detail": resp.get("detail"), "structured": resp.get("structured"),
                                      "usage": resp.get("usage"), "replayed": bool(resp.get("replayed")),
                                      "request_id": resp.get("request_id")}, ensure_ascii=False) + "\n")
         if "error" in resp:
             usage.failures += 1
             consecutive_errors += 1
-            log(f"  lot {b} : {resp['error']}")
+            log(f"  lot {b} : {resp['error']} — {resp.get('detail') or 'sans detail'}")
             if consecutive_errors >= 3:
                 log("  3 erreurs de suite — arret, rien n'est perdu (cassette + resultats)")
                 break
