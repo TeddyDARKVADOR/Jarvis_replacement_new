@@ -289,6 +289,8 @@ def cmd_llm(args) -> int:
         usage, total = campaign(provider, mode=args.mode, batches=args.batches, per_batch=args.per_batch,
                                 seed_corpus=seeds, known=known_desc, max_usd=args.max_usd, sink=sink,
                                 transcript=run_dir / "transcript.jsonl")
+    for note in getattr(inner, "notes", []):
+        print(f"  NOTE : {note}")
     rng = random.Random(0)
     fronts = {s["id"]: frontier(s, rng) for s in failing[:args.frontiers]}
     (run_dir / "frontiers.json").write_text(json.dumps(fronts, ensure_ascii=False, indent=1), encoding="utf-8")
