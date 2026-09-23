@@ -394,6 +394,10 @@ def cmd_regressions(args) -> int:
             r = s["lineage"]["regression"]
             print(f"  {r['id']} [{r['status']}] {r['title']}  ({r['component']}, decouvert {r['discovered']['commit']})")
         return 0
+    if args.action == "set-status":
+        n = rg.set_status(args.id, args.status, commit=args.commit)
+        print(f"  {args.id} -> {args.status} ({n} scenario(s))")
+        return 0
     if args.action == "check":
         rows = rg.check()
         for r in rows:
@@ -494,7 +498,9 @@ def build_parser() -> argparse.ArgumentParser:
     tr.set_defaults(fn=cmd_triage)
 
     rg = sub.add_parser("regressions", help="corpus de regression : list | check | promote")
-    rg.add_argument("action", choices=["list", "check", "promote"])
+    rg.add_argument("action", choices=["list", "check", "promote", "set-status"])
+    rg.add_argument("--id")
+    rg.add_argument("--commit", default=None, help="commit du correctif (set-status fixed)")
     rg.add_argument("--run", default="latest")
     rg.add_argument("--cluster")
     rg.add_argument("--title", default="")
