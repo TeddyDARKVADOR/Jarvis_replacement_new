@@ -714,6 +714,25 @@ def _provider_400():
     return "format refuse -> une bascule, JSON extrait ; autre 400 -> message de l'API conserve"
 
 
+@check("frontier search finds lines on router and sequence scenarios")
+def _frontiers():
+    import random
+    from eval_lab.mutate import frontier
+    r = sc.make("router", tier="full", oracle="implicit",
+                world={"devices": [{"id": "pc", "type": "pc", "caps": ["open_app"]},
+                                   {"id": "tel", "type": "android", "caps": []}],
+                       "turn": {"origin": "tel", "text": "ouvre sur mon telephone", "ago_s": 3},
+                       "local_tools": ["open_app"]},
+                stimulus={"tool": "open_app", "parameters": {}})
+    q = sc.make("sequence", oracle="implicit", world={"phone": {"age_s": 0, "screen_on": True}},
+                events=[{"op": "decide", "priority": "USEFUL", "push_if_deferred": True},
+                        {"op": "advance", "s": 10}, {"op": "decide", "priority": "IMPORTANT"}])
+    fr_r, fr_q = frontier(r, random.Random(0), 40), frontier(q, random.Random(0), 40)
+    assert fr_r and any("executed_on" in x["changed"] for x in fr_r), fr_r
+    assert fr_q and any("channels" in x["changed"] for x in fr_q), fr_q
+    return f"router {len(fr_r)} frontieres, sequence {len(fr_q)}"
+
+
 def main() -> int:
     # Redirected on Windows, stdout is cp1252: an arrow in a detail must not
     # turn a green run into a crash (server/selftest.py has exactly that bug).

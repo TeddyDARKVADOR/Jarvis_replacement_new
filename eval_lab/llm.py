@@ -395,10 +395,14 @@ class Intake:
     stale: int = 0              # valid but brings nothing new
     accepted: list = field(default_factory=list)
     reasons: dict = field(default_factory=dict)
+    # Every rejected proposal, verbatim, with its full reason: a count of
+    # invalid scenarios says nothing about what the model got wrong.
+    rejected: list = field(default_factory=list)
 
-    def reject(self, bucket: str, why: str) -> None:
+    def reject(self, bucket: str, why: str, item=None, batch=None) -> None:
         setattr(self, bucket, getattr(self, bucket) + 1)
         self.reasons[why[:80]] = self.reasons.get(why[:80], 0) + 1
+        self.rejected.append({"bucket": bucket, "reason": why, "batch": batch, "proposal": item})
 
 
 def intake(text: str, *, mode: str, batch: int, cov, seen: set, min_novelty: float = 0.02) -> Intake:
@@ -418,7 +422,7 @@ def intake(text: str, *, mode: str, batch: int, cov, seen: set, min_novelty: flo
             if not all(isinstance(x, dict) for x in (world, stimulus, claim)) or not isinstance(events, list):
                 raise ValueError("types")
         except (ValueError, KeyError, TypeError) as e:
-            out.reject("unparseable", f"JSON interne : {e}")
+            out.reject("unparseable", f"JSON interne : {e}", it, batch)
             continue
         s = sc.make(it["surface"], world=world, stimulus=stimulus, events=events,
                     tier=sc.SURFACE_TIER.get(it["surface"], "fast"),
@@ -431,17 +435,17 @@ def intake(text: str, *, mode: str, batch: int, cov, seen: set, min_novelty: flo
         try:
             sc.validate(s)
         except sc.Invalid as e:
-            out.reject("invalid", "; ".join(e.args[0])[:80])
+            out.reject("invalid", "; ".join(e.args[0]), it, batch)
             continue
         if s["id"] in seen:
-            out.reject("duplicate", "deja vu")
+            out.reject("duplicate", "deja vu", it, batch)
             continue
         seen.add(s["id"])
         from .coverage import features
         f = features(s)
         novelty = sum(1 for x in f if x not in cov.seen) / max(1, len(f))
         if novelty < min_novelty and mode == "generate":
-            out.reject("stale", "rien de nouveau")
+            out.reject("stale", "rien de nouveau", it, batch)
             continue
         # Novelty against everything seen when it arrived (the 1 709 + what the
         # model already proposed). Not part of the id: provenance, not content.
@@ -527,6 +531,7 @@ def campaign(provider, *, mode: str, batches: int, per_batch: int, seed_corpus: 
             setattr(total, bucket, getattr(total, bucket) + getattr(got, bucket))
         for k, v in got.reasons.items():
             total.reasons[k] = total.reasons.get(k, 0) + v
+        total.rejected.extend(got.rejected)
         for s in got.accepted:
             rec = run_one(s)
             cov.add(s, rec)

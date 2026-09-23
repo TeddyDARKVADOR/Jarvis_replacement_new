@@ -289,6 +289,9 @@ def cmd_llm(args) -> int:
         usage, total = campaign(provider, mode=args.mode, batches=args.batches, per_batch=args.per_batch,
                                 seed_corpus=seeds, known=known_desc, max_usd=args.max_usd, sink=sink,
                                 transcript=run_dir / "transcript.jsonl")
+    with (run_dir / "rejected.jsonl").open("w", encoding="utf-8") as fh:
+        for r in total.rejected:
+            fh.write(json.dumps(r, ensure_ascii=False) + "\n")
     for note in getattr(inner, "notes", []):
         print(f"  NOTE : {note}")
     rng = random.Random(0)
