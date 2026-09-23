@@ -222,7 +222,14 @@ def run_sequence(s: dict) -> dict:
                     # main.py:1575 — a check-in that spoke starts the cooldown.
                     sut("policy.note_delivered", policy.note_delivered, Priority(ev["priority"]), clock.epoch)
                     step["delivered"] = True
-                if ev.get("push_if_deferred") and d.channel.value == "DEFER":
+                if ev.get("push_unless_speaks") and not d.speaks:
+                    # main.py:1559 exactly: the proactive hook queues whatever
+                    # does not speak — DEFER, but also NOTIFY, which no
+                    # transport delivered when the hook was written.
+                    queue.push(ev.get("payload", ev["priority"]), Priority(ev["priority"]),
+                               d.reason, now=clock.epoch)
+                    step["pushed"] = True
+                elif ev.get("push_if_deferred") and d.channel.value == "DEFER":
                     queue.push(ev.get("payload", ev["priority"]), Priority(ev["priority"]),
                                d.reason, now=clock.epoch)
                     step["pushed"] = True

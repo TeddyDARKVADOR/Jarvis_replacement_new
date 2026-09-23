@@ -303,7 +303,11 @@ def sequences(count: int, seed: int = 1, min_len: int = 3, max_len: int = 12):
                 events.append({"op": "advance", "s": float(rng.choice(_WAITS))})
             elif r < 0.70:
                 prio = rng.choice(space.PRIORITIES)
-                events.append({"op": "decide", "priority": prio, "push_if_deferred": True,
+                # IMPORTANT is main.py's proactive check-in: queued whenever it
+                # does not speak. Other levels have no producer yet; they are
+                # queued only on DEFER.
+                queue_rule = "push_unless_speaks" if prio == "IMPORTANT" else "push_if_deferred"
+                events.append({"op": "decide", "priority": prio, queue_rule: True,
                                "deliver_if_speaks": True,
                                "payload": "proactive" if prio == "IMPORTANT" else f"msg-{prio.lower()}"})
             elif r < 0.85:
