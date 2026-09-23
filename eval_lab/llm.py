@@ -353,6 +353,9 @@ claim_json    ce que TU penses etre le bon comportement, en chemins de trace :
               routing : {{"kind": "device|clarify|unavailable", "device": "phone-01"}}
               router : {{"executed_on": ["phone-01"]}} (["local"], ou [] pour un refus)
               sequence : {{"steps.3.lost": []}} ; "{{}}" si tu n'affirmes rien.
+              Chaque etape de sequence porte : held (file apres l'etape), lost (sorti de la file sans
+              etre delivre ; seul "alerts" peut perdre), et selon l'op : channel/situation/route (decide),
+              released (release), spoken/notified (alerts). Les etapes sont numerotees depuis 0.
 Vocabulaires fermes : {", ".join(sc.PRIORITIES)} / {", ".join(sc.SITUATIONS)} / {", ".join(sc.CHANNELS)}.
 Ta revendication n'est PAS la verite : elle sera confrontee au code et une personne tranchera.
 """
