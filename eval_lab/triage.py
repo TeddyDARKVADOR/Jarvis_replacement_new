@@ -67,6 +67,20 @@ def _abstract(rec: dict, p: dict | None) -> tuple:
     if name == "DEFERRED_NEVER_LOST":
         lost = [x for st in t.get("steps") or [] for x in st.get("lost") or []]
         return ("payload", "dict" if lost and isinstance(lost[0], dict) else "str")
+    if name == "NO_DELIVERY_WITHOUT_SINK":
+        # The cause is "a delivering channel with no sink"; which situation it
+        # happened in is not part of it.
+        rows = [t] if rec["surface"] == "policy" else \
+            [st for st in t.get("steps") or [] if st.get("op") == "decide" and st.get("route") == "NONE"]
+        return ("channel", (rows[0] if rows else {}).get("channel"))
+    if name == "PRIORITY_MONOTONIC":
+        from .properties import INTRUSION, PRIO_ORDER
+        ladder = t.get("ladder") or {}
+        for lo, hi in zip(PRIO_ORDER, PRIO_ORDER[1:]):
+            a, b = ladder.get(lo), ladder.get(hi)
+            if a and b and INTRUSION[b["channel"]] < INTRUSION[a["channel"]]:
+                return ("inversion", f"{lo}>{hi}", "cooldown" if "silence" in b.get("reason", "") else "table")
+        return ("inversion", "?")
     if rec["surface"] == "routing":
         return ("rule", t.get("rule"), t.get("kind"))
     if rec["surface"] in ("policy", "situation"):
@@ -89,6 +103,9 @@ def signature(rec: dict) -> str:
 def classify(rec: dict, s: dict | None, known: set[str]) -> str:
     sig = signature(rec)
     if sig in known:
+        return "known"
+    from .regressions import known_cause
+    if known_cause(rec):
         return "known"
     v = rec["verdict"]
     if v == "CRASH":

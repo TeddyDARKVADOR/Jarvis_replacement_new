@@ -49,6 +49,50 @@ def known_signatures() -> set[str]:
     return {s["lineage"]["regression"]["signature"] for s in load()}
 
 
+_MATCHERS: tuple | None = None
+
+
+def _matchers() -> list[tuple[str, dict]]:
+    """(REG id, cause pattern) for every regression that declares one.
+
+    A signature is exact: "DRIVING + VOICE for IMPORTANT". A cause is broader:
+    "a Bluetooth name made the situation DRIVING", whatever the priority. The
+    pattern lets a known bug be recognised in the forms it was not promoted in.
+    """
+    global _MATCHERS
+    mtime = CORPUS.stat().st_mtime if CORPUS.exists() else 0
+    if _MATCHERS is None or _MATCHERS[0] != mtime:
+        pats = []
+        for s in load():
+            reg = s["lineage"]["regression"]
+            if reg.get("match") and (reg["id"], reg["match"]) not in pats:
+                pats.append((reg["id"], reg["match"]))
+        _MATCHERS = (mtime, pats)
+    return _MATCHERS[1]
+
+
+def known_cause(rec: dict) -> str | None:
+    """The REG id whose cause pattern this failure matches, if any.
+
+    Pattern keys: `situation` (exact), `reason_contains` (substring of the
+    derivation's reasons), `surface`. Checked on the trace and on each step.
+    """
+    if rec.get("verdict") in (None, "PASS", "INVALID", "INFRA"):
+        return None
+    t = rec.get("trace") or {}
+    rows = [t] + list(t.get("steps") or [])
+    for reg_id, m in _matchers():
+        if m.get("surface") and m["surface"] != rec.get("surface"):
+            continue
+        for row in rows:
+            if m.get("situation") and row.get("situation") != m["situation"]:
+                continue
+            if m.get("reason_contains") and m["reason_contains"] not in (row.get("reason") or ""):
+                continue
+            return reg_id
+    return None
+
+
 def _commit() -> str:
     try:
         return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=DIR.parent.parent.parent,
