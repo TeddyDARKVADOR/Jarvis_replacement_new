@@ -80,6 +80,22 @@ def split_monitor_alert(alert: str) -> tuple[str, str]:
     return "JARVIS", raw
 
 
+def note_spoken() -> None:
+    """main.py calls this after each alert it has actually SENT to the voice
+    session — not before, and not for one it failed to send.
+
+    The voice is the other user sink (the notification hub is the first), and
+    only main.py knows a send went through. Recording it starts the IMPORTANT
+    cooldown exactly as the proactive check-in already does (decision N3).
+    Never raises: it runs inside the monitor loop.
+    """
+    try:
+        from context import Priority, get_policy
+        get_policy().note_delivered(Priority(ALERT_PRIORITY))
+    except Exception:
+        pass
+
+
 def _transport_ready(dashboard) -> bool:
     """True when a notification could actually reach somebody.
 

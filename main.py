@@ -1486,6 +1486,13 @@ class JarvisLive:
                                 turn_complete=True,
                             )
                             self.ui.write_log(f"SYS: Monitor alert sent.")
+                            # ── context/ (V2, optionnel) : une alerte envoyee
+                            # est une livraison, elle arme le silence IMPORTANT.
+                            try:
+                                from server.alerts import note_spoken
+                                note_spoken()
+                            except Exception:
+                                pass
                             await asyncio.sleep(6)   # gap between consecutive alerts
                     except Exception as e:
                         print(f"[Monitor] ⚠️ Background check error: {e}")
