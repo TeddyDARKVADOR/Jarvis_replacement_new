@@ -133,6 +133,44 @@ def _routing_stim_mutations(s: dict, rng) -> list:
     return out
 
 
+def _router_world_mutations(s: dict, rng) -> list:
+    """The FULL router's own knobs: what `_routing_mutations` covers, plus the
+    control channel, a capability GAINED (the tool itself), and the age of the
+    turn around its 180 s freshness."""
+    world, stim = s["world"], s["stimulus"]
+    out = _routing_mutations(s, rng)
+    tool = stim.get("tool")
+    for idx, d in enumerate(world.get("devices") or []):
+        ch = d.get("channel", True)
+        out.append((f"world.devices.{d['id']}.channel", ch, not ch,
+                    lambda w, idx=idx, v=not ch: w["devices"][idx].__setitem__("channel", v)))
+        if tool and tool not in d.get("caps", []):
+            out.append((f"world.devices.{d['id']}.caps+", None, tool,
+                        lambda w, idx=idx: w["devices"][idx].__setitem__(
+                            "caps", list(w["devices"][idx].get("caps", [])) + [tool])))
+    turn = world.get("turn") or {}
+    if turn.get("origin"):
+        ago = float(turn.get("ago_s", 0))
+        new = _choice_other(rng, [0.0, 179.5, 180.5, 600.0], ago)
+        out.append(("world.turn.ago_s", ago, new,
+                    lambda w, new=new: w["turn"].__setitem__("ago_s", new)))
+    # _routing_mutations rewrites the turn as {"origin": ...}; keep text and age.
+    fixed = []
+    for path, old, new, fn in out:
+        if path == "world.turn.origin":
+            def fn(w, new=new, keep=dict(turn)):
+                w["turn"] = {**keep, "origin": new} if new else {"origin": None}
+        fixed.append((path, old, new, fn))
+    return fixed
+
+
+def _router_stim_mutations(s: dict, rng) -> list:
+    stim = s["stimulus"]
+    cur = stim.get("target_device", "")
+    new = _choice_other(rng, ["", "pc", "android", "here", "other"], cur)
+    return [("stimulus.target_device", cur, new, lambda st: st.__setitem__("target_device", new))]
+
+
 def _sequence_mutations(s: dict, rng) -> list:
     ev = s["events"]
     out = []
@@ -171,6 +209,9 @@ def mutate(s: dict, rng: random.Random) -> dict | None:
         options += [("stimulus", m) for m in _routing_stim_mutations(s, rng)]
     elif surface == "sequence":
         options = [("events", m) for m in _sequence_mutations(s, rng)]
+    elif surface == "router":
+        options = [("world", m) for m in _router_world_mutations(s, rng)]
+        options += [("stimulus", m) for m in _router_stim_mutations(s, rng)]
     elif surface == "face":
         stim = s["stimulus"]
         key = rng.choice(["state", "speech", "gaze", "urgent", "interrupted"])
@@ -259,7 +300,21 @@ def _r_monotone(p, c, s):
     return None
 
 
-_OUTCOME = ("situation", "channel", "route", "kind", "device", "rule")
+_OUTCOME = ("situation", "channel", "route", "kind", "device", "rule", "executed_on")
+
+
+def _story(t: dict) -> dict:
+    """What a sequence did, independent of step numbering (a dropped or
+    swapped event shifts every index after it; the story does not move)."""
+    steps = t.get("steps") or []
+    return {
+        "channels": [st.get("channel") for st in steps if st.get("op") == "decide"],
+        "released": sum(len(st.get("released") or []) for st in steps),
+        "spoken": sum(len(st.get("spoken") or []) for st in steps),
+        "notified": sum(len(st.get("notified") or []) for st in steps),
+        "lost": sum(len(st.get("lost") or []) for st in steps),
+        "final_held": len((t.get("final") or {}).get("held") or []),
+    }
 
 
 def frontier(s: dict, rng: random.Random, tries: int = 40) -> list[dict]:
@@ -279,10 +334,8 @@ def frontier(s: dict, rng: random.Random, tries: int = 40) -> list[dict]:
         t = run_one(c).get("trace") or {}
         changed = {k: [base.get(k), t.get(k)] for k in _OUTCOME if base.get(k) != t.get(k)}
         if s["surface"] == "sequence":
-            lost_a = any(st.get("lost") for st in base.get("steps") or [])
-            lost_b = any(st.get("lost") for st in t.get("steps") or [])
-            if lost_a != lost_b:
-                changed["lost"] = [lost_a, lost_b]
+            a, b = _story(base), _story(t)
+            changed.update({k: [a[k], b[k]] for k in a if a[k] != b[k]})
         if changed:
             out.append({"mutation": c["lineage"]["mutations"][-1], "changed": changed, "child": c["id"]})
     return out
