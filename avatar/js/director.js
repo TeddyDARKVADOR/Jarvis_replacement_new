@@ -26,7 +26,7 @@
  */
 
 import {
-  BASELINE, DECAY_HALF_LIFE_S, normaliseAffect, expressionFor, intensityFor,
+  BASELINE, DECAY_HALF_LIFE_S, normaliseAffect, expressionFor, fadingExpression, intensityFor,
   gazeFor, postureFor, tempoFor, stillnessFor, gazeHoldFor, affectForIntent,
   gestureForIntent, gazeForIntent, accentForIntent, INTENTS, SOCIAL_MODES,
 } from './affect.js';
@@ -35,8 +35,14 @@ import { Catalogue, GESTURES } from './catalog.js';
 
 /** Miroir de `INTENT_TTL_S`. */
 export const INTENT_TTL_S = 25.0;
+
+/** Miroir de `_USER_FLOOR` : l'utilisateur a la parole. */
+const USER_FLOOR = new Set(['LISTENING', 'CONFIRM']);
 /** Miroir de `ANGRY_CEILING`. */
 export const ANGRY_CEILING = 0.45;
+
+/** Miroir de `_DECIDED_GAZE` (presence/director.py). */
+export const DECIDED_GAZE = new Set(['explicit', 'intent', 'safety']);
 
 export const POSTURES = ['attentive', 'relaxed', 'focused', 'formal', 'dormant'];
 
@@ -198,7 +204,10 @@ export function parseDirective(input) {
     expression = EXPRESSIONS.includes(e) ? e : null;
   }
 
-  if (expression === null && gesture === 'idle' && affect === null && intent === null) return null;
+  const posture = wordOf(raw, 'posture', POSTURES);
+  // Un regard ou une posture seuls SONT une directive — voir `_coerce`.
+  if (expression === null && gesture === 'idle' && affect === null && intent === null
+      && explicitGaze === null && posture === null) return null;
 
   const givenIntensity = number(raw, ['intensity', 'emotionIntensity', 'emotion_intensity'], null);
   return {
@@ -208,7 +217,7 @@ export function parseDirective(input) {
     intensity_given: givenIntensity !== null,
     gesture,
     gaze,
-    posture: wordOf(raw, 'posture', POSTURES),
+    posture,
     reason: String(raw.reason !== undefined ? raw.reason : '').slice(0, 200),
     affect,
     intent,
@@ -230,12 +239,17 @@ export class Director {
     this.intentSeq = 0;
     this.affect = null;
     this.affectAt = 0;
+    // Une intention appartient a son tour de parole — voir `_turn` en Python.
+    this.turn = 0;
+    this.intentTurn = 0;
+    this.lastWord = '';
   }
 
   setIntent(directive, now = 0) {
     this.intent = directive;
     this.intentAt = now;
     this.intentSeq += 1;
+    this.intentTurn = this.turn;
     if (directive && directive.affect) { this.affect = directive.affect; this.affectAt = now; }
   }
 
@@ -257,6 +271,8 @@ export class Director {
    */
   resolve(stateWord, { speechLevel = 0, now = 0 } = {}) {
     const word = String(stateWord || '').toUpperCase();
+    if (word === 'THINKING' && USER_FLOOR.has(this.lastWord)) this.turn += 1;
+    this.lastWord = word;
     let [expression, intensity, gesture, gaze, posture, hold] = REFLEX[word] || DEFAULT_REFLEX;
     let affect = normaliseAffect(REFLEX_AFFECT[word] || {});
     let reason = `reflex:${word}`;
@@ -268,7 +284,9 @@ export class Director {
     const live = this.affectNow(now);
     if (live) {
       affect = live;
-      expression = expressionFor(affect);
+      // Un etat qui retombe garde son visage, puis le neutre. Voir
+      // `presence.affect.fading_expression`.
+      expression = fadingExpression(this.affect, affect);
       intensity = intensityFor(affect);
       gaze = gazeFor(affect);
       posture = postureFor(affect);
@@ -282,13 +300,21 @@ export class Director {
 
     const intent = this.intent;
     let chosen = null;
-    const active = intent !== null && (now - this.intentAt) <= INTENT_TTL_S;
+    const active = intent !== null && (now - this.intentAt) <= INTENT_TTL_S
+      && this.intentTurn === this.turn;
     if (active) {
       chosen = intent.intent || null;
       if (!(derived && intent.affect)) {
-        expression = intent.expression;
-        intensity = clamp(intent.intensity);
-        posture = intent.posture || POSTURE_OF[expression] || posture;
+        // Un visage que la directive ne nomme pas n'est qu'un defaut : il ne
+        // remplace pas celui de l'etat. Miroir de `resolve()` en Python.
+        const named = intent.expression_given || intent.expression !== 'neutral';
+        if (named) {
+          expression = intent.expression;
+          intensity = clamp(intent.intensity);
+          posture = intent.posture || POSTURE_OF[expression] || posture;
+        } else if (intent.posture) {
+          posture = intent.posture;
+        }
         reason = intent.reason || `intent:${expression}`;
       } else {
         if (intent.reason) reason = intent.reason;
@@ -329,7 +355,7 @@ export class Director {
     if (accent) trace.push(`ACCENT ${accent}`);
 
     const blendshapes = {};
-    const shapes = face(expression, intensity, gaze);
+    const shapes = face(expression, intensity, gaze, DECIDED_GAZE.has(gazeSource));
     for (const k in shapes) blendshapes[k] = r3(shapes[k]);
 
     const payload = {

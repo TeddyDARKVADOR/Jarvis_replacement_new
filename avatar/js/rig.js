@@ -51,6 +51,7 @@
 import { FacialPerformance } from './performance.js';
 import { GazeController, EYE_SHAPES, isEyeShape, xyToEyes } from './gaze.js';
 import { Rng } from './rng.js';
+import { BlinkController } from './blink.js';
 
 /** Eyelid shapes: driven by the blink generator, never smoothed like the rest. */
 const LIDS = ['eyeBlinkLeft', 'eyeBlinkRight'];
@@ -65,11 +66,16 @@ export const ARTICULATORS = new Set([
   'mouthStretchLeft', 'mouthStretchRight', 'tongueOut',
 ]);
 
-/** The mouth shapes that carry emotion rather than sound: they stay. */
+/** The mouth shapes that carry emotion rather than sound: they stay.
+ *
+ *  `cheekSquint*` is NOT here, and was: the cheek that rises and crinkles the
+ *  eyes is the Duchenne marker, the part of a smile that says it is meant.
+ *  Talking flattens a grin's corners a little; it does not un-crinkle the
+ *  eyes. Measured before: a happy face lost 20 % of its upper half the moment
+ *  he spoke. */
 export const EMOTIVE_MOUTH = new Set([
   'mouthSmileLeft', 'mouthSmileRight', 'mouthFrownLeft', 'mouthFrownRight',
-  'mouthDimpleLeft', 'mouthDimpleRight', 'cheekSquintLeft', 'cheekSquintRight',
-  'cheekPuff',
+  'mouthDimpleLeft', 'mouthDimpleRight', 'cheekPuff',
 ]);
 
 /** How much of the expression's articulators speech takes, at full speech. */
@@ -116,7 +122,7 @@ export class Rig {
     this.override = null;
     this.speaking = 0;
     this.behaviour = null;
-    this.vor = { rx: 0, ry: 0 };
+    this.vor = { rx: 0, ry: 0, lockRx: 0, lockRy: 0 };
 
     // Ce qui est calcule, et ce qui est ecrit.
     this.current = Object.create(null);   // la sortie de l'image, avant ecriture
@@ -131,20 +137,22 @@ export class Rig {
     this.microGain = 1;
 
     // ── blink ────────────────────────────────────────────────────────────
-    // Humans blink every 2–10 s, not on a timer. A periodic blink is uncanny in
-    // a way people notice without being able to name.
-    this.nextBlink = this.rng.range(1.5, 5.5);
-    this.blinkPhase = -1;     // <0 : pas de clignement en cours
-    this.blinkSpeed = 1;
+    // Humans blink every 2–10 s, not on a timer, and often for a reason. The
+    // rhythm and the reasons live in blink.js; the lids are still decided here.
+    this.blink = new BlinkController(this.rng.fork('blink'));
     this.slowBlink = false;
-    this.pendingDouble = -1;  // >0 : un second clignement est programme
-    this.blinks = 0;          // compteur, pour les controles
 
     this.t = 0;
   }
 
   /** Les micro-saccades, lues par `avatar/checks/idle_motion.py`. */
   get saccade() { return this.gazeCtl.saccade; }
+
+  // Les noms d'avant blink.js, lus par les controles (idle_motion.py,
+  // engine_test.mjs). Delegues, pas dupliques.
+  get blinks() { return this.blink.count; }
+  get blinkPhase() { return this.blink.phase; }
+  get pendingDouble() { return this.blink.pendingDouble; }
 
   /**
    * A `Performance`'s blendshapes, straight off the wire.
@@ -154,7 +162,7 @@ export class Rig {
    * optional, and their absence gives the old behaviour: everything together,
    * nothing released, gaze treated as derived.
    */
-  setExpression(blendshapes, gaze, expression, holdS, gazeSource, gazeHead) {
+  setExpression(blendshapes, gaze, expression, holdS, gazeSource, gazeHead, how) {
     const face = Object.create(null);
     const eyes = Object.create(null);
     for (const name in (blendshapes || {})) {
@@ -163,7 +171,7 @@ export class Rig {
       if (isEyeShape(name)) eyes[name] = v;
       else face[name] = v;
     }
-    this.performance.setTarget(face, expression, holdS);
+    this.performance.setTarget(face, expression, holdS, how);
     if (gaze) {
       this.gaze = gaze;
       this.closed = gaze === 'closed';
@@ -217,9 +225,11 @@ export class Rig {
   }
 
   /** The head rotation the eyes must compensate for, from gestures.js. */
-  setVor(rx, ry) {
+  setVor(rx, ry, lockRx = 0, lockRy = 0) {
     this.vor.rx = Number.isFinite(rx) ? rx : 0;
     this.vor.ry = Number.isFinite(ry) ? ry : 0;
+    this.vor.lockRx = Number.isFinite(lockRx) ? lockRx : 0;
+    this.vor.lockRy = Number.isFinite(lockRy) ? lockRy : 0;
   }
 
   update(dt) {
@@ -364,52 +374,21 @@ export class Rig {
   // ── life ──────────────────────────────────────────────────────────────────
 
   _blink(dt, b) {
-    if (this.closed) { this.blinkPhase = -1; this.gazeCtl.wantsBlink = false; return; }
-
-    if (this.blinkPhase >= 0) {
-      this.blinkPhase += dt * this.blinkSpeed;
-      if (this.blinkPhase >= 1) this.blinkPhase = -1;
-      this.gazeCtl.wantsBlink = false;
-      return;
-    }
-    if (this.pendingDouble > 0) {
-      this.pendingDouble -= dt;
-      if (this.pendingDouble <= 0) { this.pendingDouble = -1; this._startBlink(b, true); }
-      return;
-    }
-    // Un grand deplacement du regard entraine souvent un clignement — mais pas
-    // deux clignements coup sur coup.
+    const blink = this.blink;
+    blink.slow = this.slowBlink;
+    blink.remember(b);
+    // Un grand deplacement du regard entraine souvent un clignement — gaze.js
+    // a deja tire au sort ; il n'est accepte que si le spontane etait proche,
+    // pour ne pas en ajouter un de plus au rythme.
     if (this.gazeCtl.wantsBlink) {
       this.gazeCtl.wantsBlink = false;
-      if (this.nextBlink < this._meanInterval(b) * 0.85) { this._startBlink(b, false); return; }
+      if (!this.closed && blink.dueSoon(b)) blink.request('gaze', 1);
     }
-    this.nextBlink -= dt;
-    if (this.nextBlink <= 0) this._startBlink(b, false);
-  }
-
-  _meanInterval(b) {
-    const perMin = this.slowBlink ? 30 : (b.blinkPerMin !== undefined ? b.blinkPerMin : 17);
-    return 60 / Math.max(1, perMin);
-  }
-
-  _startBlink(b, isSecond) {
-    this.blinkPhase = 0;
-    this.blinks += 1;
-    this.blinkSpeed = this.slowBlink ? 2.2 : 7.0;   // 1/duree du clignement
-    const mean = this._meanInterval(b);
-    // Irregulier : entre 0.4 et 1.6 fois la moyenne, jamais sur une horloge.
-    this.nextBlink = mean * this.rng.range(0.4, 1.6);
-    if (!isSecond && !this.slowBlink && this.rng.next() < (b.doubleBlink || 0)) {
-      this.pendingDouble = this.rng.range(0.12, 0.22) + 1 / this.blinkSpeed;
-    }
+    blink.update(dt, b, this.closed);
   }
 
   _lidWeight() {
     if (this.closed) return 1;
-    if (this.blinkPhase < 0) return 0;
-    // Fermeture rapide, ouverture plus lente — c'est ainsi qu'une paupiere
-    // bouge, et sin() donnerait le contraire.
-    const p = this.blinkPhase;
-    return p < 0.35 ? p / 0.35 : 1 - (p - 0.35) / 0.65;
+    return this.blink.lid;
   }
 }

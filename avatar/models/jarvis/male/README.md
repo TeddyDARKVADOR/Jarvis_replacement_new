@@ -1,6 +1,11 @@
-# `jarvis/male/` — la place du prochain visage
+# `jarvis/male/` — le visage masculin
 
-Vide pour l'instant, et prêt. Le visage masculin s'installe ici en une commande :
+**Installé le 23/09/2026** : Microsoft Rocketbox `Male_Adult_01` (MIT, voir
+`LICENSE.md` et `male.model.json`), converti depuis `Male_Adult_01_facial.fbx`.
+Le binaire n'est pas versionné ; son profil (empreinte, provenance,
+calibration) l'est. L'activer : `python -m presence.install_model --use jarvis/male`.
+
+Un autre visage s'installe ici en une commande :
 
 ```bash
 python -m presence.install_model <fichier.glb|.vrm> --slot jarvis/male \

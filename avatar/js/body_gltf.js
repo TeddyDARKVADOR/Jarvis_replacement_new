@@ -47,31 +47,49 @@ import { VrmBody, enableVrm, isVrm } from './body_vrm.js';
 import { ARKIT_NAMES } from './arkit.js';
 
 /** Bone name candidates, in order of preference. Lowercased, separators gone. */
+/**
+ * Miroir de `BONE_HINTS` (presence/inspect.py) : chaque entree du Python est
+ * ici, et `presence/selftest.py` le verifie. Celles en plus sont les noms que
+ * three.js a assainis (`mixamorig:Head` -> `mixamorigHead`). La convention
+ * Biped de 3ds Max (`Bip01_Head`) est la parce que le visage masculin
+ * Rocketbox la porte : sans elle, ni ses yeux a os ni ses bras n'etaient
+ * trouves, et l'inspecteur annoncait une tete absente.
+ */
+/** Plus grand gain de calibration accepte : au-dela, une forme extrapolee se deforme. */
+export const MAX_MORPH_GAIN = 2.5;
+
 const BONE_HINTS = {
-  head:     ['head', 'mixamorighead', 'bip01head', 'headjoint'],
-  neck:     ['neck', 'mixamorigneck', 'bip01neck'],
+  head:     ['head', 'mixamorighead', 'bip01head', 'bip001head', 'headjoint'],
+  neck:     ['neck', 'mixamorigneck', 'bip01neck', 'bip001neck'],
   spine:    ['spine2', 'spine1', 'spine', 'mixamorigspine2', 'mixamorigspine1',
-             'mixamorigspine', 'chest', 'upperchest'],
-  root:     ['hips', 'mixamorighips', 'root', 'armature', 'bip01pelvis'],
-  eyeLeft:  ['lefteye', 'eyeleft', 'mixamoriglefteye', 'eye_l', 'eyel'],
-  eyeRight: ['righteye', 'eyeright', 'mixamorigrighteye', 'eye_r', 'eyer'],
+             'mixamorigspine', 'chest', 'upperchest',
+             'bip01spine2', 'bip01spine1', 'bip01spine', 'bip001spine2', 'bip001spine1', 'bip001spine'],
+  root:     ['hips', 'mixamorighips', 'root', 'armature', 'bip01pelvis', 'bip001pelvis'],
+  eyeLeft:  ['lefteye', 'eyeleft', 'mixamoriglefteye', 'eyel', 'bip01leye', 'bip001leye'],
+  eyeRight: ['righteye', 'eyeright', 'mixamorigrighteye', 'eyer', 'bip01reye', 'bip001reye'],
 
   // Les bras, pour la pose de repos. Un modele livre en T-pose sans clip
   // d'attente ressemble a un epouvantail, et c'est l'etat par defaut de tout
   // humanoide telecharge : Mixamo et VRoid exportent la pose de bind.
-  armLeftUpper:  ['leftarm', 'leftupperarm', 'mixamorigleftarm', 'upperarmleft'],
-  armRightUpper: ['rightarm', 'rightupperarm', 'mixamorigrightarm', 'upperarmright'],
-  armLeftLower:  ['leftforearm', 'leftlowerarm', 'mixamorigleftforearm'],
-  armRightLower: ['rightforearm', 'rightlowerarm', 'mixamorigrightforearm'],
+  armLeftUpper:  ['leftarm', 'leftupperarm', 'mixamorigleftarm', 'upperarmleft', 'bip01lupperarm', 'bip001lupperarm'],
+  armRightUpper: ['rightarm', 'rightupperarm', 'mixamorigrightarm', 'upperarmright', 'bip01rupperarm', 'bip001rupperarm'],
+  armLeftLower:  ['leftforearm', 'leftlowerarm', 'mixamorigleftforearm', 'bip01lforearm', 'bip001lforearm'],
+  armRightLower: ['rightforearm', 'rightlowerarm', 'mixamorigrightforearm', 'bip01rforearm', 'bip001rforearm'],
 };
 
 /** What the presence of a bone proves about the body. */
 const PART_HINTS = {
   arms: ['leftarm', 'rightarm', 'leftforearm', 'rightforearm', 'lefthand', 'righthand',
-         'mixamorigleftarm', 'mixamorigrightarm'],
+         'leftupperarm', 'rightupperarm', 'mixamorigleftarm', 'mixamorigrightarm',
+         'bip01lupperarm', 'bip01rupperarm', 'bip01lforearm', 'bip01rforearm',
+         'bip001lupperarm', 'bip001rupperarm', 'bip001lforearm', 'bip001rforearm'],
   legs: ['leftupleg', 'rightupleg', 'leftleg', 'rightleg', 'leftfoot', 'rightfoot',
-         'mixamorigleftupleg', 'mixamorigrightupleg'],
-  torso: ['spine', 'spine1', 'spine2', 'chest', 'hips', 'mixamorigspine'],
+         'leftupperleg', 'rightupperleg', 'mixamorigleftupleg', 'mixamorigrightupleg',
+         'bip01lthigh', 'bip01rthigh', 'bip01lcalf', 'bip01rcalf',
+         'bip001lthigh', 'bip001rthigh', 'bip001lcalf', 'bip001rcalf'],
+  torso: ['spine', 'spine1', 'spine2', 'chest', 'upperchest', 'hips', 'mixamorigspine',
+          'bip01spine', 'bip01spine1', 'bip01spine2', 'bip01pelvis',
+          'bip001spine', 'bip001spine1', 'bip001spine2', 'bip001pelvis'],
 };
 
 /**
@@ -149,6 +167,12 @@ export class GltfBody {
 
     const model = manifest.model || {};
     this.scene.scale.setScalar(Number(model.scale) || 1);
+    /** `model.morphGain` : { nomARKit: gain }, la calibration visuelle du modele. */
+    this.morphGain = Object.create(null);
+    for (const [shape, g] of Object.entries(model.morphGain || {})) {
+      const n = Number(g);
+      if (Number.isFinite(n) && n > 0) this.morphGain[shape] = Math.min(MAX_MORPH_GAIN, n);
+    }
     const p = model.position || [0, 0, 0];
     this.scene.position.set(p[0] || 0, p[1] || 0, p[2] || 0);
 
@@ -177,8 +201,15 @@ export class GltfBody {
     }
     const targets = this.morphTargets.get(name);
     if (!targets) return;
+    // La calibration de CE modele : un auteur a sculpte un sourire six fois
+    // plus petit qu'un autre (Rocketbox : 4 mm aux coins, contre 27 mm), et le
+    // meme `happy 0.7` doit se voir sur les deux. Le moteur ecrit toujours
+    // dans [0, 1] ; le gain est applique ici, au bord du fichier, et nulle
+    // part ailleurs. Borne : au-dela de 2.5, une forme extrapolee se deforme.
+    const gain = this.morphGain[name];
+    const w = gain ? Math.min(MAX_MORPH_GAIN, weight * gain) : weight;
     for (const { mesh, index } of targets) {
-      mesh.morphTargetInfluences[index] = weight;
+      mesh.morphTargetInfluences[index] = w;
     }
   }
 

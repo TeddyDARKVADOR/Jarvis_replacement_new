@@ -11,10 +11,13 @@ Deux familles comblent le reste.
 sur un corps sans rendu (`js/body_null.js`) avec une graine fixée :
 
 ```bash
-node   avatar/checks/engine_test.mjs        # le moteur, mesuré par sa sortie (28)
-python avatar/checks/director_parity.py     # le labo décide-t-il comme le panneau (2 288)
-python avatar/checks/chain_test.py          # de set_presence au modèle, 43 chaînes
+node   avatar/checks/engine_test.mjs        # le moteur, mesuré par sa sortie (42)
+python avatar/checks/director_parity.py     # le labo décide-t-il comme le panneau (3 432 + 85 pas)
+python avatar/checks/chain_test.py          # de set_presence au modèle, 44 chaînes + le temps + l'écoute
 python avatar/checks/model_swap.py          # changer de visage sans toucher au cerveau
+node   avatar/checks/situations.mjs         # les 12 moments du labo, chacun mesuré (12)
+node   avatar/checks/scenario_matrix.mjs    # 1 632 situations, 9 invariants, intentions indiscernables
+node   avatar/checks/naturalness.mjs [min] [graine]   # 20 min de conversation, ce qui s'y répète (10)
 ```
 
 **Dans QtWebEngine** (`pip install PyQt6-WebEngine`) — le vrai modèle, la vraie
@@ -28,6 +31,8 @@ python avatar/checks/facial_performance.py  # le temps d'un visage, sur les écr
 python avatar/checks/idle_motion.py         # le repos bouge-t-il, sans aucune décision
 python avatar/checks/face_first.py          # le corps tient-il vraiment en place
 python avatar/checks/asset_robustness.py    # 15 modèles incomplets, aucun ne tombe
+python avatar/checks/lab_situations.py      # les situations cliquées dans le vrai labo
+python avatar/checks/capture_faces.py [nom] # neuf visages photographiés -> checks/shots/
 ```
 
 `model_swap.py` tourne aussi dans le selftest (il n'a besoin de rien).
@@ -42,7 +47,7 @@ DÉCLARE (noms de formes, os, extensions).
 
 ### `engine_test.mjs` — le moteur, par sa sortie
 
-Vingt-huit mesures sur ce que le corps a REÇU, pas sur les tables : qu'un visage
+Quarante-deux mesures sur ce que le corps a REÇU, pas sur les tables : qu'un visage
 part à vitesse nulle, que la surprise est vive et retombe, que l'ironie se
 compose, que les yeux partent avant la tête et se posent, qu'ils tiennent
 l'utilisateur pendant un hochement, qu'un regard décidé n'est jamais déplacé,
@@ -52,12 +57,53 @@ par l'émotion, que la bouche se referme sans claquer, les priorités, les NaN,
 l'identité des gestes, les seize intentions discernables **à la sortie**, et
 qu'une séance se rejoue à l'identique.
 
+Et, depuis la passe « comportement » (voir `avatar/BEHAVIOUR.md`) : une
+décision nouvelle efface l'accent de la précédente sans le couper net ; la même
+décision renvoyée ne relance pas le visage ; ce qui quitte le visage part à son
+rythme, sauf devant une alerte ; le résidu d'une surprise s'efface ; `blink_slow`
+ferme vraiment les paupières ; la tête marque les syllabes appuyées ; `explain`
+amplifie ces appuis ; le regard s'échappe en début de phrase (jamais un regard
+décidé, jamais sous `warn`/`reassure`) ; un clignement suit souvent la fin d'une
+phrase ; JARVIS hoche la tête aux pauses de l'utilisateur et nulle part
+ailleurs ; la surprise retient le clignement ; les clignements sont
+irréguliers ; six visages restent lisibles en parlant ; les réflexes d'une
+conversation s'usent. Chacun a d'abord été écrit rouge contre le moteur d'avant.
+
 ### `director_parity.py` — le labo décide comme le panneau
 
 `js/director.js` refait `presence/director.py` pour le labo. Confrontés sur
-2 288 décisions — directives de toutes formes, onze états, intention vivante et
-expirée, corps visage et complet — même JSON, champ par champ (les nombres au
-millième, l'arrondi du fil).
+3 432 décisions — directives de toutes formes, onze états, intention vivante, à
+mi-retombée (15 s) et expirée, corps visage et complet — même JSON, champ par
+champ (les nombres au millième, l'arrondi du fil). Puis cinq **séquences** (85
+pas) : ce qu'une résolution isolée ne peut pas voir — le tour de parole, une
+humeur qui retombe deux minutes, une intention qui en remplace une autre.
+
+### `scenario_matrix.mjs` — chaque intention, dans chaque situation
+
+17 intentions (et aucune) × 4 états × parole ou silence × 3 regards × urgence ×
+interruption : 1 632 situations par le vrai directeur et le vrai moteur. Neuf
+invariants sur la sortie (valeurs, corps tenu, **regard écrit tenu dans le
+monde** — l'œil plus la tête —, visage décidé qui arrive, bouche qui parle ou se
+tait, interruption qui l'emporte, geste honnête), puis la recherche des
+intentions qui se jouent pareil dans un contexte donné. Elle a trouvé, à sa
+première exécution, quatre pannes qu'aucun cas choisi ne voyait.
+
+### `naturalness.mjs` — ce qui se répète en vingt minutes
+
+Une séance simulée (écoute, réflexion, parole, silences, interruptions,
+surprises, erreurs, absences), à la cadence de l'hôte. Clignements (rythme,
+irrégularité, autocorrélation, causes), gestes (amplitudes, trajectoires
+identiques), échappées du regard (chacune arrivée aux yeux ou reprise par une
+décision — aucune perdue), appuis et hochements, micro-expressions répétées,
+visages, état final, coût, mémoire. Elle ne dit pas que c'est naturel ; elle
+dit que ça ne tombe dans aucun piège connu.
+
+### `situations.mjs` et `lab_situations.py` — le labo dit vrai
+
+Les douze moments de `js/situations.js` (quelqu'un arrive, résultat
+inattendu, remerciement, plaisanterie, interruption…) : sous Node, chacun mesuré
+contre ce qu'il annonce ; dans le vrai labo, chacun cliqué, sans erreur, et sa
+ligne « Pourquoi » confrontée à ce que le moteur a joué.
 
 ### `chain_test.py` — de l'appel d'outil au modèle
 

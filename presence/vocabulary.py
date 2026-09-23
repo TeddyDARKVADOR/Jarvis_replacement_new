@@ -291,15 +291,35 @@ def _scaled(shapes: dict[str, float], intensity: float) -> dict[str, float]:
     return out
 
 
-def face(expression: Expression, intensity: float, gaze: Gaze = Gaze.USER) -> dict[str, float]:
+#: The eight shapes that point the eyes. Lids (`eyeBlink*`) are not among them:
+#: a sad face's heavy lid is part of the face, wherever the eyes look.
+EYE_LOOK: frozenset[str] = frozenset(
+    s for s in ARKIT_52 if s.startswith("eyeLook")
+)
+
+
+def face(expression: Expression, intensity: float, gaze: Gaze = Gaze.USER,
+         *, gaze_decided: bool = False) -> dict[str, float]:
     """Resolve one expression and one gaze into ARKit weights.
 
     Combined with `max` rather than by adding: two shapes that both raise a brow
     must not sum to 1.7 and clip. Taking the stronger of the two is what keeps a
     downward gaze during a sad face from looking like a different, broken face.
+
+    `gaze_decided` — someone CHOSE where the eyes go (JARVIS named it, or the
+    intent's table did). The expression's own eye direction is then dropped:
+    `thinking` rolls the eyes up, and with `"gaze": "user"` written next to it
+    the eyes were measured at y = +0.17 — looking over the user's head, while
+    the Performance said `user`. Same family as `Directive.gaze`: a decision
+    carried all the way to the wire and overruled at the last step. A derived
+    gaze keeps the expression's eyes, because then the eyes ARE part of the
+    face (sadness looks down on its own).
     """
     intensity = max(0.0, min(1.0, float(intensity)))
     resolved = _scaled(_SHAPES.get(expression, {}), intensity)
+    if gaze_decided:
+        for shape in EYE_LOOK:
+            resolved.pop(shape, None)
 
     for shape, weight in _GAZE.get(gaze, {}).items():
         resolved[shape] = round(max(resolved.get(shape, 0.0), weight), 4)

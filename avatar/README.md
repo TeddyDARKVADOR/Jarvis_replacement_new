@@ -21,6 +21,9 @@ avatar/
     states.js           le comportement de fond de chaque état (écoute, parole…)
     accents.js          le bref geste facial d'une intention
     lipsync.js          la bouche qui suit la voix
+    conversation.js     ce que la voix appelle : appuis, regard qui s'echappe, hochement d'ecoute
+    voice.js            lire une voix dans un niveau : syllabes, appuis, pauses
+    blink.js            les paupieres, et POURQUOI elles se ferment
     gestures.js         la tête et le corps : clips Mixamo OU arithmétique
     idle.js             le repos : respiration, dérive, micro-expressions
     rng.js              le hasard, avec une graine — rejouable
@@ -37,6 +40,8 @@ avatar/
     lab.js              le labo, sur le même moteur
     bridge.js           le transport : perform() / speak() / viseme()
     affect.js           la dérivation (générée depuis presence/affect.py)
+    situations.js       douze moments ordinaires, pour le labo ET le test
+    explain.js          pourquoi le visage fait ce qu'il fait, en huit lignes
     expressions.js      les 12 visages (générés depuis presence/vocabulary.py)
     arkit.js · visemes.js · xhr_loader.js
 ```
@@ -45,7 +50,7 @@ avatar/
 
 ```bash
 python -m presence.install_model --demo      # une tête humaine, 52 blendshapes ARKit
-python -m presence.selftest                  # 57 contrôles, sans navigateur
+python -m presence.selftest                  # 60 contrôles, sans navigateur
 node avatar/checks/engine_test.mjs           # le moteur, mesuré par sa sortie
 ```
 
@@ -84,7 +89,7 @@ JARVIS appelle set_presence(intent="investigate")        plugins/presence.py
   → sortie effective             ce que le modèle reçoit
 ```
 
-`avatar/checks/chain_test.py` suit 43 intentions sur tout ce chemin, à travers
+`avatar/checks/chain_test.py` suit 44 intentions sur tout ce chemin, à travers
 le vrai code de chaque maillon, et vérifie le bout : le geste réellement joué,
 le regard réellement tenu, l'accent réellement joué, et que rien ne bouge sous
 la nuque en mode visage.
@@ -106,6 +111,9 @@ Une image, dans cet ordre :
 ```
 1. état de présence   les paramètres de fond (states.js), fondus entre deux états
 2. lip-sync           la couche bouche, et « est-il en train de parler »
+   conversation       ce que la voix appelle : appuis de tête, regard qui s'échappe
+                      en début de phrase, clignement en fin, hochement aux pauses
+                      de l'utilisateur (conversation.js — voir avatar/BEHAVIOUR.md)
 3. accent             le geste facial de l'intention en cours
 4. gestes             la tête et le corps — posture + part de tête du regard
                       + inclinaison d'état + geste + accent + repos, SOMMÉS
@@ -287,7 +295,7 @@ Ouvrir `avatar/lab.html` (servi par le client sous `jarvis://`, ou par
 
 Le labo ne joue rien lui-même. Il construit une **demande** — ce que JARVIS
 enverrait — la fait lire et résoudre par `director.js`, miroir exact de
-`presence/director.py` (`director_parity.py` : **2 288 décisions identiques**),
+`presence/director.py` (`director_parity.py` : **3 432 décisions et 85 pas de séquence identiques**),
 et donne la Performance au **même** moteur que le panneau. Puis il affiche ce que
 le moteur rapporte avoir fait :
 
@@ -355,15 +363,43 @@ Panneau, modèle installé (36 Mo, 52 ARKit, 14 visèmes), 320×520 :
 
 | | |
 |---|---|
-| cadence | 60 i/s |
-| image complète (moteur + rendu) | 1.3 ms |
-| moteur seul | 0.41 ms (rig 0.15, gestes 0.09, bouche 0.07) |
-| écritures de formes par image | ~4 (52+ avant : chaque forme réécrite, identique) |
-| moteur sous Node, en parlant | 12 µs par image |
+| cadence | 63–64 i/s |
+| image complète (moteur + rendu), en parlant | 1.03 ms (féminin et masculin) |
+| moteur seul, en parlant | 0.19–0.24 ms (rig 0.06, gestes 0.04–0.07, bouche 0.05) |
+| écritures de formes par image | ~4.5 (52+ avant : chaque forme réécrite, identique) |
+| moteur sous Node, en parlant | 15 µs par image ; 11 µs en moyenne sur 20 min simulées |
+| mémoire sur 20 min simulées | tas +4 Mo |
+
+(Mesuré le 23/09/2026 après la passe « comportement » : conversation,
+clignements, habituation — aucune régression.)
 
 Ce qui a été retiré de la boucle : la réécriture des 52 formes à chaque image,
 l'objet cible recréé par image, l'accumulateur de gestes recréé par image, la
 micro-expression recréée par image.
+
+## Le visage masculin — installé, calibré, pas actif
+
+`jarvis/male/male.glb` : **Microsoft Rocketbox `Male_Adult_01`** (licence MIT,
+© 2020 Microsoft, `LICENSE.md` à côté du fichier), 52/52 ARKit, 15 visèmes
+Oculus, yeux et tête à os (`Bip01_*`), quatre membres. Converti depuis son FBX
+par three.js r169 (FBXLoader → GLTFExporter) ; son profil dit tout — empreintes
+de l'original et des textures, transformations, restrictions.
+
+Deux choses qu'il a apprises au pipeline, et qui servent à tout modèle :
+
+- la convention Biped de 3ds Max (`Bip01_Head`) : l'inspecteur ne la connaissait
+  pas, le moteur si — l'inspecteur annonçait une tête absente. Les deux tables
+  d'os sont désormais comparées dans les deux sens (`presence/selftest.py`) ;
+- la **calibration d'amplitude** (`model.morphGain`, dans le profil) : son
+  sourire à 1.0 déplace les coins de 4,4 mm (le visage féminin : 27 mm), et
+  `happy 0.7` y était invisible. Gain ×2.5 sur le sourire, ×1.8 sur les coins
+  abaissés, appliqué au bord du fichier par `body_gltf.js`, borné à 2.5.
+
+Toute la batterie passe avec lui actif. Il n'est pas le visage livré : ce choix
+appartient à Teddy, et tient en une commande —
+`python -m presence.install_model --use jarvis/male`.
+`avatar/checks/capture_faces.py` photographie les neuf états des deux visages
+(`checks/shots/comparaison_feminin_masculin.png`).
 
 ## Le modèle, et le suivant
 

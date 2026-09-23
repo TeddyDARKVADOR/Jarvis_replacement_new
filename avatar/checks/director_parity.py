@@ -68,7 +68,9 @@ DIRECTIVES += [
     {},
 ]
 
-TIMES = [0.1, 30.0]
+# 15 s : un etat a mi-chemin de sa retombee, la ou `fading_expression`
+# change le visage de quatre intentions sur seize. 30 s : intention expiree.
+TIMES = [0.1, 15.0, 30.0]
 
 
 def catalogue(motion: str) -> Catalogue:
@@ -165,6 +167,96 @@ def differences(py: dict, js: dict) -> list[str]:
     return problems
 
 
+# ── des SEQUENCES : ce qu'une resolution isolee ne peut pas voir ─────────────
+#
+# Chaque cas ci-dessus est un directeur neuf et une resolution. Une regle qui
+# depend de ce qui PRECEDE — le tour de parole, la retombee d'une humeur, une
+# intention qui en remplace une autre — n'y apparait jamais. Ces sequences la
+# font apparaitre, et les deux directeurs doivent y rendre le meme JSON a
+# chaque pas.
+
+SEQUENCES: list[list[tuple]] = [
+    # une conversation : l'intention d'une reponse ne couvre pas la suivante
+    [("state", "LISTENING", 0), ("state", "THINKING", 1), ("intent", {"intent": "agree"}, 1.5),
+     ("state", "SPEAKING", 2), ("state", "THINKING", 3), ("state", "SPEAKING", 3.5),
+     ("state", "LISTENING", 5), ("state", "THINKING", 8), ("state", "SPEAKING", 9),
+     ("state", "LISTENING", 12), ("state", "LISTENING", 30)],
+    # une confirmation qui recoit sa reponse
+    [("state", "CONFIRM", 0), ("intent", {"intent": "confirm"}, 0.2), ("state", "CONFIRM", 3),
+     ("state", "THINKING", 4), ("state", "SPEAKING", 5)],
+    # une humeur qui retombe sur deux minutes, sans changement d'etat
+    [("intent", {"intent": "warn"}, 0)] + [("state", "LISTENING", t) for t in range(0, 121, 3)],
+    [("intent", {"valence": 0.75, "arousal": 0.6}, 0)] + [("state", "SPEAKING", t) for t in range(0, 91, 5)],
+    # une intention qui en remplace une autre, en pleine phrase
+    [("state", "SPEAKING", 0), ("intent", {"intent": "amuse"}, 0.1), ("state", "SPEAKING", 1),
+     ("intent", {"intent": "warn"}, 1.5), ("state", "SPEAKING", 2), ("state", "LISTENING", 6),
+     ("state", "THINKING", 7)],
+]
+
+
+def python_sequences(cat):
+    out = []
+    for seq in SEQUENCES:
+        director = Director(cat)
+        state = "ACTIVE"
+        steps = []
+        for step in seq:
+            if step[0] == "intent":
+                directive = parse(json.dumps(step[1]))
+                director.set_intent(directive, now=float(step[2]))
+                steps.append(director.resolve(state, speech_level=0.3, now=float(step[2])).as_json())
+            else:
+                state = step[1]
+                steps.append(director.resolve(state, speech_level=0.3, now=float(step[2])).as_json())
+        out.append(steps)
+    return out
+
+
+SEQ_NODE = r"""
+import { Director, parseDirective } from '%(director)s';
+import { Catalogue } from '%(catalog)s';
+let raw = '';
+process.stdin.on('data', (c) => { raw += c; });
+process.stdin.on('end', () => {
+  const seqs = JSON.parse(raw);
+  const out = seqs.map((seq) => {
+    const director = new Director(new Catalogue(['head', 'torso', 'arms', 'legs'], 'face', []));
+    let state = 'ACTIVE';
+    return seq.map((step) => {
+      if (step[0] === 'intent') director.setIntent(parseDirective(step[1]), step[2]);
+      else state = step[1];
+      return director.resolve(state, { speechLevel: 0.3, now: step[2] });
+    });
+  });
+  process.stdout.write(JSON.stringify(out));
+});
+"""
+
+
+def sequence_parity() -> tuple[int, int]:
+    """(pas compares, pas differents)"""
+    py = python_sequences(catalogue("face"))
+    js = BASE / "avatar" / "js"
+    script = SEQ_NODE % {"director": (js / "director.js").as_uri(),
+                         "catalog": (js / "catalog.js").as_uri()}
+    run = subprocess.run([shutil.which("node"), "--input-type=module", "-e", script],
+                         input=json.dumps(SEQUENCES), capture_output=True, text=True,
+                         encoding="utf-8", timeout=60)
+    if run.returncode != 0:
+        print(run.stderr[-2000:])
+        raise SystemExit(1)
+    jsout = json.loads(run.stdout)
+    steps = bad = 0
+    for i, (a_seq, b_seq) in enumerate(zip(py, jsout)):
+        for j, (a, b) in enumerate(zip(a_seq, b_seq)):
+            steps += 1
+            problems = differences(a, b)
+            if problems:
+                bad += 1
+                print(f"  [DIFF] sequence {i} pas {j} : {'; '.join(problems[:3])}")
+    return steps, bad
+
+
 def main() -> int:
     cases = [{"motion": motion, "state": state, "directive": directive, "t": t}
              for motion in ("face", "full")
@@ -185,10 +277,13 @@ def main() -> int:
                       f"{json.dumps(case['directive'])[:60]}")
                 for problem in problems[:5]:
                     print(f"         {problem}")
+    seq_steps, seq_bad = sequence_parity()
+    print(f"  {len(SEQUENCES)} sequences, {seq_steps} pas : {seq_steps - seq_bad} identiques, "
+          f"{seq_bad} differents")
     fields = sum(len(a) for a in py)
     print(f"\n  {len(cases)} decisions ({fields} champs) : "
           f"{len(cases) - bad} identiques, {bad} differentes", flush=True)
-    if bad:
+    if bad or seq_bad:
         return 1
     print("  Le labo decide exactement comme le panneau.", flush=True)
     return 0

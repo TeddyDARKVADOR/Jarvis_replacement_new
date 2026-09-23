@@ -23,6 +23,22 @@ import { replay } from '../js/recorder.js';
 import { Director, parseDirective } from '../js/director.js';
 import { Catalogue } from '../js/catalog.js';
 import { INTENTS } from '../js/affect.js';
+import { VISEMES } from '../js/visemes.js';
+import { FROM_OCULUS } from '../js/lipsync.js';
+
+/**
+ * L'ouverture de machoire que des visemes natifs impliquent : chacun pese ce
+ * que sa bouche ouvre. Le max des visemes ouverts n'est PAS une ouverture —
+ * un fondu E -> I, deux voyelles, y passait pour une bouche qui claque.
+ */
+function jawOfVisemes(visemes) {
+  let jaw = 0;
+  for (const name in visemes) {
+    const ours = FROM_OCULUS[name];
+    jaw += (visemes[name] || 0) * ((ours && VISEMES[ours] && VISEMES[ours].jawOpen) || 0);
+  }
+  return jaw;
+}
 
 const DT = 1 / 60;
 const DEG = 180 / Math.PI;
@@ -418,7 +434,30 @@ check('fin de phrase, interruption : la bouche se referme sans claquer', () => {
   assert(open > 0.3, `la bouche n'etait pas ouverte (${open.toFixed(2)})`);
   assert(biggest < 0.15, `fermeture brutale : -${biggest.toFixed(2)} en une image`);
   assert(closedAt !== null && closedAt > 0.1, `fermee en ${closedAt} s`);
-  return `ouverte ${open.toFixed(2)}, fermee en ${(closedAt * 1000).toFixed(0)} ms, pire image -${biggest.toFixed(2)}`;
+
+  // Le MEME controle sur le chemin du modele installe : des visemes natifs.
+  // Le controle ci-dessus ne mesurait que `jawOpen`, c'est-a-dire le chemin
+  // ARKit — celui que le modele installe n'emprunte pas pour parler. Il n'y
+  // avait aucune mesure sur ce chemin-ci.
+  const n = new AvatarEngine(face({ visemes: 'oculus' }), { seed: 17 });
+  n.perform(perf('neutral', {}, { state: 'SPEAKING' }));
+  speakFor(n, 1.2, (t) => 0.7 + 0.2 * Math.sin(t * 20));
+  const openness = () => jawOfVisemes(n.body.visemes);
+  const nOpen = openness();
+  let nBiggest = 0; let nLast = nOpen; let nClosed = null;
+  for (let t = 0; t < 1.5; t += DT) {
+    n.speak(0);
+    n.update(DT);
+    const v = openness();
+    nBiggest = Math.max(nBiggest, nLast - v);
+    nLast = v;
+    if (nClosed === null && v < 0.02) nClosed = t;
+  }
+  assert(nOpen > 0.15, `visemes natifs : la bouche n'etait pas ouverte (${nOpen.toFixed(2)})`);
+  assert(nBiggest < 0.08, `visemes natifs : fermeture brutale, -${nBiggest.toFixed(3)} en une image`);
+  assert(nClosed !== null && nClosed > 0.1, `visemes natifs : fermee en ${nClosed} s`);
+  return `ARKit : ouverte ${open.toFixed(2)}, fermee en ${(closedAt * 1000).toFixed(0)} ms, pire image -${biggest.toFixed(2)} ; `
+    + `visemes natifs : machoire ${nOpen.toFixed(2)}, fermee en ${(nClosed * 1000).toFixed(0)} ms, pire -${nBiggest.toFixed(3)}`;
 });
 
 check('changer d\'emotion en parlant ne fait rien sauter', () => {
@@ -654,6 +693,511 @@ check('le cout d\'une image, et ce qui est reellement ecrit', () => {
   assert(ms < 0.5, `${ms.toFixed(3)} ms par image`);
   assert(perFrame < 20, `${perFrame.toFixed(1)} ecritures par image au repos`);
   return `${(ms * 1000).toFixed(0)} us par image en parlant ; ${perFrame.toFixed(1)} ecritures/image au repos (52+ avant)`;
+});
+
+// ── 11. les coutures : ce qui etait declare et ne se voyait pas ──────────────
+//
+// Chacun de ces controles a d'abord ete ecrit ROUGE, contre le moteur tel
+// qu'il etait, puis la correction l'a fait passer. Ils mesurent la sortie.
+
+/** Une decision comme le directeur Python l'enverrait, avec son identite. */
+function decided(d, state, now) {
+  return d.resolve(state, { now, speechLevel: 0 });
+}
+const faceCatalogue = () => new Catalogue(['head', 'torso', 'arms', 'legs'], 'face', []);
+
+check('une decision nouvelle efface l\'accent de la precedente, sans le couper net', () => {
+  // apologise baisse la tete 2.4 s ; warn arrive a 0.5 s. La tete doit
+  // remonter — et les sourcils de l'excuse s'effacer sans sauter.
+  const e = new AvatarEngine(face(), { seed: 40 });
+  const d = new Director(faceCatalogue());
+  d.setIntent(parseDirective({ intent: 'apologise' }), 0);
+  e.perform(decided(d, 'SPEAKING', 0));
+  run(e, 0.5);
+  const down = e.accents.head.rx * DEG;
+  const browBefore = e.accents.shapes.browInnerUp || 0;
+  d.setIntent(parseDirective({ intent: 'warn' }), 0.5);
+  e.perform(decided(d, 'SPEAKING', 0.5));
+  let biggest = 0;
+  let prev = browBefore;
+  for (let i = 0; i < 30; i++) {
+    e.update(DT);
+    const b = e.accents.shapes.browInnerUp || 0;
+    biggest = Math.max(biggest, Math.abs(b - prev));
+    prev = b;
+  }
+  const after = e.accents.head.rx * DEG;
+  assert(down > 3, `l'excuse n'avait pas baisse la tete (${down.toFixed(1)}°)`);
+  assert(Math.abs(after) < 0.2, `0.5 s apres warn, l'accent de l'excuse tient encore la tete a ${after.toFixed(1)}°`);
+  assert(biggest < 0.05, `l'accent coupe net : pas de ${biggest.toFixed(3)} en une image`);
+  assert(e.accents.interrupted === 1, 'l\'interruption n\'a pas ete comptee');
+  return `tete de l'excuse ${down.toFixed(1)}° -> ${after.toFixed(1)}° sous warn ; plus grand pas des sourcils ${biggest.toFixed(3)}`;
+});
+
+check('la meme decision renvoyee ne relance pas le visage', () => {
+  // L'hote repousse la Performance a chaque changement d'etat. Une surprise
+  // retombee ne doit pas resurgir parce que JARVIS passe de parler a ecouter
+  // (le meme tour) — et une decision NOUVELLE, elle, doit la relancer.
+  const e = new AvatarEngine(face(), { seed: 41 });
+  const d = new Director(faceCatalogue());
+  d.setIntent(parseDirective({ expression: 'surprised', intensity: 0.8 }), 0);
+  e.perform(decided(d, 'SPEAKING', 0));
+  run(e, 3);
+  const settled = shape(e, 'browInnerUp');
+  e.perform(decided(d, 'LISTENING', 3));
+  let resent = 0;
+  run(e, 1.5, (x) => { resent = Math.max(resent, shape(x, 'browInnerUp')); });
+  d.setIntent(parseDirective({ expression: 'surprised', intensity: 0.8 }), 4.5);
+  e.perform(decided(d, 'LISTENING', 4.5));
+  let fresh = 0;
+  run(e, 1.0, (x) => { fresh = Math.max(fresh, shape(x, 'browInnerUp')); });
+  assert(resent < settled + 0.02, `renvoi : la surprise remonte de ${settled.toFixed(2)} a ${resent.toFixed(2)}`);
+  assert(fresh > 0.6, `une nouvelle surprise n'est pas rejouee (${fresh.toFixed(2)})`);
+  assert(e.rig.performance.continued >= 1, 'le renvoi n\'a pas ete reconnu comme une suite');
+  return `retombee ${settled.toFixed(2)} · renvoi ${resent.toFixed(2)} · nouvelle decision ${fresh.toFixed(2)}`;
+});
+
+check('ce qui quitte le visage part a son rythme, sauf devant une alerte', () => {
+  const leave = (from, to, extra = {}) => {
+    const e = new AvatarEngine(face(), { seed: 42 });
+    e.perform(perf(from, { mouthSmileLeft: 0.5 }, { gesture_id: 'a' }));
+    run(e, 2);
+    const top = shape(e, 'mouthSmileLeft');
+    e.perform(perf(to, to === 'neutral' ? {} : { browInnerUp: 0.5 }, Object.assign({ gesture_id: 'b' }, extra)));
+    for (let t = 0; t < 4; t += DT) {
+      e.update(DT);
+      if (shape(e, 'mouthSmileLeft') <= top * 0.1) return t;
+    }
+    return Infinity;
+  };
+  const calm = leave('amused', 'neutral');
+  const alarm = leave('happy', 'concerned');
+  const urgent = leave('amused', 'thinking', { affect: { urgency: 0.8 } });
+  const relaxed = leave('amused', 'thinking', { affect: { urgency: 0.1 } });
+  // amused.release = 0.95 s : c'est lui qui doit se lire, pas neutral (0.55).
+  assert(calm > 0.8 && calm < 1.2, `amused -> neutral : sourire parti en ${calm.toFixed(2)} s`);
+  // Une inquietude qui monte en 0.30 s ne cohabite pas avec un sourire.
+  assert(alarm < 0.45, `happy -> concerned : le sourire traine ${alarm.toFixed(2)} s`);
+  assert(urgent < 0.45 && relaxed > 0.8, `urgence : ${urgent.toFixed(2)} s, sans urgence ${relaxed.toFixed(2)} s`);
+  return `sourire parti : vers neutral ${calm.toFixed(2)} s · vers concerned ${alarm.toFixed(2)} s · `
+    + `urgent ${urgent.toFixed(2)} s / calme ${relaxed.toFixed(2)} s`;
+});
+
+// ── 12. la conversation : ce que la voix appelle ─────────────────────────────
+//
+// Une voix de synthese, faite pour qu'on sache OU sont les appuis : des
+// syllabes a ~4.5 par seconde, une sur quatre environ plus forte, des pauses de
+// phrase. Echantillonnee a 25 Hz et tenue entre deux echantillons, comme
+// l'hote l'envoie (`SPEECH_INTERVAL_S`).
+
+/** Une phrase : ses syllabes, et lesquelles sont appuyees. */
+function sentence(start, seconds, { rate = 4.5, stressEvery = 4, offset = 0 } = {}) {
+  const syllables = [];
+  const n = Math.floor(seconds * rate);
+  for (let i = 0; i < n; i++) {
+    const stressed = (i + offset) % stressEvery === 0;
+    syllables.push({ t: start + i / rate, peak: stressed ? 0.85 : 0.42, stressed });
+  }
+  return syllables;
+}
+
+/** Le niveau a l'instant `t` : attaque 60 ms, chute 110 ms, par syllabe. */
+function levelOf(syllables, t) {
+  let v = 0;
+  for (const s of syllables) {
+    const d = t - s.t;
+    if (d < 0 || d > 0.2) continue;
+    const k = d < 0.06 ? d / 0.06 : Math.max(0, 1 - (d - 0.06) / 0.11);
+    v = Math.max(v, s.peak * k);
+  }
+  return v;
+}
+
+/** Faire parler le moteur sur `syllables` pendant `seconds`, a 25 Hz. */
+function talk(e, syllables, seconds, each) {
+  const frames = Math.round(seconds / DT);
+  const t0 = e.t;
+  let lastSample = -1;
+  for (let i = 0; i < frames; i++) {
+    const t = t0 + i * DT;
+    const sample = Math.floor(t / 0.04);
+    if (sample !== lastSample) { e.speak(levelOf(syllables, sample * 0.04)); lastSample = sample; }
+    if (each) each(e, t);
+    e.update(DT);
+  }
+}
+
+/** Les sommets locaux d'une serie { t, v } au-dessus de `floor`. */
+function peaksOf(series, floor) {
+  const out = [];
+  for (let i = 1; i < series.length - 1; i++) {
+    const v = series[i].v;
+    if (v > floor && v >= series[i - 1].v && v > series[i + 1].v) out.push(series[i]);
+  }
+  return out;
+}
+
+check('en parlant, la tete marque les syllabes appuyees — et rien en silence', () => {
+  const e = new AvatarEngine(face(), { seed: 50 });
+  e.perform(perf('neutral', {}, { state: 'SPEAKING', stillness: 0.7, gesture_id: 's1' }));
+  run(e, 1);
+  const syl = sentence(e.t + 0.2, 6);
+  const beats = [];
+  talk(e, syl, 7.5, (x, t) => beats.push({ t, v: x.conversation.head.rx }));
+  const silent = [];
+  run(e, 3, (x) => silent.push(Math.abs(x.conversation.head.rx)));
+
+  const stressed = syl.filter((s) => s.stressed).map((s) => s.t);
+  const big = peaksOf(beats, 1.0 / DEG);
+  // Chaque grand appui tombe sur une syllabe appuyee : son sommet entre 0.05 et
+  // 0.35 s apres l'attaque (le niveau arrive a 25 Hz, le ressort monte en 0.12 s).
+  const aligned = big.filter((p) => stressed.some((s) => p.t - s >= 0.05 && p.t - s <= 0.35));
+  const top = Math.max(...beats.map((b) => b.v)) * DEG;
+  assert(big.length >= 4, `${big.length} appuis visibles en 6 s de parole`);
+  assert(aligned.length >= big.length * 0.8, `${aligned.length}/${big.length} appuis sur une syllabe appuyee`);
+  assert(top < 3.2, `appui de ${top.toFixed(1)}° — un hochement, plus un appui`);
+  assert(Math.max(...silent) * DEG < 0.05, 'la tete marque encore en silence');
+  const st = e.conversation.stats;
+  return `${big.length} appuis > 1°, ${aligned.length} sur une syllabe appuyee ; max ${top.toFixed(1)}° ; `
+    + `${st.beats} impulsions dont ${st.emphasised} appuyees, ${st.brows} sourcils`;
+});
+
+check('explain amplifie les appuis, et son horloge se tait quand il parle', () => {
+  const measure = (intent) => {
+    const e = new AvatarEngine(face(), { seed: 51 });
+    const d = new Director(faceCatalogue());
+    d.setIntent(parseDirective({ intent }), 0);
+    e.perform(decided(d, 'SPEAKING', 0));
+    const syl = sentence(e.t + 0.1, 2.2);
+    let sum = 0; let n = 0; let clock = 0;
+    talk(e, syl, 2.2, (x, t) => {
+      if (t > 0.4) { sum += Math.abs(x.conversation.head.rx); n += 1; }
+      if (x.lipsync.speaking > 0.9) clock = Math.max(clock, Math.abs(x.accents.head.rx));
+    });
+    return { mean: sum / n * DEG, clock: clock * DEG };
+  };
+  const explain = measure('explain');
+  const plain = measure('acknowledge');
+  assert(explain.mean > plain.mean * 1.3, `explain ${explain.mean.toFixed(2)}° vs acknowledge ${plain.mean.toFixed(2)}°`);
+  assert(explain.clock < 0.05, `l'horloge de beat marque encore ${explain.clock.toFixed(2)}° pendant la parole`);
+  return `appui moyen : explain ${explain.mean.toFixed(2)}° · acknowledge ${plain.mean.toFixed(2)}° ; `
+    + `horloge de beat en parlant ${explain.clock.toFixed(2)}°`;
+});
+
+/** Des phrases separees de silences, et ce qui arrive a chaque frontiere. */
+function turns(seed, count, performance) {
+  const e = new AvatarEngine(face(), { seed });
+  e.perform(performance);
+  run(e, 1.5);
+  const starts = []; const ends = [];
+  let wasIn = false; let averted = 0;
+  for (let k = 0; k < count; k++) {
+    const syl = sentence(e.t + 0.1, 1.6 + (k % 3) * 0.7, { offset: k });
+    const blinksBefore = e.rig.blink.byCause.utterance_end || 0;
+    // Une aversion COMMANDEE par le debut de phrase, et arrivee aux yeux : les
+    // coups d'oeil au hasard de l'etat « parle » ne comptent pas.
+    const avertsBefore = e.rig.gazeCtl.averts || 0;
+    let moved = 0; let startAt = null;
+    talk(e, syl, 1.8 + (k % 3) * 0.7, (x) => {
+      if (x.conversation.inUtterance && !wasIn) { starts.push(x.t); startAt = x.t; }
+      wasIn = x.conversation.inUtterance;
+      if (startAt !== null && x.t - startAt < 0.5) moved = Math.max(moved, Math.abs(x.rig.gazeCtl.out.x));
+    });
+    run(e, 1.3, (x) => { wasIn = x.conversation.inUtterance; });
+    if ((e.rig.gazeCtl.averts || 0) > avertsBefore) {
+      averted += 1;
+      if (moved < 0.12) averted += 1000;   // commandee, jamais arrivee aux yeux
+    }
+    ends.push((e.rig.blink.byCause.utterance_end || 0) - blinksBefore);
+  }
+  return { e, averted, endBlinks: ends.reduce((a, b) => a + b, 0), count };
+}
+
+check('en debut de phrase le regard s\'echappe, souvent — jamais un regard decide', () => {
+  const free = turns(52, 40, perf('neutral', {}, { state: 'SPEAKING', gesture_id: 'f' }));
+  const held = turns(52, 40, perf('neutral', {}, { state: 'SPEAKING', gesture_id: 'h',
+                                                   gaze_source: 'explicit' }));
+  const share = free.averted / free.count;
+  assert(share > 0.3 && share < 0.75, `${free.averted}/${free.count} debuts de phrase avec un regard qui s'echappe`);
+  assert(held.averted === 0, `${held.averted} regards decides deplaces`);
+  // Le regard que pose la TABLE d'une intention : `explain` le laisse
+  // s'echapper pour formuler ; `warn` et `reassure` le tiennent.
+  const byIntent = (intent) => {
+    const d = new Director(faceCatalogue());
+    d.setIntent(parseDirective({ intent }), 0);
+    return turns(54, 30, decided(d, 'SPEAKING', 0)).averted;
+  };
+  const explain = byIntent('explain');
+  const warn = byIntent('warn');
+  const reassure = byIntent('reassure');
+  assert(explain >= 6 && explain < 1000, `explain : ${explain % 1000} echappees sur 30${explain >= 1000 ? ', dont certaines jamais arrivees aux yeux' : ''}`);
+  assert(warn === 0 && reassure === 0, `warn ${warn}, reassure ${reassure} : un regard qui doit tenir s'est echappe`);
+  return `${free.averted}/${free.count} phrases commencent les yeux ailleurs ; regard decide : ${held.averted} ; `
+    + `explain ${explain}/30, warn ${warn}, reassure ${reassure}`;
+});
+
+check('en fin de phrase un clignement, souvent — jamais a coup sur', () => {
+  const r = turns(53, 40, perf('neutral', {}, { state: 'SPEAKING', gesture_id: 'b' }));
+  const share = r.endBlinks / r.count;
+  assert(share > 0.25 && share < 0.8, `${r.endBlinks}/${r.count} fins de phrase avec un clignement`);
+  return `${r.endBlinks}/${r.count} fins de phrase suivies d'un clignement (${Object.entries(r.e.rig.blink.byCause).map(([k, v]) => `${k} ${v}`).join(', ')})`;
+});
+
+/** L'utilisateur parle : son niveau de micro a 15 Hz, avec des pauses. */
+function userTalks(e, seconds, { pauses = [], noise = 0.02, level = 0.35 } = {}) {
+  const t0 = e.t;
+  let last = -1;
+  const frames = Math.round(seconds / DT);
+  const nods = [];
+  let prev = 0;
+  for (let i = 0; i < frames; i++) {
+    const t = i * DT;
+    const sample = Math.floor(t * 15);
+    if (sample !== last) {
+      last = sample;
+      const ts = sample / 15;
+      const inPause = pauses.some(([a, b]) => ts >= a && ts < b);
+      const syll = Math.max(0, Math.sin(ts * 2 * Math.PI * 4.2));
+      e.listen(noise + (inPause ? 0 : level * (0.4 + 0.6 * syll)));
+    }
+    e.update(DT);
+    const n = e.conversation.stats.backchannels;
+    if (n > prev) { nods.push(t0 + t); prev = n; }
+  }
+  return nods;
+}
+
+check('il ecoute : un petit hochement aux pauses de l\'utilisateur, et nulle part ailleurs', () => {
+  const pauses = [[2.2, 2.8], [5.0, 5.6], [7.9, 8.5], [10.8, 11.4], [13.6, 14.2], [16.5, 17.1]];
+  let nods = 0; let aligned = 0; let biggest = 0;
+  for (let seed = 60; seed < 66; seed++) {
+    const e = new AvatarEngine(face(), { seed });
+    e.perform(perf('neutral', {}, { state: 'LISTENING', gesture_id: 'l' }));
+    run(e, 1);
+    const t0 = e.t;
+    const got = userTalks(e, 18, { pauses });
+    nods += got.length;
+    aligned += got.filter((t) => pauses.some(([a]) => t - t0 >= a + 0.2 && t - t0 <= a + 0.6)).length;
+    biggest = Math.max(biggest, e.gestures.smoothed.headRx);
+  }
+  // Pas d'ecoute : pas de hochement. Parole continue : pas de pause, pas de
+  // hochement. Bruit de fond stable : pas de voix, pas de hochement.
+  const other = (state, opts) => {
+    const e = new AvatarEngine(face(), { seed: 70 });
+    e.perform(perf('neutral', {}, { state, gesture_id: 'o' }));
+    run(e, 1);
+    return userTalks(e, 18, opts).length;
+  };
+  const thinking = other('THINKING', { pauses });
+  const continuous = other('LISTENING', { pauses: [] });
+  const noise = other('LISTENING', { pauses, level: 0, noise: 0.2 });
+  assert(nods >= 6, `${nods} hochements sur 36 pauses`);
+  assert(nods <= 24, `${nods} hochements sur 36 pauses — un tic`);
+  assert(aligned === nods, `${nods - aligned} hochements hors d'une pause`);
+  assert(thinking === 0 && continuous === 0 && noise === 0,
+    `hors ecoute ${thinking}, parole continue ${continuous}, bruit ${noise}`);
+  return `${nods} hochements sur 36 pauses, tous dans la pause ; reflexion ${thinking}, `
+    + `parole continue ${continuous}, bruit seul ${noise}`;
+});
+
+check('la surprise retient le clignement, puis le libere', () => {
+  let held = 0; let released = 0; const runs = 12;
+  for (let seed = 80; seed < 80 + runs; seed++) {
+    const e = new AvatarEngine(face(), { seed });
+    run(e, 0.2);
+    const before = e.rig.blink.count;
+    e.perform(perf('surprised', { browInnerUp: 0.9, eyeWideLeft: 0.8, eyeWideRight: 0.8 },
+                   { intensity: 0.8, gesture_id: `s${seed}` }));
+    run(e, 0.65);
+    if (e.rig.blink.count === before) held += 1;
+    run(e, 0.4);
+    if ((e.rig.blink.byCause.after_surprise || 0) > 0) released += 1;
+  }
+  assert(held === runs, `${runs - held} clignements pendant les yeux grands ouverts`);
+  assert(released >= runs * 0.3 && released < runs, `${released}/${runs} clignements a la detente`);
+  return `aucun clignement sous la surprise (${held}/${runs}) ; ${released}/${runs} a la detente`;
+});
+
+check('les clignements : irreguliers, parfois longs, jamais en rafale', () => {
+  const e = new AvatarEngine(face(), { seed: 90 });
+  e.perform(perf('neutral', {}, { state: 'ACTIVE', gesture_id: 'i' }));
+  run(e, 600);
+  const iv = e.rig.blink.intervals.filter((x, i, a) => i < a.length);
+  const single = iv.filter((x) => x > 0.3);     // les doubles a part
+  const mean = single.reduce((a, b) => a + b, 0) / single.length;
+  const sd = Math.sqrt(single.reduce((a, b) => a + (b - mean) ** 2, 0) / single.length);
+  const cv = sd / mean;
+  const long = Math.max(...single) / mean;
+  assert(cv > 0.45 && cv < 1.1, `CV ${cv.toFixed(2)}`);
+  assert(long > 2.0, `le plus long intervalle vaut ${long.toFixed(1)} fois la moyenne — jamais de regard qui tient`);
+  assert(Math.min(...iv) >= 0.1, `rafale : ${Math.min(...iv).toFixed(2)} s`);
+  return `10 min : ${e.rig.blink.count} clignements, moyenne ${mean.toFixed(1)} s, CV ${cv.toFixed(2)}, `
+    + `plus long ${long.toFixed(1)}× la moyenne (avant : CV 0.45, 1.75×)`;
+});
+
+check('six visages en parlant : chacun reste lisible, la bouche parle quand meme', () => {
+  // Le visage ne choisit jamais « emotion OU parole ». Le meme visage, la meme
+  // graine, deux fois : en silence, et en parlant. Image par image, ce que la
+  // parole a PRIS a la signature hors bouche (sourcils, yeux, joues) et aux
+  // coins emotionnels — et que la machoire suit la voix. Comparer au visage
+  // d'AVANT la parole confondait la parole et la vie propre du visage (une
+  // surprise retombe d'elle-meme, parle-t-on ou non).
+  const d = new Director(faceCatalogue());
+  const rows = [];
+  for (const expression of ['happy', 'serious', 'amused', 'concerned', 'thinking', 'surprised']) {
+    d.setIntent(parseDirective({ expression, intensity: 0.7 }), 0);
+    const p = decided(d, 'SPEAKING', 0);
+    const upper = Object.keys(p.blendshapes).filter((n) => /^(brow|cheek|eyeSquint|eyeWide|nose)/.test(n));
+    const corners = Object.keys(p.blendshapes).filter((n) => /^mouth(Smile|Frown|Dimple)/.test(n));
+    const series = (speaking) => {
+      const e = new AvatarEngine(face(), { seed: 110 });
+      e.perform(p);
+      run(e, 1.0);
+      const frames = [];
+      const syl = speaking ? sentence(e.t + 0.1, 2.5) : [];
+      talk(e, syl, 2.6, (x, t) => {
+        if (t < e.t - 2.2) return;
+        const f = { jaw: shape(x, 'jawOpen') };
+        for (const n of [...upper, ...corners]) f[n] = shape(x, n);
+        frames.push(f);
+      });
+      return frames;
+    };
+    const quiet = series(false);
+    const loud = series(true);
+    const keep = (names) => {
+      let worst = 1;
+      for (let i = 0; i < quiet.length; i++) {
+        for (const n of names) if (quiet[i][n] > 0.03) worst = Math.min(worst, loud[i][n] / quiet[i][n]);
+      }
+      return worst;
+    };
+    rows.push({ expression, upper: keep(upper), corners: keep(corners),
+                jaw: Math.max(...loud.map((f) => f.jaw)) });
+  }
+  for (const r of rows) {
+    assert(r.upper >= 0.9, `${r.expression} : la parole prend ${(100 - r.upper * 100).toFixed(0)} % du haut du visage`);
+    assert(r.corners >= 0.7, `${r.expression} : les coins gardent ${(r.corners * 100).toFixed(0)} %`);
+    assert(r.jaw > 0.15, `${r.expression} : la machoire ne suit pas la voix (${r.jaw.toFixed(2)})`);
+  }
+  return rows.map((r) => `${r.expression} ${(r.upper * 100).toFixed(0)}/${(r.corners * 100).toFixed(0)}/${r.jaw.toFixed(2)}`).join(' · ')
+    + '  (haut % / coins % gardes en parlant / machoire)';
+});
+
+check('le residu d\'une surprise s\'efface en quelques secondes, meme si sa decision tient', () => {
+  // L'hote renvoie la decision toutes les 1.5 s. Avant : sourcils a 0.25
+  // pendant vingt secondes de reponse — un etonnement fige.
+  const e = new AvatarEngine(face(), { seed: 43 });
+  const d = new Director(faceCatalogue());
+  d.setIntent(parseDirective({ expression: 'surprised', intensity: 0.7 }), 0);
+  e.perform(decided(d, 'THINKING', 0));
+  const at = (s) => {
+    let last = e.t;
+    while (e.t < s) {
+      if (e.t - last >= 1.5) { e.perform(decided(d, 'SPEAKING', e.t)); last = e.t; }
+      e.update(DT);
+    }
+    return shape(e, 'browInnerUp');
+  };
+  const peakV = at(0.4);
+  const residue = at(2.0);
+  const settled = at(6.0);
+  const late = at(20);
+  assert(residue > peakV * 0.25, `pas d'impression residuelle a 2 s (${residue.toFixed(2)})`);
+  assert(settled < peakV * 0.15, `a 6 s, la surprise tient encore (${settled.toFixed(2)})`);
+  assert(Math.abs(late - settled) < 0.02, `elle remonte (${settled.toFixed(2)} -> ${late.toFixed(2)})`);
+  return `sourcils ${peakV.toFixed(2)} -> residu ${residue.toFixed(2)} a 2 s -> ${settled.toFixed(2)} a 6 s -> ${late.toFixed(2)} a 20 s`;
+});
+
+check('blink_slow ferme les paupieres, lentement, une fois — et le dit', () => {
+  // Le geste de `reassure` (et le repli de `report_failure`) etait annonce
+  // « joue » et ne faisait rien : sa fonction est vide, et le branchement que
+  // son commentaire decrivait n'existait pas. Mesure avant : 0/20.
+  const slow = (request) => {
+    let yes = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const e = new AvatarEngine(face(), { seed });
+      const d = new Director(faceCatalogue());
+      d.setIntent(parseDirective(request), 0);
+      e.perform(decided(d, 'SPEAKING', 0));
+      let run_ = 0; let best = 0;
+      for (let i = 0; i < 90; i++) {
+        e.update(DT);
+        run_ = shape(e, 'eyeBlinkLeft') > 0.5 ? run_ + 1 : 0;
+        best = Math.max(best, run_);
+      }
+      if (best >= 10) yes += 1;
+    }
+    return yes;
+  };
+  const reassure = slow({ intent: 'reassure' });
+  const failure = slow({ intent: 'report_failure' });
+  const none = slow({ intent: 'reassure', gesture: 'idle' });
+  assert(reassure === 20 && failure === 20, `clignement lent : reassure ${reassure}/20, report_failure ${failure}/20`);
+  assert(none === 0, `${none}/20 clignements lents sans le geste`);
+  return `clignement lent tenu : reassure ${reassure}/20, report_failure ${failure}/20, sans le geste ${none}/20`;
+});
+
+// ── 13. la repetition : un geste repete se fait plus petit ───────────────────
+
+/** Le plus grand angle que le GESTE seul a donne a la tete, en degres. */
+function gesturePeak(e, seconds) {
+  let peak = 0;
+  run(e, seconds, (x) => {
+    const g = x.gestures.gestureHead;
+    peak = Math.max(peak, Math.abs(g.rx), Math.abs(g.ry), Math.abs(g.rz));
+  });
+  return peak * DEG;
+}
+
+check('les reflexes d\'une conversation s\'usent ; une decision, a peine', () => {
+  // Huit tours ecoute -> reflexion -> parole, comme le directeur les resout.
+  // Avant : nod 9° et tilt 10°, identiques, huit fois sur huit.
+  const e = new AvatarEngine(face(), { seed: 100 });
+  const d = new Director(faceCatalogue());
+  let now = 0;
+  const nods = []; const tilts = []; const played = [];
+  for (let turn = 0; turn < 8; turn++) {
+    for (const st of ['LISTENING', 'THINKING', 'SPEAKING']) {
+      const dec = e.perform(decided(d, st, now));
+      const peak = gesturePeak(e, 2.5);
+      if (st === 'SPEAKING') { nods.push(peak); played.push(dec.gesture_played); }
+      if (st === 'THINKING') tilts.push(peak);
+      now += 2.5;
+    }
+  }
+  const late = nods.slice(4).filter((v, i) => played[i + 4] !== 'habituated');
+  assert(nods[0] > 8, `premier hochement ${nods[0].toFixed(1)}°`);
+  assert(Math.max(...late) < nods[0] * 0.75, `hochements tardifs ${late.map((v) => v.toFixed(1)).join(' ')}`);
+  assert(tilts[7] < tilts[0] * 0.75, `inclinaison ${tilts[0].toFixed(1)}° -> ${tilts[7].toFixed(1)}°`);
+  // Jamais deux fois la meme trajectoire — les tours sautes (0°) a part.
+  const done = nods.filter((v, i) => played[i] !== 'habituated');
+  const distinct = new Set(done.map((v) => v.toFixed(2))).size;
+  assert(distinct === done.length, `${done.length - distinct} hochements identiques au centieme de degre`);
+
+  // Une decision : agree deux fois de suite, puis une troisieme. Jamais sous
+  // 70 % — une decision reste une decision.
+  const f = new AvatarEngine(face(), { seed: 101 });
+  const g = new Director(faceCatalogue());
+  const agreed = [];
+  for (let k = 0; k < 3; k++) {
+    g.setIntent(parseDirective({ intent: 'agree' }), k * 3);
+    f.perform(decided(g, 'SPEAKING', k * 3));
+    agreed.push(gesturePeak(f, 3));
+  }
+  assert(Math.min(...agreed) > agreed[0] * 0.62, `agree ${agreed.map((v) => v.toFixed(1)).join(' -> ')}`);
+
+  // Et l'oubli : deux minutes sans ce geste, le reflexe retrouve son ampleur.
+  run(e, 120);
+  e.perform(decided(d, 'LISTENING', now + 120));
+  run(e, 2);
+  e.perform(decided(d, 'SPEAKING', now + 122));
+  const rested = gesturePeak(e, 2.5);
+  assert(rested > nods[0] * 0.8, `apres 2 min de silence : ${rested.toFixed(1)}° (premier ${nods[0].toFixed(1)}°)`);
+  const skipped = played.filter((p) => p === 'habituated').length;
+  return `hochement ${nods.map((v) => v.toFixed(1)).join(' ')}° (${skipped} saute) ; `
+    + `tilt ${tilts[0].toFixed(1)} -> ${tilts[7].toFixed(1)}° ; agree ${agreed.map((v) => v.toFixed(1)).join(' ')}° ; `
+    + `apres 2 min ${rested.toFixed(1)}°`;
 });
 
 // ── rapport ──────────────────────────────────────────────────────────────────

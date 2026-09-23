@@ -135,22 +135,39 @@ export function normaliseAffect(a = {}) {
   };
 }
 
+/** La distance ponderee entre un etat (normalise) et l'ancre d'un visage. */
+function distanceTo(a, name) {
+  const point = [a.valence, a.arousal, a.confidence, a.urgency];
+  const anchor = ANCHORS[name];
+  let sum = 0;
+  for (let i = 0; i < 4; i++) {
+    const d = WEIGHTS[i] * (point[i] - anchor[i]);
+    sum += d * d;
+  }
+  return Math.sqrt(sum);
+}
+
 /** Le visage le plus proche de cet etat. */
 export function expressionFor(affect) {
   const a = normaliseAffect(affect);
-  const point = [a.valence, a.arousal, a.confidence, a.urgency];
   let best = null;
   for (const name in ANCHORS) {
-    const anchor = ANCHORS[name];
-    let sum = 0;
-    for (let i = 0; i < 4; i++) {
-      const d = WEIGHTS[i] * (point[i] - anchor[i]);
-      sum += d * d;
-    }
-    const distance = Math.sqrt(sum);
+    const distance = distanceTo(a, name);
     if (best === null || distance < best[0]) best = [distance, name];
   }
   return best[1];
+}
+
+/**
+ * Le visage d'un etat qui RETOMBE : le sien, pali, puis le neutre — jamais un
+ * troisieme. Miroir de `presence.affect.fading_expression`, qui dit pourquoi.
+ */
+export function fadingExpression(origin, live) {
+  const first = expressionFor(origin);
+  const now = expressionFor(live);
+  if (now === first || now === 'neutral') return now;
+  const a = normaliseAffect(live);
+  return distanceTo(a, first) <= distanceTo(a, 'neutral') ? first : 'neutral';
 }
 
 /** A quel point ce visage se voit. */

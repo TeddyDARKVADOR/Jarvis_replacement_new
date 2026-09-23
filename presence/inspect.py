@@ -53,13 +53,41 @@ _JSON_CHUNK = 0x4E4F534A
 
 #: Bone names that prove a limb exists. Normalised — lowercase, separators
 #: stripped — so `mixamorig:LeftArm`, `LeftArm` and `left_arm` are one entry.
+#:
+#: The 3ds Max Biped convention (`Bip01_Head`, `Bip001 L UpperArm`) is here
+#: because it is everywhere in game assets and was nowhere in this table: the
+#: Microsoft Rocketbox male was reported as having no head — while the
+#: renderer, whose table already knew `bip01head`, found it. An inspector that
+#: promises less than the renderer does is lying the other way round.
 _PART_EVIDENCE: dict[RigPart, tuple[str, ...]] = {
-    RigPart.HEAD: ("head", "neck"),
-    RigPart.TORSO: ("spine", "spine1", "spine2", "chest", "upperchest", "hips"),
+    RigPart.HEAD: ("head", "neck", "bip01head", "bip001head", "bip01neck", "bip001neck"),
+    RigPart.TORSO: ("spine", "spine1", "spine2", "chest", "upperchest", "hips",
+                    "bip01spine", "bip01spine1", "bip01spine2", "bip01pelvis",
+                    "bip001spine", "bip001spine1", "bip001spine2", "bip001pelvis"),
     RigPart.ARMS: ("leftarm", "rightarm", "leftforearm", "rightforearm",
-                   "lefthand", "righthand", "leftupperarm", "rightupperarm"),
+                   "lefthand", "righthand", "leftupperarm", "rightupperarm",
+                   "bip01lupperarm", "bip01rupperarm", "bip01lforearm", "bip01rforearm",
+                   "bip001lupperarm", "bip001rupperarm", "bip001lforearm", "bip001rforearm"),
     RigPart.LEGS: ("leftupleg", "rightupleg", "leftleg", "rightleg",
-                   "leftfoot", "rightfoot", "leftupperleg", "rightupperleg"),
+                   "leftfoot", "rightfoot", "leftupperleg", "rightupperleg",
+                   "bip01lthigh", "bip01rthigh", "bip01lcalf", "bip01rcalf",
+                   "bip001lthigh", "bip001rthigh", "bip001lcalf", "bip001rcalf"),
+}
+
+#: Where each bone the engine drives is found, by normalised name, first match
+#: wins. Mirrored in `BONE_HINTS` of `avatar/js/body_gltf.js`; the selftest
+#: requires every entry here to exist there. The JS table may hold MORE:
+#: three.js strips `:` and `.` from node names, so `mixamorig:Head` reaches
+#: the renderer as `mixamorigHead`, a spelling this file never sees.
+BONE_HINTS: dict[str, tuple[str, ...]] = {
+    "head": ("head", "bip01head", "bip001head", "headjoint"),
+    "neck": ("neck", "bip01neck", "bip001neck"),
+    "spine": ("spine2", "spine1", "spine", "chest", "upperchest",
+              "bip01spine2", "bip01spine1", "bip01spine",
+              "bip001spine2", "bip001spine1", "bip001spine"),
+    "root": ("hips", "root", "armature", "bip01pelvis", "bip001pelvis"),
+    "eyeLeft": ("lefteye", "eyeleft", "eyel", "bip01leye", "bip001leye"),
+    "eyeRight": ("righteye", "eyeright", "eyer", "bip01reye", "bip001reye"),
 }
 
 
@@ -187,14 +215,7 @@ def detect_parts(gltf: dict) -> set[RigPart]:
 
 def find_bones(gltf: dict) -> dict[str, str]:
     """The four nodes `gestures.js` drives, by their real names in this file."""
-    hints = {
-        "head": ("head",),
-        "neck": ("neck",),
-        "spine": ("spine2", "spine1", "spine", "chest", "upperchest"),
-        "root": ("hips", "root", "armature"),
-        "eyeLeft": ("lefteye", "eyeleft", "eyel"),
-        "eyeRight": ("righteye", "eyeright", "eyer"),
-    }
+    hints = BONE_HINTS
     by_normalised: dict[str, str] = {}
     for node in gltf.get("nodes", []):
         name = node.get("name")

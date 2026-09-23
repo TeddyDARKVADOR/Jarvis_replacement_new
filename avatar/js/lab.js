@@ -40,6 +40,8 @@ import { AvatarEngine } from './engine.js';
 import { replay } from './recorder.js';
 import { createStage } from './stage.js';
 import { buildProfile, formatProfile } from './profile.js';
+import { SITUATIONS, durationOf, voiceAt, micAt } from './situations.js';
+import { explainDecision } from './explain.js';
 
 /** Les cinq axes continus, avec de quoi les lire. */
 const AXES = [
@@ -81,6 +83,9 @@ const app = window.__lab = {
 const canvas = $('stage');
 const stage = createStage(canvas, {});
 const { renderer, scene, camera } = stage;
+// Expose pour les controles qui photographient le visage ou qu'il soit
+// (`avatar/checks/capture_faces.py`) : ils projettent l'os de tete.
+app.camera = camera;
 
 function resize() {
   stage.resize(canvas.clientWidth, canvas.clientHeight);
@@ -425,6 +430,10 @@ function drawOutput() {
     + (Object.keys(out.visemes).length ? ` · visèmes natifs ${Object.keys(out.visemes).join(',')}` : '')
     + `<br><span class="off">${top}</span>`;
   const m = engine.metrics;
+  if (app.performance) {
+    $('trace-why').innerHTML = explainDecision(app.performance, engine)
+      .map(([k, v]) => `<span class="off">${k}</span> ${escapeHtml(v)}`).join('<br>');
+  }
   $('metrics').textContent = `${fps.toFixed(0)} i/s · image ${frameMs.toFixed(2)} ms · `
     + `moteur ${m.updateMs.toFixed(3)} ms (rig ${m.rigMs.toFixed(3)}, gestes ${m.gesturesMs.toFixed(3)}, `
     + `bouche ${m.lipsyncMs.toFixed(3)}) · ${m.writesPerFrame.toFixed(1)} écritures/image`
@@ -608,6 +617,42 @@ function runScenario(name) {
   scenarioTimers = SCENARIOS[name].map(([t, fn]) => setTimeout(fn, t * 1000));
 }
 buttons('scenarios', Object.keys(SCENARIOS), runScenario);
+
+// ── situations quotidiennes : les memes donnees que checks/situations.mjs ────
+//
+// Ce que JARVIS demanderait, dans l'ordre, et rien de ce que le visage doit en
+// faire : le labo les rejoue par `send()`, l'etat machine, la voix (25 Hz) et
+// le micro (15 Hz) — le meme chemin que tout le reste. Ce qu'un observateur
+// devrait percevoir s'affiche sous les boutons ; le controle Node le mesure.
+
+let situationTimers = [];
+function runSituation(name) {
+  for (const timer of situationTimers) { clearTimeout(timer); clearInterval(timer); }
+  for (const timer of scenarioTimers) clearTimeout(timer);
+  const s = SITUATIONS[name];
+  app.request = null;
+  app.directive = null;
+  app.director.clearIntent();
+  app.director.affect = null;
+  app.situation = s.situation;
+  $('situation').value = s.situation;
+  $('situation-expect').textContent = `attendu : ${s.expect}`;
+  const start = performance.now();
+  situationTimers = s.steps.filter((st) => st.state || st.ask).map((step) => setTimeout(() => {
+    if (step.state) app.state = step.state;
+    if (step.ask) send(step.ask);
+    else decide();
+  }, step.t * 1000));
+  const end = durationOf(s) * 1000;
+  const voice = setInterval(() => {
+    const t = (performance.now() - start) / 1000;
+    setSpeech(voiceAt(s.steps, t));
+    if (app.state === 'LISTENING' || app.state === 'CONFIRM') app.engine.listen(micAt(s.steps, t));
+    if (t * 1000 > end) { clearInterval(voice); setSpeech(0); }
+  }, 40);
+  situationTimers.push(voice);
+}
+buttons('situations', Object.keys(SITUATIONS), runSituation);
 
 // ── enregistrer et rejouer ───────────────────────────────────────────────────
 

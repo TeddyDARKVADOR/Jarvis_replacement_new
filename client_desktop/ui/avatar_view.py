@@ -78,6 +78,62 @@ SPEECH_INTERVAL_S = 1.0 / 25.0
 #: et une information precieuse le jour ou un visage surprend.
 DEBUG = os.environ.get("JARVIS_AVATAR_DEBUG", "").strip() not in ("", "0", "false")
 
+#: The user's voice reaches the face at the rate the microphone measures it.
+#:
+#: WHY THE FACE HEARS THE MICROPHONE
+#:     A listener nods at the speaker's pauses — "go on, I'm following" — and
+#:     blinks there too. Without the user's voice level the engine cannot know
+#:     where those pauses are, and listening was a head tilt held still: the
+#:     face of someone waiting, not of someone listening.
+#:
+#:     Only the LEVEL crosses, only while the user has the floor
+#:     (`_USER_FLOOR`), and a zero when he stops having it. Not while JARVIS
+#:     speaks: his own voice leaks into the microphone, and nodding along to
+#:     yourself is the one thing worse than not nodding.
+LISTEN_INTERVAL_S = 1.0 / 15.0
+_USER_FLOOR = frozenset({"LISTENING", "CONFIRM"})
+
+#: How often a decision that is still ageing is asked for again, with no state
+#: change to prompt it.
+#:
+#: WHY THIS EXISTS
+#:     A performance used to be pushed on a state change and on an intent's
+#:     arrival, never otherwise. Two things the Director computes therefore
+#:     never reached the face between state changes: the intent's EXPIRY (a
+#:     `warn` sent during a sentence, then a quiet minute in ACTIVE, and the
+#:     face stayed concerned for the whole minute — twenty-five seconds is the
+#:     documented lifetime), and the affect's DECAY (`affect.decayed()` is "the
+#:     whole difference" between calming down and rebooting, and it was only
+#:     ever sampled at state changes, in steps).
+#:
+#:     Re-resolving is a few microseconds of Python; what costs is a push, so
+#:     one is sent only when the face would materially change — see
+#:     `_material`. The engine recognises a re-sent decision by its
+#:     `gesture_id` and follows the new values without restarting anything.
+RERESOLVE_S = 1.5
+
+#: Below these, a re-resolved face is the same face. Rounding noise and a
+#: decay too slow to see do not cost a `runJavaScript`.
+_MATERIAL_SHAPE = 0.03
+_MATERIAL_SCALAR = 0.05
+
+
+def _material(new: dict, old: dict | None) -> bool:
+    """Would pushing `new` after `old` change anything anyone could see?"""
+    if old is None:
+        return True
+    for key in ("expression", "gaze", "posture", "gesture_id", "gaze_source", "state"):
+        if new.get(key) != old.get(key):
+            return True
+    if abs(new.get("intensity", 0) - old.get("intensity", 0)) >= _MATERIAL_SHAPE:
+        return True
+    for key in ("tempo", "stillness"):
+        if abs(new.get(key, 0) - old.get(key, 0)) >= _MATERIAL_SCALAR:
+            return True
+    a, b = new.get("blendshapes", {}), old.get("blendshapes", {})
+    return any(abs(a.get(k, 0.0) - b.get(k, 0.0)) >= _MATERIAL_SHAPE for k in set(a) | set(b))
+
+
 #: A wake older than this stops showing on the face. Matches
 #: `core_widget.WAKE_RING_MAX_AGE` deliberately: the ring and the face must
 #: acknowledge the same wake or they contradict each other.
@@ -150,6 +206,12 @@ class JarvisAvatarWidget(QWidget):
         self._last_gesture = ""
         self._last_speech_at = 0.0
         self._last_speech = -1.0
+        #: The last JSON pushed, and when — what `_material` compares against.
+        self._last_payload: dict | None = None
+        self._last_push_at = 0.0
+        self._last_listen_at = 0.0
+        self._last_listen = -1.0
+        self._listening = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -247,16 +309,33 @@ class JarvisAvatarWidget(QWidget):
             return
 
         state = _state_word(snapshot)
+        now = time.monotonic()
         if state != self._last_state:
             self._last_state = state
             self._push(self._director.resolve(state, speech_level=snapshot.speaker_level))
+        elif now - self._last_push_at >= RERESOLVE_S:
+            self.reresolve(now)
 
-        now = time.monotonic()
         level = snapshot.speaker_level
         if now - self._last_speech_at >= SPEECH_INTERVAL_S and abs(level - self._last_speech) > 0.01:
             self._last_speech_at = now
             self._last_speech = level
             self._run(f"window.JARVIS&&window.JARVIS.speak({level:.3f})")
+
+        self._forward_listen(state, snapshot.mic_level, now)
+
+    def _forward_listen(self, state: str, level: float, now: float) -> None:
+        """The user's voice level, while he has the floor. See LISTEN_INTERVAL_S."""
+        if state in _USER_FLOOR:
+            if now - self._last_listen_at >= LISTEN_INTERVAL_S and abs(level - self._last_listen) > 0.005:
+                self._last_listen_at = now
+                self._last_listen = level
+                self._listening = True
+                self._run(f"window.JARVIS&&window.JARVIS.listen&&window.JARVIS.listen({level:.3f})")
+        elif self._listening:
+            self._listening = False
+            self._last_listen = 0.0
+            self._run("window.JARVIS&&window.JARVIS.listen&&window.JARVIS.listen(0)")
 
     def set_animated(self, animated: bool) -> None:
         """Stop rendering while the panel is minimised.
@@ -343,12 +422,33 @@ class JarvisAvatarWidget(QWidget):
         if parsed is not None:
             self.set_intent(parsed, age=age)
 
+    def reresolve(self, now: float | None = None) -> bool:
+        """Ask the Director again, in the same state. Push only what changed.
+
+        Called by `set_snapshot` every `RERESOLVE_S`. Returns whether a
+        performance was pushed — the chain test reads it.
+        """
+        now = time.monotonic() if now is None else now
+        self._last_push_at = now
+        performance = self._director.resolve(
+            self._last_state or "ACTIVE",
+            speech_level=max(0.0, self._last_speech),
+            now=now,
+        )
+        if not _material(performance.as_json(), self._last_payload):
+            return False
+        self._push(performance)
+        return True
+
     # ── plumbing ─────────────────────────────────────────────────────────────
 
     def _push(self, performance) -> None:  # noqa: ANN001
-        payload = json.dumps(performance.as_json(), separators=(",", ":"))
+        data = performance.as_json()
+        payload = json.dumps(data, separators=(",", ":"))
         self._run(f"window.JARVIS&&window.JARVIS.perform({payload})")
         self._last_gesture = performance.gesture.value
+        self._last_payload = data
+        self._last_push_at = time.monotonic()
         if DEBUG:
             self._trace(performance)
 

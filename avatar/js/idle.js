@@ -104,6 +104,7 @@ export class Idle {
 
     // ── micro-expressions ────────────────────────────────────────────────
     this.micro = null;
+    this.microIndex = -1;
     this.microAge = 0;
     this.nextMicro = 2 + this.rng.next() * 4;
 
@@ -251,7 +252,13 @@ export class Idle {
 
     this.nextMicro -= dt * this.microRate;
     if (this.nextMicro <= 0) {
-      this.micro = this.rng.pick(MICRO);
+      // Jamais deux fois la meme de suite : mesure sur dix minutes de repos,
+      // 18 % des micro-expressions repetaient la precedente — ce que l'oeil
+      // lit comme un tic. Tiree parmi les AUTRES, uniformement.
+      let index = Math.floor(this.rng.next() * (MICRO.length - 1));
+      if (this.microIndex >= 0 && index >= this.microIndex) index += 1;
+      this.microIndex = index;
+      this.micro = MICRO[index];
       this.microAge = 0;
       this.shapes = Object.create(null);
       // Immobile : rarement. Active : souvent.

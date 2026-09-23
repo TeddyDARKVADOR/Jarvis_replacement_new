@@ -108,7 +108,12 @@ const PROCEDURAL = {
     f: (p) => ({ spineRx: -5 * DEG * hold(p), rootZ: -0.05 * hold(p), headRx: 3 * DEG * hold(p) }),
   },
 
-  blink_slow: { duration: 1.0, f: () => ({}) },   // rig.js s'en occupe, via setSlowBlink
+  // Le geste est dans les PAUPIERES : `engine.js` declenche un clignement lent
+  // quand il joue (blink.js, `slowOnce`). Cette fonction ne bouge pas la tete —
+  // et le commentaire qui l'accompagnait (« rig.js s'en occupe, via
+  // setSlowBlink ») decrivait un branchement qui n'existait pas : le geste de
+  // `reassure` etait annonce joue et ne faisait rien.
+  blink_slow: { duration: 1.0, f: () => ({}) },
 
   sigh: {
     duration: 2.1,
@@ -251,8 +256,17 @@ export class Gestures {
     this.gazeDecided = false;
     this.stateHead = { rx: 0, rz: 0 };
     this.accentHead = null;
+    /** Les appuis de la parole et le hochement d'ecoute (conversation.js). */
+    this.speechHead = null;
+    /** Ce que le GESTE seul ajoute a la tete cette image — pour le labo et les
+     *  controles : la tete totale melange posture, regard, etat et repos. */
+    this.gestureHead = { rx: 0, ry: 0, rz: 0 };
     /** La rotation de tete que les yeux doivent compenser, en sortie. */
     this.vorHead = { rx: 0, ry: 0 };
+    /** La rotation de tete faite EN REGARDANT — hocher en te regardant, se
+     *  detourner avec un regard decide sur toi : les yeux la compensent
+     *  presque entierement (voir `LOCKED_GAIN` dans gaze.js). */
+    this.vorLocked = { rx: 0, ry: 0 };
     /** Ce que le dernier `play()` a reellement fait. */
     this.lastPlay = { name: 'idle', via: 'procedural' };
 
@@ -384,7 +398,7 @@ export class Gestures {
    * gesture announced as played and zeroed on the next frame is the one lie
    * the lab exists to prevent.
    */
-  play(name) {
+  play(name, how = {}) {
     if (!name) return this.lastPlay;
 
     const needs = GESTURE_NEEDS[name] || 'head';
@@ -422,8 +436,14 @@ export class Gestures {
       this.lastPlay = { name, via: 'none' };
       return this.lastPlay;
     }
-    this.active = spec ? { name, t: 0, duration: spec.duration, f: spec.f } : null;
-    this.lastPlay = { name, via: 'procedural' };
+    // L'amplitude et la duree de CETTE fois-ci : un meme geste n'est jamais
+    // joue deux fois a l'identique (voir `habituation` dans engine.js).
+    const scale = Number.isFinite(how.scale) ? Math.max(0, Math.min(1.3, how.scale)) : 1;
+    const stretch = Number.isFinite(how.stretch) ? Math.max(0.7, Math.min(1.4, how.stretch)) : 1;
+    this.active = spec
+      ? { name, t: 0, duration: spec.duration * stretch, f: spec.f, scale }
+      : null;
+    this.lastPlay = { name, via: 'procedural', scale };
     return this.lastPlay;
   }
 
@@ -472,6 +492,20 @@ export class Gestures {
     // les accents. Pas la part du regard — celle-la, les yeux la suivent.
     let vorRx = 0;
     let vorRy = 0;
+    let lockRx = 0;
+    let lockRy = 0;
+    // Regarder l'utilisateur en se penchant, en inclinant la tete pour
+    // ecouter : l'ATTITUDE de la tete ne deplace pas un regard DECIDE. Mesure
+    // avant : sous `focused` (l'urgence) et l'inclinaison d'ecoute, un regard
+    // ecrit sur l'utilisateur le manquait de 3.5°. Un regard par defaut, lui,
+    // suit l'attitude de la tete — et garde les yeux que son visage porte
+    // (`thinking` les leve ; les compenser ici les abaissait).
+    if (this.gazeDecided) {
+      const posture = POSTURES[this.posture];
+      lockRx += (posture.headRx || 0) + this.stateHead.rx;
+    }
+    const gh = this.gestureHead;
+    gh.rx = gh.ry = gh.rz = 0;
 
     if (this.active) {
       // Le tempo accelere les gestes procedures comme il accelere les clips :
@@ -483,14 +517,18 @@ export class Gestures {
         this.active = null;
       } else {
         const moved = this.active.f(p);
+        if (this.active.scale !== 1) for (const key in moved) moved[key] *= this.active.scale;
         add(out, moved);
+        gh.rx = moved.headRx || 0;
+        gh.ry = moved.headRy || 0;
+        gh.rz = moved.headRz || 0;
         // Un regard DECIDE (explicite, intention) garde sa cible meme quand le
         // geste emporte la tete : `investigate` + `gaze: user` tourne la tete
         // vers l'ecran et garde les yeux sur l'utilisateur. Sans ca, un geste
         // derive de l'intention deplacait un regard que JARVIS avait nomme.
         if (this.gazeDecided || KEEPS_EYE_CONTACT.has(this.active.name)) {
-          vorRx += moved.headRx || 0;
-          vorRy += moved.headRy || 0;
+          lockRx += moved.headRx || 0;
+          lockRy += moved.headRy || 0;
         }
       }
     }
@@ -500,17 +538,34 @@ export class Gestures {
       out.headRy += this.accentHead.ry;
       out.headRz += this.accentHead.rz;
       if (this.accentHead.keepsEyes !== false) {
-        vorRx += this.accentHead.rx;
-        vorRy += this.accentHead.ry;
+        lockRx += this.accentHead.rx;
+        lockRy += this.accentHead.ry;
       }
+    }
+
+    if (this.speechHead) {
+      // Un appui ou un hochement d'ecoute se fait EN regardant : les yeux
+      // restent sur l'utilisateur.
+      out.headRx += this.speechHead.rx;
+      out.headRy += this.speechHead.ry;
+      out.headRz += this.speechHead.rz;
+      lockRx += this.speechHead.rx;
+      lockRy += this.speechHead.ry;
     }
 
     this.idle.update(dt);
     add(out, this.idle.offsets);
     vorRx += this.idle.offsets.headRx;
     vorRy += this.idle.offsets.headRy;
-    this.vorHead.rx = vorRx;
-    this.vorHead.ry = vorRy;
+    // Les yeux compensent la tete telle qu'elle BOUGE, c'est-a-dire lissee
+    // comme elle l'est plus bas (90 ms). Compenser le geste brut faisait
+    // diverger les deux pendant les retours : `investigate` + `gaze: user`
+    // manquait l'utilisateur de 5.7° pendant que la tete revenait.
+    const kv = 1 - Math.exp(-dt / 0.09);
+    this.vorHead.rx += (vorRx - this.vorHead.rx) * kv;
+    this.vorHead.ry += (vorRy - this.vorHead.ry) * kv;
+    this.vorLocked.rx += (lockRx - this.vorLocked.rx) * kv;
+    this.vorLocked.ry += (lockRy - this.vorLocked.ry) * kv;
     this._swayArms(dt);
 
     // Mode visage : tout ce qui est sous la nuque retombe a zero, quelle que

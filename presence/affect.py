@@ -247,18 +247,52 @@ _ANCHORS: dict[Expression, tuple[float, float, float, float]] = {
 _WEIGHTS = (1.00, 0.85, 0.55, 0.70)
 
 
+def _distance(affect: Affect, expression: Expression) -> float:
+    """La distance pondérée entre un état et l'ancre d'un visage."""
+    point = (affect.valence, affect.arousal, affect.confidence, affect.urgency)
+    return math.sqrt(sum(
+        (weight * (a - b)) ** 2
+        for weight, a, b in zip(_WEIGHTS, point, _ANCHORS[expression])
+    ))
+
+
 def expression_for(affect: Affect) -> Expression:
     """Le visage le plus proche de cet état. Déterministe, total."""
-    point = (affect.valence, affect.arousal, affect.confidence, affect.urgency)
     best: tuple[float, Expression] | None = None
-    for expression, anchor in _ANCHORS.items():
-        distance = math.sqrt(sum(
-            (weight * (a - b)) ** 2
-            for weight, a, b in zip(_WEIGHTS, point, anchor)
-        ))
+    for expression in _ANCHORS:
+        distance = _distance(affect, expression)
         if best is None or distance < best[0]:
             best = (distance, expression)
     return best[1]
+
+
+def fading_expression(origin: Affect, live: Affect) -> Expression:
+    """Le visage d'un état qui RETOMBE : le sien, pâli, puis le neutre.
+
+    POURQUOI PAS SIMPLEMENT `expression_for(live)`
+        Un état qui décroît va en ligne droite vers `BASELINE`, et cette ligne
+        passe près d'autres ancres. Mesuré sur la sortie : après `warn`,
+        le visage devenait `serious` à 17 s, puis `thinking` — yeux levés,
+        sourcils asymétriques — de 19 s à 35 s, avant le neutre. Un JARVIS qui
+        s'est inquiété et se calme n'a pas l'air de se mettre à réfléchir ;
+        il a l'air moins inquiet, puis plus du tout.
+
+        La règle est donc : en retombant, l'état garde le visage qu'il avait
+        au moment de la décision, et le quitte pour le neutre dès que le neutre
+        est plus proche. Jamais pour un troisième. L'intensité, elle, suit
+        l'état qui décroît (`intensity_for(live)`), donc le visage pâlit.
+
+    À l'instant de la décision `live` vaut `origin`, et le résultat est
+    exactement `expression_for(origin)` : rien ne change pour une décision
+    fraîche.
+    """
+    first = expression_for(origin)
+    now = expression_for(live)
+    if now is first or now is Expression.NEUTRAL:
+        return now
+    if _distance(live, first) <= _distance(live, Expression.NEUTRAL):
+        return first
+    return Expression.NEUTRAL
 
 
 def intensity_for(affect: Affect) -> float:
