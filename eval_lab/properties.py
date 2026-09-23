@@ -333,10 +333,12 @@ def _once(s, t):
 
 
 @prop("UNCLAIMED_RUNS_LOCALLY", ("router",), "hard",
-      "server/routing.py « THE RULE THAT KEEPS THIS ADDITIVE »")
+      "server/routing.py « THE RULE THAT KEEPS THIS ADDITIVE », restreinte par D2026-09-23-N1 : "
+      "seulement quand aucune cible n'est nommee")
 def _unclaimed(s, t):
-    if not _claimed(s) and t.get("executed_on") != ["local"]:
-        return f"capacite revendiquee par personne, execution {t.get('executed_on')}"
+    # Defined further down; the registry calls this after the module loaded.
+    if not _claimed(s) and _requested(s) is None and t.get("executed_on") != ["local"]:
+        return f"capacite revendiquee par personne, sans cible nommee, execution {t.get('executed_on')}"
     return None
 
 
