@@ -549,12 +549,15 @@ def _fake_text() -> str:
          "stimulus_json": j({"text": "ouvre"}), "events_json": "[]", "claim_json": "{}"},
         {"surface": "policy", "family": "x", "hypothesis": "json casse", "world_json": "{pas du json",
          "stimulus_json": "{}", "events_json": "[]", "claim_json": "{}"},
-        {"surface": "sequence", "family": "loss", "hypothesis": "le check-in differe se perd",
-         "world_json": "{}", "stimulus_json": "{}", "claim_json": "{}",
-         "events_json": j([{"op": "decide", "priority": "IMPORTANT", "payload": "proactive",
-                            "push_if_deferred": True},
-                           {"op": "world", "phone": {"age_s": 0, "screen_on": True}},
-                           {"op": "alerts", "alerts": ["[MONITOR_ALERT] a\nHeadline: b"]}])},
+        # No claim: only a HARD property can fail it. The test injects the
+        # fault itself (meeting -> voice), so it never depends on a real,
+        # possibly already fixed, bug of JARVIS.
+        {"surface": "policy", "family": "meeting", "hypothesis": "JARVIS parle en reunion",
+         # The hour keeps it distinct from the legacy "never speaks in a
+         # meeting" scenario, which the intake would rightly reject as a copy.
+         "world_json": j({"time": {"local": "2026-09-23T11:00:00"},
+                          "phone": {"age_s": 0, "screen_on": True, "dnd": True}}),
+         "stimulus_json": j({"priority": "IMPORTANT"}), "events_json": "[]", "claim_json": "{}"},
     ]})
 
 
@@ -574,18 +577,25 @@ def _llm_pipeline():
     from eval_lab.llm import Cassette, campaign
     from eval_lab.triage import cluster
     seeds = [s for s in _legacy() if s["surface"] != "face"]
+    import context.policy as cp
+    from context.model import Channel, Priority, Situation
     got = []
+    saved = cp._MATRIX[Situation.MEETING][Priority.IMPORTANT]
     with tempfile.TemporaryDirectory() as tmp:
         tape = Path(tmp) / "c.jsonl"
-        usage, total = campaign(Cassette(tape, _Fake()), mode="adversary", batches=1, per_batch=5,
-                                seed_corpus=seeds, known=set(), max_usd=100, sink=lambda s, r: got.append((s, r)),
-                                log=lambda *_: None)
+        try:
+            cp._MATRIX[Situation.MEETING][Priority.IMPORTANT] = Channel.VOICE     # injected fault
+            usage, total = campaign(Cassette(tape, _Fake()), mode="adversary", batches=1, per_batch=5,
+                                    seed_corpus=seeds, known=set(), max_usd=100,
+                                    sink=lambda s, r: got.append((s, r)), log=lambda *_: None)
+        finally:
+            cp._MATRIX[Situation.MEETING][Priority.IMPORTANT] = saved
         assert (total.proposed, len(total.accepted), total.invalid, total.unparseable, total.duplicate) \
             == (5, 2, 1, 1, 1), (total.proposed, len(total.accepted), total.invalid, total.unparseable, total.duplicate)
         assert abs(usage.usd - (0.4 + 0.4)) < 1e-9, usage.usd          # 100k in @4$ + 20k out @20$
         cl = {c["first_invariant"]: c["class"] for c in cluster([r for _, r in got], {s["id"]: s for s, _ in got}, set())}
         assert cl.get("channel") == "oracle-disputed", cl            # the model's claim, contradicted
-        assert cl.get("DEFERRED_NEVER_LOST") == "jarvis-candidate", cl   # a HARD property of the project
+        assert cl.get("MEETING_NEVER_SPEAKS") == "jarvis-candidate", cl  # a HARD property of the project
         replay = []
         campaign(Cassette(tape, None), mode="adversary", batches=1, per_batch=5, seed_corpus=seeds,
                  known=set(), max_usd=100, sink=lambda s, r: replay.append(s["id"]), log=lambda *_: None)
