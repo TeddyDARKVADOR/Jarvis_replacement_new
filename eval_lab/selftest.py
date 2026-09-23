@@ -619,7 +619,10 @@ def _llm_limits():
 def _full():
     import server.routing as r
     from eval_lab.generate import router
-    items = list(router(120, 5))
+    from eval_lab.properties import _requested
+    # Lab mechanics only: scenarios naming no target, so an open JARVIS bug
+    # (REG-0003, decision N1) cannot make a lab check red.
+    items = [s for s in router(200, 5) if _requested(s) is None]
     recs = [run_one(s) for s in items]
     assert all(x["verdict"] == "PASS" for x in recs), [x for x in recs if x["verdict"] != "PASS"][:1]
     kinds = {("remote" if t["executed_on"] and t["executed_on"] != ["local"] else
@@ -640,7 +643,9 @@ def _full():
 @check("the grader sees a string, never the trial, and never changes a verdict")
 def _grader():
     from eval_lab.grader import grade, texts_of
-    items = [s for s in __import__("eval_lab.generate", fromlist=["router"]).router(60, 5)]
+    from eval_lab.properties import _requested
+    items = [s for s in __import__("eval_lab.generate", fromlist=["router"]).router(120, 5)
+             if _requested(s) is None]
     recs = [run_one(s) for s in items]
     before = json.dumps(recs, sort_keys=True)
     seen = []

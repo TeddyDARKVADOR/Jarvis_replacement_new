@@ -146,12 +146,36 @@ def _default_time() -> str:
 
 
 class _FakeDash:
-    """Stands in for the dashboard `server/alerts.py` hands to the notify hub.
-    It only has to exist: with no running loop the hub records and does not
-    send, which is observable through the hub's own `_recent`."""
+    """The dashboard as the notify hub sees it: a set of connected /ws clients
+    and a broadcast. A notification REACHES the user only if a client is
+    connected when it is broadcast (dashboard/server.py fans out to
+    `_clients`), or later when one connects and the hub replays it.
 
-    async def broadcast(self, _event):   # pragma: no cover - never awaited here
-        return None
+    `broadcast` is synchronous on purpose: the stub loop runs the hub's
+    callback inline, the hub wraps the result in ensure_future, which refuses
+    a non-awaitable and is swallowed by the hub's own try/except — so the
+    event is recorded here and nothing is left un-awaited."""
+
+    def __init__(self, connected: bool):
+        self._clients = {object()} if connected else set()
+        self.sent: list[dict] = []
+
+    def broadcast(self, event):
+        if self._clients:
+            self.sent.append(event)
+
+
+class _StubLoop:
+    """What the hub needs from the server's running loop: to be running, and
+    to accept a callback. It runs the callback at once."""
+
+    @staticmethod
+    def is_running() -> bool:
+        return True
+
+    @staticmethod
+    def call_soon_threadsafe(cb, *args):
+        cb(*args)
 
 
 def _payload_repr(p):
@@ -218,10 +242,12 @@ def run_sequence(s: dict) -> dict:
                 snap = snap_now()
                 d = sut("policy.decide", policy.decide, Priority(ev["priority"]), snap, clock.epoch)
                 step.update(_decision_trace(d))
+                step["quiet_hours"] = snap.time.quiet_hours
                 if ev.get("deliver_if_speaks") and d.speaks:
                     # main.py:1575 — a check-in that spoke starts the cooldown.
                     sut("policy.note_delivered", policy.note_delivered, Priority(ev["priority"]), clock.epoch)
                     step["delivered"] = True
+                    step["deliveries"] = [{"priority": ev["priority"], "sink": "voice"}]
                 if ev.get("push_unless_speaks") and not d.speaks:
                     # main.py:1559 exactly: the proactive hook queues whatever
                     # does not speak — DEFER, but also NOTIFY, which no
@@ -247,6 +273,8 @@ def run_sequence(s: dict) -> dict:
                                         system=system, clock=clock, policy=policy, queue=queue,
                                         force=force))
             step["held"] = [_payload_repr(d.payload) for d in queue.peek()]
+            step["t_epoch"] = clock.epoch
+            step.setdefault("deliveries", [])
             # Every step states what it lost, even when nothing can be lost
             # there. An absent field made an oracle about `lost` fail on a
             # path that did not exist (first Opus probe): a lab defect,
@@ -282,16 +310,39 @@ def _run_alerts(ev, *, phone_now, world, system, clock, policy, queue, force) ->
     # meteo d'hier"). That is expiry, not loss, and must not be reported as one.
     expired = [_payload_repr(d.payload) for d in queue.peek()
                if (clock.epoch - d.queued_at) > queue._max_age_s]
-    spoken = sut("alerts.route_monitor_alerts", route_monitor_alerts,
-                 list(ev.get("alerts") or []), _FakeDash() if ev.get("dashboard", True) else None)
-    notes = list(notify_mod.get_hub()._recent)
+    # The phone is the /ws client: connected while its reports are fresh,
+    # unless the scenario says otherwise (system.client_connected).
+    ttl = _thresholds(world).device_ttl_s
+    fresh = phone_now is not None and phone_now.get("age_s") is not None and phone_now["age_s"] <= ttl
+    dash = _FakeDash(bool(system.get("client_connected", fresh))) if ev.get("dashboard", True) else None
+    hub = notify_mod.get_hub()
+    # The server's loop is running in production; the hub finds it when bound.
+    hub.bind_dashboard = lambda d: (setattr(hub, "_dashboard", d), setattr(hub, "_loop", _StubLoop()))
+    seen_before = {n.id for n in hub._recent}
+    spoken = sut("alerts.route_monitor_alerts", route_monitor_alerts, list(ev.get("alerts") or []), dash)
+    notes = [n for n in hub._recent if n.id not in seen_before]
+    sent_ids = {e.get("id") for e in (dash.sent if dash else [])}
     after = [_payload_repr(d.payload) for d in queue.peek()]
-    notified = [{"priority": n.priority, "title": n.title, "text": n.text} for n in notes]
+    notified = [{"priority": n.priority, "title": n.title, "text": n.text, "delivered": n.id in sent_ids}
+                for n in notes]
     left = [p for p in before if p not in after]
     delivered_titles = {n["title"] for n in notified}
     lost = [p for p in left if p not in expired
             and not (isinstance(p, dict) and p.get("title") in delivered_titles)]
-    return {"spoken": list(spoken), "notified": notified,
+
+    # main.py:1478-1489 speaks every alert returned, one send_client_content
+    # each. That send is the voice delivery. After the N3 fix main.py reports
+    # it through server.alerts.note_spoken(); the simulation mirrors that line
+    # when it exists, so the lab tests the code as shipped, before and after.
+    import server.alerts as alerts_mod
+    deliveries = []
+    for _ in spoken:
+        deliveries.append({"priority": "IMPORTANT", "sink": "voice"})
+        hook = getattr(alerts_mod, "note_spoken", None)
+        if hook is not None:
+            sut("alerts.note_spoken", hook)
+    deliveries += [{"priority": n["priority"], "sink": "notification"} for n in notified if n["delivered"]]
+    return {"spoken": list(spoken), "notified": notified, "deliveries": deliveries,
             "left_queue": left, "expired": expired, "lost": lost}
 
 

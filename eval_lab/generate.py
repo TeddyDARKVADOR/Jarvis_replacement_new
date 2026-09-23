@@ -435,7 +435,51 @@ def router(count: int, seed: int = 1):
                    lineage=_gen("router", seed, i, assignment=a, repairs=repairs))
 
 
+EXPLICIT_DIMS = {
+    # Who declares the tool: nobody (the V1 local path), one side, both.
+    "claimed_by": ["nobody", "nobody", "pc", "phone", "both"],
+    "pc": ["online", "online", "offline", "absent"],
+    "phone": ["online", "online", "offline", "absent"],
+    "origin": ["pc", "phone", None],
+    # Named in the sentence, by the model, or not at all (the control group).
+    "named": ["pc", "phone", "here", "other", "none"],
+    "via": ["text", "text", "model_hint"],
+    "turn_age": [3.0, 179.5, 180.5],          # the sentence stops counting at 180 s
+}
+
+
+def explicit_target(count: int, seed: int = 1):
+    """Around decision N1: a named target versus the V1 "nobody claims it,
+    run it locally" rule. Half the frontier is the claim (nobody vs someone),
+    the other half is whether the name still counts (turn age around 180 s)."""
+    texts = {"pc": "mets le volume a 30 sur mon PC", "phone": "mets le volume a 30 sur mon telephone",
+             "here": "mets le volume a 30 ici", "other": "mets le volume a 30 sur l'autre appareil",
+             "none": "mets le volume a 30"}
+    hints = {"pc": "pc", "phone": "android", "here": "here", "other": "other", "none": ""}
+    for i, a in enumerate(pairwise_assignments(EXPLICIT_DIMS, count, seed)):
+        devices = []
+        for key, dev_id, dtype in (("pc", "desktop-01", "pc"), ("phone", "phone-01", "android")):
+            if a[key] == "absent":
+                continue
+            caps = ["open_app"] + (["set_volume"] if a["claimed_by"] in (key, "both") else [])
+            devices.append({"id": dev_id, "type": dtype, "caps": caps, "online": a[key] == "online"})
+        ids = {"pc": "desktop-01", "phone": "phone-01"}
+        origin = ids.get(a["origin"])
+        if origin not in {d["id"] for d in devices}:
+            origin = None
+        by_text = a["via"] == "text"
+        turn = {"origin": origin, "text": texts[a["named"]] if by_text else texts["none"],
+                "ago_s": a["turn_age"]} if origin else {"origin": None}
+        yield make("router", tier="full", oracle="implicit", seed=seed, family="router.explicit_target",
+                   difficulty=2,
+                   world={"devices": devices, "turn": turn, "local_tools": ["set_volume", "open_app"]},
+                   stimulus={"tool": "set_volume", "parameters": {"level": 30},
+                             "target_device": "" if by_text else hints[a["named"]]},
+                   lineage=_gen("explicit_target", seed, i, assignment=a))
+
+
 STRATEGIES = {
+    "explicit-target": explicit_target,
     "router": router,
     "pairwise": lambda count, seed: pairwise(count, seed, "policy"),
     "pairwise-routing": lambda count, seed: pairwise(count, seed, "routing"),

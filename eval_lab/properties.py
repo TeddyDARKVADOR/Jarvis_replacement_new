@@ -37,6 +37,12 @@ DECISIONS = {
     "D2026-09-23-6": "cooldown des alertes IMPORTANT : INCONCLUSIVE, pas d'oracle explicite",
     "D2026-09-23-7": "un appareil hors ligne ne doit jamais etre selectionne (a verifier, "
                      "pas encore de modification du code)",
+    "D2026-09-23-N1": "une cible explicitement nommee n'est jamais remplacee, ni par l'execution "
+                      "locale ni par un autre appareil ; le repli V1 seulement sans cible explicite",
+    "D2026-09-23-N2": "pendant les heures calmes, un contexte UNKNOWN ne leve jamais une restriction "
+                      "de silence ; seul CRITICAL outrepasse les heures calmes",
+    "D2026-09-23-N3": "toute remise effective a un sink utilisateur enregistre une livraison et arme "
+                      "le cooldown, quelle que soit l'origine ; rien pour genere/tente/en file/echoue",
 }
 
 # Exceptions to D2026-09-23-5, each with the line of the specification that
@@ -179,6 +185,21 @@ def _monotonic(s, t):
     return None
 
 
+@prop("STALE_CONTEXT_MUST_NOT_ESCALATE_DELIVERY_DURING_QUIET_HOURS", ("policy", "sequence"), "hard",
+      "D2026-09-23-N2 ; context/situation.py : ASLEEP exige trois signaux, UNKNOWN n'en est pas l'absence")
+def _stale_quiet(s, t):
+    if s["surface"] == "policy":
+        rows = [] if _forced(s) else [t]
+    else:
+        rows = [st for st in t.get("steps") or [] if st.get("op") == "decide"]
+    for st in rows:
+        if (st.get("quiet_hours") and st.get("situation") == "UNKNOWN"
+                and st.get("priority") != "CRITICAL" and st.get("channel") not in ("DEFER", "DROP")):
+            return (f"heures calmes, contexte UNKNOWN : {st.get('priority')} -> {st.get('channel')} "
+                    "(seul CRITICAL peut passer)")
+    return None
+
+
 # ── sequences ────────────────────────────────────────────────────────────────
 
 @prop("DEFERRED_NEVER_LOST", ("sequence",), "hard",
@@ -197,6 +218,34 @@ def _bounded(s, t):
     for i, step in enumerate(t.get("steps") or []):
         if len(step.get("held") or []) > cap:
             return f"etape {i} : {len(step['held'])} elements en file, borne {cap}"
+    return None
+
+
+@prop("DELIVERY_ARMS_COOLDOWN", ("sequence",), "hard",
+      "D2026-09-23-N3 ; context/policy.py note_delivered : « Call this only when the message actually went out »")
+def _armed(s, t):
+    """Every delivery reported in the trace (voice or notification, whatever
+    its origin) must silence its level for the cooldown window: a later
+    decision of that level inside the window, or a spoken alert, is a failure."""
+    raw = ((s.get("world") or {}).get("policy") or {}).get("cooldowns") or {}
+    window = {"IMPORTANT": 900.0, "USEFUL": 3600.0}
+    window.update({k: float(v) for k, v in raw.items()})
+    from .scenario import DEFAULT_TIME
+    from .world import epoch_of
+    start = epoch_of(((s.get("world") or {}).get("time") or {}).get("local") or DEFAULT_TIME)
+    last = {h["priority"]: start - float(h["ago_s"]) for h in (s.get("world") or {}).get("delivered") or []}
+    for i, st in enumerate(t.get("steps") or []):
+        now = st.get("t_epoch")
+        if now is not None and st.get("op") == "decide":
+            p, w = st.get("priority"), window.get(st.get("priority"), 0.0)
+            if w > 0 and p in last and now - last[p] < w and st.get("channel") not in ("DEFER", "DROP"):
+                return f"etape {i} : {p} -> {st.get('channel')} {now - last[p]:.0f} s apres une livraison {p}"
+        if now is not None and st.get("op") == "alerts" and st.get("spoken"):
+            if "IMPORTANT" in last and now - last["IMPORTANT"] < window["IMPORTANT"]:
+                return (f"etape {i} : alerte dite {now - last['IMPORTANT']:.0f} s apres une livraison "
+                        "IMPORTANT")
+        for dlv in st.get("deliveries") or []:
+            last[dlv["priority"]] = now if now is not None else last.get(dlv["priority"], 0)
     return None
 
 
@@ -314,23 +363,45 @@ def _remote_ok(s, t):
     return None
 
 
-@prop("NAMED_DEVICE_HONOURED", ("router",), "hard",
-      "server/targeting.py — a named target is never substituted")
-def _named_router(s, t):
-    from server.targeting import detect_hint, _parse_model_hint
+def _requested(s) -> str | None:
+    """The target the user or the model named for this turn, if any:
+    pc / android / here / other. A turn older than 180 s names nothing
+    (server/device_api.py TURN_CONTEXT_TTL). Hint detection is JARVIS's own
+    detect_hint, itself covered by the legacy routing scenarios 13-14."""
+    from server.targeting import _parse_model_hint, detect_hint
     turn = s["world"].get("turn") or {}
-    hint = None
     if turn.get("origin") and turn.get("ago_s", 0) < 180:
         h = detect_hint(turn.get("text", ""))
-        hint = h.value if h else None
-    if hint is None and s["stimulus"].get("target_device"):
-        h = detect_hint(s["stimulus"]["target_device"]) or _parse_model_hint(s["stimulus"]["target_device"])
-        hint = h.value if h else None
-    if hint not in ("pc", "android"):
+        if h:
+            return h.value
+    raw = s["stimulus"].get("target_device")
+    if raw:
+        h = detect_hint(raw) or _parse_model_hint(raw)
+        if h:
+            return h.value
+    return None
+
+
+@prop("EXPLICIT_TARGET_NEVER_SUBSTITUTED", ("router",), "hard",
+      "D2026-09-23-N1 ; server/targeting.py — a named target is never substituted")
+def _explicit(s, t):
+    hint = _requested(s)
+    if hint is None:
         return None
-    types = {d["id"]: d.get("type") for d in s["world"].get("devices") or []}
-    wrong = [d for d in t.get("executed_on") or [] if d != "local" and types.get(d) != hint]
-    return f"« {hint} » demande, execute sur {wrong}" if wrong else None
+    ex = t.get("executed_on") or []
+    if "local" in ex:
+        return f"« {hint} » demande, execute localement sur le serveur"
+    devices = {d["id"]: d for d in s["world"].get("devices") or []}
+    origin = (s["world"].get("turn") or {}).get("origin")
+    for dev in ex:
+        dtype = devices.get(dev, {}).get("type")
+        if hint in ("pc", "android") and dtype != hint:
+            return f"« {hint} » demande, execute sur {dev} ({dtype})"
+        if hint == "here" and dev != origin:
+            return f"« ici » depuis {origin}, execute sur {dev}"
+        if hint == "other" and dev == origin:
+            return f"« l'autre appareil » demande, execute sur l'origine {dev}"
+    return None
 
 
 # ── avatar/ ──────────────────────────────────────────────────────────────────
