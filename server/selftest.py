@@ -1109,6 +1109,234 @@ def _alert_main_insertion():
     return "1 appel monitor, 1 filtre, chemin vocal V1 intact"
 
 
+# ── the face JARVIS chooses, on its way to the body ──────────────────────────
+#
+# `presence/` decides what the face does and `avatar/` plays it; these check the
+# only thing between them. The renderer itself is verified elsewhere and without
+# a browser — `presence/selftest.py` and `avatar/checks/` — so nothing here
+# renders anything.
+
+
+@check("une directive devient un evenement, et le reste n'en devient pas un")
+def _presence_event():
+    from plugins.presence import EVENT_TYPE, build_event
+
+    event = build_event({"valence": 0.45, "attention": 0.9, "gesture": "nod",
+                         "reason": "x" * 400}, now=1000.0)
+    assert event is not None, "une directive valide a ete refusee"
+    assert event["type"] == EVENT_TYPE and event["ts"] == 1000.0
+    assert set(event) == {"type", "ts", "directive"}, (
+        f"l'evenement porte des champs en trop : {sorted(event)}")
+    assert len(event["directive"]["reason"]) == 200, "la raison n'est pas bornee"
+
+    # Ce qui n'est pas une directive ne doit jamais atteindre le fil : un corps
+    # qui recoit un objet que le client jettera ensuite en silence est la pire
+    # forme de panne, celle qui ne se voit d'aucun des deux cotes.
+    for junk in ({}, {"reason": "rien de reconnaissable"}, {"lol": 1}, [], None,
+                 {"expression": "inventee"}):
+        assert build_event(junk) is None, f"accepte alors que ce n'est pas une directive : {junk!r}"
+
+    # Une echelle inventee est corrigee, pas refusee : un modele qui repond
+    # valence 4 voulait dire "tres agreable", et lui couter son visage pour ca
+    # serait un refus que personne ne peut diagnostiquer.
+    clamped = build_event({"valence": 4, "arousal": -3, "gesture": "nod"})
+    assert clamped["directive"]["valence"] == 1.0
+    assert clamped["directive"]["arousal"] == 0.0
+
+    # Une cle que le modele invente est jetee ici plutot que transportee.
+    extra = build_event({"valence": 0.4, "gesture": "nod", "blendshapes": {"jawOpen": 1}})
+    assert "blendshapes" not in extra["directive"], (
+        "une cle inconnue a traverse — le fil porte des mots, jamais des poids")
+
+    return "6 formes refusees, echelle corrigee, cles inconnues jetees"
+
+
+@check("la fenetre de fraicheur est la meme des trois cotes")
+def _presence_window():
+    """Trois copies d'un meme nombre, et aucune ne peut importer les autres.
+
+    `presence/` est supprimable, le client tourne sur une machine qui n'a jamais
+    vu ce depot, et le serveur doit refuser un evenement perime meme sans
+    `presence/`. Les trois portent donc le nombre en dur — et ce controle est ce
+    qui rend cette copie sure plutot que fragile.
+    """
+    from client_desktop import protocol as client_protocol
+    from plugins.presence import FRESH_S, is_fresh
+    from presence.director import INTENT_TTL_S
+
+    assert FRESH_S == INTENT_TTL_S == client_protocol.AVATAR_FRESH_SECONDS, (
+        f"desaccord : outil {FRESH_S}, presence {INTENT_TTL_S}, "
+        f"client {client_protocol.AVATAR_FRESH_SECONDS}")
+
+    now = 1000.0
+    assert is_fresh({"ts": now - 1.0}, now=now), "un evenement vivant a ete jete"
+    assert not is_fresh({"ts": now - FRESH_S - 1}, now=now), (
+        "un evenement perime a survecu — /ws rejoue ses 50 derniers messages, "
+        "et un visage rejoue est une reaction a rien")
+    assert is_fresh({}, now=now), (
+        "un evenement sans ts a ete jete : c'est un serveur plus vieux que la "
+        "garde, et il n'a rien fait de mal")
+    return f"{FRESH_S:.0f} s, identique des trois cotes"
+
+
+@check("sans presence/, l'outil n'est pas offert du tout")
+def _presence_absent():
+    """Le paquet supprime doit couter l'outil, jamais un outil inerte.
+
+    C'est le sens de l'import en tete de `plugins/presence.py` : il n'est pas
+    garde, donc il leve, donc le loader ecarte le fichier — et Gemini ne se voit
+    jamais proposer un corps qu'il n'a pas. Un import garde et un outil qui
+    repond "ok" sans rien faire serait une capacite annoncee et non encaissable,
+    ce qu'un modele ne peut pas deviner.
+
+    L'absence est simulee en cassant l'import : la seule autre facon de
+    verifier ca serait de supprimer le dossier, ce qu'un test n'a pas le droit
+    de faire a un depot.
+    """
+    import sys
+
+    from core.plugin_loader import discover_plugins
+
+    saved = {name: module for name, module in sys.modules.items()
+             if name == "presence" or name.startswith("presence.")
+             or name == "plugins.presence"}
+    logged: list[str] = []
+    try:
+        for name in saved:
+            sys.modules[name] = None     # un import qui leve, sans toucher au disque
+        registry = discover_plugins(BASE_DIR / "plugins", set(),
+                                    logger=logged.append)
+        offered = [d["name"] for d in registry.get_tool_declarations()]
+        assert "set_presence" not in offered, (
+            "l'outil est propose alors que presence/ est absent — Gemini se "
+            "verrait offrir un corps qui n'existe pas")
+        assert logged, "le fichier a ete ecarte sans que personne ne le dise"
+    finally:
+        for name, module in saved.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+    # Et il revient : un test qui laisse l'import casse ferait echouer tout ce
+    # qui suit pour une raison sans rapport.
+    registry = discover_plugins(BASE_DIR / "plugins", set(), logger=lambda _m: None)
+    assert "set_presence" in [d["name"] for d in registry.get_tool_declarations()]
+    return "presence/ absent -> outil ecarte et journalise ; restaure -> offert"
+
+
+@check("set_presence est une declaration que le SDK accepte")
+def _presence_declaration():
+    """La panne que ce controle attrape n'est pas locale.
+
+    Une declaration d'outil malformee est refusee par Gemini a la construction
+    de la session — pas celle-ci seule, TOUTES. Un champ de trop dans ce fichier
+    couterait donc a JARVIS l'integralite de ses outils, au demarrage, loin
+    d'ici. C'est verifiable hors ligne, donc ca se verifie hors ligne.
+    """
+    from plugins.presence import PLUGIN
+
+    try:
+        from google.genai import types
+    except Exception as exc:
+        return f"skipped (google-genai absent : {exc})"
+
+    declaration = types.FunctionDeclaration(**PLUGIN)
+    assert declaration.name == "set_presence"
+    properties = declaration.parameters.properties
+    assert properties["gesture"].enum, "l'enum des gestes n'a pas survecu la conversion"
+    return f"{len(properties)} parametres, enums conserves"
+
+
+@check("l'outil offre le corps installe, et n'enseigne jamais le bloc")
+def _presence_tool():
+    from core.plugin_loader import discover_plugins
+    from plugins.presence import PLUGIN, run
+    from presence import catalogue
+
+    # Le loader reel, pas une relecture du dict : c'est lui qui decide si
+    # l'outil existe au demarrage, et une validation maison d'accord avec
+    # elle-meme ne prouve rien.
+    registry = discover_plugins(BASE_DIR / "plugins", set(), logger=lambda _m: None)
+    loaded = {record["name"]: record for record in registry.list_for_ui()}
+    record = loaded.get("set_presence")
+    assert record is not None, f"le loader n'a pas vu l'outil : {sorted(loaded)}"
+    assert record["valid"], f"le loader a rejete l'outil : {record['error']}"
+
+    offered = PLUGIN["parameters"]["properties"]["gesture"]["enum"]
+    installed = [g.value for g in catalogue().vocabulary]
+    assert offered == installed, (
+        "le menu des gestes n'est pas celui du corps installe — un modele a qui "
+        "on propose un geste absent le choisit, et le catalogue le remplace en "
+        "silence")
+
+    # Le bloc clos est la forme documentee dans presence/README.md et la seule
+    # chose qui ne doit pas arriver ici : main.py repond en AUDIO, donc un bloc
+    # est un bloc lu a voix haute.
+    description = PLUGIN["description"]
+    assert "jarvis-presence" not in description and "```" not in description, (
+        "la description enseigne le bloc clos — JARVIS le lirait a voix haute")
+
+    # La reponse de fonction retourne au modele et peut etre verbalisee. Rien de
+    # citable ne doit s'y trouver, y compris quand la transmission echoue.
+    assert run({"valence": 0.4, "gesture": "nod"}, player=None) == "ok"
+    assert run({"nimporte": "quoi"}, player=None) == "ok"
+    return f"{len(installed)} gestes offerts, aucun bloc, reponse muette"
+
+
+@check("un evenement avatar sort par la meme porte que tout le reste")
+def _presence_transport():
+    """HeadlessUI.emit_event, et la preuve qu'il n'y a pas de second chemin.
+
+    Le risque de cette couche etait une deuxieme facon d'ecrire sur /ws, a cote
+    de `broadcast()`. Il n'y en a pas : `emit_event` est le nom public de `_emit`
+    et rien d'autre.
+    """
+    import plugins.presence as tool
+    from server.headless_ui import HeadlessUI
+
+    sent: list[dict] = []
+    ui = HeadlessUI(echo=False)
+    ui._emit = sent.append                       # la sortie, interceptee au bord
+
+    assert tool.deliver(ui, {"valence": 0.4, "gesture": "nod", "reason": "ok"})
+    assert len(sent) == 1 and sent[0]["type"] == tool.EVENT_TYPE
+
+    # Ce qui n'est pas une directive n'atteint meme pas le transport.
+    assert not tool.deliver(ui, {"reason": "rien"})
+    assert len(sent) == 1
+
+    # Un JARVIS qui dessine sa propre fenetre n'a pas d'emit_event, et c'est une
+    # reponse valide — pas une exception a attraper plus haut.
+    class Desktop:
+        pass
+    assert not tool.deliver(Desktop(), {"valence": 0.4, "gesture": "nod"})
+
+    # Et il n'y a pas de second chemin. Lu dans l'arbre syntaxique et pas dans
+    # le texte : une prose qui explique pourquoi on ne fait pas une chose ne
+    # doit pas se lire comme la chose, sans quoi le controle punit la
+    # documentation.
+    tree = ast.parse((BASE_DIR / "plugins" / "presence.py").read_text(encoding="utf-8"))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    forbidden = sorted(m for m in imported
+                       if m.split(".")[0] in ("server", "dashboard", "main", "ui"))
+    assert not forbidden, (
+        f"l'outil importe {forbidden} — la fleche de dependance ne va que dans "
+        "l'autre sens, voir server/__init__.py")
+
+    called = {node.func.attr for node in ast.walk(tree)
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)}
+    assert "broadcast" not in called, (
+        "l'outil appelle broadcast() directement — il doit passer par l'UI")
+    return (f"1 evenement emis, junk arrete avant le transport, "
+            f"{len(imported)} imports, aucun vers server/")
+
+
 # ── report ───────────────────────────────────────────────────────────────────
 
 def main() -> int:

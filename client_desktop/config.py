@@ -107,6 +107,17 @@ class Settings:
     free_h: int | None = None
     free_screen: str = ""
 
+    # ── the body ─────────────────────────────────────────────────────────────
+    #: Draw JARVIS as a 3D avatar (`avatar/`) instead of the 2D core.
+    #:
+    #: Opt-in, and it stays opt-in. The avatar is a QWebEngineView, which is a
+    #: Chromium process and a GPU context for as long as the workstation is on.
+    #: That is a fair price for a face and a poor one for a machine already
+    #: compiling something — so the 2 KB core remains the default, and this is a
+    #: setting rather than an upgrade. Ignored, with no error, on an install
+    #: without PyQt6-WebEngine: see `ui/avatar_view.AVAILABLE`.
+    avatar_enabled: bool = False
+
     start_collapsed: bool = False
     notifications: bool = True
     #: Only ever shown when explicitly asked for. The debug window is a separate
