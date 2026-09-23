@@ -600,7 +600,8 @@ def _llm_limits():
     seeds = [s for s in _legacy() if s["surface"] != "face"][:10]
     usage, _ = campaign(_Fake(), mode="generate", batches=10, per_batch=5, seed_corpus=seeds, known=set(),
                         max_usd=1.0, sink=lambda s, r: None, log=lambda *_: None)
-    assert usage.calls == 2, f"{usage.calls} appels pour un budget de 1 $ a 0.80 $ l'appel"
+    assert usage.calls == 1 and usage.usd <= 1.0, \
+        f"{usage.calls} appels, {usage.usd:.2f} $ pour un plafond de 1 $ a 0.80 $ l'appel"
     saved, L.time.sleep = L.time.sleep, lambda s: None
     try:
         fake = _Fake(fail=99)
@@ -609,7 +610,7 @@ def _llm_limits():
     finally:
         L.time.sleep = saved
     assert fake.calls == 3 and usage.failures == 3, (fake.calls, usage.failures)
-    return "arret a 1.60 $ >= 1 $ apres 2 appels ; arret apres 3 erreurs reseau"
+    return "plafond 1 $ jamais depasse (0.80 $, 1 appel) ; arret apres 3 erreurs reseau"
 
 
 # ── 11. tiers: FULL, the grader, REAL ────────────────────────────────────────

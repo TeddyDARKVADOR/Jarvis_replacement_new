@@ -385,15 +385,19 @@ def campaign(provider, *, mode: str, batches: int, per_batch: int, seed_corpus: 
     usage, total = Usage(), Intake()
     system = build_system()
     consecutive_errors = 0
+    worst_call = 0.0           # the most expensive call so far: the next one may cost as much
     for b in range(batches):
-        if usage.usd >= max_usd:
-            log(f"  budget atteint ({usage.usd:.2f} $) — arret propre")
+        if usage.usd + worst_call > max_usd or usage.usd >= max_usd:
+            log(f"  budget : {usage.usd:.2f} $ depenses, un lot de plus pourrait couter {worst_call:.2f} $ "
+                f"(plafond {max_usd:.2f} $) — arret propre")
             break
+        before = usage.usd
         examples = rng.sample(seed_corpus, min(4, len(seed_corpus)))
         user = build_user(mode, per_batch, examples, feedback(cov, known, total.reasons))
         resp = provider.complete(system, user)
         if "usage" in resp and not resp.get("replayed"):
             usage.add(resp["usage"])
+        worst_call = max(worst_call, usage.usd - before)
         if transcript is not None:
             with Path(transcript).open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps({"batch": b, "system_sha": Cassette.key(system, ""), "user": user,
