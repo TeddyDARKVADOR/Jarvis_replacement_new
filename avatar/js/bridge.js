@@ -60,11 +60,16 @@ export class Bridge {
     this.pendingPerformance = null;
     this.pendingLevel = null;
     this._onViseme = null;
+    this._onListen = null;
 
     window.JARVIS = {
       perform: (payload) => this._perform(payload),
       speak: (level) => this._speak(Number(level) || 0),
       viseme: (name, weight) => this._viseme(name, weight),
+      // Le niveau du micro de l'utilisateur, ~15 Hz, pendant qu'il parle : ce
+      // qui permet a JARVIS d'ECOUTER visiblement (conversation.js). Un hote
+      // qui ne l'envoie pas garde l'ecoute d'avant, sans hochement.
+      listen: (level) => this._listen(Number(level) || 0),
       version: 1,
       ready: false,
     };
@@ -75,6 +80,7 @@ export class Bridge {
       if (data.type === 'performance') this._perform(data.payload);
       else if (data.type === 'speak') this._speak(Number(data.level) || 0);
       else if (data.type === 'viseme') this._viseme(data.name, data.weight);
+      else if (data.type === 'listen') this._listen(Number(data.level) || 0);
     });
   }
 
@@ -106,6 +112,13 @@ export class Bridge {
 
   _viseme(name, weight) {
     if (this._onViseme) this._onViseme(String(name), Number(weight) || 0);
+  }
+
+  /** Wired by main.js. Rien n'est garde en attente : un niveau perime ne vaut rien. */
+  setListenSink(fn) { this._onListen = fn; }
+
+  _listen(level) {
+    if (this._onListen) this._onListen(level);
   }
 
   _perform(payload) {

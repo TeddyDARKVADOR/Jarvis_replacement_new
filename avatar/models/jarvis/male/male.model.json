@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "id": "jarvis/male/male",
+  "name": "JARVIS (visage masculin) — Rocketbox Male_Adult_01",
+  "version": "2026.09.23",
+  "file": "male.glb",
+  "sha256": "efd7cf3d4afc82c9ecf85e2dbc032677fe562f917612f4346623831564357db4",
+  "size": 46252168,
+  "license": "MIT — Microsoft Rocketbox Avatar Library, (c) 2020 Microsoft ; attribution requise (LICENSE.md joint)",
+  "provenance": {
+    "source": "https://github.com/microsoft/Microsoft-Rocketbox/blob/master/Assets/Avatars/Adults/Male_Adult_01/Export/Male_Adult_01_facial.fbx",
+    "installed": "2026-09-23T09:55:24",
+    "installer": "presence.install_model",
+    "verified": "2026-09-23",
+    "author": "Microsoft Rocketbox Avatar Library (Microsoft) ; blendshapes ARKit par Fang Ma et Matias Volonte (06/2022)",
+    "license_file": "LICENSE.md (copie du depot, MIT, (c) 2020 Microsoft)",
+    "original": {
+      "fbx": "Assets/Avatars/Adults/Male_Adult_01/Export/Male_Adult_01_facial.fbx",
+      "fbx_sha256": "55771cbbcffb8204dcfe450784c8439ee27bfa48efffc48d325b55ee4bd04388",
+      "textures": {
+        "m002_head_color.tga": "f5b64e4894930d438f7c419c3c9d0bba1f95fa4de9af078b762ea55bfca1ab85",
+        "m002_head_normal.tga": "5ef5ae404c9276f17641e392d0d4bdbe5fb23e94f28238b23a381e6a357c42ea",
+        "m002_body_color.tga": "6a048a6b2140a1f5293798ca286be64fd0de6d79572e1273ff5765bd578f463f",
+        "m002_body_normal.tga": "c9892e80c56890f6f5365627835286c2d4d2cc34cc473f6788fe3d560a52fb69",
+        "m002_opacity_color.tga": "53818d3f45519451edd2bc60d6e59cd4057ecd381827463c5503da0439d0a5cf"
+      }
+    },
+    "derived": "converti par three.js r169 (FBXLoader + TGALoader -> GLTFExporter) dans QtWebEngine ; formes gardees : les 52 ARKit (AK_nn_Name -> nom ARKit) et les 15 visemes (AA_VI_nn_Name -> viseme_Name) ; retirees : FACS (AU_), SRanipal (SR_), Headbox (HB_) ; echelle 0.01 (cm -> m) ; materiaux Phong -> PBR ; cartes speculaires non incluses",
+    "restrictions": "aucune au-dela du MIT : conserver l'avis de copyright et la licence"
+  },
+  "format": "GLB",
+  "compression": [],
+  "capabilities": {
+    "arkit": 52,
+    "visemes": [
+      "viseme_sil",
+      "viseme_PP",
+      "viseme_FF",
+      "viseme_TH",
+      "viseme_DD",
+      "viseme_kk",
+      "viseme_CH",
+      "viseme_SS",
+      "viseme_nn",
+      "viseme_RR",
+      "viseme_aa",
+      "viseme_E",
+      "viseme_I",
+      "viseme_O",
+      "viseme_U"
+    ],
+    "eyes": "formes",
+    "head": true,
+    "limbs": [
+      "arms",
+      "head",
+      "legs",
+      "torso"
+    ],
+    "animations": 0,
+    "vrm": ""
+  },
+  "calibration": {
+    "morphAliases": {},
+    "bones": {
+      "head": "Bip01_Head",
+      "neck": "Bip01_Neck",
+      "spine": "Bip01_Spine2",
+      "root": "Bip01_Pelvis",
+      "eyeLeft": "Bip01_LEye",
+      "eyeRight": "Bip01_REye"
+    },
+    "parts": [
+      "arms",
+      "head",
+      "legs",
+      "torso"
+    ],
+    "morphGain": {
+      "mouthSmileLeft": 2.5,
+      "mouthSmileRight": 2.5,
+      "mouthFrownLeft": 1.8,
+      "mouthFrownRight": 1.8
+    },
+    "morphGainWhy": "mesure 2026-09-23 : a 1.0, coins du sourire 4.4 mm et abaisses 4.9 mm (visage feminin : 27 mm et 10 mm) ; machoire, sourcils, paupieres dans le meme ordre que le feminin",
+    "muteMeshes": [],
+    "scale": 1.0,
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "armRest": {},
+    "gaze": {}
+  }
+}

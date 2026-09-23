@@ -54,6 +54,7 @@ MANIFEST_VERSION = 2
 CALIBRATION_KEYS = (
     ("model", "morphAliases"),
     ("model", "muteMeshes"),
+    ("model", "morphGain"),
     ("model", "scale"),
     ("model", "position"),
     ("rig", "parts"),
@@ -67,6 +68,7 @@ CALIBRATION_KEYS = (
 DEFAULT_CALIBRATION = {
     "morphAliases": {},
     "muteMeshes": [],
+    "morphGain": {},
     "scale": 1.0,
     "position": [0, 0, 0],
     "armRest": {},
@@ -262,7 +264,7 @@ def install_file(model: Path, report: dict, *, adopt: bool = False,
             bones[key] = forced
 
     calibration = {k: v for k, v in base.items()
-                   if k in ("muteMeshes", "armRest", "gaze", "scale", "position")}
+                   if k in ("muteMeshes", "morphGain", "armRest", "gaze", "scale", "position")}
     calibration["morphAliases"] = detected_aliases
     calibration["bones"] = {k: bones.get(k, "") for k in
                             ("head", "neck", "spine", "root", "eyeLeft", "eyeRight")}

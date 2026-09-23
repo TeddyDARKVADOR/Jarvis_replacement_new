@@ -533,6 +533,78 @@ def _decay():
     return f"demi-vie {DECAY_HALF_LIFE_S:.0f} s, urgence deux fois plus vite"
 
 
+@check("un etat qui retombe palit, il ne traverse pas d'autres visages")
+def _fading_path():
+    """Decay goes in a straight line to BASELINE, and that line passes other anchors.
+
+    Measured on the wire before the rule: `warn` decayed through `serious`, then
+    `thinking` (eyes up) for sixteen seconds, then neutral. Each of the sixteen
+    intents, and one affect-only state, must now go origin -> neutral and
+    nowhere else, with an intensity that never rises.
+    """
+    from presence.affect import affect_for_intent, fading_expression, intensity_for
+
+    starts = {i.value: affect_for_intent(i) for i in Intent}
+    starts["affect seul"] = Affect(valence=0.75, arousal=0.6)
+    longest = ("", 0.0)
+    for name, origin in starts.items():
+        path: list[Expression] = []
+        last = 2.0
+        for step in range(0, 241):
+            live = origin.decayed(step * 0.5)
+            face_now = fading_expression(origin, live)
+            if not path or path[-1] is not face_now:
+                path.append(face_now)
+            # Seulement tant qu'il y a un visage : `neutral` n'a aucune forme, et
+            # |valence| remonte d'un cheveu quand elle traverse zero vers la base
+            # (+0.05) — une intensite que rien n'affiche.
+            level = intensity_for(live)
+            if face_now is not Expression.NEUTRAL:
+                assert level <= last + 1e-9, f"{name} : l'intensite remonte a {step * 0.5:.1f} s"
+            last = level
+        allowed = [path[0]] + ([Expression.NEUTRAL] if path[0] is not Expression.NEUTRAL else [])
+        assert path == allowed[:len(path)], (
+            f"{name} retombe par {' -> '.join(e.value for e in path)}")
+        switch = next((s * 0.5 for s in range(241)
+                       if fading_expression(origin, origin.decayed(s * 0.5)) is Expression.NEUTRAL),
+                      0.0)
+        if switch > longest[1]:
+            longest = (name, switch)
+    return f"{len(starts)} etats : le leur, puis neutral ; le plus tenace {longest[0]} ({longest[1]:.0f} s)"
+
+
+@check("une intention appartient a son tour de parole")
+def _intent_turn():
+    """Twenty-five seconds is a paragraph — and, in a quick exchange, the next answer.
+
+    Measured over twenty simulated minutes: an answer's intent still covered the
+    following answer, which had none of its own. The user speaking again (their
+    floor -> THINKING) ends it; the affect survives, decaying, because it is a
+    mood and not a decision.
+    """
+    director = Director(_cat({RigPart.HEAD}, set()))
+    director.resolve("LISTENING", now=0.0)
+    director.resolve("THINKING", now=1.0)
+    # Une intention posee pendant la reflexion appartient a la reponse qui suit.
+    director.set_intent(parse('{"intent": "agree"}'), now=1.5)
+    during = director.resolve("SPEAKING", now=2.0)
+    assert during.intent is Intent.AGREE, "l'intention n'a pas atteint sa reponse"
+    # Parler -> reflechir en cours de reponse (un outil) : meme tour.
+    mid = director.resolve("THINKING", now=3.0)
+    assert mid.intent is Intent.AGREE, "un aller-retour en cours de reponse a coupe l'intention"
+    director.resolve("SPEAKING", now=3.5)
+    listening = director.resolve("LISTENING", now=5.0)
+    assert listening.intent is Intent.AGREE, "l'ecoute qui suit la reponse est encore son tour"
+    # L'utilisateur a parle : nouveau tour, l'intention est finie, l'humeur reste.
+    after = director.resolve("THINKING", now=8.0)
+    assert after.intent is None, "l'intention d'une reponse couvre la suivante"
+    assert after.gesture_id == "reflex:THINKING", after.gesture_id
+    assert after.reason.startswith("affect:"), "l'humeur n'a pas survecu au tour"
+    reply = director.resolve("SPEAKING", now=9.0)
+    assert reply.intent is None and reply.gaze_source != "intent", "la reponse suivante porte l'ancienne intention"
+    return "posee en reflexion -> tenue toute la reponse -> finie quand l'utilisateur reprend ; l'affect reste"
+
+
 @check("affect > reflexe, intention > affect")
 def _layer_order():
     """The three layers, in the order that makes JARVIS able to contradict himself.
@@ -1076,6 +1148,50 @@ def _normalisation():
         "le JS teste le mot avant le separateur : l'ordre est inverse")
     assert "[^a-z0-9]" in source, "le JS ne retire plus les separateurs"
     return f"{len(cases)} conventions d'export, Python et JS accordes"
+
+
+@check("os : l'inspecteur et le moteur cherchent les memes")
+def _bone_hints():
+    """The inspector writes the profile; the renderer drives the bones. Same table.
+
+    They had drifted: the renderer knew the 3ds Max Biped spelling `bip01head`
+    and the inspector did not, so a real model was reported headless while it
+    nodded fine. Every Python hint must be in the JavaScript; the JavaScript may
+    hold more — the names three.js has sanitised (`mixamorig:Head` ->
+    `mixamorigHead`), which Python reading raw glTF never sees.
+    """
+    from presence.inspect import BONE_HINTS, _PART_EVIDENCE
+
+    source = (AVATAR_DIR / "js" / "body_gltf.js").read_text(encoding="utf-8")
+
+    def js_table(marker):
+        start = source.index(marker)
+        block = source[start:source.index("};", start)]
+        table = {}
+        for key, body in re.findall(r"^\s+(\w+):\s*\[(.*?)\]", block, re.DOTALL | re.MULTILINE):
+            table[key] = set(re.findall(r"'([a-z0-9]+)'", body))
+        return table
+
+    bones = js_table("const BONE_HINTS = {")
+    parts = js_table("const PART_HINTS = {")
+    # Dans les DEUX sens. La divergence trouvee allait du JS vers le Python :
+    # le moteur connaissait `bip01head`, l'inspecteur non. Seuls les noms
+    # assainis par three.js peuvent n'exister qu'en JS.
+    sanitised = ("mixamorig",)
+    missing = []
+    names = {"TORSO": "torso", "ARMS": "arms", "LEGS": "legs"}
+    pairs = [(key, set(hints), bones.get(key, set())) for key, hints in BONE_HINTS.items()]
+    pairs += [(names[part.name], set(hints), parts.get(names[part.name], set()))
+              for part, hints in _PART_EVIDENCE.items() if part.name in names]
+    for key, py, js in pairs:
+        if py - js:
+            missing.append(f"{key}: le moteur ignore {sorted(py - js)}")
+        extra = {h for h in js - py if not h.startswith(sanitised)}
+        if extra:
+            missing.append(f"{key}: l'inspecteur ignore {sorted(extra)}")
+    assert not missing, " ; ".join(missing)
+    return (f"{sum(len(v) for v in BONE_HINTS.values())} indices d'os, {len(names)} membres : "
+            "memes tables des deux cotes (hors noms assainis par three.js)")
 
 
 @check("le modele installe est pilotable")

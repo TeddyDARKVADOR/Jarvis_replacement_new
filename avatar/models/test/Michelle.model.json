@@ -6,11 +6,15 @@
   "file": "Michelle.glb",
   "sha256": "7a87e15a99ccbc5e5877be66e1e4ecae0a581adcafa0cce1a5569f49909e968e",
   "size": 3276888,
-  "license": "a verifier — exemple three.js (Mixamo)",
+  "license": "personnage Mixamo (Adobe) redistribue par three.js — soumis aux conditions Mixamo, pas au MIT du depot. Usage de test local uniquement, ne pas redistribuer.",
   "provenance": {
     "source": "exemple three.js",
     "installed": "2026-09-22T20:45:09",
-    "installer": "presence.install_model"
+    "installer": "presence.install_model",
+    "verified": "2026-09-23",
+    "sha256_upstream": "identique a raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Michelle.glb",
+    "origin": "https://github.com/mrdoob/three.js/pull/25654 (2023-03-12), credite « model from mixamo.com »",
+    "credit": "Mixamo — https://www.mixamo.com"
   },
   "format": "GLB",
   "compression": [],

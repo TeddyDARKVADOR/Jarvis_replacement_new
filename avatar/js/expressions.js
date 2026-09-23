@@ -206,9 +206,14 @@ function scaled(shapes, intensity) {
  * Combined with max(), never by adding — two shapes that both raise a brow
  * must not sum past 1.0 and clip. Identical to `presence.vocabulary.face`.
  */
-export function face(expression, intensity, gaze = 'user') {
+export function face(expression, intensity, gaze = 'user', gazeDecided = false) {
   const i = Math.max(0, Math.min(1, Number(intensity) || 0));
   const out = scaled(SHAPES[expression] || {}, i);
+  // A decided gaze is not moved by the expression's own eyes. Identical to
+  // `presence.vocabulary.face(gaze_decided=True)`.
+  if (gazeDecided) {
+    for (const shape in out) if (shape.startsWith('eyeLook')) delete out[shape];
+  }
   const eyes = GAZE[gaze] || {};
   for (const shape in eyes) out[shape] = Math.max(out[shape] || 0, eyes[shape]);
   return out;

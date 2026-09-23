@@ -6,7 +6,7 @@ Supprimer le dossier rend JARVIS identique à ce qu'il était : une voix avec un
 cœur 2D.
 
 ```
-python -m presence.selftest                      57 contrôles, sans clé, sans micro, sans GPU
+python -m presence.selftest                      60 contrôles, sans clé, sans micro, sans GPU
 python -m presence.install_model --demo          installer un modèle qui marche
 python -m presence.install_model --list          où trouver un vrai personnage
 python -m presence.inspect                       ce qu'il y a réellement dans le modèle
@@ -85,7 +85,7 @@ pendant une confirmation de suppression n'est pas « expressif », il est faux.
 |---|---|---|
 | **réflexe** | l'état machine seul (`LISTENING`, `THINKING`, …) | permanent |
 | **affect** | JARVIS décrit son état, ou nomme une intention | **décroît** vers une base, demi-vie 22 s |
-| **intention** | JARVIS nomme un visage ou une intention | expire d'un coup, 25 s |
+| **intention** | JARVIS nomme un visage ou une intention | expire d'un coup, 25 s — ou dès que l'utilisateur reprend la parole |
 
 L'affect écrase le réflexe parce qu'un état intérieur en sait plus qu'un état
 machine. L'intention écrase l'affect parce qu'une décision doit pouvoir
@@ -95,6 +95,22 @@ bonne humeur, ce qui arrive tout le temps.
 Et l'affect **décroît** au lieu d'expirer : un JARVIS qui passe de préoccupé à
 parfaitement neutre en une image a l'air d'avoir redémarré ; le même qui y
 revient en quarante secondes a l'air de s'être calmé.
+
+Trois précisions, du 23/09/2026 (voir `avatar/BEHAVIOUR.md`) :
+
+- **une intention appartient à son tour de parole.** Passer de l'écoute (ou de
+  la confirmation) à `THINKING`, c'est que l'utilisateur a dit quelque chose de
+  nouveau : l'intention de la réponse précédente est finie, l'affect continue
+  de décroître. Sans cela, l'intention d'une réponse couvrait la suivante ;
+- **un état qui retombe garde son visage**, qui pâlit, puis rejoint le neutre —
+  il ne traverse jamais une autre ancre (`affect.fading_expression`) ;
+- **un regard ou une posture seuls sont une directive** : `{"gaze": "screen"}`
+  était rejeté, et l'outil répondait `ok`. Un visage que la directive ne nomme
+  pas n'écrase pas celui de l'état.
+
+L'hôte (`client_desktop/ui/avatar_view.py`) redemande la décision toutes les
+1.5 s et ne pousse que ce qui change à l'œil : c'est ce qui rend l'expiration
+et la décroissance visibles entre deux changements d'état.
 
 ## Les huit fichiers
 

@@ -14,7 +14,8 @@
     "muteMeshes": [
       "tongue01"
     ],
-    "profile": "jarvis/female/jarvis.model.json"
+    "profile": "jarvis/female/jarvis.model.json",
+    "morphGain": {}
   },
   "rig": {
     "parts": [

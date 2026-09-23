@@ -62,6 +62,7 @@ from .affect import (
     accent_for_intent,
     affect_for_intent,
     expression_for,
+    fading_expression,
     gaze_for,
     gaze_for_intent,
     gaze_hold_for,
@@ -79,6 +80,10 @@ from .vocabulary import face
 #: a spoken paragraph: long enough that a face set at the start of an answer
 #: survives the answer, short enough that it is gone before the next topic.
 INTENT_TTL_S = 25.0
+
+#: Les etats ou l'UTILISATEUR a la parole. Passer de l'un d'eux a THINKING,
+#: c'est qu'il vient de dire quelque chose de nouveau : un nouveau tour.
+_USER_FLOOR = frozenset({"LISTENING", "CONFIRM"})
 
 #: ANGRY is in the vocabulary because refusing to model it would make every
 #: other expression carry its weight — a JARVIS who can only be `concerned`
@@ -110,6 +115,11 @@ _REFLEX: dict[str, tuple[Expression, float, Gesture, Gaze, Posture, float]] = {
 }
 
 _DEFAULT_REFLEX = (Expression.NEUTRAL, 0.10, Gesture.IDLE, Gaze.USER, Posture.RELAXED, 0.0)
+
+#: Qui peut DECIDER d'un regard. Un regard venu de l'une de ces sources n'est
+#: jamais deplace par l'expression — voir `vocabulary.face(gaze_decided=...)`.
+#: Meme ensemble que `DECIDED` dans `avatar/js/gaze.js`.
+_DECIDED_GAZE = frozenset({"explicit", "intent", "safety"})
 
 #: L'etat interieur que chaque etat machine implique, quand JARVIS n'en a
 #: exprime aucun.
@@ -197,6 +207,20 @@ class Director:
         #: la meme intention re-resolue a chaque changement d'etat n'en est
         #: qu'un.
         self._intent_seq: int = 0
+        #: Le tour de parole en cours, et celui ou l'intention a ete dite.
+        #:
+        #: POURQUOI UNE INTENTION APPARTIENT A SON TOUR
+        #:     Vingt-cinq secondes, c'est un paragraphe — et c'est aussi, dans
+        #:     une conversation rapide, la reponse SUIVANTE. Mesure sur vingt
+        #:     minutes simulees : l'intention d'une reponse couvrait encore la
+        #:     suivante, qui n'en avait pas, avec son visage et son regard
+        #:     « decide ». Un `agree` dit au tour N souriait pendant la reponse
+        #:     sans rapport du tour N+1. Quand l'utilisateur reprend la parole,
+        #:     ce que JARVIS avait decide pour sa reponse precedente est fini.
+        #:     L'affect, lui, survit : c'est une humeur, et il decroit.
+        self._turn: int = 0
+        self._intent_turn: int = 0
+        self._last_word: str = ""
 
     # ── ce que JARVIS exprime ────────────────────────────────────────────────
 
@@ -211,6 +235,7 @@ class Director:
         self._intent = directive
         self._intent_at = stamp
         self._intent_seq += 1
+        self._intent_turn = self._turn
         if isinstance(getattr(directive, "affect", None), Affect):
             self._affect = directive.affect
             self._affect_at = stamp
@@ -256,6 +281,9 @@ class Director:
         cat = self._cat or catalogue()
         now = time.monotonic() if now is None else now
         word = str(state).upper()
+        if word == "THINKING" and self._last_word in _USER_FLOOR:
+            self._turn += 1
+        self._last_word = word
 
         # ── 1. le reflexe ────────────────────────────────────────────────────
         expression, intensity, gesture, gaze, posture, hold = _REFLEX.get(word, _DEFAULT_REFLEX)
@@ -269,7 +297,10 @@ class Director:
         live = self.affect_now(now)
         if live is not None:
             affect = live
-            expression = expression_for(affect)
+            # Un etat qui retombe garde son visage, pali, puis rejoint le
+            # neutre — il ne traverse pas les ancres voisines. Voir
+            # `affect.fading_expression`.
+            expression = fading_expression(self._affect, affect)
             intensity = intensity_for(affect)
             gaze = gaze_for(affect)
             posture = posture_for(affect)
@@ -287,16 +318,28 @@ class Director:
         # mot a l'intention qu'il nomme — un « il a voulu investigate » affiche
         # une minute apres que l'intention a expire.
         chosen_intent = None
-        active = intent is not None and (now - self._intent_at) <= INTENT_TTL_S
+        active = (intent is not None and (now - self._intent_at) <= INTENT_TTL_S
+                  and self._intent_turn == self._turn)
         if active:
             chosen_intent = getattr(intent, "intent", None)
             # Une intention qui ne portait QUE de l'affect a deja tout dit a
             # l'etape 2 ; la reecraser avec ses defauts (neutral, 0.5, idle)
             # effacerait precisement ce qu'elle exprimait.
             if not (derived and getattr(intent, "affect", None) is not None):
-                expression = intent.expression
-                intensity = _clamp(intent.intensity)
-                posture = intent.posture or _POSTURE_OF.get(expression, posture)
+                # Un visage que la directive NOMME remplace celui de l'etat. Un
+                # visage qu'elle ne nomme pas n'est qu'un defaut (neutral, 0.5)
+                # et ne doit rien remplacer : `{"gaze": "screen"}` pendant la
+                # reflexion regarde l'ecran avec le visage qui reflechit. Les
+                # directives construites a la main (le code, les tests) nomment
+                # leur visage sans drapeau : un visage autre que neutral l'est.
+                named = (getattr(intent, "expression_given", False)
+                         or intent.expression is not Expression.NEUTRAL)
+                if named:
+                    expression = intent.expression
+                    intensity = _clamp(intent.intensity)
+                    posture = intent.posture or _POSTURE_OF.get(expression, posture)
+                elif intent.posture is not None:
+                    posture = intent.posture
                 reason = intent.reason or f"intent:{expression.value}"
             else:
                 if intent.reason:
@@ -367,7 +410,8 @@ class Director:
             gaze=gaze,
             posture=posture,
             speech_level=_clamp(speech_level),
-            blendshapes=face(expression, intensity, gaze),
+            blendshapes=face(expression, intensity, gaze,
+                             gaze_decided=gaze_source in _DECIDED_GAZE),
             hold_s=max(0.0, float(hold)),
             tempo=tempo_for(affect),
             stillness=stillness_for(affect),
@@ -659,14 +703,6 @@ def _coerce(raw: dict) -> Directive | None:
         except ValueError:
             expression = None
 
-    if (expression is None and gesture is Gesture.IDLE and affect is None
-            and intent is None):
-        # Ni expression, ni geste, ni etat, ni intention : ce n'etait pas une
-        # directive. `intent` compte dans ce garde, sinon {"intent": "think"}
-        # — la forme la plus courte et la plus souhaitable des trois — serait
-        # rejetee comme du bruit.
-        return None
-
     posture_raw = raw.get("posture")
     posture: Posture | None = None
     if posture_raw is not None:
@@ -674,6 +710,20 @@ def _coerce(raw: dict) -> Directive | None:
             posture = Posture(str(posture_raw).strip().lower())
         except ValueError:
             posture = None
+
+    if (expression is None and gesture is Gesture.IDLE and affect is None
+            and intent is None and explicit_gaze is None and posture is None):
+        # Rien de reconnaissable : ce n'etait pas une directive. `intent` compte
+        # dans ce garde, sinon {"intent": "think"} — la forme la plus courte et
+        # la plus souhaitable — serait rejetee comme du bruit.
+        #
+        # Le regard et la posture comptent aussi, et ne comptaient pas.
+        # `{"gaze": "screen"}` — « regarde l'ecran », rien d'autre — etait
+        # rejete ici, et comme `plugins/presence.py` demande a ce parseur si
+        # c'est une directive, l'outil repondait `ok` a JARVIS sans rien
+        # envoyer. Il croyait regarder l'ecran. Trouve par
+        # `avatar/checks/scenario_matrix.mjs`, qui n'avait pas ete ecrit pour ca.
+        return None
 
     given_intensity = _number(raw, "intensity", "emotionIntensity", "emotion_intensity")
     intensity = 0.5 if given_intensity is None else given_intensity

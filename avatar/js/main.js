@@ -125,6 +125,7 @@ async function boot() {
   };
 
   bridge.setVisemeSink((name, weight) => engine.viseme(name, weight));
+  bridge.setListenSink((level) => engine.listen(level));
   bridge.attach(
     (perf) => {
       engine.perform(perf);

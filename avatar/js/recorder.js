@@ -100,6 +100,7 @@ function applyEvent(engine, event) {
     case 'perform': engine.perform(event.data); break;
     case 'speak': engine.speak(event.data); break;
     case 'viseme': engine.viseme(event.data.name, event.data.weight); break;
+    case 'listen': engine.listen(event.data); break;
     case 'override': engine.setOverride(event.data); break;
     default: break;
   }

@@ -67,6 +67,14 @@ const HEAD_T90 = 0.45;
 /** Part de la derive de tete que les yeux compensent. 1 = fixation parfaite,
  *  qui se lit comme un regard colle ; 0.75 garde la vie. */
 const VOR_GAIN = 0.75;
+/** Part d'un mouvement de tete fait EN REGARDANT que les yeux compensent.
+ *
+ *  Le reflexe vestibulo-oculaire humain a un gain proche de 1 ; 0.75 etait un
+ *  choix pour la derive lente du repos, et il s'appliquait aussi a
+ *  `investigate` + `gaze: user` — tete detournee de 17°, regard qui manquait
+ *  l'utilisateur de plus de 4°, la largeur du cone ou l'on se sent regarde.
+ *  Hocher en te regardant, c'est te regarder. */
+const LOCKED_GAIN = 0.96;
 /** La paupiere superieure suit l'oeil vers le bas. Rapport pris sur `Gaze.DOWN`
  *  de `presence/vocabulary.py` : 0.15 de paupiere pour 0.65 de regard. */
 const LID_FOLLOW = 0.23;
@@ -128,6 +136,11 @@ export class GazeController {
     this.wantsBlink = false;
     /** Pour le labo et les controles : quand a commence le dernier changement. */
     this.shiftAt = -1;
+    /** Une echappee de debut de phrase est en cours (voir `avert`). */
+    this.averting = false;
+    this.averts = 0;
+    /** Echappees reprises par un regard decide avant la fin — pour les controles. */
+    this.avertsCancelled = 0;
   }
 
   /**
@@ -162,12 +175,42 @@ export class GazeController {
     if (DECIDED.has(this.source)) {
       // Un regard decide annule le coup d'oeil en cours : il reprend la main
       // tout de suite, pas a la fin de la distraction.
+      if (this.averting && this.t < this.glance.until) this.avertsCancelled += 1;
       this.glance.tx = this.glance.ty = 0;
       this.glance.until = 0;
+      this.averting = false;
     }
   }
 
   get decided() { return DECIDED.has(this.source); }
+
+  /**
+   * Le regard s'echappe un instant — le debut d'un enonce (conversation.js).
+   * C'est un coup d'oeil avec une CAUSE, pas un de plus : il remplace le
+   * prochain coup d'oeil au hasard au lieu de s'y ajouter. Refuse sur un regard
+   * decide, et pendant un balayage — sauf `allowIntent` : un regard que la
+   * TABLE d'une intention a pose (pas JARVIS lui-meme), quand l'intention est
+   * de developper. Voir `engine.js`.
+   * @returns {boolean} le regard est parti
+   */
+  avert(x, y, duration, allowIntent = false) {
+    const held = this.source === 'intent' ? !allowIntent : this.decided;
+    if (held || this.closed || this.name === 'around') return false;
+    const g = this.glance;
+    g.tx = x;
+    g.ty = y;
+    g.until = this.t + duration;
+    g.next = Math.max(g.next, 3);
+    this.averting = true;
+    this.averts += 1;
+    return true;
+  }
+
+  /** La phrase finit : le regard revient, s'il etait parti. */
+  endAversion() {
+    const g = this.glance;
+    if (this.t < g.until) g.until = this.t;
+  }
 
   /**
    * Une image.
@@ -221,8 +264,10 @@ export class GazeController {
     // ── le reflexe vestibulo-oculaire : la tete bouge, le regard tient ────
     const vRy = vor ? vor.ry || 0 : 0;
     const vRx = vor ? vor.rx || 0 : 0;
-    const x = this.eye.x.x - vRy * K * VOR_GAIN + this.saccade.x;
-    const y = this.eye.y.x + vRx * K * VOR_GAIN + this.saccade.y;
+    const lRy = vor ? vor.lockRy || 0 : 0;
+    const lRx = vor ? vor.lockRx || 0 : 0;
+    const x = this.eye.x.x - (vRy * VOR_GAIN + lRy * LOCKED_GAIN) * K + this.saccade.x;
+    const y = this.eye.y.x + (vRx * VOR_GAIN + lRx * LOCKED_GAIN) * K + this.saccade.y;
 
     this.out.x = clampFinite(x, -1, 1);
     this.out.y = clampFinite(y, -1, 1);
@@ -236,9 +281,16 @@ export class GazeController {
   _glance(dt, b) {
     const g = this.glance;
     const allowed = !this.decided && this.name !== 'around' && b.glanceEvery;
-    if (!allowed) {
+    if (this.averting && this.t < g.until) {
+      // Une echappee de debut de phrase, acceptee par `avert()` : elle tient
+      // sa duree. Sans cette branche, un regard pose par l'intention la
+      // remettait a zero des l'image suivante — mesure : sous `explain`, 12
+      // echappees commandees, 0 arrivee aux yeux.
+    } else if (!allowed) {
+      this.averting = false;
       g.tx = g.ty = 0;
     } else if (this.t >= g.until) {
+      this.averting = false;
       g.tx = g.ty = 0;
       g.next -= dt;
       if (g.next <= 0) {

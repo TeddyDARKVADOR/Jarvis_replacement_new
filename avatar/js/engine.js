@@ -27,6 +27,9 @@
  * L'ORDRE D'UNE IMAGE, ET POURQUOI CET ORDRE
  *     1. etat de presence   les parametres de fond de l'image (states.js)
  *     2. lip-sync           la couche bouche, et « est-il en train de parler »
+ *        conversation       ce que la voix appelle : appuis de tete, regard qui
+ *                           s'echappe en debut de phrase, clignement en fin,
+ *                           hochement d'ecoute (conversation.js)
  *     3. accent             le geste facial de l'intention en cours
  *     4. gestes             la tete et le corps — y compris la part de tete du
  *                           regard, calculee a l'image precedente
@@ -41,6 +44,30 @@ import { LipSync } from './lipsync.js';
 import { Gestures, GAZE_HEAD } from './gestures.js';
 import { Accents } from './accents.js';
 import { PresenceStates } from './states.js';
+import { Conversation } from './conversation.js';
+
+/**
+ * L'habituation : un geste repete se fait plus petit.
+ *
+ * POURQUOI
+ *   Mesure sur une conversation ordinaire : chaque tour jouait exactement
+ *   `look_at_user 4° -> tilt_head 10° -> nod 9°`, huit tours sur huit. Ces
+ *   gestes ne sont decides par personne — ce sont les REFLEXES des etats
+ *   ecoute, reflexion, parole — et c'est exactement ce que l'oeil finit par
+ *   voir : un tic. Un humain qui acquiesce pour la cinquieme fois en deux
+ *   minutes le fait plus petit, et parfois plus du tout.
+ *
+ * LA REGLE
+ *   Une familiarite par geste : +1 a chaque fois qu'il joue, decroissance de
+ *   constante `HABIT_TAU_S`. Un reflexe familier retrecit franchement et finit
+ *   par sauter un tour ; un geste DECIDE (une intention) retrecit a peine et
+ *   ne descend jamais sous `HABIT_DECIDED_FLOOR` — une decision reste une
+ *   decision, mais le deuxieme merci n'appelle pas le meme hochement que le
+ *   premier. Et chaque fois, un leger tirage d'amplitude et de duree : jamais
+ *   deux fois la meme trajectoire.
+ */
+export const HABIT_TAU_S = 30;
+export const HABIT_DECIDED_FLOOR = 0.7;
 import { Recorder } from './recorder.js';
 
 /** Plafond d'un pas de temps : un onglet qui revient d'un arriere-plan livre un
@@ -113,9 +140,17 @@ export class AvatarEngine {
     this.gestures = new Gestures(body, this.rng.fork('gestures'));
     this.accents = new Accents();
     this.states = new PresenceStates();
+    this.conversation = new Conversation(this.rng.fork('conversation'));
+    /** Accent + sourcils de la parole, fusionnes au max — reutilise. */
+    this._expressive = Object.create(null);
 
     this._accentHead = { rx: 0, ry: 0, rz: 0, keepsEyes: true };
     this.lastGestureKey = null;
+    this.lastDecision = null;
+    this.lastState = undefined;   // le mot d'etat de la Performance precedente
+    /** Familiarite de chaque geste — voir HABIT_TAU_S. */
+    this.habit = Object.create(null);
+    this._habitRng = this.rng.fork('habituation');
     this.decision = null;
     this.history = [];            // les dernieres decisions, pour le journal
     this.t = 0;
@@ -125,7 +160,7 @@ export class AvatarEngine {
     if (options.record) this.recorder.start(this.rng.seed, { caps: this.caps });
 
     this.metrics = {
-      frames: 0, performs: 0, speaks: 0,
+      frames: 0, performs: 0, speaks: 0, listens: 0,
       updateMs: 0, rigMs: 0, gesturesMs: 0, lipsyncMs: 0, bodyMs: 0,
       writesPerFrame: 0,
     };
@@ -141,8 +176,17 @@ export class AvatarEngine {
 
     const gaze = perf.gaze;
     const table = GAZE_HEAD[gaze] || GAZE_HEAD.user;
+    // La meme decision, renvoyee : l'hote repousse la Performance a chaque
+    // changement d'etat, et l'intention y est re-resolue telle quelle. Le
+    // visage suit ses valeurs sans recommencer son deroule. Sans identifiant
+    // (hote plus ancien), toute Performance reste une decision nouvelle.
+    const decision = perf.gesture_id || null;
+    const continuing = decision !== null && decision === this.lastDecision;
+    this.lastDecision = decision;
+    const urgency = Number(perf.affect && perf.affect.urgency);
     this.rig.setExpression(perf.blendshapes, gaze, perf.expression, perf.hold_s,
-                           perf.gaze_source, { rx: table.headRx, ry: table.headRy });
+                           perf.gaze_source, { rx: table.headRx, ry: table.headRy },
+                           { continuing, urgent: Number.isFinite(urgency) && urgency >= 0.5 });
     this.rig.setSlowBlink(perf.expression === 'tired' || perf.posture === 'dormant');
 
     this.gestures.setPosture(perf.posture);
@@ -151,21 +195,53 @@ export class AvatarEngine {
       tempo: perf.tempo, stillness: perf.stillness, gazeHold: perf.gaze_hold_s,
     });
     this.states.set(perf.state);
+    this.conversation.setContext({
+      stillness: perf.stillness,
+      explaining: perf.intent === 'explain',
+      listening: this.states.name === 'listening',
+    });
+    // Une surprise nouvelle ouvre les yeux, et on ne cligne presque pas pendant
+    // qu'ils sont grands ouverts ; le clignement vient quand ils se relachent.
+    if (!continuing && perf.expression === 'surprised' && perf.intensity >= 0.3) {
+      this.rig.blink.inhibit(0.7, 'after_surprise');
+    }
 
     // Rejouer le geste quand c'est une NOUVELLE decision, pas quand c'est la
     // meme decision renvoyee. `gesture_id` le dit ; un hote qui ne l'envoie pas
     // (plus ancien) retombe sur l'ancienne regle, le nom du geste.
     const gesture = perf.gesture;
     const key = perf.gesture_id ? `${perf.gesture_id}|${gesture}` : gesture;
+    // Un geste REFLEXE appartient a l'entree dans un etat, pas a l'etat. Quand
+    // une intention expire sans que l'etat change, l'identifiant redevient
+    // `reflex:SPEAKING` — et sans cette garde, JARVIS hochait la tete au
+    // milieu d'une phrase, vingt-cinq secondes apres l'avoir commencee, pour
+    // rien. Le visage, lui, quitte bien l'intention : c'est une decision
+    // nouvelle pour lui (voir `continuing` plus haut).
+    const state = String(perf.state || '');
+    const reflexWithoutEntry = /^reflex:/.test(perf.gesture_id || '')
+      && this.lastState !== undefined && state === this.lastState;
+    this.lastState = state;
     let played = null;
     let accent = null;
-    if (key !== this.lastGestureKey) {
-      played = this.gestures.play(gesture);
+    if (key !== this.lastGestureKey && reflexWithoutEntry) {
+      this.accents.release();
+      this.lastGestureKey = key;
+    } else if (key !== this.lastGestureKey) {
+      const how = this._habituation(gesture, /^reflex:/.test(perf.gesture_id || ''));
+      played = how.skip ? { name: gesture, via: 'habituated', scale: 0 } : this.gestures.play(gesture, how);
+      // `blink_slow` est un geste des paupieres : c'est ici qu'il joue.
+      if (gesture === 'blink_slow' && played.via === 'procedural') this.rig.blink.slowOnce();
+      // Une decision nouvelle redirige le visage : l'accent de la precedente
+      // s'efface (`play` le fait aussi quand un nouvel accent le remplace).
       if (perf.accent && this.accents.play(perf.accent, perf.tempo)) accent = perf.accent;
+      else this.accents.release();
       this.lastGestureKey = key;
     }
 
-    if (typeof perf.speech_level === 'number') this.lipsync.setLevel(perf.speech_level);
+    if (typeof perf.speech_level === 'number') {
+      this.lipsync.setLevel(perf.speech_level);
+      this.conversation.setSelfLevel(perf.speech_level);
+    }
 
     this.decision = {
       t: this.t,
@@ -179,6 +255,7 @@ export class AvatarEngine {
       gesture,
       // Ce que le moteur a FAIT du geste — pas ce qu'on lui a demande.
       gesture_played: played ? played.via : 'deja en cours',
+      gesture_scale: played && Number.isFinite(played.scale) ? played.scale : null,
       accent: perf.accent || null,
       accent_played: accent !== null,
       hold_s: perf.hold_s,
@@ -189,11 +266,44 @@ export class AvatarEngine {
     return this.decision;
   }
 
+  /**
+   * Comment jouer CETTE fois-ci un geste : amplitude, duree, ou pas du tout.
+   * Voir HABIT_TAU_S. `idle` n'a pas d'amplitude et ne s'use pas.
+   */
+  _habituation(name, reflex) {
+    if (!name || name === 'idle') return { scale: 1, stretch: 1, skip: false };
+    const h = this.habit[name] || 0;
+    const rng = this._habitRng;
+    const jitter = rng.range(0.9, 1.1);
+    const stretch = rng.range(0.92, 1.08);
+    let scale;
+    let skip = false;
+    if (reflex) {
+      scale = 1 / (1 + 0.5 * h);
+      skip = h > 1.5 && rng.next() < Math.min(0.5, (h - 1.5) * 0.25);
+    } else {
+      scale = Math.max(HABIT_DECIDED_FLOOR, 1 / (1 + 0.2 * h));
+    }
+    if (!skip) this.habit[name] = h + 1;
+    return { scale: scale * jitter, stretch, skip };
+  }
+
   /** Le niveau de la voix, ~25 fois par seconde. */
   speak(level) {
     this.recorder.input('speak', Number(level) || 0);
     this.metrics.speaks += 1;
     this.lipsync.setLevel(level);
+    this.conversation.setSelfLevel(level);
+  }
+
+  /**
+   * Le niveau du micro de l'utilisateur, ~15 fois par seconde, pendant qu'il
+   * parle. Rien d'autre n'en est tire que ses pauses : voir conversation.js.
+   */
+  listen(level) {
+    this.recorder.input('listen', Number(level) || 0);
+    this.metrics.listens += 1;
+    this.conversation.setUserLevel(level);
   }
 
   /** Un viseme venu d'une vraie source de phonemes. */
@@ -219,12 +329,35 @@ export class AvatarEngine {
 
     const b = this.states.update(dt);
     this.rig.setBehaviour(b);
+    const fade = Math.exp(-dt / HABIT_TAU_S);
+    for (const name in this.habit) this.habit[name] *= fade;
     this.gestures.idle.microRate = b.microRate;
 
     let mark = clock();
     this.lipsync.update(dt);
     const lipsyncMs = clock() - mark;
 
+    // La conversation lit la voix que le lip-sync vient de lire, et agit sur
+    // le regard et les paupieres AVANT que le rig ne les mette a jour.
+    const c = this.conversation;
+    // Qui retient le regard en debut de phrase. Un regard ecrit par JARVIS,
+    // la surete : toujours. Celui que la table d'une intention pose : oui,
+    // sauf `explain` vers l'utilisateur — on detourne les yeux pour formuler
+    // ce qu'on va developper (Kendon), et c'est la seule intention de ce
+    // genre. `warn`, `reassure`, `greet` tiennent le regard : c'est leur sens.
+    const g = this.rig.gazeCtl;
+    const formulating = c.boost > 1 && g.source === 'intent' && g.name === 'user';
+    c.update(dt, this.lipsync.speaking, g.decided && !formulating);
+    if (c.events.avert) g.avert(c.events.avert.x, c.events.avert.y, c.events.avert.duration, formulating);
+    if (c.events.utteranceEnd) {
+      this.rig.gazeCtl.endAversion();
+      this.rig.blink.request('utterance_end');
+    }
+    if (c.events.userPause) this.rig.blink.request('listener_pause');
+
+    // Les appuis de `beat` (explain) sont une horloge ; quand il parle, ce sont
+    // les syllabes qui marquent, amplifiees — voir conversation.js.
+    this.accents.speaking = this.lipsync.speaking;
     this.accents.update(dt);
 
     mark = clock();
@@ -232,26 +365,34 @@ export class AvatarEngine {
     this.gestures.gazeDecided = this.rig.gazeCtl.decided && this.rig.gaze === 'user';
     this.gestures.stateHead.rx = b.headRx;
     this.gestures.stateHead.rz = b.headRz;
-    if (this.accents.active) {
+    if (this.accents.busy) {
       const h = this._accentHead;
       h.rx = this.accents.head.rx;
       h.ry = this.accents.head.ry;
       h.rz = this.accents.head.rz;
       // La tete basse de l'excuse emmene les yeux ; les autres accents gardent
-      // le contact visuel.
-      h.keepsEyes = this.accents.active.name !== 'head_down';
+      // le contact visuel. Sauf si un regard DECIDE est sur l'utilisateur :
+      // `apologise` + `gaze: user`, c'est s'excuser en le regardant — la tete
+      // baisse, les yeux restent. Mesure avant : le regard le manquait de 8°.
+      h.keepsEyes = this.accents.keepsEyes || this.gestures.gazeDecided;
       this.gestures.accentHead = h;
     } else {
       this.gestures.accentHead = null;
     }
+    this.gestures.speechHead = c.head;
     this.gestures.update(dt);
     const gesturesMs = clock() - mark;
 
     mark = clock();
     const before = this.rig.writes;
     this.rig.setMicro(this.gestures.idle.shapes);
-    this.rig.setAccent(this.accents.shapes);
-    this.rig.setVor(this.gestures.vorHead.rx, this.gestures.vorHead.ry);
+    const x = this._expressive;
+    for (const key in x) delete x[key];
+    for (const key in this.accents.shapes) x[key] = this.accents.shapes[key];
+    for (const key in c.shapes) if (c.shapes[key] > (x[key] || 0)) x[key] = c.shapes[key];
+    this.rig.setAccent(x);
+    this.rig.setVor(this.gestures.vorHead.rx, this.gestures.vorHead.ry,
+                    this.gestures.vorLocked.rx, this.gestures.vorLocked.ry);
     this.rig.update(dt);
     const rigMs = clock() - mark;
 
