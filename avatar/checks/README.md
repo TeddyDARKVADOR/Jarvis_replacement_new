@@ -18,6 +18,7 @@ python avatar/checks/model_swap.py          # changer de visage sans toucher au 
 node   avatar/checks/situations.mjs         # les 12 moments du labo, chacun mesuré (12)
 node   avatar/checks/scenario_matrix.mjs    # 1 632 situations, 9 invariants, intentions indiscernables
 node   avatar/checks/naturalness.mjs [min] [graine]   # 20 min de conversation, ce qui s'y répète (10)
+node   avatar/checks/host_test.mjs          # le cote telephone : etat, fraicheur, pas de rejeu (9)
 ```
 
 **Dans QtWebEngine** (`pip install PyQt6-WebEngine`) — le vrai modèle, la vraie
