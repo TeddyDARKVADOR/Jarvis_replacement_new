@@ -94,9 +94,16 @@ class PageReports(private val onReady: () -> Unit, private val onFailed: (String
         main.post { onFailed(json) }
     }
 
+    /** Every `avatar` event and what host.js did with it (played, stale, older…). */
     @JavascriptInterface
-    fun onIntentDropped(json: String) {
-        Log.i("JarvisFace", "directive ignoree : $json")
+    fun onIntent(json: String) {
+        Log.i("JarvisFace", "directive : $json")
+    }
+
+    /** host.js's counters, every 5 s while the face is seen. */
+    @JavascriptInterface
+    fun onStats(json: String) {
+        Log.i("JarvisFace", "stats : $json")
     }
 }
 
