@@ -36,7 +36,7 @@ import copy
 
 from .device_api import DeviceHub
 from .devices import DeviceInfo, DeviceType
-from .targeting import TargetKind, resolve
+from .targeting import TargetKind, requested_hint, resolve
 
 #: The optional parameter added to every tool declaration so the model can pass
 #: on a device the user named. It is a *hint*: `targeting.resolve` validates it
@@ -102,11 +102,16 @@ class ActionRouter:
         model_hint = str(parameters.pop(TARGET_PARAM, "") or "")
 
         registry = self._hub.registry
-        # Nobody has claimed this capability: behave exactly as before.
-        if not registry.with_capability(name, online_only=False):
+        turn = self._hub.turn
+        # Nobody has claimed this capability: behave exactly as before — unless
+        # the user named a device. A named target is never replaced, not even
+        # by running it here on the server: the resolver below then refuses it
+        # in words ("le téléphone ne sait pas faire …"). V1 is untouched for
+        # every command that names no device.
+        if not registry.with_capability(name, online_only=False) and \
+                requested_hint(turn.current_text(), model_hint) is None:
             return self._inner.run(name, parameters, ctx)
 
-        turn = self._hub.turn
         origin = turn.origin(registry)
         decision = resolve(
             registry,

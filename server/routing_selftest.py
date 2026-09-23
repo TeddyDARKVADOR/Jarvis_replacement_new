@@ -430,6 +430,47 @@ def _router_checks(report: "Report") -> None:  # noqa: C901
             result,
         )
 
+        # ── decision N1: a named target is never replaced by local execution ──
+        # Nobody declares set_volume. V1 runs it locally — on the server —
+        # which is right only when the user named no device.
+        channel.requests.clear()
+        inner.calls.clear()
+        hub.turn.set("phone-01", "monte le volume sur mon telephone")
+        result = router.run("set_volume", {"level": 80})
+        report.check(
+            "26b cible nommee dans la phrase, outil que personne ne declare -> refus, rien en local",
+            inner.calls == [] and channel.requests == [] and "sait pas" in result,
+            result,
+        )
+
+        inner.calls.clear()
+        hub.turn.set("phone-01", "monte le volume")
+        result = router.run("set_volume", {"level": 80, TARGET_PARAM: "android"})
+        report.check(
+            "26c cible nommee par le modele, outil que personne ne declare -> refus, rien en local",
+            inner.calls == [] and "sait pas" in result,
+            result,
+        )
+
+        inner.calls.clear()
+        result = router.run("set_volume", {"level": 80})
+        report.check(
+            "26d aucune cible nommee -> repli V1 inchange, execution locale",
+            result == "local:set_volume" and inner.calls == [("set_volume", {"level": 80})],
+            result,
+        )
+
+        # The sentence stops naming anything once the turn is stale (180 s).
+        inner.calls.clear()
+        hub.turn.set("phone-01", "monte le volume sur mon telephone")
+        hub.turn.at -= 181
+        result = router.run("set_volume", {"level": 80})
+        report.check(
+            "26e phrase d'un tour perime (> 180 s) -> ne nomme plus rien, repli V1",
+            result == "local:set_volume",
+            result,
+        )
+
     finally:
         loop.call_soon_threadsafe(loop.stop)
         thread.join(timeout=2)

@@ -99,6 +99,10 @@ class NotificationHub:
         self._dashboard = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._counts = {"created": 0, "delivered": 0, "refused": 0, "replayed": 0}
+        # Ids of notifications that actually reached a connected client — the
+        # ONE place a notification delivery is confirmed, whatever produced it
+        # (alert, released queue item, /api/notify). See _reached_user.
+        self._reached: set[str] = set()
 
     # ── wiring ───────────────────────────────────────────────────────────────
 
@@ -145,6 +149,8 @@ class NotificationHub:
         self._counts["created"] += 1
         if self._emit(note.to_event()):
             self._counts["delivered"] += 1
+            if self._has_client():
+                self._reached_user(note)
         return note
 
     # ── redelivery ───────────────────────────────────────────────────────────
@@ -158,18 +164,44 @@ class NotificationHub:
         any bookkeeping at all.
         """
         now = time.time() if now is None else now
-        out = [n.to_event() for n in self._recent if n.age_s(now) <= self._ttl_s]
-        if out:
-            self._counts["replayed"] += len(out)
-        return out
+        fresh = [n for n in self._recent if n.age_s(now) <= self._ttl_s]
+        if fresh:
+            self._counts["replayed"] += len(fresh)
+        # Offered to a client that has just connected: for what no client had
+        # received yet, THIS is the delivery.
+        for n in fresh:
+            self._reached_user(n)
+        return [n.to_event() for n in fresh]
 
     def forget(self) -> None:
         self._recent.clear()
+        self._reached.clear()
 
     def stats(self) -> dict:
         return dict(self._counts, held=len(self._recent))
 
     # ── delivery ─────────────────────────────────────────────────────────────
+
+    def _has_client(self) -> bool:
+        """A client is connected to /ws right now. A dashboard that does not
+        expose its clients counts as none: an unconfirmed delivery is not one."""
+        return bool(getattr(self._dashboard, "_clients", None))
+
+    def _reached_user(self, note: Notification) -> None:
+        """Confirm, once per notification, that it reached a user sink, and
+        tell the context policy so the level's cooldown starts (decision N3).
+
+        Optional on purpose, like everything that touches context/ from here:
+        deleting context/ must not take notifications with it.
+        """
+        if note.id in self._reached:
+            return
+        self._reached.add(note.id)
+        try:
+            from context import Priority, get_policy
+            get_policy().note_delivered(Priority(note.priority))
+        except Exception:
+            pass
 
     def _emit(self, event: dict) -> bool:
         """Hand the broadcast to the loop. Mirrors HeadlessUI._emit, on purpose:
