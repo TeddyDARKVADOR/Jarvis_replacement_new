@@ -173,6 +173,33 @@ def add_decided(scenarios: list[dict], *, title: str, component: str, decision: 
     return out
 
 
+def set_status(reg_id: str, status: str, *, commit: str | None = None) -> int:
+    """Mark a regression fixed (or open again). A human command, never automatic.
+
+    Refuses to mark "fixed" a regression any of whose scenarios still fails:
+    the status must describe the code, not the wish. The fingerprints do not
+    move (the status is provenance, not content), so the manifest is intact.
+    """
+    from .runner import run_one
+    if status not in ("open", "fixed"):
+        raise ValueError("status: open | fixed")
+    items = load()
+    mine = [s for s in items if s["lineage"]["regression"]["id"] == reg_id]
+    if not mine:
+        raise ValueError(f"{reg_id} inconnue")
+    if status == "fixed":
+        still = [s["id"] for s in mine if run_one(s)["verdict"] != "PASS"]
+        if still:
+            raise ValueError(f"{reg_id} echoue encore sur {still} : pas de statut fixed")
+    for s in mine:
+        s["lineage"]["regression"]["status"] = status
+        if status == "fixed":
+            s["lineage"]["regression"]["fixed"] = {"commit": commit or _commit(),
+                                                   "date": _dt.date.today().isoformat()}
+    CORPUS.write_text("".join(sc.dumps(s) + "\n" for s in items), encoding="utf-8", newline="\n")
+    return len(mine)
+
+
 def check() -> list[dict]:
     """Run every regression scenario and say what its status implies."""
     from .runner import _run_face, run_one
