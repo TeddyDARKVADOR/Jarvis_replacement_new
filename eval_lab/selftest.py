@@ -533,16 +533,17 @@ def _regressions_guard():
 
 def _fake_text() -> str:
     j = json.dumps
-    meeting_bt = {"time": {"local": "2026-09-23T10:00:00"},
-                  "phone": {"age_s": 0, "screen_on": True, "dnd": True, "headset": True,
-                            "bluetooth_devices": ["Bose SyncBuds"]}}
+    # A claim no property backs and no known cause explains: the model thinks
+    # a USEFUL message deserves the voice. The table says NOTIFY_SILENT.
+    active = {"time": {"local": "2026-09-23T10:00:00"},
+              "phone": {"age_s": 0, "screen_on": True, "headset": True}}
     return j({"scenarios": [
-        {"surface": "policy", "family": "bt", "hypothesis": "un casque nomme Sync passe pour une voiture",
-         "world_json": j(meeting_bt), "stimulus_json": j({"priority": "IMPORTANT"}), "events_json": "[]",
-         "claim_json": j({"situation": "MEETING", "speaks": False})},
-        {"surface": "policy", "family": "bt", "hypothesis": "doublon", "world_json": j(meeting_bt),
-         "stimulus_json": j({"priority": "IMPORTANT"}), "events_json": "[]",
-         "claim_json": j({"situation": "MEETING", "speaks": False})},
+        {"surface": "policy", "family": "claim", "hypothesis": "un message utile merite la voix",
+         "world_json": j(active), "stimulus_json": j({"priority": "USEFUL"}), "events_json": "[]",
+         "claim_json": j({"channel": "VOICE"})},
+        {"surface": "policy", "family": "claim", "hypothesis": "doublon", "world_json": j(active),
+         "stimulus_json": j({"priority": "USEFUL"}), "events_json": "[]",
+         "claim_json": j({"channel": "VOICE"})},
         {"surface": "routing", "family": "x", "hypothesis": "origine fantome",
          "world_json": j({"devices": [{"id": "a", "type": "pc"}], "turn": {"origin": "ghost"}}),
          "stimulus_json": j({"text": "ouvre"}), "events_json": "[]", "claim_json": "{}"},
@@ -583,7 +584,7 @@ def _llm_pipeline():
             == (5, 2, 1, 1, 1), (total.proposed, len(total.accepted), total.invalid, total.unparseable, total.duplicate)
         assert abs(usage.usd - (0.4 + 0.4)) < 1e-9, usage.usd          # 100k in @4$ + 20k out @20$
         cl = {c["first_invariant"]: c["class"] for c in cluster([r for _, r in got], {s["id"]: s for s, _ in got}, set())}
-        assert cl.get("situation") == "oracle-disputed", cl          # the model's claim, contradicted
+        assert cl.get("channel") == "oracle-disputed", cl            # the model's claim, contradicted
         assert cl.get("DEFERRED_NEVER_LOST") == "jarvis-candidate", cl   # a HARD property of the project
         replay = []
         campaign(Cassette(tape, None), mode="adversary", batches=1, per_batch=5, seed_corpus=seeds,
