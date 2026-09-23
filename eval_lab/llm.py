@@ -141,16 +141,40 @@ class AnthropicProvider:
         else:
             user = (user + "\n\nREPONDS UNIQUEMENT par un objet JSON conforme a ce schema, sans texte "
                     "autour :\n" + json.dumps(schema, ensure_ascii=False))
-        return self.client.messages.create(
+        # Streamed: a batch of ten scenarios with adaptive thinking takes one to
+        # three minutes. Silent, that looks like a hang (the first real run was
+        # interrupted for exactly that reason); streamed, it shows progress and
+        # cannot hit an HTTP timeout.
+        t0, last, chars = time.monotonic(), 0.0, 0
+        with self.client.messages.stream(
             model=self.model,
-            max_tokens=16000,
+            max_tokens=32000,
             # The large static part (JARVIS description, vocabulary, examples)
             # is identical on every call: cached once, read at $0.20/M
             # afterwards. Nothing volatile precedes it.
             system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user}],
             output_config=config,
-        )
+        ) as stream:
+            for event in stream:
+                if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                    chars += len(event.delta.text)
+                now = time.monotonic() - t0
+                if now - last >= 3:
+                    last = now
+                    phase = f"ecriture {chars} caracteres" if chars else "reflexion"
+                    self.progress(f"\r    ... {phase}, {now:.0f} s   ")
+            self.progress(f"\r    ... recu en {time.monotonic() - t0:.0f} s ({chars} caracteres)   \n")
+            return stream.get_final_message()
+
+    @staticmethod
+    def progress(text: str) -> None:
+        import sys
+        try:
+            sys.stdout.write(text)
+            sys.stdout.flush()
+        except (OSError, ValueError):
+            pass
 
     @staticmethod
     def _detail(e) -> str:
@@ -461,7 +485,15 @@ def campaign(provider, *, mode: str, batches: int, per_batch: int, seed_corpus: 
         before = usage.usd
         examples = rng.sample(seed_corpus, min(4, len(seed_corpus)))
         user = build_user(mode, per_batch, examples, feedback(cov, known, total.reasons))
-        resp = provider.complete(system, user)
+        log(f"  lot {b} : demande envoyee a {MODEL} ({per_batch} scenarios)")
+        try:
+            resp = provider.complete(system, user)
+        except KeyboardInterrupt:
+            # Ctrl+C: stop asking, keep and analyse what already came back.
+            # The interrupted request may still be billed by the server.
+            log("\n  interrompu (Ctrl+C) — les lots deja recus sont gardes et analyses ; "
+                "la requete en cours a pu etre facturee")
+            break
         if "usage" in resp and not resp.get("replayed"):
             usage.add(resp["usage"])
         worst_call = max(worst_call, usage.usd - before)
