@@ -52,7 +52,7 @@ MODEL = "claude-opus-5-5"
 # $ per million tokens, claude-opus-5-5 (claude-api skill, cached 2026-06-24).
 PRICE = {"input": 4.00, "output": 20.00, "cache_read": 0.20, "cache_write": 5.00}
 
-LLM_SURFACES = ("policy", "situation", "routing", "sequence")
+LLM_SURFACES = ("policy", "situation", "routing", "sequence", "router")
 
 OUTPUT_SCHEMA = {
     "type": "object",
@@ -225,12 +225,17 @@ JARVIS est un assistant vocal 24/7. Tu travailles sur trois couches deterministe
    2 CAPACITE (un seul appareil en ligne sait faire) 3 ORIGINE (l'appareil qui a parle, s'il sait faire)
    4 AMBIGU -> question. Une origine inconnue n'est jamais choisie par defaut. Un appareil sans signe
    de vie depuis {th['device_stale_s']:.0f} s est hors ligne.
+4. server/routing.py ActionRouter — ce qui entoure la decision quand Gemini appelle un outil :
+   si AUCUN appareil ne declare l'outil, il s'execute localement comme en V1 ; sinon jamais localement.
+   Le modele peut passer target_device (pc/android/here/other) : un indice, valide comme une phrase,
+   retire des parametres avant l'action. L'origine et la phrase du tour ne valent que 180 s.
+   Un appareil declare mais sans canal de commande ouvert -> refus explique, jamais un autre appareil.
 """
 
 
 def _format_rules() -> str:
     return f"""\
-FORMAT DE SORTIE. Chaque scenario : surface (policy | situation | routing | sequence), family (courte),
+FORMAT DE SORTIE. Chaque scenario : surface (policy | situation | routing | sequence | router), family (courte),
 hypothesis (pourquoi JARVIS pourrait se tromper ici tout en paraissant raisonnable), et quatre CHAINES JSON :
 
 world_json    policy/situation/sequence : {{"time": {{"local": "2026-09-23T14:00:00"}},
@@ -242,8 +247,11 @@ world_json    policy/situation/sequence : {{"time": {{"local": "2026-09-23T14:00
               (omets "phone" pour "aucun telephone" ; age_s null = jamais rapporte)
               routing : {{"devices": [{{"id": "desktop-01", "type": "pc|android|unknown", "caps": ["open_app"],
               "online": true, "last_seen_ago_s": 0}}], "turn": {{"origin": "desktop-01"}}}}
+              router : comme routing, plus "channel": true|false par appareil (canal de commande ouvert),
+              "turn": {{"origin": "phone-01", "text": "phrase dite", "ago_s": 12}}, "local_tools": ["open_app"]
 stimulus_json policy : {{"priority": "CRITICAL|IMPORTANT|USEFUL|TRIVIAL"}} ; situation : {{}} ;
               routing : {{"text": "phrase de l'utilisateur", "capability": "open_app", "model_hint": ""}} ; sequence : {{}}
+              router : {{"tool": "open_app", "parameters": {{"app": "chrome"}}, "target_device": ""}}
 events_json   sequence seulement, sinon "[]" : operations
               {{"op": "world", "phone": {{...}} ou null, "at": "HH:MM"}} {{"op": "advance", "s": 301}}
               {{"op": "decide", "priority": "IMPORTANT", "payload": "proactive", "push_if_deferred": true,
@@ -252,6 +260,7 @@ events_json   sequence seulement, sinon "[]" : operations
 claim_json    ce que TU penses etre le bon comportement, en chemins de trace :
               policy/situation : {{"situation": "MEETING", "channel": "NOTIFY_SILENT", "speaks": false}}
               routing : {{"kind": "device|clarify|unavailable", "device": "phone-01"}}
+              router : {{"executed_on": ["phone-01"]}} (["local"], ou [] pour un refus)
               sequence : {{"steps.3.lost": []}} ; "{{}}" si tu n'affirmes rien.
 Vocabulaires fermes : {", ".join(sc.PRIORITIES)} / {", ".join(sc.SITUATIONS)} / {", ".join(sc.CHANNELS)}.
 Ta revendication n'est PAS la verite : elle sera confrontee au code et une personne tranchera.
@@ -268,9 +277,13 @@ def build_user(mode: str, n: int, examples: list[dict], feedback: dict) -> str:
     fb = json.dumps(feedback, ensure_ascii=False)
     if mode == "adversary":
         task = (f"Trouve {n} situations ou JARVIS pourrait prendre une MAUVAISE decision tout en semblant "
-                "raisonnable : combinaisons de signaux contradictoires, noms trompeurs, seuils, ordres "
-                "d'evenements, coutures entre couches. Chaque scenario doit viser une hypothese de bug precise "
-                "et differente. N'en propose aucun qui ressemble aux causes deja connues ci-dessous.")
+                "raisonnable. Priorite aux INTERACTIONS entre politique, routage, delivrance et sequences "
+                "d'evenements : frontieres de seuils, transitions de situation, reconnexions (telephone qui "
+                "revient, appareil perime qui reapparait), files differees relues au mauvais moment, appareils "
+                "partiellement disponibles (en ligne sans canal, capacite perdue), pertes silencieuses (un "
+                "message qui disparait sans erreur). Prefere les surfaces sequence et router. Chaque scenario "
+                "vise une hypothese de bug precise et DIFFERENTE des autres et des causes deja connues "
+                "ci-dessous : les redecouvrir ne compte pas.")
     else:
         task = (f"Propose {n} situations realistes et variees de la vie quotidienne de l'utilisateur, en "
                 "couvrant ce qui manque d'apres la couverture ci-dessous.")
@@ -314,6 +327,7 @@ def intake(text: str, *, mode: str, batch: int, cov, seen: set, min_novelty: flo
             out.reject("unparseable", f"JSON interne : {e}")
             continue
         s = sc.make(it["surface"], world=world, stimulus=stimulus, events=events,
+                    tier=sc.SURFACE_TIER.get(it["surface"], "fast"),
                     expected=claim, oracle="explicit" if claim else "implicit",
                     source="llm" if mode == "generate" else "adversarial",
                     family=f"llm.{mode}.{str(it.get('family') or 'x')[:40]}", difficulty=3,
@@ -335,11 +349,14 @@ def intake(text: str, *, mode: str, batch: int, cov, seen: set, min_novelty: flo
         if novelty < min_novelty and mode == "generate":
             out.reject("stale", "rien de nouveau")
             continue
+        # Novelty against everything seen when it arrived (the 1 709 + what the
+        # model already proposed). Not part of the id: provenance, not content.
+        s["lineage"]["generator"]["novelty"] = round(novelty, 4)
         out.accepted.append(s)
     return out
 
 
-def feedback(cov, known: set[str], reasons: dict) -> dict:
+def feedback(cov, known, reasons: dict) -> dict:
     uncovered = [f"{k[1]}/{k[2]}" for k in cov.seen if k[0] == "cell" and len(k) == 4]
     return {
         "cellules_politique_atteintes": len(set(uncovered)),
@@ -349,7 +366,13 @@ def feedback(cov, known: set[str], reasons: dict) -> dict:
 
 
 def campaign(provider, *, mode: str, batches: int, per_batch: int, seed_corpus: list[dict],
-             known: set[str], max_usd: float, sink, log=print) -> tuple[Usage, Intake]:
+             known, max_usd: float, sink, log=print, transcript: Path | None = None) -> tuple[Usage, Intake]:
+    """Ask, validate, run, repeat — within a dollar budget, surviving errors.
+
+    `known`: human-readable descriptions of causes already found, shown to the
+    model so it looks elsewhere. `transcript`: every request and response,
+    verbatim, one JSON line per batch.
+    """
     """Ask, validate, run, repeat — within a dollar budget, surviving errors."""
     import random
     from .coverage import Coverage
@@ -371,6 +394,12 @@ def campaign(provider, *, mode: str, batches: int, per_batch: int, seed_corpus: 
         resp = provider.complete(system, user)
         if "usage" in resp and not resp.get("replayed"):
             usage.add(resp["usage"])
+        if transcript is not None:
+            with Path(transcript).open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"batch": b, "system_sha": Cassette.key(system, ""), "user": user,
+                                     "response": resp.get("text"), "error": resp.get("error"),
+                                     "usage": resp.get("usage"), "replayed": bool(resp.get("replayed")),
+                                     "request_id": resp.get("request_id")}, ensure_ascii=False) + "\n")
         if "error" in resp:
             usage.failures += 1
             consecutive_errors += 1

@@ -262,27 +262,64 @@ def cmd_llm(args) -> int:
             return 2
     provider = Cassette(cassette_path, inner)
     seeds = [s for s in iter_corpus("legacy") if s["surface"] != "face"]
+    # What is already known — regressions, and every cluster of the runs named
+    # in --baseline — is kept as a reference and never counted as a discovery.
+    from .regressions import load as load_regressions
+    known_sigs, known_desc = set(known_signatures()), []
+    for s in load_regressions():
+        r = s["lineage"]["regression"]
+        known_desc.append(f"{r['id']} : {r['title']}")
+    for b in filter(None, args.baseline.split(",")):
+        tri_path = RUNS / b / "triage.json"
+        if tri_path.exists():
+            for c in json.loads(tri_path.read_text(encoding="utf-8"))["clusters"]:
+                known_sigs.add(c["signature"])
+                known_desc.append(f"{c.get('first_invariant')} : {str(c.get('example'))[:100]}")
+    known_desc = list(dict.fromkeys(known_desc))
+    for f in ("scenarios.jsonl", "results.jsonl", "transcript.jsonl"):
+        (run_dir / f).unlink(missing_ok=True)
     failing: list[dict] = []
     with (run_dir / "scenarios.jsonl").open("w", encoding="utf-8") as fs, \
             (run_dir / "results.jsonl").open("w", encoding="utf-8") as fr:
         def sink(s, rec):
             fs.write(dumps(s) + "\n")
             fr.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
-            if rec["verdict"] != "PASS":
+            if rec["verdict"] not in ("PASS", "INVALID"):
                 failing.append(s)
         usage, total = campaign(provider, mode=args.mode, batches=args.batches, per_batch=args.per_batch,
-                                seed_corpus=seeds, known=known_signatures(), max_usd=args.max_usd, sink=sink)
+                                seed_corpus=seeds, known=known_desc, max_usd=args.max_usd, sink=sink,
+                                transcript=run_dir / "transcript.jsonl")
     rng = random.Random(0)
     fronts = {s["id"]: frontier(s, rng) for s in failing[:args.frontiers]}
     (run_dir / "frontiers.json").write_text(json.dumps(fronts, ensure_ascii=False, indent=1), encoding="utf-8")
-    tri = triage(run_dir, _run_corpora(run_dir), known_signatures())
+    tri = triage(run_dir, _run_corpora(run_dir), known_sigs)
     (run_dir / "triage.json").write_text(json.dumps(tri, ensure_ascii=False, indent=1), encoding="utf-8")
+    # Novelty against the 1 709 (the reference corpus), then against the
+    # 1 709 + everything the non-LLM generators produced.
+    from .coverage import Coverage
+    base = Coverage()
+    for s in seeds:
+        base.add(s)
+    accepted = total.accepted
+    new_vs_legacy = [s for s in accepted if base.add(s) > 0]
+    wide = Coverage()
+    for s in list(seeds) + [x for x in iter_corpus("generated")]:
+        wide.add(s)
+    new_vs_all = [s for s in accepted if wide.add(s) > 0]
+    by_surface = Counter(s["surface"] for s in accepted)
+    novelty = {"accepted": len(accepted), "by_surface": dict(by_surface),
+               "new_vs_1709": len(new_vs_legacy), "new_vs_1709_and_generated": len(new_vs_all),
+               "mean_novelty_at_intake": round(sum(s["lineage"]["generator"].get("novelty", 0) for s in accepted)
+                                               / max(1, len(accepted)), 4)}
+    (run_dir / "novelty.json").write_text(json.dumps(novelty, indent=1), encoding="utf-8")
     acc = len(total.accepted)
     print(f"  appels {usage.calls} (echecs {usage.failures})  cout {usage.usd:.3f} $  "
           f"tokens in {usage.input} out {usage.output} cache lu {usage.cache_read} ecrit {usage.cache_write}")
     print(f"  proposes {total.proposed}  acceptes {acc}  invalides {total.invalid}  illisibles {total.unparseable}  "
           f"doublons {total.duplicate}  sans nouveaute {total.stale}  "
           f"(taux d'invalidite {total.invalid / max(1, total.proposed):.1%})")
+    print(f"  nouveaute : {novelty['new_vs_1709']}/{len(accepted)} apportent un trait absent des 1 709, "
+          f"{novelty['new_vs_1709_and_generated']} absent aussi des corpus generes ; par surface {dict(by_surface)}")
     print(f"  echecs {len(failing)} -> {len(tri['clusters'])} clusters ; frontieres calculees pour {len(fronts)}")
     for c in tri["clusters"]:
         print(f"  {c['cluster']} {c['class']:<18} x{c['size']:<4} {c.get('first_invariant')}")
@@ -429,6 +466,8 @@ def build_parser() -> argparse.ArgumentParser:
     lm.add_argument("--replay", action="store_true", help="rejouer la cassette, aucun appel reseau")
     lm.add_argument("--frontiers", type=int, default=20)
     lm.add_argument("--run", default="llm")
+    lm.add_argument("--baseline", default="baseline,baseline-fuzz",
+                    help="runs dont les clusters sont deja connus (references, pas des decouvertes)")
     lm.set_defaults(fn=cmd_llm)
 
     gr = sub.add_parser("grade", help="grader LLM des phrases dites a l'utilisateur (avis, jamais un verdict)")
