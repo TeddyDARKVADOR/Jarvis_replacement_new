@@ -108,6 +108,16 @@ data class JarvisSnapshot(
      */
     val speakerLevel: Float = 0f,
 
+    /**
+     * The last raw `avatar` event off /ws, and a counter bumped on each one.
+     *
+     * Raw on purpose: whether it is fresh, older than the face already worn,
+     * or a replay from a reconnection is judged by `avatar/js/host.js`, the
+     * same rule the desktop applies — not by a second copy of it here.
+     */
+    val avatarEvent: String? = null,
+    val avatarSeq: Long = 0,
+
     /** Wake-word engine in use, and its last score. */
     val wakeWordName: String = "",
     val wakeWordScore: Float = 0f,
@@ -224,6 +234,10 @@ object JarvisState {
     fun setWakeWord(name: String) = _state.update { it.copy(wakeWordName = name) }
 
     fun setWakeScore(score: Float) = _state.update { it.copy(wakeWordScore = score) }
+
+    fun setAvatarEvent(raw: String) = _state.update {
+        it.copy(avatarEvent = raw, avatarSeq = it.avatarSeq + 1)
+    }
 
     fun setGateOpen(open: Boolean) = _state.update {
         // Stamp only on the rising edge. The gate re-opens on every interaction
