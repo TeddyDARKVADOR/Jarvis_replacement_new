@@ -164,6 +164,23 @@ def _car_bluetooth():
     return "repli heuristique quand la permission d'activite manque"
 
 
+@check("a car name is a whole word: a headset called Oscar or SyncBuds is not a car (REG-0002)")
+def _car_whole_word():
+    night = time_state(datetime(2026, 1, 5, 3, 0))
+    traps = ["Oscar's AirPods", "Bose SyncBuds", "AutoFocus Cam", "Scarlett Solo"]
+    for name in traps:
+        dev = _fresh(screen_on=False, idle_seconds=7200, headset=True, bluetooth_devices=[name])
+        got = derive(dev, tstate=night, now=NOW).situation
+        assert got is Situation.ASLEEP, f"« {name} » a 3 h : {got.value}, attendu ASLEEP"
+    th = Thresholds()
+    th.car_bluetooth_names = th.car_bluetooth_names + ["peugeot 208"]
+    for name in ["Peugeot CarKit", "Ford SYNC", "Android Auto", "My Car", "Peugeot 208 BT"]:
+        dev = _fresh(screen_on=False, idle_seconds=100, bluetooth_devices=[name])
+        got = derive(dev, th=th, now=NOW).situation
+        assert got is Situation.DRIVING, f"« {name} » : {got.value}, attendu DRIVING"
+    return f"{len(traps)} pieges dorment, 5 vraies voitures conduisent"
+
+
 @check("the headset decides the route, never the priority")
 def _route():
     day = time_state(datetime(2026, 1, 5, 14, 0))
