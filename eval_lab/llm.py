@@ -308,7 +308,8 @@ JARVIS est un assistant vocal 24/7. Tu travailles sur trois couches deterministe
    Silence apres livraison : IMPORTANT {th['cooldown_important_s']:.0f} s, USEFUL {th['cooldown_useful_s']:.0f} s (-> DEFER).
    VOICE/INTERRUPT sans route -> NOTIFY ; NOTIFY sans route -> DEFER. DEFER va dans une file,
    relue quand la situation change ; la politique est rejouee a la sortie. Promesse : differe != perdu.
-   Le check-in proactif de main.py met la CHAINE "proactive" en file ; server/alerts.py vide la file
+   Le check-in proactif de main.py (IMPORTANT) met la CHAINE "proactive" en file des qu'il ne parle pas
+   (DEFER mais aussi NOTIFY : modele par "push_unless_speaks") ; server/alerts.py vide la file
    et ne notifie que les payloads dict {{"title","text"}}. Les alertes du moniteur sont IMPORTANT.
 3. server/targeting.py — quel appareil execute une commande :
    1 EXPLICITE (la phrase nomme un appareil : "sur mon PC", "sur mon telephone", "ici", "l'autre appareil")
@@ -345,7 +346,7 @@ stimulus_json policy : {{"priority": "CRITICAL|IMPORTANT|USEFUL|TRIVIAL"}} ; sit
               router : {{"tool": "open_app", "parameters": {{"app": "chrome"}}, "target_device": ""}}
 events_json   sequence seulement, sinon "[]" : operations
               {{"op": "world", "phone": {{...}} ou null, "at": "HH:MM"}} {{"op": "advance", "s": 301}}
-              {{"op": "decide", "priority": "IMPORTANT", "payload": "proactive", "push_if_deferred": true,
+              {{"op": "decide", "priority": "IMPORTANT", "payload": "proactive", "push_unless_speaks": true,
                "deliver_if_speaks": true}} {{"op": "push", "priority": "USEFUL", "payload": "x"}}
               {{"op": "release"}} {{"op": "alerts", "alerts": ["[MONITOR_ALERT] sujet\\nHeadline: titre"]}}
 claim_json    ce que TU penses etre le bon comportement, en chemins de trace :
