@@ -1128,7 +1128,73 @@ def _alert_main_insertion():
     # The V1 voice path, untouched.
     assert 'f"{alert}\\n\\n"' in source, "the monitor's own prompt was rewritten"
     assert source.count("SYS: Monitor alert sent.") == 1
-    return "1 appel monitor, 1 filtre, chemin vocal V1 intact"
+    # Decision N3: the alert that WAS sent is reported, after the send and
+    # under a guard that can never stop the loop.
+    sent_at = source.index("SYS: Monitor alert sent.")
+    hook_at = source.index("note_spoken()")
+    assert source.count("note_spoken()") == 1 and hook_at > source.index("send_client_content", sent_at - 400), \
+        "note_spoken must follow the send, once"
+    assert "except Exception:" in source[hook_at:hook_at + 120], "the delivery hook is not guarded"
+    return "1 appel monitor, 1 filtre, chemin vocal V1 intact, livraison signalee apres l'envoi"
+
+
+@check("N3 — a delivery that reached the user arms the cooldown, whatever its path")
+def _delivery_arms_cooldown():
+    """Two sinks, one confirmation each: the notification hub (when a client
+    is connected, or when one connects and is replayed to) and the voice
+    (main.py reports an alert it sent). Created-but-unsent is never counted."""
+    import context
+    from context.model import Channel, Priority
+    from server import notify as N
+    from server.alerts import note_spoken
+
+    def fresh_decision():
+        snap = context.get_store().snapshot()
+        return context.get_policy().decide(Priority.IMPORTANT, snap).channel
+
+    class _Loop:
+        @staticmethod
+        def is_running():
+            return True
+
+        @staticmethod
+        def call_soon_threadsafe(cb):
+            pass                    # the broadcast itself is not what is tested
+
+    class _Dash:
+        def __init__(self, clients):
+            self._clients = set(range(clients))
+
+    _seed_context(device={"screen_on": True, "headset": True, "idle_seconds": 0})
+    assert fresh_decision() is Channel.VOICE
+
+    # 1. created with no client connected: not a delivery.
+    N.reset()
+    hub = N.get_hub()
+    hub._dashboard, hub._loop = _Dash(0), _Loop()
+    hub.notify("IMPORTANT", "Colis", "Livre au gardien.")
+    assert fresh_decision() is Channel.VOICE, "une notification que personne n'a recue a arme le silence"
+
+    # 2. the client connects and is replayed to: that is the delivery.
+    hub.pending()
+    assert fresh_decision() is Channel.DEFER, "le rejeu a la connexion n'a pas arme le silence"
+
+    # 3. a spoken alert (main.py's hook) arms it too.
+    _seed_context(device={"screen_on": True, "headset": True, "idle_seconds": 0})
+    assert fresh_decision() is Channel.VOICE
+    note_spoken()
+    assert fresh_decision() is Channel.DEFER, "une alerte dite n'a pas arme le silence"
+
+    # 4. with a client connected at broadcast time, the notification counts at once.
+    _seed_context(device={"screen_on": True, "headset": True, "idle_seconds": 0})
+    N.reset()
+    hub = N.get_hub()
+    hub._dashboard, hub._loop = _Dash(1), _Loop()
+    hub.notify("IMPORTANT", "Facture", "Echeance demain.")
+    assert fresh_decision() is Channel.DEFER, "une notification remise n'a pas arme le silence"
+    context.reset()
+    N.reset()
+    return "sans client : rien ; rejeu a la connexion : arme ; alerte dite : arme ; remise directe : arme"
 
 
 # ── the face JARVIS chooses, on its way to the body ──────────────────────────
