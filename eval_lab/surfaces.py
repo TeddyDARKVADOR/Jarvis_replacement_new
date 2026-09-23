@@ -240,6 +240,12 @@ def run_sequence(s: dict) -> dict:
                                         system=system, clock=clock, policy=policy, queue=queue,
                                         force=force))
             step["held"] = [_payload_repr(d.payload) for d in queue.peek()]
+            # Every step states what it lost, even when nothing can be lost
+            # there. An absent field made an oracle about `lost` fail on a
+            # path that did not exist (first Opus probe): a lab defect,
+            # reported as if JARVIS had failed. A bare `release` hands the
+            # items to its caller; only `alerts` can drop them.
+            step.setdefault("lost", [])
             steps.append(step)
     return {"steps": steps, "final": {"held": steps[-1]["held"] if steps else []}}
 
