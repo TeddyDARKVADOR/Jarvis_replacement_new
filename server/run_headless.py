@@ -166,6 +166,13 @@ def build(echo: bool = True, allow_firewall: bool = False):
         # same app — `/ws` and `/api/device-login` are left exactly as they are,
         # which is what keeps the current Android build working untouched.
         device_api.attach(dash, device_hub, log=lambda m: print(m, flush=True))
+        # The face's files for the phone (server/avatar_api.py). Two NEW routes;
+        # a failure here costs the phone its 3D face, never the server.
+        try:
+            from server import avatar_api
+            avatar_api.attach(dash, log=lambda m: print(m, flush=True))
+        except Exception as exc:
+            print(f"[Avatar] routes non montees : {exc}", flush=True)
         # The two client→server capabilities the headless host adds. Both bind a
         # remote button to a function that already existed — no second command
         # path, no second authority. `main.py` is untouched: it has already put

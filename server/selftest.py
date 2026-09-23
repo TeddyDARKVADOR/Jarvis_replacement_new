@@ -790,6 +790,62 @@ def _notify_route():
     return "401 / 200 / 400 / 400, counters on /status, no content in it"
 
 
+@check("the phone gets the active model only while its SHA-256 matches its profile")
+def _avatar_routes():
+    """server/avatar_api.py, on a fresh app and a model made for the test —
+    never the model installed on this machine, never another check's app."""
+    if not _fastapi_available():
+        return "skipped (fastapi/httpx not installed)"
+    import tempfile
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from presence import models
+    from server import avatar_api
+
+    class _Dash:
+        def __init__(self):
+            self.app = FastAPI()
+            self._tokens = {"t-" + "a" * 20}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "models" / "t").mkdir(parents=True)
+        glb = root / "models" / "t" / "face.glb"
+        glb.write_bytes(b"glTF" + b"\x00" * 1000)
+        profile = {"schema": 1, "id": "t/face", "sha256": models.sha256(glb), "license": "test",
+                   "provenance": {}, "capabilities": {}, "calibration": {}}
+        models.write_json(models.profile_path(glb), profile)
+        models.write_json(root / "manifest.json",
+                          {"model": {"file": "t/face.glb"}, "gestures": {"wave": {"clip": "w.glb"}}})
+        dash = _Dash()
+        head = {"Authorization": f"Bearer {next(iter(dash._tokens))}"}
+        avatar_api.attach(dash, avatar_dir=root, log=lambda *_: None)
+        with TestClient(dash.app) as client:
+            assert client.get("/api/avatar/manifest").status_code == 401
+            assert client.get("/api/avatar/model").status_code == 401
+            info = client.get("/api/avatar/manifest", headers=head).json()
+            assert info["model"]["sha256"] == profile["sha256"], info
+            assert info["model"]["size"] == glb.stat().st_size
+            assert info["manifest"]["gestures"] == {}, "les clips ne sont pas servis en v1"
+            r = client.get("/api/avatar/model", headers=head)
+            assert r.status_code == 200 and r.content == glb.read_bytes()
+            assert r.headers["x-model-sha256"] == profile["sha256"]
+
+            glb.write_bytes(b"glTF" + b"\x01" * 2000)          # changed after profiling
+            info = client.get("/api/avatar/manifest", headers=head).json()
+            assert info["model"] is None and "change" in info["reason"], info
+            assert client.get("/api/avatar/model", headers=head).status_code == 404
+
+            models.write_json(root / "manifest.json", {"model": {"file": ""}})
+            info = client.get("/api/avatar/manifest", headers=head).json()
+            assert info["model"] is None and info["manifest"]["model"]["file"] == ""
+
+            models.write_json(root / "manifest.json", {"model": {"file": "../../../etc/passwd"}})
+            assert client.get("/api/avatar/manifest", headers=head).json()["model"] is None
+    return "401 sans jeton ; empreinte du profil servie ; fichier modifie -> refuse ; sans modele -> null ; hors models/ -> null"
+
+
 @check("the Android client's dedup outlives the server's replay window")
 def _notify_android_contract():
     """Three constants in two languages have to agree or notifications repeat.
