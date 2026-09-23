@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import com.jarvis.auth.AuthManager
 import com.jarvis.net.ServerEndpoint
+import com.jarvis.avatar.AvatarModels
 import com.jarvis.service.JarvisForegroundService
 import com.jarvis.ui.JarvisApp
 import com.jarvis.ui.JarvisTheme
@@ -108,6 +109,10 @@ class MainActivity : ComponentActivity() {
         // The user may have just come back from the system settings screen, and
         // that is the most likely reason for leaving this app at all.
         refreshPermissions()
+        // The face's model: verified local copy at once, then a sync with the
+        // server in the background. Idempotent and backed off — see
+        // avatar/AvatarModelStore.kt. A failure only means the 2D core stays.
+        AvatarModels.refresh(this, auth)
     }
 
     private fun askForPermissions() {
