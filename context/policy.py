@@ -164,6 +164,16 @@ class ProactivityPolicy:
             channel = Channel.DEFER
             why.append("reveil pour CRITIQUE desactive")
 
+        # UNKNOWN n'est pas "endormi", mais ce n'est pas non plus la preuve du
+        # contraire. La nuit, un telephone qui se tait (mise en veille) fait
+        # passer d'ASLEEP a UNKNOWN : sans cette regle, le silence de la nuit
+        # tombait avec lui et un IMPORTANT sonnait a 2 h. Seul CRITIQUE passe.
+        quiet = bool(getattr(snapshot.time, "quiet_hours", False))
+        if (situation is Situation.UNKNOWN and quiet and priority is not Priority.CRITICAL
+                and channel not in (Channel.DEFER, Channel.DROP)):
+            channel = Channel.DEFER
+            why.append("heures calmes, contexte inconnu -> differe")
+
         channel, why = self._apply_cooldown(priority, channel, now, why)
         channel, route, why = self._enforce_reality(channel, snapshot.route, why)
 

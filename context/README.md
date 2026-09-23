@@ -28,9 +28,13 @@ C'est la fonctionnalité. Tout le reste l'alimente ou l'applique.
 | **ASLEEP** | interrompre¹ | plus tard | plus tard | rien |
 | **ACTIVE** | interrompre | voix | notif muette | rien |
 | **IDLE** | interrompre | notif sonore | notif muette | rien |
-| **UNKNOWN** | interrompre | notif sonore | plus tard | rien |
+| **UNKNOWN** | interrompre | notif sonore² | plus tard | rien |
 
 ¹ `PolicyConfig(wake_for_critical=False)` la neutralise.
+
+² Le jour seulement. Pendant les heures calmes, UNKNOWN diffère tout sauf
+CRITIQUE : un téléphone qui se tait la nuit (mise en veille) fait passer
+d'ASLEEP à UNKNOWN, et « je ne sais pas » n'est pas « il est réveillé ».
 
 Le casque n'apparaît pas dans la table : il décide de la **route** (`HEADSET` /
 `PHONE` / `DESKTOP` / `NONE`), pas de la priorité. Un casque débranché ne doit

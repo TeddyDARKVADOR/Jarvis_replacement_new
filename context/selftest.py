@@ -34,7 +34,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from context.model import (                                        # noqa: E402
-    Activity, Channel, DeviceState, Priority, Ringer, Route, Situation,
+    Activity, Channel, DeviceState, Priority, Ringer, Route, Situation, SystemState,
 )
 from context.policy import DeferralQueue, ProactivityPolicy         # noqa: E402
 from context.situation import Thresholds, derive, time_state        # noqa: E402
@@ -205,16 +205,38 @@ def _matrix():
         Situation.UNKNOWN: [Channel.INTERRUPT, Channel.NOTIFY, Channel.DEFER, Channel.DROP],
     }
     order = [Priority.CRITICAL, Priority.IMPORTANT, Priority.USEFUL, Priority.TRIVIAL]
+    # La table de jour. Sans heure fixee, time_state() lisait l'horloge reelle :
+    # la nuit, la ligne UNKNOWN obeit aux heures calmes et ce check aurait
+    # dependu de l'heure a laquelle on le lance.
+    day = time_state(datetime(2026, 1, 5, 14, 0))
     checked = 0
     for situation, row in expected.items():
         for priority, want in zip(order, row):
             policy = ProactivityPolicy()          # neuf : aucun cooldown en cours
-            snap = derive(_fresh(screen_on=True, headset=True), now=NOW)
+            snap = derive(_fresh(screen_on=True, headset=True), tstate=day, now=NOW)
             snap.situation, snap.route = situation, Route.HEADSET
             got = policy.decide(priority, snap, now=NOW).channel
             assert got is want, f"{situation.value}/{priority.value}: {got} != {want}"
             checked += 1
     return f"{checked} cellules conformes a la table"
+
+
+@check("at night, a phone gone quiet (UNKNOWN) does not lift the silence; only CRITICAL passes")
+def _unknown_quiet_hours():
+    night = time_state(datetime(2026, 1, 5, 2, 0))
+    noon = time_state(datetime(2026, 1, 5, 12, 0))
+    gone = _fresh(screen_on=False, idle_seconds=7200, reported_at=NOW - 400)
+    desk = SystemState(facts={"desktop_audio": True})
+    snap = derive(gone, tstate=night, sys_state=desk, now=NOW)
+    assert snap.situation is Situation.UNKNOWN, snap.situation
+    got = {p: ProactivityPolicy().decide(p, snap, now=NOW).channel for p in Priority}
+    assert got[Priority.IMPORTANT] is Channel.DEFER, got
+    assert got[Priority.USEFUL] is Channel.DEFER, got
+    assert got[Priority.CRITICAL] is Channel.INTERRUPT, got
+    day = derive(gone, tstate=noon, sys_state=desk, now=NOW)
+    assert ProactivityPolicy().decide(Priority.IMPORTANT, day, now=NOW).channel is Channel.NOTIFY, \
+        "le jour, la table UNKNOWN doit etre inchangee"
+    return "2 h : IMPORTANT et USEFUL differes, CRITICAL interrompt ; midi inchange"
 
 
 @check("JARVIS never speaks in a meeting, at any priority")
