@@ -102,3 +102,11 @@ avatar/gestures/*
 
 # Captures produites par avatar/checks/ — des sorties, pas du code.
 avatar/checks/shots/
+
+# ── eval_lab : ce qu'un run produit ─────────────────────────────────────────
+#
+# Les resultats d'un run sont des observations datees, qui se rejouent. Le
+# corpus (eval_lab/corpus/), lui, est versionne : c'est la reference.
+eval_lab/runs/
+# Rejouable a l'identique depuis sa graine (`generate --seed`), donc pas versionne.
+eval_lab/corpus/generated/
