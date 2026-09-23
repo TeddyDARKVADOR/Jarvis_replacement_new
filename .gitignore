@@ -71,3 +71,34 @@ screenshots/
 # Le laboratoire est du source ; ses verdicts, ses captures et ses logcat sont
 # des observations datées, qui se rejouent au lieu de se versionner.
 jarvis-preprod/reports/
+
+# ── Modeles 3D de l'avatar ────────────────────────────────────────────────────
+#
+# Jamais commites, pour deux raisons independantes qui vont dans le meme sens :
+#
+#   licence   un .glb telecharge appartient a quelqu'un. Ready Player Me,
+#             Mixamo, Fab, ArtStation ont chacun leurs conditions, et aucune ne
+#             dit "redistribuez-le dans votre depot public".
+#   poids     un humanoide texture fait 3 a 15 Mo. Quelques essais et
+#             l'historique git pese plus que tout le reste du projet, pour
+#             toujours.
+#
+# Le manifeste, lui, EST commite : il decrit ce qu'il faut installer et comment
+# le piloter. Les PROFILS aussi (`<modele>.model.json`) : quelques Ko de
+# licence, provenance, empreinte SHA-256 et calibration — tout ce qui permet de
+# savoir quel fichier reinstaller, et de verifier que c'est le bon. Reinstaller
+# se fait en une commande :
+#
+#     python -m presence.install_model --demo          modele de demonstration
+#     python -m presence.install_model --list          ou en trouver un vrai
+#     python -m presence.install_model --installed     ce qui est profile ici
+#
+avatar/models/**
+!avatar/models/**/
+!avatar/models/**/README.md
+!avatar/models/**/*.model.json
+avatar/gestures/*
+!avatar/gestures/README.md
+
+# Captures produites par avatar/checks/ — des sorties, pas du code.
+avatar/checks/shots/

@@ -297,6 +297,33 @@ class JarvisStore:
             )
         self._emit("log", stamped)
 
+    def set_avatar_intent(self, directive: dict, *, age: float = 0.0) -> None:
+        """JARVIS chose a face for what he is saying. An event, never state.
+
+        Emitted as `{"directive": ..., "age": ...}` — the same envelope the
+        wire uses — because that is the shape `avatar_view.set_intent_json`
+        reads. It used to emit the bare directive, and the widget looked for a
+        `directive` key inside it: every intent JARVIS sent was dropped on the
+        last hop, silently, with each half tested against itself.
+
+        `age` is how old the decision already was on arrival. The Director
+        counts the intent's lifetime from the moment JARVIS decided, not from
+        the moment the packet landed — otherwise a directive delayed by twenty
+        seconds would live for forty-five.
+
+        Deliberately absent from `Snapshot`. A directive has a lifetime of its
+        own — `presence.director.INTENT_TTL_S` — and the object that owns that
+        lifetime is the `Director` inside the avatar widget. Putting it in the
+        snapshot would create a second, slower copy of the same truth: one that
+        expires on the paint timer, contradicts the first for a frame or two,
+        and has to be cleared by somebody.
+
+        Nothing here inspects the payload. The client's own `presence` decides
+        what it means, and a client built without a body ignores the event —
+        which is the same answer as a client that has never heard of it.
+        """
+        self._emit("avatar", {"directive": directive, "age": max(0.0, float(age))})
+
     # ── counters ─────────────────────────────────────────────────────────────
 
     def count_sent(self, byte_count: int) -> None:

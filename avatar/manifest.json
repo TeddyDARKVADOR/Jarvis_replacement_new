@@ -1,0 +1,57 @@
+{
+  "version": 2,
+  "name": "JARVIS — JARVIS (visage feminin)",
+  "model": {
+    "file": "jarvis/female/jarvis.glb",
+    "scale": 1.0,
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "morphPrefix": "",
+    "morphAliases": {},
+    "muteMeshes": [
+      "tongue01"
+    ],
+    "profile": "jarvis/female/jarvis.model.json",
+    "morphGain": {}
+  },
+  "rig": {
+    "parts": [
+      "arms",
+      "head",
+      "legs",
+      "torso"
+    ],
+    "motion": "face",
+    "bones": {
+      "head": "Head",
+      "neck": "Neck",
+      "spine": "Spine2",
+      "root": "Hips",
+      "eyeLeft": "LeftEye",
+      "eyeRight": "RightEye"
+    },
+    "armRest": {
+      "shoulder": -0.45,
+      "elbow": 0.0,
+      "forward": 0.0
+    },
+    "gaze": {}
+  },
+  "camera": {
+    "fov": 24,
+    "frame": "portrait"
+  },
+  "look": {
+    "hologram": true,
+    "colour": "#7DD3FC",
+    "dim": "#1E4C63",
+    "accent": "#C4B5FD",
+    "background": "transparent",
+    "scanlines": true,
+    "grain": 0.06
+  },
+  "gestures": {}
+}

@@ -104,6 +104,11 @@ class JarvisClient:
         self._announced_connected = False
         self._closing = False
 
+        # Le `ts` serveur de la derniere directive d'avatar jouee. Porte par
+        # l'objet et non par la connexion : c'est une reconnexion qui rejoue
+        # l'historique, donc c'est a travers elle que la memoire doit tenir.
+        self._avatar_last_ts: float = 0.0
+
     @property
     def endpoint(self) -> ServerEndpoint:
         return self._settings.endpoint
@@ -289,6 +294,42 @@ class JarvisClient:
 
         elif kind == P.EV_CONFIRM_HIDE:
             self._store.clear_confirmation()
+
+        elif kind == P.EV_AVATAR:
+            # The one event on this socket that is thrown away when it is late.
+            # Every other kind here is a record — a line of transcript, a state,
+            # a pending question — and a record that arrives after a reconnect
+            # is still true. A face is not: it is a reaction to a sentence that
+            # finished, and `/ws` replays its last 50 events to anyone who
+            # connects. `protocol.AVATAR_FRESH_SECONDS` carries the argument.
+            directive = event.get("directive")
+            if not isinstance(directive, dict):
+                return
+            stamp = event.get("ts")
+            age = 0.0
+            if stamp is not None:
+                try:
+                    stamp = float(stamp)
+                    age = max(0.0, time.time() - stamp)
+                    if age > P.AVATAR_FRESH_SECONDS:
+                        return
+                except (TypeError, ValueError):
+                    stamp = None
+                    age = 0.0
+            # Deja vu, ou plus vieux que ce qu'on a deja joue : jete.
+            #
+            # `/ws` rejoue ses 50 derniers evenements a chaque connexion. La
+            # fenetre de 25 s ci-dessus arrete ceux de la veille, pas ceux d'il
+            # y a dix secondes : une reconnexion rapide rendait donc la derniere
+            # directive une seconde fois, et JARVIS rehochait la tete pour une
+            # phrase deja finie. Le `ts` est pose par le serveur, sur son
+            # horloge a lui, et compare seulement a d'autres `ts` du meme
+            # serveur — aucun decalage d'horloge ne peut fausser cet ordre.
+            if stamp is not None:
+                if stamp <= self._avatar_last_ts:
+                    return
+                self._avatar_last_ts = stamp
+            self._store.set_avatar_intent(directive, age=age)
 
     # ── /ws/phone-out — JARVIS's voice ───────────────────────────────────────
 

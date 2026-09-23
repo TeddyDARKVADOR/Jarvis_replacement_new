@@ -198,7 +198,7 @@ class JarvisPanel(QWidget):
         self._core_row.setSpacing(8)
         self._core_row.setContentsMargins(0, 0, 0, 0)
 
-        self._core = JarvisCoreWidget()
+        self._core = self._build_core()
         self._core.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._core.setFixedHeight(180)
         self._core.clicked.connect(self._on_core_clicked)
@@ -284,6 +284,37 @@ class JarvisPanel(QWidget):
             self._text_box, self._history_area, self._input,
             self._mic_button, self._interrupt_button, self._separator,
         ]
+
+    def _build_core(self) -> QWidget:
+        """The 2D core, or the 3D body, depending on one setting.
+
+        Everything downstream is written against the core's surface —
+        `set_snapshot`, `set_animated`, `update`, `clicked` — and
+        `ui/avatar_view.JarvisAvatarWidget` implements exactly that. So this is
+        the only place in the panel that knows there are two of them, and the
+        reflow, the density rules and the collapse logic are untouched by the
+        choice.
+
+        Three ways to end up with the core, all of them silent: the setting is
+        off, PyQt6-WebEngine is not installed, or building the view raised. The
+        last one is deliberate breadth — a body that fails to construct must
+        cost JARVIS his face and not his panel, and the panel is the thing the
+        user needs to answer a confirmation with.
+        """
+        if not getattr(self.settings, "avatar_enabled", False):
+            return JarvisCoreWidget()
+
+        from . import avatar_view
+
+        if not avatar_view.AVAILABLE:
+            print("[client] avatar demande mais PyQt6-WebEngine absent "
+                  f"({avatar_view.IMPORT_ERROR}) — coeur 2D", flush=True)
+            return JarvisCoreWidget()
+        try:
+            return avatar_view.JarvisAvatarWidget()
+        except Exception as exc:
+            print(f"[client] avatar indisponible ({exc}) — coeur 2D", flush=True)
+            return JarvisCoreWidget()
 
     def _chrome_button(self, text: str, tip: str, slot) -> QPushButton:  # noqa: ANN001
         button = QPushButton(text)
@@ -669,6 +700,23 @@ class JarvisPanel(QWidget):
         """Called from the GUI thread with the latest snapshot."""
         self._snapshot = snapshot
         self._core.set_snapshot(snapshot)
+
+    def set_avatar_intent(self, event: dict) -> None:
+        """An `avatar` event arrived. Only a body can do anything with it.
+
+        Pushed straight through instead of waiting for the next `apply()`: the
+        expression JARVIS picked for a sentence has to arrive with the sentence,
+        and `apply()` runs on the panel's pulse, which is not the same clock.
+
+        The 2D core has no `set_intent` and is given none — asking it to grow
+        one would mean deciding what a lit ring does with `amused 0.35`, which
+        is a question with no good answer. So this is the one place that knows
+        the core comes in two kinds, exactly like `_build_core` above, and the
+        check is on the method rather than on the class for the same reason.
+        """
+        handler = getattr(self._core, "set_intent_json", None)
+        if callable(handler):
+            handler(event)
 
     def _refresh_text(self) -> None:
         snapshot = self._snapshot
