@@ -151,12 +151,17 @@ def route_monitor_alerts(alerts: list[str], dashboard=None) -> list[str]:
         # notifications rather than speech on purpose: something withheld
         # overnight arriving as a spoken sentence out of nowhere is startling,
         # and the user did not ask for it at this moment.
-        for held in queue.release(snapshot, policy):
+        #
+        # Only what this path can send is released. The proactive check-in
+        # queues a bare marker ("proactive"), which has no text to notify:
+        # released here, it used to vanish (REG-0001). It now stays held for
+        # its owner and expires with the queue's own max age.
+        for held in queue.release(snapshot, policy,
+                                  deliverable=lambda item: isinstance(item.payload, dict)):
             payload = held.payload
-            if isinstance(payload, dict):
-                notify(held.priority.value if hasattr(held.priority, "value")
-                       else str(held.priority),
-                       payload.get("title", "JARVIS"), payload.get("text", ""))
+            notify(held.priority.value if hasattr(held.priority, "value")
+                   else str(held.priority),
+                   payload.get("title", "JARVIS"), payload.get("text", ""))
 
         speak: list[str] = []
         for alert in alerts:

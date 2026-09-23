@@ -1043,6 +1043,28 @@ def _alert_release():
     return "retenu la nuit, rendu au reveil en notification, file videe"
 
 
+@check("case 6b — a held proactive check-in is not dropped by the alert pass (REG-0001)")
+def _alert_keeps_checkin():
+    """main.py queues the proactive check-in as the bare string "proactive".
+    The alert pass can only send notifications; it used to release the marker
+    and then ignore it, so the deferred check-in vanished without a trace."""
+    import context
+    from context.model import Priority
+    from server import notify as N
+    from server.alerts import route_monitor_alerts
+
+    _seed_context(asleep=False, device={"screen_on": True, "idle_seconds": 0})
+    N.reset()
+    context.get_queue().push("proactive", Priority.IMPORTANT, "differe")
+    route_monitor_alerts([], _FakeDash())
+    held = [d.payload for d in context.get_queue().peek()]
+    assert held == ["proactive"], f"le check-in differe a disparu : {held}"
+    assert N.get_hub().stats()["created"] == 0, "un marqueur sans texte a ete notifie"
+    context.reset()
+    N.reset()
+    return "le marqueur reste en file ; rien d'inventé n'est notifie"
+
+
 @check("case 7 — no transport means V1 speaks, so nothing is ever lost")
 def _alert_no_transport():
     """`self._dashboard` is None on a desktop run until a phone is linked. With

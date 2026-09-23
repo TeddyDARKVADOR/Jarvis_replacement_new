@@ -272,12 +272,18 @@ class DeferralQueue:
             self._items = self._items[-self._maxlen:]
 
     def release(self, snapshot: Snapshot, policy: ProactivityPolicy,
-                now: float | None = None) -> list[Deferred]:
+                now: float | None = None, deliverable=None) -> list[Deferred]:
         """Return everything the current situation would now let through.
 
         Re-runs the policy on each held item rather than assuming a deferred
         message is automatically deliverable later: waking up does not make a
         message deliverable if the user woke up in a meeting.
+
+        `deliverable(item) -> bool`, optional: what the CALLER can actually
+        deliver. Anything else stays held, with its original age. Without it a
+        caller that can only send notifications took the proactive check-in
+        marker out of the queue and dropped it (REG-0001): releasing is taking
+        responsibility, so only what can be honoured is released.
         """
         now = time.time() if now is None else now
         ready: list[Deferred] = []
@@ -285,6 +291,9 @@ class DeferralQueue:
         for item in self._items:
             if (now - item.queued_at) > self._max_age_s:
                 continue                      # perime : personne ne veut la meteo d'hier
+            if deliverable is not None and not deliverable(item):
+                keep.append(item)
+                continue
             decision = policy.decide(item.priority, snapshot, now=now)
             if decision.channel in (Channel.DROP, Channel.DEFER):
                 keep.append(item)
