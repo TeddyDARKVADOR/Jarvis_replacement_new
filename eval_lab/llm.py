@@ -476,6 +476,11 @@ def campaign(provider, *, mode: str, batches: int, per_batch: int, seed_corpus: 
             usage.failures += 1
             consecutive_errors += 1
             log(f"  lot {b} : {resp['error']} — {resp.get('detail') or 'sans detail'}")
+            # 4xx other than 429: credit, key, permission, request shape. Retrying
+            # changes nothing; waiting and retrying three times only hides it.
+            if resp["error"].startswith("http_4") and resp["error"] != "http_429":
+                log("  erreur non transitoire — arret immediat, aucun nouvel essai")
+                break
             if consecutive_errors >= 3:
                 log("  3 erreurs de suite — arret, rien n'est perdu (cassette + resultats)")
                 break
