@@ -76,6 +76,17 @@ export class PhoneHost {
     this.lastTs = 0;           // server ts of the last directive played
     this.lastJson = '';
     this.dropped = { stale: 0, older: 0, invalid: 0 };
+    this.played = 0;
+    this.levels = 0;
+    this.maxSpeaker = 0;
+  }
+
+  /** What the host did so far: read by the emulator suite through logcat. */
+  stats() {
+    let expression = null;
+    try { expression = JSON.parse(this.lastJson || '{}').expression || null; } catch { /* rien */ }
+    return { word: this.word, played: this.played, ...this.dropped, levels: this.levels,
+             maxSpeaker: Math.round(this.maxSpeaker * 1000) / 1000, expression };
   }
 
   /** New machine facts. Resolves and pushes only if the face changed. */
@@ -118,12 +129,15 @@ export class PhoneHost {
     // Aged on arrival: a decision already 10 s old has 15 s left, not 25.
     this.director.setIntent(directive, this.monotonic() - age);
     this._push(true);
+    this.played += 1;
     return 'played';
   }
 
   /** Audio levels, ~30 Hz. The mouth follows the speaker; ears follow the mic. */
   level({ speaker = 0, mic = 0 } = {}) {
     this.speaker = Number(speaker) || 0;
+    this.levels += 1;
+    this.maxSpeaker = Math.max(this.maxSpeaker, this.speaker);
     this.speak(this.speaker);
     if (mic > 0) this.listen(Number(mic) || 0);
   }
@@ -195,7 +209,12 @@ export async function bootPhoneHost(manifest) {
     monotonic: () => performance.now() / 1000,
     wall: () => Date.now() / 1000,
   });
-  let ticker = setInterval(() => host.tick(), 500);
+  let visible = true;
+  const every = () => [setInterval(() => host.tick(), 500),
+    // A report every 5 s while seen, none while hidden: the emulator suite
+    // reads these lines, and their absence is how it sees the pause.
+    setInterval(() => tell('onStats', Object.assign({ visible }, host.stats())), 5000)];
+  let timers = every();
 
   window.addEventListener('message', (event) => {
     const d = event.data;
@@ -203,12 +222,14 @@ export async function bootPhoneHost(manifest) {
     if (d.type === 'host-state') host.state(d.facts);
     else if (d.type === 'host-intent') {
       const outcome = host.intent(d.event);
-      if (outcome !== 'played') tell('onIntentDropped', { outcome });
+      tell('onIntent', { outcome, expression: host.stats().expression });
     } else if (d.type === 'host-level') host.level(d);
     else if (d.type === 'host-visible') {
-      window.JARVIS.setAnimated(Boolean(d.visible));
-      clearInterval(ticker);
-      if (d.visible) ticker = setInterval(() => host.tick(), 500);
+      visible = Boolean(d.visible);
+      window.JARVIS.setAnimated(visible);
+      timers.forEach(clearInterval);
+      timers = visible ? every() : [];
+      tell('onStats', Object.assign({ visible }, host.stats()));
     }
   });
   window.JARVIS.host = host;
