@@ -204,6 +204,31 @@ def main() -> int:
 
     dash.app.add_api_route("/lab/avatar", lab_avatar, methods=["POST"])
 
+    async def lab_state(req: Request) -> JSONResponse:
+        """POST /lab/state {"state": "THINKING"} — ce que main.py dirait.
+
+        Le meme message que server/headless_ui.py (set_state -> jarvis_state),
+        et le meme point d'entree de RuntimeState (note_ui_state) : ce que le
+        telephone affiche pour LISTENING, THINKING, SPEAKING sans session Gemini.
+        """
+        header = req.headers.get("authorization", "")
+        bearer = header.removeprefix("Bearer ").strip()
+        if not bearer or bearer not in dash._tokens:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            body = await req.json()
+        except Exception:
+            body = {}
+        raw = str(body.get("state") or "").upper().strip()
+        if not raw:
+            return JSONResponse({"error": "state requis"}, status_code=400)
+        state.note_ui_state(raw)
+        event = {"type": "jarvis_state", "state": raw}
+        await dash.broadcast(event)
+        return JSONResponse({"sent": event})
+
+    dash.app.add_api_route("/lab/state", lab_state, methods=["POST"])
+
     async def lab_phone_out_tone(req: Request) -> JSONResponse:
         """POST /lab/phone-out-tone — deux secondes de son sur /ws/phone-out.
 

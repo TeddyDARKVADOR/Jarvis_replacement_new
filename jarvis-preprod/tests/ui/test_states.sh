@@ -16,6 +16,11 @@ LINK="$LAB_ROOT/tools/link_state.sh"
 
 lab_init "ui"
 
+# Appairer ici, pas compter sur la suite d'avant : lancee seule (ou apres
+# `smoke`, qui reinstalle l'app), cette suite trouvait le service arrete et
+# echouait sur l'etat du lien. connect_app relance l'activite ; il finit sur
+# SETTINGS, la navigation ci-dessous repart de JARVIS.
+"$LAB_ROOT/tools/connect_app.sh" >/dev/null 2>&1 || true
 "$ADB" shell am start -n "$LAB_PACKAGE/$LAB_ACTIVITY" >/dev/null 2>&1 || true
 sleep 3
 
@@ -88,7 +93,28 @@ esac
 if [ "$("$LAB_ROOT/tools/server.sh" mode)" = "full" ]; then
     skipped "etats LISTENING/THINKING/SPEAKING" "a implementer avec le serveur complet"
 else
-    skipped "etats LISTENING/THINKING/SPEAKING" "serveur en mode lab : aucune session Gemini"
+    # Le labo n'a pas de session Gemini, mais /lab/state envoie le MEME message
+    # que server/headless_ui.py : ce que l'ecran fait d'un etat est testable,
+    # ce que Gemini fait pour y arriver ne l'est pas (et n'est pas teste ici).
+    "$UI" tap text "JARVIS" >/dev/null 2>&1 || true
+    bearer="$("$LAB_ROOT/tools/server.sh" bearer)"
+    for pair in "LISTENING:I'm listening." "THINKING:Thinking" "SPEAKING:"; do
+        st="${pair%%:*}"; caption="${pair#*:}"
+        curl -s -X POST "http://${LAB_SERVER_HOST_FROM_PC}:${LAB_SERVER_PORT}/lab/state" \
+             -H "Authorization: Bearer $bearer" -H "Content-Type: application/json" \
+             -d "{\"state\":\"$st\"}" >/dev/null
+        if wait_for "$st" 10 sh -c "\"$UI\" texts | grep -qx '$st'"; then
+            texts="$("$UI" texts 2>/dev/null)"
+            if [ -z "$caption" ] || printf '%s' "$texts" | grep -qF "$caption"; then
+                ok "etat $st affiche" "pastille${caption:+ + « $caption »}"
+            else
+                ko "etat $st affiche" "pastille $st mais pas « $caption »"
+            fi
+            screenshot "state_$st"
+        else
+            ko "etat $st affiche" "pastille absente : $("$UI" texts 2>/dev/null | tr '\n' '|' | cut -c1-120)"
+        fi
+    done
 fi
 
 "$LAB_ROOT/tools/collect_logcat.sh" ui >/dev/null 2>&1 || true

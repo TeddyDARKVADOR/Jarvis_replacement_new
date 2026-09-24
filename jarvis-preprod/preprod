@@ -46,8 +46,14 @@ cmd_deps() {
     check "Android SDK"    "$LAB_SDK"
     check "platform-tools" "$LAB_SDK/platform-tools/adb.exe"
     check "emulator"       "$LAB_SDK/emulator/emulator.exe"
-    check "cmdline-tools"  "$LAB_SDK/cmdline-tools/23.0/bin/avdmanager.bat"
-    check "image systeme"  "$LAB_SDK/system-images/android-36/google_apis_playstore/x86_64"
+    # Pas de version en dur : celles qui sont installees (latest/, 23.0/...), et
+    # l'image que l'AVD utilise REELLEMENT, lue dans son config.ini.
+    local avdmanager image
+    avdmanager="$(ls "$LAB_SDK"/cmdline-tools/*/bin/avdmanager.bat 2>/dev/null | head -1)"
+    image="$(sed -n 's/^image\.sysdir\.1 *= *//p' "$LAB_AVD_HOME/$LAB_AVD.avd/config.ini" 2>/dev/null \
+             | tr '\\' '/' | tr -d '\r' | sed 's|/*$||')"
+    check "cmdline-tools"  "${avdmanager:-$LAB_SDK/cmdline-tools/<aucune>/bin/avdmanager.bat}"
+    check "image systeme"  "$LAB_SDK/${image:-system-images/<AVD sans image.sysdir.1>}"
     check "AVD $LAB_AVD"   "$LAB_AVD_HOME/$LAB_AVD.avd"
     check "gradlew"        "$REPO/client-android/gradlew"
 
