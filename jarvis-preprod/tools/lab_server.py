@@ -156,7 +156,7 @@ def main() -> int:
     from server import avatar_api
     avatar_dir = Path(os.environ.get("LAB_AVATAR_DIR") or (REPO / "avatar"))
     if os.environ.get("LAB_AVATAR_FAULT") == "sha":
-        from fastapi.responses import Response
+        from fastapi.responses import StreamingResponse
         catalog = avatar_api._Catalog(avatar_dir)
 
         async def faulty_model(req: Request):
@@ -166,8 +166,13 @@ def main() -> int:
                 return JSONResponse({"error": "no model"}, status_code=404)
             data = bytearray(path.read_bytes())
             data[len(data) // 2] ^= 0xFF
-            return Response(bytes(data), media_type="model/gltf-binary",
-                            headers={"X-Model-Sha256": info["model"]["sha256"]})
+            # Streamed in 64 KB pieces, like the real FileResponse: 46 MB in a
+            # single write reached the emulator truncated (« unexpected end of
+            # stream »), and the phone must refuse a bad byte, not a short body.
+            chunks = (bytes(data[i:i + 65536]) for i in range(0, len(data), 65536))
+            return StreamingResponse(chunks, media_type="model/gltf-binary",
+                                     headers={"X-Model-Sha256": info["model"]["sha256"],
+                                              "Content-Length": str(len(data))})
 
         dash.app.add_api_route("/api/avatar/model", faulty_model, methods=["GET"])
         print("  AVATAR : faute injectee, un octet du modele est change")

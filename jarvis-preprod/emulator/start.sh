@@ -41,7 +41,8 @@ else
     LOG="$HERE/../reports/emulator.log"
     mkdir -p "$(dirname "$LOG")"
     ARGS=(-avd "$LAB_AVD" -port "$LAB_EMULATOR_PORT" -no-boot-anim
-          -gpu swiftshader_indirect)
+          -gpu "$LAB_EMULATOR_GPU")
+    [ -n "$LAB_EMULATOR_MEMORY" ] && ARGS+=(-memory "$LAB_EMULATOR_MEMORY")
     [ -n "$SNAPSHOT" ] && ARGS+=("$SNAPSHOT")
     [ "$HEADLESS" = "1" ] && ARGS+=(-no-window)
 
