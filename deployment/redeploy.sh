@@ -201,7 +201,8 @@ if [ "$MODEL_MODE" = SHIP ]; then
 fi
 remote "cd '$REMOTE_REPO' && sudo bash deployment/install.sh" > "$WORK/install.log" \
     || { tail -20 "$WORK/install.log" >&2; die "install.sh a echoue (sauvegarde : $BACKUP)"; }
-ok "install.sh ($(grep -c '^▶' "$WORK/install.log" 2>/dev/null || echo '?') etapes)"
+# install.sh colore ses titres (\033[1m▶ ...) : compter les ▶, pas les debuts de ligne.
+ok "install.sh ($(grep -c '▶' "$WORK/install.log" 2>/dev/null || true) etapes)"
 
 # ── 7. redemarrage ───────────────────────────────────────────────────────────
 step 7 "redemarrage"
