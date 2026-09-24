@@ -43,6 +43,10 @@ class AvatarModelStore(
                          val downloaded: Boolean) : Outcome
         /** The server has no verified model to offer. Not an error. */
         data class Unavailable(val reason: String) : Outcome
+        /** The bearer was refused: sessions live in the server's RAM, so a
+         *  restart or a deploy expires them. Log in again and retry — no
+         *  backoff, nothing is wrong with the model. */
+        data class Rejected(val reason: String) : Outcome
         /** Something went wrong; do not try again before [retryAtMillis]. */
         data class Failed(val reason: String, val retryAtMillis: Long) : Outcome
     }
@@ -77,7 +81,7 @@ class AvatarModelStore(
         }
         val info = try {
             get("$httpBase/api/avatar/manifest", bearer).use { response ->
-                if (response.code == 401) return fail("jeton refuse (401)")
+                if (response.code == 401) return installed() ?: Outcome.Rejected("jeton refuse (401)")
                 if (!response.isSuccessful) return fail("manifeste : HTTP ${response.code}")
                 JSONObject(response.body.string())
             }
@@ -112,6 +116,8 @@ class AvatarModelStore(
             writeAtomically(installedFile, JSONObject().put("file", rel).put("sha256", sha).toString())
             succeed()
             Outcome.Ready(manifest.toString(), target, sha, downloaded = true)
+        } catch (e: Unauthorized) {
+            installed() ?: Outcome.Rejected("jeton refuse (401)")
         } catch (e: Exception) {
             installed() ?: fail(e.message ?: e.javaClass.simpleName)
         }
@@ -124,6 +130,7 @@ class AvatarModelStore(
         val part = File(tmpDir, "model.part")
         part.delete()
         get(url, bearer).use { response ->
+            if (response.code == 401) throw Unauthorized()
             if (!response.isSuccessful) throw IOException("modele : HTTP ${response.code}")
             val announced = response.header("X-Model-Sha256")?.lowercase()
             if (announced != null && announced != sha) {
@@ -161,6 +168,8 @@ class AvatarModelStore(
         }
         verified.remove(target.path)
     }
+
+    private class Unauthorized : IOException("401")
 
     private fun get(url: String, bearer: String) =
         http.newCall(Request.Builder().url(url).header("Authorization", "Bearer $bearer").build()).execute()
