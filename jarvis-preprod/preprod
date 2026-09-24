@@ -141,6 +141,12 @@ audio)
     cmd_report
     ;;
 
+face)
+    fresh_reports
+    run_suite face "$ROOT/tests/avatar/test_face.sh"
+    cmd_report
+    ;;
+
 all)
     fresh_reports
     cmd_deps || { echo "  Dependances manquantes — corrige-les d'abord." >&2; exit 1; }

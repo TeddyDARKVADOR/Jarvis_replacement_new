@@ -28,7 +28,12 @@ lab_init() {
     _TEST="$1"
     _DIR="$REPORTS/$_TEST"
     mkdir -p "$_DIR"
-    _PASS=0; _FAIL=0; _SKIP=0
+    _PASS=0; _FAIL=0; _SKIP=0; _FINISHED=0; _ERRAT=""
+    # Sous `set -e`, une commande qui echoue hors d'un `if` tue la suite en
+    # silence : sans ce piege, les checks jamais atteints disparaissent et le
+    # rapport affiche « 3 PASS, 0 FAIL » pour une suite qui s'est arretee net.
+    trap '_ERRAT="${BASH_SOURCE[0]##*/}:$LINENO  $BASH_COMMAND"' ERR
+    trap '_lab_exit' EXIT
     printf '\n  %s\n  %s\n' "$_TEST" "$(printf '─%.0s' $(seq 1 60))"
 }
 
@@ -56,7 +61,16 @@ skipped() { _SKIP=$((_SKIP+1)); printf '  [SKIP] %-46s %s\n' "$1" "${2:-}"; _rec
 # puisse se lire comme « tout est validé ».
 physical_only() { printf '  [PHYS] %-46s %s\n' "$1" "${2:-}"; _record PHYSICAL_ONLY "$1" "${2:-}"; }
 
+_lab_exit() {
+    local rc=$?
+    [ "$_FINISHED" = 1 ] && return
+    ko "suite interrompue" "sortie $rc avant finish — ${_ERRAT:-cause inconnue}"
+    finish || true
+    exit 1
+}
+
 finish() {
+    _FINISHED=1
     printf '  %s\n' "$(printf '─%.0s' $(seq 1 60))"
     printf '  %d PASS, %d FAIL, %d SKIP\n' "$_PASS" "$_FAIL" "$_SKIP"
     [ "$_FAIL" -eq 0 ]

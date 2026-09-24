@@ -27,6 +27,7 @@ cd jarvis-preprod
 | `ui` | navigation et états |
 | `devices` | identité, capacités déclarées, commandes routées |
 | `audio` | ce qui est déterministe ; le reste sort en `PHYSICAL_ONLY` |
+| `face` | le visage 3D : modèle absent, SHA-256 faux, reprise, téléchargement unique, page, événement `avatar`, `PcmLevel`, cycle de vie, reconnexion sans rejeu |
 | `all` | tout, dans l'ordre, puis rapport |
 | `report` | régénère le rapport depuis les résultats existants |
 | `clean` | efface `reports/latest` |
