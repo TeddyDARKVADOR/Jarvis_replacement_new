@@ -48,6 +48,18 @@ except ImportError:          # the server without fastapi cannot serve anyway
 BASE_DIR = Path(__file__).resolve().parent.parent
 AVATAR_DIR = BASE_DIR / "avatar"
 
+#: Licences that allow a copy of the model onto a phone. The profile's
+#: `license` must START with one of them. « inconnue — à renseigner », or a
+#: test asset marked « ne pas redistribuer », is never served — even when it
+#: is the active model on this machine: the desktop may show it, the phone
+#: will keep its 2D core. The lab (jarvis-preprod/tools/avatar_lab_dir.py)
+#: applies this same list.
+PHONE_LICENCES = ("MIT", "CC0", "CC-BY")
+
+
+def licence_allows_phone(licence: str) -> bool:
+    return str(licence or "").strip().upper().startswith(PHONE_LICENCES)
+
 
 class _Catalog:
     """What is installed, read from disk each time, verified with a cache."""
@@ -82,6 +94,9 @@ class _Catalog:
         if not cached[2]:
             return {"manifest": phone_manifest, "model": None, "reason": cached[3]}
         profile = models.read_profile(path)
+        if not licence_allows_phone(profile.get("license")):
+            return {"manifest": phone_manifest, "model": None,
+                    "reason": f"licence « {profile.get('license')} » : pas de copie vers un telephone"}
         return {
             "manifest": phone_manifest,
             "model": {"file": rel, "sha256": profile["sha256"], "size": stat.st_size,
