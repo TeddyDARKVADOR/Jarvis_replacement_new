@@ -79,20 +79,31 @@ class AvatarPathHandler(context: Context, private val root: File, private val st
         if (f.isFile) WebResourceResponse(mime, null, f.inputStream()) else null
 }
 
-/** What the page tells the app. Called on a WebView thread; hops to main. */
-class PageReports(private val onReady: () -> Unit, private val onFailed: (String) -> Unit) {
-    private val main = Handler(Looper.getMainLooper())
-
+/**
+ * What the page tells the app. Called on a WebView thread; hops to main.
+ *
+ * The callbacks are NOT named like the bridge methods. They were, and inside
+ * `fun onFailed(json)` the call `onFailed(json)` resolves to the method itself
+ * before the property: a failing page re-posted its own report to the main
+ * thread forever (~100 a second) and the host never learned it had failed.
+ */
+class PageReports(
+    private val whenReady: () -> Unit,
+    private val whenFailed: (String) -> Unit,
+    private val post: (Runnable) -> Unit = Handler(Looper.getMainLooper())::post,
+    private val log: (failure: Boolean, String) -> Unit =
+        { failure, m -> if (failure) Log.w("JarvisFace", m) else Log.i("JarvisFace", m) },
+) {
     @JavascriptInterface
     fun onReady(json: String) {
-        Log.i("JarvisFace", "page prete : $json")
-        main.post(onReady)
+        log(false, "page prete : $json")
+        post(Runnable { whenReady() })
     }
 
     @JavascriptInterface
     fun onFailed(json: String) {
-        Log.w("JarvisFace", "page en echec : $json")
-        main.post { onFailed(json) }
+        log(true, "page en echec : $json")
+        post(Runnable { whenFailed(json) })
     }
 
     /** Every `avatar` event and what host.js did with it (played, stale, older…). */
@@ -237,7 +248,7 @@ private fun FaceLayer(
                     settings.allowContentAccess = false
                     settings.mediaPlaybackRequiresUserGesture = true
                     overScrollMode = View.OVER_SCROLL_NEVER
-                    addJavascriptInterface(PageReports(onReady = onReady, onFailed = onFailed), "JarvisAndroid")
+                    addJavascriptInterface(PageReports(whenReady = onReady, whenFailed = onFailed), "JarvisAndroid")
                     webViewClient = object : WebViewClient() {
                         override fun shouldInterceptRequest(v: WebView, request: WebResourceRequest) =
                             loader.shouldInterceptRequest(request.url)
