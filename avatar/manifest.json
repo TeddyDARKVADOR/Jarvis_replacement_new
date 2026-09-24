@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "name": "JARVIS — JARVIS (visage feminin)",
+  "name": "JARVIS — JARVIS (visage masculin) — Rocketbox Male_Adult_01",
   "model": {
-    "file": "jarvis/female/jarvis.glb",
+    "file": "jarvis/male/male.glb",
     "scale": 1.0,
     "position": [
       0,
@@ -11,11 +11,14 @@
     ],
     "morphPrefix": "",
     "morphAliases": {},
-    "muteMeshes": [
-      "tongue01"
-    ],
-    "profile": "jarvis/female/jarvis.model.json",
-    "morphGain": {}
+    "muteMeshes": [],
+    "profile": "jarvis/male/male.model.json",
+    "morphGain": {
+      "mouthSmileLeft": 2.5,
+      "mouthSmileRight": 2.5,
+      "mouthFrownLeft": 1.8,
+      "mouthFrownRight": 1.8
+    }
   },
   "rig": {
     "parts": [
@@ -26,18 +29,14 @@
     ],
     "motion": "face",
     "bones": {
-      "head": "Head",
-      "neck": "Neck",
-      "spine": "Spine2",
-      "root": "Hips",
-      "eyeLeft": "LeftEye",
-      "eyeRight": "RightEye"
+      "head": "Bip01_Head",
+      "neck": "Bip01_Neck",
+      "spine": "Bip01_Spine2",
+      "root": "Bip01_Pelvis",
+      "eyeLeft": "Bip01_LEye",
+      "eyeRight": "Bip01_REye"
     },
-    "armRest": {
-      "shoulder": -0.45,
-      "elbow": 0.0,
-      "forward": 0.0
-    },
+    "armRest": {},
     "gaze": {}
   },
   "camera": {

@@ -813,7 +813,7 @@ def _avatar_routes():
         (root / "models" / "t").mkdir(parents=True)
         glb = root / "models" / "t" / "face.glb"
         glb.write_bytes(b"glTF" + b"\x00" * 1000)
-        profile = {"schema": 1, "id": "t/face", "sha256": models.sha256(glb), "license": "test",
+        profile = {"schema": 1, "id": "t/face", "sha256": models.sha256(glb), "license": "MIT (test)",
                    "provenance": {}, "capabilities": {}, "calibration": {}}
         models.write_json(models.profile_path(glb), profile)
         models.write_json(root / "manifest.json",
@@ -831,6 +831,14 @@ def _avatar_routes():
             r = client.get("/api/avatar/model", headers=head)
             assert r.status_code == 200 and r.content == glb.read_bytes()
             assert r.headers["x-model-sha256"] == profile["sha256"]
+
+            # A licence that does not allow a copy: never offered to a phone.
+            for licence in ("inconnue — a renseigner", "usage de test local uniquement, ne pas redistribuer"):
+                models.write_json(models.profile_path(glb), dict(profile, license=licence))
+                info = client.get("/api/avatar/manifest", headers=head).json()
+                assert info["model"] is None and "licence" in info["reason"], info
+                assert client.get("/api/avatar/model", headers=head).status_code == 404
+            models.write_json(models.profile_path(glb), profile)
 
             glb.write_bytes(b"glTF" + b"\x01" * 2000)          # changed after profiling
             info = client.get("/api/avatar/manifest", headers=head).json()
