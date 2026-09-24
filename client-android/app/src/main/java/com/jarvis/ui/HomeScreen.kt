@@ -38,6 +38,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import com.jarvis.avatar.JarvisFace
+import org.json.JSONObject
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -110,17 +112,33 @@ fun HomeScreen(
 
         Spacer(Modifier.weight(1f))
 
-        JarvisCore(
-            link = snap.link,
-            assistant = snap.assistant,
-            level = level,
-            animated = animationsEnabled,
+        // Tapping interrupts. It is the largest target on the screen and the
+        // one thing the user is already looking at when they want JARVIS to
+        // stop talking — the face keeps that promise, like the core.
+        val tap = if (snap.connected) onInterrupt else null
+        // The 3D face replaces the core once a verified model has loaded; the
+        // core is the fallback for everything else (see avatar/JarvisFace.kt).
+        JarvisFace(
+            facts = JSONObject()
+                .put("link", snap.link.name)
+                .put("assistant", snap.assistant.name)
+                .put("confirm", snap.confirmationId != null),
             wokeAt = snap.wokeAt,
-            // Tapping the core interrupts. It is the largest target on the
-            // screen and the one thing the user is already looking at when they
-            // want JARVIS to stop talking.
-            onTap = if (snap.connected) onInterrupt else null,
-        )
+            speakerLevel = snap.speakerLevel,
+            micLevel = snap.micLevel,
+            avatarEvent = snap.avatarEvent,
+            avatarSeq = snap.avatarSeq,
+            onTap = tap,
+        ) {
+            JarvisCore(
+                link = snap.link,
+                assistant = snap.assistant,
+                level = level,
+                animated = animationsEnabled,
+                wokeAt = snap.wokeAt,
+                onTap = tap,
+            )
+        }
 
         Spacer(Modifier.height(22.dp))
 

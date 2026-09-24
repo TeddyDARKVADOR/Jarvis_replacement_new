@@ -142,6 +142,91 @@ def main() -> int:
         "/lab/device-command", lab_device_command, methods=["POST"]
     )
 
+    # ── le visage du telephone ───────────────────────────────────────────────
+    #
+    # Les routes de production, assemblees comme run_headless le fait :
+    # server/avatar_api.py sert le manifeste et le modele actif, verifie.
+    #
+    # LAB_AVATAR_DIR   un autre avatar/ (un dossier sans modele = « absent »)
+    # LAB_AVATAR_FAULT=sha
+    #                  sert des octets dont UN est change, avec la bonne
+    #                  empreinte annoncee : le telephone doit refuser. La route
+    #                  fautive est montee AVANT la vraie, qui ne sert donc
+    #                  jamais dans ce mode. Rien dans server/ n'en sait rien.
+    from server import avatar_api
+    avatar_dir = Path(os.environ.get("LAB_AVATAR_DIR") or (REPO / "avatar"))
+    if os.environ.get("LAB_AVATAR_FAULT") == "sha":
+        from fastapi.responses import StreamingResponse
+        catalog = avatar_api._Catalog(avatar_dir)
+
+        async def faulty_model(req: Request):
+            info = catalog.describe()
+            path = catalog.model_path()
+            if not info["model"] or path is None:
+                return JSONResponse({"error": "no model"}, status_code=404)
+            data = bytearray(path.read_bytes())
+            data[len(data) // 2] ^= 0xFF
+            # Streamed in 64 KB pieces, like the real FileResponse: 46 MB in a
+            # single write reached the emulator truncated (« unexpected end of
+            # stream »), and the phone must refuse a bad byte, not a short body.
+            chunks = (bytes(data[i:i + 65536]) for i in range(0, len(data), 65536))
+            return StreamingResponse(chunks, media_type="model/gltf-binary",
+                                     headers={"X-Model-Sha256": info["model"]["sha256"],
+                                              "Content-Length": str(len(data))})
+
+        dash.app.add_api_route("/api/avatar/model", faulty_model, methods=["GET"])
+        print("  AVATAR : faute injectee, un octet du modele est change")
+    avatar_api.attach(dash, avatar_dir=avatar_dir, log=lambda m: print(m, flush=True))
+
+    async def lab_avatar(req: Request) -> JSONResponse:
+        """POST /lab/avatar — la directive que set_presence aurait diffusee.
+
+        Construite par plugins/presence.build_event, la fonction de production,
+        et diffusee sur /ws comme en production. `ts` peut etre force pour
+        tester la fraicheur : {"directive": {...}, "age_s": 60}.
+        """
+        header = req.headers.get("authorization", "")
+        bearer = header.removeprefix("Bearer ").strip()
+        if not bearer or bearer not in dash._tokens:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            body = await req.json()
+        except Exception:
+            body = {}
+        import time as _t
+        from plugins.presence import build_event
+        event = build_event(body.get("directive") or {},
+                            now=_t.time() - float(body.get("age_s") or 0))
+        if event is None:
+            return JSONResponse({"error": "pas une directive"}, status_code=400)
+        await dash.broadcast(event)
+        return JSONResponse({"sent": event})
+
+    dash.app.add_api_route("/lab/avatar", lab_avatar, methods=["POST"])
+
+    async def lab_phone_out_tone(req: Request) -> JSONResponse:
+        """POST /lab/phone-out-tone — deux secondes de son sur /ws/phone-out.
+
+        Ce que la voix de JARVIS emprunte, au meme format (PCM s16le 24 kHz
+        mono), par le meme AudioHub. Sans Gemini il n'y a pas de voix ; avec
+        ce son, le telephone joue quelque chose, AudioPlayer en mesure le
+        niveau (PcmLevel), et ce niveau doit atteindre la bouche du visage.
+        """
+        header = req.headers.get("authorization", "")
+        if header.removeprefix("Bearer ").strip() not in dash._tokens:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        import array
+        import math
+        rate, seconds = 24000, 2.0
+        samples = array.array("h", (int(16000 * math.sin(2 * math.pi * 330 * i / rate))
+                                    for i in range(int(rate * seconds))))
+        data = samples.tobytes()
+        for start in range(0, len(data), 4800):          # 100 ms par trame
+            hub.publish(data[start:start + 4800])
+        return JSONResponse({"bytes": len(data), "listeners": hub.listeners})
+
+    dash.app.add_api_route("/lab/phone-out-tone", lab_phone_out_tone, methods=["POST"])
+
     print("  MARK LIII — mode laboratoire (transport seul, pas de Gemini)")
     print("  Routes appareil actives : /api/device-register, /ws/device")
     print(f"  Depuis l'emulateur : 10.0.2.2:{PORT}")

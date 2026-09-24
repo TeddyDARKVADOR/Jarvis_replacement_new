@@ -126,6 +126,11 @@ object Protocol {
      *  will show duplicates. */
     const val EV_NOTIFICATION = "notification"
 
+    /** `{"type":"avatar","ts","directive":{...}}` — what JARVIS's face should
+     *  do (plugins/presence.py). Its freshness is judged by the page, see
+     *  avatar/js/host.js: /ws replays the last 50 events on every connect. */
+    const val EV_AVATAR = "avatar"
+
     // Client → server. `text` is accepted in the clear; `enc` carries the same
     // string AES-256-CBC-encrypted under the session key from device-login.
     // The prototype sends `text`: the AES layer protects commands only and does

@@ -3,6 +3,47 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// avatar/ -> build/generated/avatarAssets/avatar. The page, its JavaScript and
+// the vendored three.js only: never avatar/models (a downloaded .glb is not
+// ours to redistribute; the phone fetches the user's own from the server),
+// never the checks, the lab or the gesture clips.
+abstract class SyncAvatarPage : DefaultTask() {
+    /** The repository's avatar/ — read, never written. */
+    @get:Internal abstract val source: DirectoryProperty
+
+    /** What is actually copied: the up-to-date check looks only at these. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val page: ConfigurableFileCollection
+
+    @get:OutputDirectory abstract val output: DirectoryProperty
+
+    @get:Inject abstract val fs: FileSystemOperations
+
+    @TaskAction
+    fun run() {
+        fs.sync {
+            from(source) { include(*PAGE) }
+            into(output.dir("avatar"))
+        }
+    }
+
+    companion object {
+        val PAGE = arrayOf("index.html", "js/**", "vendor/**")
+    }
+}
+
+val avatarDir = rootProject.layout.projectDirectory.dir("../avatar")
+val syncAvatarPage = tasks.register<SyncAvatarPage>("syncAvatarPage") {
+    source.set(avatarDir)
+    page.from(fileTree(avatarDir) { include(*SyncAvatarPage.PAGE) })
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(syncAvatarPage, SyncAvatarPage::output)
+    }
+}
+
 android {
     namespace = "com.jarvis"
     compileSdk = 37
@@ -67,4 +108,14 @@ dependencies {
     // core/wake_word.py downloads on the desktop, so desktop and phone hear the
     // same word with the same weights.
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
+
+    // Serves the avatar page from the APK over https://appassets… : ES modules
+    // do not load from file://, and this keeps the page's origin fixed.
+    implementation("androidx.webkit:webkit:1.14.0")
+
+    // AvatarModelStore is plain JVM (java.io, OkHttp, org.json) so its
+    // download / SHA-256 / backoff rules are tested without a phone.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver3:5.5.0")
+    testImplementation("org.json:json:20240303")
 }
