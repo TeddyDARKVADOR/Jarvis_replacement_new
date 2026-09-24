@@ -233,7 +233,16 @@ export async function bootPhoneHost(manifest) {
     }
   });
   window.JARVIS.host = host;
-  tell('onReady', { status: { model: status.model, morphs: status.morphs, parts: status.parts } });
+  // A face nobody can see is not ready: a WebView laid out WRAP_CONTENT gets a
+  // zero-height viewport, every `height: 100%` collapses, and the model draws
+  // into nothing — while the host would hide its core. Say so; the core stays.
+  const canvas = typeof document !== 'undefined' && document.getElementById('stage');
+  const view = canvas ? [canvas.clientWidth, canvas.clientHeight] : null;
+  if (view && !(view[0] > 0 && view[1] > 0)) {
+    tell('onFailed', { reason: 'canvas vide', view });
+    return host;
+  }
+  tell('onReady', { status: { model: status.model, morphs: status.morphs, parts: status.parts }, view });
   return host;
 }
 

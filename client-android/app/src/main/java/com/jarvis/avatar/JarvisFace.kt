@@ -7,6 +7,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
@@ -223,6 +224,12 @@ private fun FaceLayer(
                     .addPathHandler("/assets/", AvatarPathHandler(ctx, root, AvatarModels.store(ctx)))
                     .build()
                 WebView(ctx).apply {
+                    // AndroidView's default is WRAP_CONTENT, and a WebView that
+                    // wraps its content gives the page a 0 px-high viewport:
+                    // the canvas's `height: 100%` collapses, the face is drawn
+                    // into nothing. Fill the 280 dp slot instead.
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     setBackgroundColor(0)                        // the page is transparent
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = false

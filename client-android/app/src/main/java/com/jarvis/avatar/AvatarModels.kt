@@ -42,7 +42,13 @@ object AvatarModels {
                 s.installed()?.let { _state.value = it }
                 if (!auth.isConfigured) return@execute
                 val bearer = auth.session?.bearer ?: auth.login().bearer
-                val outcome = s.sync(auth.endpoint.httpBase, bearer)
+                var outcome = s.sync(auth.endpoint.httpBase, bearer)
+                if (outcome is AvatarModelStore.Outcome.Rejected) {
+                    // The server restarted and forgot the session: log in again, once.
+                    Log.i(TAG, "sync : $outcome, reconnexion")
+                    auth.forgetSession()
+                    outcome = s.sync(auth.endpoint.httpBase, auth.login().bearer)
+                }
                 Log.i(TAG, "sync : $outcome")
                 _state.value = outcome
             } catch (e: Exception) {

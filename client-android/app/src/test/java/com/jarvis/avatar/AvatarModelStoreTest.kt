@@ -112,9 +112,19 @@ class AvatarModelStoreTest {
         assertTrue(store().sync(base, "b") is AvatarModelStore.Outcome.Failed)
     }
 
-    @Test fun unauthorisedFails() {
+    @Test fun unauthorisedIsRejectedWithoutBackoff() {
+        // A restarted server forgot the session: the caller logs in again and
+        // the very next sync must go through, not wait 30 s.
+        val s = store()
         server.enqueue(MockResponse.Builder().code(401).body("{}").build())
-        assertTrue(store().sync(base, "b") is AvatarModelStore.Outcome.Failed)
+        assertTrue(s.sync(base, "old") is AvatarModelStore.Outcome.Rejected)
+        server.enqueue(manifest()); server.enqueue(bytes())
+        assertTrue(s.sync(base, "new") is AvatarModelStore.Outcome.Ready)
+    }
+
+    @Test fun unauthorisedOnTheModelIsRejectedToo() {
+        server.enqueue(manifest()); server.enqueue(MockResponse.Builder().code(401).body("{}").build())
+        assertTrue(store().sync(base, "b") is AvatarModelStore.Outcome.Rejected)
     }
 
     @Test fun aPathThatEscapesIsRefused() {
