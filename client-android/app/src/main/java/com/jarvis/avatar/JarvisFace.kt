@@ -28,6 +28,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import com.jarvis.ui.FACE_MEDALLION
+import com.jarvis.ui.FACE_SLOT
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -138,6 +142,8 @@ fun JarvisFace(
     avatarEvent: String?,
     avatarSeq: Long,
     onTap: (() -> Unit)?,
+    /** What frames the face once it is shown: the core, drawn around it. */
+    frame: @Composable () -> Unit = {},
     core: @Composable () -> Unit,
 ) {
     val model by AvatarModels.state.collectAsState()
@@ -147,9 +153,17 @@ fun JarvisFace(
     val usable = model is AvatarModelStore.Outcome.Ready && failed == null
 
     // One slot, two layers: the face is laid over the core and only covers it
-    // once the page said it is ready.
-    Box(contentAlignment = Alignment.Center) {
+    // once the page said it is ready. Then the core is not gone: it becomes the
+    // frame — same state colours, same arcs — and the face is its centre.
+    // With a verified model the slot is the face's from the start: the core
+    // shown while the page loads sits in it, and nothing below moves when the
+    // face arrives. Without one, the core keeps its own slot, as before.
+    Box(
+        modifier = if (usable) Modifier.size(FACE_SLOT) else Modifier,
+        contentAlignment = Alignment.Center,
+    ) {
         if (!ready || !usable) core()
+        if (ready && usable) frame()
         if (usable) FaceLayer(
             facts, wokeAt, speakerLevel, micLevel, avatarEvent, avatarSeq, onTap,
             ready = ready,
@@ -221,14 +235,15 @@ private fun FaceLayer(
 
     Box(
         Modifier
-            // The core's own 240 dp slot, a little larger: a face needs its
-            // shoulders' worth of margin to not look cropped.
-            .size(280.dp)
+            // A medallion, not a rectangle: the portrait's shoulders end on a
+            // curve inside the core's ring instead of a straight cut.
+            .size(FACE_MEDALLION)
+            .clip(CircleShape)
             .alpha(if (ready) 1f else 0f)
-            .let { if (onTap != null) it.clickable { onTap() } else it },
+            .let { if (onTap != null) it.clickable(onClickLabel = "Interrupt") { onTap() } else it },
     ) {
         AndroidView(
-            modifier = Modifier.size(280.dp),
+            modifier = Modifier.size(FACE_MEDALLION),
             factory = { ctx ->
                 val root = AvatarModels.root(ctx)
                 val loader = WebViewAssetLoader.Builder()
