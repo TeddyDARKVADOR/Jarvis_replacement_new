@@ -6,6 +6,10 @@ Android client to it over a private network.
 Written for whoever operates the server. It assumes shell access and nothing
 else about the machine.
 
+**Already installed, and updating from another PC?** `deployment/RECOVERY.md`:
+`bash deployment/redeploy.sh` backs Oracle up, deploys this checkout's `HEAD`,
+restarts, runs the selftest there and checks the version — no GitHub needed.
+
 ```
 📱 Android  ──tailscale──►  Oracle VM  ──►  MARK LIII headless  ──►  Gemini
 ```
