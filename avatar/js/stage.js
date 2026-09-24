@@ -41,7 +41,7 @@ export const FRAME_MARGIN = 1.22;
  */
 export const FRAME_FRACTIONS = {
   //          face   portrait  bust   full
-  humanoid: { face: 0.16, portrait: 0.23, bust: 0.38, full: 1.0 },
+  humanoid: { face: 0.16, portrait: 0.20, bust: 0.38, full: 1.0 },
   bust:     { face: 0.42, portrait: 0.62, bust: 0.80, full: 1.0 },
   head:     { face: 1.0,  portrait: 1.0,  bust: 1.0,  full: 1.0 },
 };
@@ -145,6 +145,13 @@ export function createStage(canvas, options = {}) {
     framing.front = bounds.max.z;
     framing.top = bounds.max.y;
     framing.eyeY = eyeHeight(body, bounds, framing.target.y, focusHeight);
+    // Un portrait se centre sur la TETE, pas sur la boite du corps : des bras
+    // en pose A, meme un peu asymetriques, deplacent le milieu de la boite, et
+    // le visage glissait vers un bord (mesure : +0,29 de la largeur, male).
+    const headX = headCentreX(body);
+    if ((mode === 'face' || mode === 'portrait') && kind !== 'head' && headX !== null) {
+      framing.target.x = headX;
+    }
     framing.kind = kind;
     framing.mode = mode;
     return { kind, mode, size, eyeY: framing.eyeY, target: framing.target.clone() };
@@ -191,6 +198,23 @@ export function createStage(canvas, options = {}) {
   }
 
   return { renderer, scene, camera, framing, frame, resize, lights: { key, fill, rim } };
+}
+
+/** Le milieu horizontal du visage : les yeux, sinon l'os de tete, sinon null. */
+function headCentreX(body) {
+  const nodes = body.nodes || {};
+  const at = new THREE.Vector3();
+  const eyes = [nodes.eyeLeft, nodes.eyeRight].filter(Boolean);
+  if (eyes.length) {
+    let x = 0;
+    for (const node of eyes) { node.getWorldPosition(at); x += at.x; }
+    return x / eyes.length;
+  }
+  if (nodes.head && !body.headIsModel && nodes.head !== body.object3D) {
+    nodes.head.getWorldPosition(at);
+    return at.x;
+  }
+  return null;
 }
 
 /**

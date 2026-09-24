@@ -34,6 +34,7 @@ python avatar/checks/face_first.py          # le corps tient-il vraiment en plac
 python avatar/checks/asset_robustness.py    # 15 modèles incomplets, aucun ne tombe
 python avatar/checks/lab_situations.py      # les situations cliquées dans le vrai labo
 python avatar/checks/capture_faces.py [nom] # neuf visages photographiés -> checks/shots/
+python avatar/checks/framing.py [--shots]   # portrait centré, sans bras : chaque visage jarvis/, 3 tailles
 ```
 
 `model_swap.py` tourne aussi dans le selftest (il n'a besoin de rien).

@@ -36,7 +36,11 @@
       "eyeLeft": "Bip01_LEye",
       "eyeRight": "Bip01_REye"
     },
-    "armRest": {},
+    "armRest": {
+      "shoulder": -0.3,
+      "elbow": 0.0,
+      "forward": 0.0
+    },
     "gaze": {}
   },
   "camera": {
