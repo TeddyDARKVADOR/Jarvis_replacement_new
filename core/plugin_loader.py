@@ -70,7 +70,7 @@ class PluginRegistry:
             traceback.print_exc()
             return f"Sir, the '{name}' plugin failed: {e}"
 
-    # -- called by ui.py's settings tab to render per-plugin config forms --
+    # -- called by the HUD's settings page (server/assistant_control.py) --
     def settings_schemas(self) -> list[dict]:
         """One entry per settings SECTION, for enabled plugins that declare a
         PLUGIN_SETTINGS schema. Sections are deduped by namespace so a suite of
@@ -96,7 +96,7 @@ class PluginRegistry:
             })
         return out
 
-    # -- called by ui.py's Plugin Manager overlay --
+    # -- called by the HUD's plugin list (server/assistant_control.py) --
     def list_for_ui(self) -> list[dict]:
         out = []
         for rec in self._all_records:

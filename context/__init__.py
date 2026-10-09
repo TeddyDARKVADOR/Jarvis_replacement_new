@@ -20,7 +20,7 @@ WHY THE SINGLETONS ARE HERE AND NOT IN THE CALLERS
     end and nothing in between.
 
 REMOVING THIS PACKAGE
-    Delete the directory. Nothing in main.py, ui.py, core/ or dashboard/ imports
+    Delete the directory. Nothing in main.py, core/ or dashboard/ imports
     it except through guarded optional imports that fall back to V1 behaviour.
     See docs/V2_CONTRACT.md, section 4.
 """

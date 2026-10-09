@@ -22,7 +22,145 @@ export function createSettings(ctx) {
   function selectTab(tab) {
     box.querySelectorAll('.set-nav button[data-tab]').forEach((b) => b.classList.toggle('sel', b.dataset.tab === tab));
     box.querySelectorAll('.set-tab').forEach((s) => { s.hidden = s.dataset.tab !== tab; });
+    // The assistant's own settings live with the brain (Oracle or this PC):
+    // fetched when their tab is opened, never cached.
+    if (tab === 'assistant') loadProfile();
+    else if (tab === 'memoire') loadMemory();
+    else if (tab === 'plugins') loadPlugins();
+    else if (tab === 'telephone') showPhone();
   }
+
+  const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function line(el, text, kind = '') { el.className = `test-result ${kind}`; el.textContent = text; }
+
+  // ── assistant: names, voice, briefing ──
+  let profile = null;
+  async function loadProfile() {
+    line($('a-status'), 'Chargement…', 'busy');
+    const r = await ctx.rpc('profile.get');
+    if (r.error) { line($('a-status'), r.error, 'err'); return; }
+    profile = r;
+    $('a-name').value = r.assistant_name || '';
+    $('a-user').value = r.user_name || '';
+    $('a-brief').checked = !!r.brief;
+    const grid = $('a-voices');
+    grid.innerHTML = '';
+    (r.voices || []).forEach((v) => {
+      const b = document.createElement('button');
+      b.textContent = v; b.dataset.v = v;
+      b.classList.toggle('sel', v === r.voice);
+      b.onclick = (e) => { e.preventDefault(); grid.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
+      grid.appendChild(b);
+    });
+    line($('a-status'), '');
+  }
+  $('a-save').onclick = async () => {
+    const voice = $('a-voices').querySelector('.sel')?.dataset.v || profile?.voice;
+    line($('a-status'), 'Application…', 'busy');
+    const r = await ctx.rpc('profile.set', {
+      assistant_name: $('a-name').value, user_name: $('a-user').value, voice, brief: $('a-brief').checked });
+    if (r.error) { line($('a-status'), r.error, 'err'); ctx.sound.play('error'); return; }
+    profile = r;
+    line($('a-status'), r.reconnecting ? '✓ Appliqué — JARVIS reprend la conversation avec sa nouvelle identité.' : '✓ Enregistré.', 'ok');
+    ctx.sound.play('reply');
+  };
+
+  // ── memory ──
+  let memory = [];
+  async function loadMemory() {
+    $('m-count').textContent = 'chargement…';
+    const r = await ctx.rpc('memory.list');
+    if (r.error) { $('m-list').innerHTML = `<div class="set-note">${esc(r.error)}</div>`; $('m-count').textContent = ''; return; }
+    memory = r.entries || [];
+    renderMemory();
+  }
+  function renderMemory() {
+    const q = $('m-search').value.trim().toLowerCase();
+    const rows = memory.filter((e) => !q || `${e.category} ${e.key} ${e.value}`.toLowerCase().includes(q));
+    $('m-count').textContent = `${rows.length} / ${memory.length} faits`;
+    $('m-list').innerHTML = rows.length ? rows.map((e, i) => `
+      <div class="mem-row"><span class="cat">${esc(e.category)}</span>
+        <span class="kv"><b>${esc(e.key.replace(/_/g, ' '))}</b>${esc(e.value)}</span>
+        <span class="date">${esc(e.updated || '')}</span>
+        <button title="Oublier" data-i="${memory.indexOf(e)}">✕</button></div>`).join('')
+      : '<div class="set-note">Rien pour l\'instant. JARVIS retient ce que vous lui dites de vous.</div>';
+  }
+  $('m-search').addEventListener('input', renderMemory);
+  $('m-refresh').onclick = (e) => { e.preventDefault(); loadMemory(); };
+  $('m-list').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-i]');
+    if (!b) return;
+    const entry = memory[Number(b.dataset.i)];
+    if (!entry) return;
+    b.disabled = true;
+    const r = await ctx.rpc('memory.forget', { category: entry.category, key: entry.key });
+    if (r.error || !r.ok) { b.disabled = false; ctx.sound.play('error'); return; }
+    ctx.sound.play('close');
+    loadMemory();
+  });
+
+  // ── plugins ──
+  async function loadPlugins() {
+    $('p-list').innerHTML = '<div class="test-result busy">Chargement…</div>';
+    $('p-forms').innerHTML = '';
+    const r = await ctx.rpc('plugins.list');
+    if (r.error) { $('p-list').innerHTML = `<div class="set-note">${esc(r.error)}</div>`; return; }
+    if (!r.ready) { $('p-list').innerHTML = '<div class="set-note">JARVIS démarre encore — rouvrez cet onglet dans un instant.</div>'; return; }
+    $('p-list').innerHTML = (r.plugins || []).map((pl) => `
+      <div class="plugin-row"><div><div class="pname">${esc(pl.name)}</div>
+        ${pl.valid ? `<div class="pdesc">${esc(pl.description || '')}</div>` : `<div class="perr">${esc(pl.error || 'invalide')}</div>`}</div>
+        <label class="toggle"><input type="checkbox" data-plugin="${esc(pl.name)}" ${pl.enabled ? 'checked' : ''} ${pl.valid ? '' : 'disabled'}><i></i></label></div>`).join('')
+      || '<div class="set-note">Aucun plugin dans plugins/.</div>';
+    $('p-list').querySelectorAll('input[data-plugin]').forEach((cb) => {
+      cb.onchange = async () => {
+        const res = await ctx.rpc('plugins.toggle', { name: cb.dataset.plugin, enabled: cb.checked });
+        status(res.error || res.detail || '', res.error ? 'err' : 'ok');
+      };
+    });
+    $('p-forms').innerHTML = (r.settings || []).map((sec) => `
+      <form class="plugin-form" data-ns="${esc(sec.namespace)}"><h4>${esc(sec.title)}</h4>
+        ${(sec.fields || []).filter((f) => f && f.key).map((f) => {
+          const v = sec.values?.[f.key] ?? f.default ?? '';
+          const type = String(f.type || 'text').toLowerCase();
+          if (type === 'toggle') return `<label class="toggle"><input type="checkbox" name="${esc(f.key)}" ${v ? 'checked' : ''}><i></i><span>${esc(f.label || f.key)}</span></label>`;
+          if (type === 'choice') return `<label class="field"><span>${esc(f.label || f.key)}</span><select name="${esc(f.key)}">${(f.options || []).map((o) => `<option ${String(o) === String(v) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`;
+          return `<label class="field"><span>${esc(f.label || f.key)}</span><input name="${esc(f.key)}" type="${type === 'password' ? 'password' : 'text'}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" spellcheck="false"></label>`;
+        }).join('')}
+        <div class="test-row"><button class="act" data-do="save">ENREGISTRER</button>
+          ${sec.action ? `<button class="act" data-do="test">${esc(sec.action.label)}</button>` : ''}
+          <div class="test-result"></div></div></form>`).join('');
+    $('p-forms').querySelectorAll('form').forEach((form) => {
+      form.onsubmit = (e) => e.preventDefault();
+      form.querySelectorAll('button[data-do]').forEach((b) => {
+        b.onclick = async (e) => {
+          e.preventDefault();
+          const values = {};
+          form.querySelectorAll('[name]').forEach((el) => { values[el.name] = el.type === 'checkbox' ? el.checked : el.value; });
+          const out = form.querySelector('.test-result');
+          line(out, b.dataset.do === 'test' ? 'Test…' : 'Enregistrement…', 'busy');
+          const res = await ctx.rpc(b.dataset.do === 'test' ? 'plugins.test' : 'plugins.save', { namespace: form.dataset.ns, values });
+          if (res.error) line(out, res.error, 'err');
+          else line(out, res.detail || '✓ Enregistré.', res.ok === false ? 'err' : 'ok');
+        };
+      });
+    });
+  }
+
+  // ── phone ──
+  function showPhone() {
+    const local = !!ctx.caps().phone;
+    $('t-local').hidden = !local;
+    $('t-online').hidden = local;
+  }
+  $('t-pair').onclick = async (e) => {
+    e.preventDefault();
+    line($('t-status'), 'Génération…', 'busy');
+    const r = await ctx.rpc('phone.pair');
+    if (r.error) { line($('t-status'), r.error, 'err'); return; }
+    line($('t-status'), '✓ Code valable pour une connexion.', 'ok');
+    $('t-qr').innerHTML = `${r.qr ? `<img src="${r.qr}" alt="QR code">` : ''}
+      <div class="urls">${esc(r.auto_url || r.url || '')}<br>clé : ${esc(r.key || '')}</div>`;
+  };
   box.querySelectorAll('.set-nav button[data-tab]').forEach((b) => { b.onclick = () => { selectTab(b.dataset.tab); ctx.sound.play('click'); }; });
 
   function status(text, kind = '') {
@@ -59,7 +197,7 @@ export function createSettings(ctx) {
     $('s-tls').checked = !!d.use_tls;
     $('s-token').value = d.device_token || '';
     $('s-device').value = d.device_name || '';
-    $('set-welcome').hidden = !!d.paired;
+    $('set-welcome').hidden = !!d.paired || !!d.local;
 
     option($('s-input'), d.inputs || [], d.input_device, 'Micro par défaut de Windows');
     option($('s-output'), d.outputs || [], d.output_device, 'Sortie par défaut de Windows');
@@ -152,6 +290,7 @@ export function createSettings(ctx) {
   $('s-volume').oninput = () => ctx.setSound($('s-sound').checked, Number($('s-volume').value));
   $('s-volume').onchange = () => ctx.sound.play('reply');
   $('s-face').onchange = () => ctx.setFace($('s-face').checked);
+  $('s-clipboard').onchange = () => ctx.setPrefs({ clipboard: $('s-clipboard').checked });
   const q = $('s-quality');
   [['auto', 'AUTO'], ...ctx.tiers.map((t, i) => [String(i), t.name])].forEach(([v, label]) => {
     const b = document.createElement('button');
@@ -165,6 +304,7 @@ export function createSettings(ctx) {
     $('s-sound').checked = !!p.sound;
     $('s-volume').value = p.volume ?? .35;
     $('s-face').checked = !!p.face;
+    $('s-clipboard').checked = p.clipboard !== false;
     $('s-face-row').hidden = !ctx.faceAvailable();
     sw.querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.hex.toLowerCase() === String(p.accent).toLowerCase()));
     const g = ctx.gov();

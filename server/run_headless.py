@@ -5,17 +5,14 @@ server/run_headless.py — MARK LIII on a server, with main.py untouched.
     python -m server.run_headless --pairing  # print the device credential, exit
 
 WHAT IT DOES, IN ORDER, AND WHY THE ORDER MATTERS
-    1. Install two stand-ins in sys.modules. This MUST happen before main is
-       imported, because main.py binds both at module level:
-           main.py:47  import sounddevice as sd
-           main.py:51  from ui import JarvisUI
-       Afterwards it is too late: main holds direct references.
+    1. Install the sound-card stand-in in sys.modules. This MUST happen
+       before main is imported, because main.py binds it at module level
+       (`import sounddevice as sd`); afterwards main holds the real one.
 
          "sounddevice" → audio_bridge  — null microphone, speaker to the phone
-         "ui"          → headless_ui   — the HUD façade with no screen
 
-       Installing "ui" is also what makes PyQt6 unnecessary on the server: the
-       real ui.py is never imported, so its ~100 MB of Qt is never needed.
+       main.py imports no UI module: it is handed one. Here that is
+       `headless_ui.HeadlessUI`, so no Qt is ever needed on the server.
 
     2. Neutralise dashboard's firewall helper. _ensure_network_access() shells
        out to pkexec/ufw/iptables at startup (dashboard/server.py:99). On a
@@ -66,13 +63,11 @@ def _install_stubs(hub: AudioHub, log) -> None:
         installed = sys.modules.get("sounddevice")
         if not getattr(installed, "__headless__", False):
             raise RuntimeError(
-                "main was imported before the audio/UI stand-ins were installed "
-                "— it holds the real sounddevice and the real Qt UI."
+                "main was imported before the audio stand-in was installed "
+                "— it holds the real sounddevice."
             )
         return
     sys.modules["sounddevice"] = build_module(hub, log=log)
-    import server.headless_ui as _headless
-    sys.modules["ui"] = _headless          # `from ui import JarvisUI`
 
 
 def _patch_dashboard(on_created, allow_firewall: bool, log) -> None:
@@ -173,6 +168,15 @@ def build(echo: bool = True, allow_firewall: bool = False):
             avatar_api.attach(dash, log=lambda m: print(m, flush=True))
         except Exception as exc:
             print(f"[Avatar] routes non montees : {exc}", flush=True)
+        # What the HUD's settings page changes about the assistant itself —
+        # memory, name, voice, plugins (server/assistant_control.py). The same
+        # object the local HUD calls in-process; here it is behind a bearer.
+        try:
+            from server.assistant_control import AssistantControl, attach as attach_assistant
+            attach_assistant(dash, AssistantControl(lambda: ui),
+                             log=lambda m: print(m, flush=True))
+        except Exception as exc:
+            print(f"[Assistant] route non montee : {exc}", flush=True)
         # The two client→server capabilities the headless host adds. Both bind a
         # remote button to a function that already existed — no second command
         # path, no second authority. `main.py` is untouched: it has already put

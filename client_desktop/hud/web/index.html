@@ -140,6 +140,8 @@
       <span class="ring"></span>
     </button>
     <div class="cmd">
+      <button id="attach" class="ico" title="Joindre un fichier à analyser (ou glissez-le sur le HUD)"><svg viewBox="0 0 24 24"><path d="M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></svg></button>
+      <span id="file-chip" hidden><span id="file-name"></span><button id="file-clear" title="Retirer">×</button></span>
       <span class="prompt">›</span>
       <input id="cmd" autocomplete="off" spellcheck="false" placeholder="Parlez, ou tapez une commande pour JARVIS…">
       <kbd>Entrée</kbd>
@@ -210,10 +212,14 @@
     <nav class="set-nav">
       <div class="set-brand">PARAMÈTRES</div>
       <button data-tab="connexion" class="sel"><span>01</span>Connexion</button>
-      <button data-tab="audio"><span>02</span>Audio</button>
-      <button data-tab="demarrage"><span>03</span>Démarrage</button>
-      <button data-tab="interface"><span>04</span>Interface</button>
-      <button data-tab="avance"><span>05</span>Avancé</button>
+      <button data-tab="assistant"><span>02</span>Assistant</button>
+      <button data-tab="memoire"><span>03</span>Mémoire</button>
+      <button data-tab="plugins"><span>04</span>Plugins</button>
+      <button data-tab="audio"><span>05</span>Audio</button>
+      <button data-tab="demarrage"><span>06</span>Démarrage</button>
+      <button data-tab="interface"><span>07</span>Interface</button>
+      <button data-tab="telephone"><span>08</span>Téléphone</button>
+      <button data-tab="avance"><span>09</span>Avancé</button>
       <div class="set-link"><span class="dot"></span><span id="set-link-text">—</span></div>
     </nav>
 
@@ -248,6 +254,34 @@
         </div>
       </section>
 
+      <!-- assistant -->
+      <section class="set-tab" data-tab="assistant" hidden>
+        <h3>L'ASSISTANT</h3>
+        <label class="field"><span>Son nom</span><input id="a-name" spellcheck="false" maxlength="32"></label>
+        <label class="field"><span>Votre nom</span><input id="a-user" spellcheck="false" maxlength="48">
+          <small>Comment il s'adresse à vous.</small></label>
+        <div class="field"><span>Sa voix</span><div id="a-voices" class="voice-grid"></div>
+          <small>Changer de voix ou de nom reconstruit la session Gemini ; la conversation est conservée.</small></div>
+        <label class="toggle"><input id="a-brief" type="checkbox"><i></i><span>Briefing du matin<small>Au premier démarrage de la journée : l'heure, le résumé de la veille, l'actualité.</small></span></label>
+        <div class="test-row"><button class="act" id="a-save">APPLIQUER</button><div id="a-status" class="test-result"></div></div>
+      </section>
+
+      <!-- mémoire -->
+      <section class="set-tab" data-tab="memoire" hidden>
+        <h3>CE QUE JARVIS SAIT DE VOUS</h3>
+        <div class="mem-tools"><input id="m-search" placeholder="Rechercher…" spellcheck="false">
+          <button class="mini-btn" id="m-refresh">ACTUALISER</button><span id="m-count"></span></div>
+        <div id="m-list" class="mem-list"></div>
+      </section>
+
+      <!-- plugins -->
+      <section class="set-tab" data-tab="plugins" hidden>
+        <h3>PLUGINS</h3>
+        <div class="set-note">Un plugin est un fichier dans <code>plugins/</code>. L'activer ou le désactiver prend effet au prochain démarrage de JARVIS.</div>
+        <div id="p-list"></div>
+        <div id="p-forms"></div>
+      </section>
+
       <!-- 02 audio -->
       <section class="set-tab" data-tab="audio" hidden>
         <h3>AUDIO</h3>
@@ -280,9 +314,25 @@
         <div class="field"><span>Couleur</span><div class="swatches" id="s-swatches"></div></div>
         <label class="toggle"><input id="s-sound" type="checkbox"><i></i><span>Sons de l'interface</span></label>
         <label class="field"><span>Volume des sons</span><input id="s-volume" type="range" min="0" max="1" step="0.05"></label>
+        <label class="toggle"><input id="s-clipboard" type="checkbox"><i></i><span>Presse-papiers intelligent<small>Quand vous copiez du texte : traduire, résumer, expliquer ou corriger en un clic.</small></span></label>
         <label class="toggle" id="s-face-row"><input id="s-face" type="checkbox"><i></i><span>Visage 3D au centre<small>À la place du noyau d'énergie.</small></span></label>
         <div class="field"><span>Performances</span><div id="s-quality" class="quality-grid"></div>
           <small id="s-quality-note"></small></div>
+      </section>
+
+      <!-- téléphone -->
+      <section class="set-tab" data-tab="telephone" hidden>
+        <h3>VOTRE TÉLÉPHONE</h3>
+        <div id="t-online" class="set-note">
+          En ligne, le téléphone se relie directement au serveur Oracle, comme ce PC :
+          sur Oracle, lancez <code>python -m server.run_headless --pairing</code>, puis saisissez
+          l'adresse et le jeton dans l'application Android.
+        </div>
+        <div id="t-local" hidden>
+          <div class="set-note">Scannez ce code avec le téléphone (même réseau ou Tailscale) pour piloter JARVIS depuis son navigateur.</div>
+          <div class="test-row"><button class="act" id="t-pair">GÉNÉRER UN CODE</button><div id="t-status" class="test-result"></div></div>
+          <div id="t-qr" class="qr"></div>
+        </div>
       </section>
 
       <!-- 05 avancé -->
@@ -320,6 +370,24 @@
 <div id="perf" hidden></div>
 
 <div id="toasts"></div>
+
+<!-- a file dragged over the HUD -->
+<div id="dropzone" hidden><div>DÉPOSEZ LE FICHIER<small>JARVIS pourra l'analyser : « résume ce fichier »</small></div></div>
+
+<!-- something was copied -->
+<div id="clip" hidden>
+  <div class="clip-head">PRESSE-PAPIERS<button id="clip-close" title="Fermer">×</button></div>
+  <div id="clip-text"></div>
+  <div class="clip-actions">
+    <button data-cmd="Traduis ce texte en français : {t}">TRADUIRE</button>
+    <button data-cmd="Résume ceci : {t}">RÉSUMER</button>
+    <button data-cmd="Explique ceci : {t}">EXPLIQUER</button>
+    <button data-cmd="Corrige l'orthographe et la grammaire : {t}">CORRIGER</button>
+  </div>
+</div>
+
+<!-- what JARVIS's camera sees -->
+<div id="camera" hidden><img id="camera-img" alt="caméra"><span>CAMÉRA</span></div>
 
 <script type="module" src="js/main.js"></script>
 </body>

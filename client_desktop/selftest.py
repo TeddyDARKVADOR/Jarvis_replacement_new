@@ -657,7 +657,7 @@ def _hud_checks(report: "_Report") -> None:  # noqa: C901
     local_src = (_REPO_ROOT / "local_hud.py").read_text(encoding="utf-8")
     used = set(re.findall(r"self\.hud\.([A-Za-z_]\w*)", app_src))
     used |= set(re.findall(r"\bhud\.([A-Za-z_]\w*)", local_src))
-    instance_attrs = {"_mini", "local_mode"}
+    instance_attrs = {"_mini", "local_mode", "backend", "settings_overrides"}
     absent = {n for n in used if not hasattr(HudWindow, n) and n not in instance_attrs}
     report.check(f"25 every one of the {len(used)} HUD members the two hosts use exists",
                  not absent, f"missing {sorted(absent)}")

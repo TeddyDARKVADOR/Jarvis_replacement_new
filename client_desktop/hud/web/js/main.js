@@ -31,7 +31,7 @@ const V = {
 };
 let S = null;                 // last snapshot
 let accentHex = '#7DD3FC';
-let prefs = { accent: '#7DD3FC', face: false, sound: true, volume: .35, quality: 'auto', quality_tier: null };
+let prefs = { accent: '#7DD3FC', face: false, sound: true, volume: .35, quality: 'auto', quality_tier: null, clipboard: true };
 let init = { server: {}, identity: {}, faceAvailable: false };
 let bridge = null;
 let reactor = null;
@@ -48,6 +48,19 @@ function connect() {
   });
 }
 const call = (name, ...args) => { try { bridge && bridge[name] && bridge[name](...args); } catch { /* bridge gone */ } };
+
+// A request to the assistant's backend (memory, profile, plugins…), answered
+// later by HUD.rpcResult. Oracle or this PC — the page does not know which.
+const pending = new Map();
+let rpcSeq = 0;
+function rpc(op, data = {}) {
+  return new Promise((resolve) => {
+    const id = `r${++rpcSeq}`;
+    pending.set(id, resolve);
+    setTimeout(() => { if (pending.delete(id)) resolve({ error: 'pas de réponse' }); }, 30000);
+    call('rpc', id, op, JSON.stringify(data));
+  });
+}
 
 // ── formatting ────────────────────────────────────────────────────────────
 function fmtBytes(n) {
@@ -187,6 +200,7 @@ function renderMessages(list) {
 
 // ── caption (subtitles) ───────────────────────────────────────────────────
 let typeTimer = null;
+let clipText = '', clipTimer = null;
 function caption(text, who = 'JARVIS', user = false) {
   const el = $('caption-text');
   setText($('caption-who'), who);
@@ -499,6 +513,12 @@ function wire() {
   cmd.addEventListener('blur', () => setTimeout(() => showChips(false), 150));
 
   $('send').onclick = () => send(cmd.value);
+  $('attach').onclick = () => call('attachFile');
+  $('file-clear').onclick = () => { call('clearFile'); $('file-chip').hidden = true; };
+  $('clip-close').onclick = () => { $('clip').hidden = true; };
+  document.querySelectorAll('#clip .clip-actions button').forEach((b) => {
+    b.onclick = () => { send(b.dataset.cmd.replace('{t}', clipText)); $('clip').hidden = true; };
+  });
   $('stop').onclick = () => { call('interrupt'); sound.play('close'); };
   $('mic').onclick = toggleMic;
   $('mini-mic').onclick = (e) => { e.stopPropagation(); toggleMic(); };
@@ -792,7 +812,9 @@ window.HUD = {
 };
 
 const settings = createSettings({
-  call, sound,
+  call, sound, rpc,
+  caps: () => init.caps || {},
+  isLocal: () => !!init.local,
   swatches: SW,
   tiers: TIERS,
   gov: () => gov,
@@ -808,6 +830,42 @@ const settings = createSettings({
   setQuality: (v) => setQualityPref(v),
 });
 Object.assign(window.HUD, {
+  rpcResult(id, result) {
+    const done = pending.get(id);
+    if (done) { pending.delete(id); done(result || {}); }
+  },
+  fileAttached(r) {
+    const chip = $('file-chip');
+    if (r.busy) { chip.hidden = false; chip.classList.add('busy'); setText($('file-name'), 'Envoi…'); return; }
+    chip.classList.remove('busy');
+    if (r.ok) {
+      chip.hidden = false;
+      setText($('file-name'), `📎 ${r.name}`);
+      $('file-name').title = r.name;
+      toast('FICHIER JOINT', `${r.name} — demandez par exemple « résume ce fichier ».`, null, 5000);
+      sound.play('open');
+      $('cmd').focus();
+    } else {
+      chip.hidden = true;
+      toast('FICHIER', r.error || 'échec de l\'envoi', '#F87171', 6000);
+      sound.play('error');
+    }
+  },
+  dragging(on) { $('dropzone').hidden = !on; },
+  clipboard(text) {
+    if (V.mini || !prefs.clipboard) return;
+    clipText = text;
+    setText($('clip-text'), text);
+    $('clip').hidden = false;
+    clearTimeout(clipTimer);
+    clipTimer = setTimeout(() => { $('clip').hidden = true; }, 15000);
+  },
+  camera(src) {
+    const box = $('camera');
+    if (!src) { box.hidden = true; return; }
+    $('camera-img').src = src;
+    box.hidden = false;
+  },
   openSettings: (tab) => settings.open(tab || 'connexion'),
   settingsData: (d) => settings.fill(d),
   settingsTest: (r) => settings.tested(r),

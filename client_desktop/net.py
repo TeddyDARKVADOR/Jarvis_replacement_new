@@ -113,6 +113,11 @@ class JarvisClient:
     def endpoint(self) -> ServerEndpoint:
         return self._settings.endpoint
 
+    @property
+    def bearer(self) -> str:
+        """The session's bearer, "" until `/api/device-login` has answered."""
+        return self._bearer
+
     # ── connecting ───────────────────────────────────────────────────────────
 
     async def connect(self) -> None:
@@ -762,6 +767,12 @@ class NetworkWorker:
 
     def send_command(self, text: str) -> None:
         self._submit(self._client.send_command(text))
+
+    def http_session(self) -> tuple[str, str] | None:
+        """(http base URL, bearer) of the live session, None when not logged in.
+        For the HUD's plain HTTP calls — settings page, file upload."""
+        bearer = self._client.bearer
+        return (self._client.endpoint.http_base, bearer) if bearer else None
 
     def send_interrupt(self) -> None:
         self._submit(self._client.send_interrupt())

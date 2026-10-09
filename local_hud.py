@@ -10,7 +10,7 @@ python main.py --classic        the original window, unchanged
 ONE INTERFACE, TWO BRAINS
     Online, the HUD renders a `client_desktop.state.JarvisStore` that the
     network worker fills from Oracle's sockets. Here the same store is filled by
-    `LocalUI`, the object `main.JarvisLive` talks to instead of `ui.JarvisUI`.
+    `LocalUI`, the object `main.JarvisLive` is handed as its UI.
     The window, the page, the store and the tray are the very same objects in
     both modes — so the two cannot drift apart: there is nothing to keep in sync.
 
@@ -57,7 +57,20 @@ class LocalUI(HeadlessUI):
     def __init__(self, store: JarvisStore) -> None:
         super().__init__(echo=True)
         self.store = store
+        #: The file the user attached in the HUD (📎 or drag-and-drop): what
+        #: main.py's file_processor reads when asked about "this file".
+        self.attached: str | None = None
+        #: Set by the host: receives JPEG bytes for the HUD's camera view, or
+        #: None when it closes. Called from the camera thread.
+        self.on_camera_frame = None
+        self._camera_stop = threading.Event()
         store.set_link(LinkState.CONNECTING)
+
+    @property
+    def current_file(self) -> str | None:
+        if self.attached and Path(self.attached).is_file():
+            return self.attached
+        return None
 
     # ── text ─────────────────────────────────────────────────────────────────
 
@@ -155,6 +168,48 @@ class LocalUI(HeadlessUI):
     def hide_confirm(self) -> None:
         self.store.clear_confirmation()
 
+    # ── the camera ───────────────────────────────────────────────────────────
+    #
+    # main.py asks the UI to show the webcam while it looks through it; the
+    # frames it analyses are its own. This is only the user's view of it —
+    # the same loop the original window ran, shown in the HUD's corner.
+
+    def start_camera_stream(self) -> None:
+        self._camera_stop.clear()
+        threading.Thread(target=self._camera_loop, name="hud-camera", daemon=True).start()
+
+    def stop_camera_stream(self) -> None:
+        self._camera_stop.set()
+
+    def show_camera_frame(self, img_bytes: bytes) -> None:
+        if callable(self.on_camera_frame):
+            self.on_camera_frame(bytes(img_bytes))
+
+    def _camera_loop(self) -> None:
+        try:
+            import cv2
+            from memory.config_manager import load_api_keys
+            index = int(load_api_keys().get("camera_index", 0) or 0)
+            backend = getattr(cv2, "CAP_DSHOW", 0) if sys.platform == "win32" else 0
+            cap = cv2.VideoCapture(index, backend)
+            if not cap.isOpened():
+                cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                return
+            for _ in range(5):          # warm-up frames are dark
+                cap.read()
+            while not self._camera_stop.wait(0.05) and cap.isOpened():
+                ok, frame = cap.read()
+                if ok and frame is not None and callable(self.on_camera_frame):
+                    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
+                    self.on_camera_frame(buf.tobytes())
+            cap.release()
+        except Exception as exc:
+            self.store.log(f"ERR: caméra — {exc}")
+        finally:
+            if callable(self.on_camera_frame):
+                self.on_camera_frame(None)
+
     # ── the key ──────────────────────────────────────────────────────────────
 
     def wait_for_api_key(self) -> None:
@@ -173,6 +228,64 @@ class LocalUI(HeadlessUI):
                 self.store.set_link(LinkState.ERROR, "Clé Gemini absente — ajoutez-la dans config/api_keys.json")
                 self.store.log(f"ERR: aucune clé Gemini dans {BASE_DIR / 'config' / 'api_keys.json'}")
             time.sleep(2)
+
+
+class LocalBackend:
+    """The HUD's backend when the brain runs here — see client_desktop/hud/backends.py.
+
+    Everything the settings page asks goes to `server.assistant_control`, the
+    very object Oracle serves behind /api/assistant. Two things only exist
+    locally: the attached file (the brain reads it straight from disk) and the
+    phone pairing (the brain's own dashboard hands out the key).
+    """
+
+    def __init__(self, ui: LocalUI, brain_ref: dict) -> None:
+        from server.assistant_control import AssistantControl
+        self._ui = ui
+        self._brain = brain_ref
+        self._control = AssistantControl(lambda: ui)
+
+    def capabilities(self) -> dict:
+        return {"local": True, "memory": True, "profile": True, "plugins": True,
+                "phone": True, "files": True}
+
+    def call(self, op: str, data: dict | None = None) -> dict:
+        if op == "phone.pair":
+            return self._pair_phone()
+        return self._control.call(op, data)
+
+    def attach_file(self, path: str) -> dict:
+        p = Path(path)
+        if not p.is_file():
+            return {"error": "fichier introuvable"}
+        self._ui.attached = str(p)
+        self._ui.store.log(f"SYS: fichier joint — {p.name}")
+        return {"ok": True, "name": p.name}
+
+    def clear_file(self) -> None:
+        self._ui.attached = None
+
+    def _pair_phone(self) -> dict:
+        jarvis = self._brain.get("jarvis")
+        make = getattr(jarvis, "_make_remote_key", None)
+        if not callable(make):
+            return {"error": "JARVIS démarre encore — réessayez dans un instant."}
+        made = make()
+        if not made:
+            return {"error": "tableau de bord indisponible (pip install fastapi \"uvicorn[standard]\" cryptography)"}
+        url, key, auto_url, manual = made
+        qr = ""
+        try:
+            import base64
+            import io
+
+            import qrcode
+            buf = io.BytesIO()
+            qrcode.make(auto_url).save(buf, format="PNG")
+            qr = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+        except Exception:
+            pass
+        return {"ok": True, "url": url, "key": key, "auto_url": auto_url, "manual": manual, "qr": qr}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -209,12 +322,26 @@ def main(argv: list[str] | None = None) -> int:
     hud.attach_store(store)
     tray = JarvisTray()
     ui = LocalUI(store)
+    brain_ref: dict = {}
+    hud.backend = LocalBackend(ui, brain_ref)
+
+    def local_audio() -> dict:
+        """The page's audio tab shows main.py's own devices and wake word."""
+        from memory import config_manager as cm
+        return {"input_device": cm.get_input_device() or None,
+                "output_device": cm.get_output_device() or None,
+                "wake_word_enabled": bool(cm.get_wake_word_enabled())}
+
+    hud.settings_overrides = local_audio
 
     # ── store events → GUI thread (same marshalling as app.JarvisDesktop) ──
     class _Bridge(QObject):
         event = pyqtSignal(str, object)
+        camera = pyqtSignal(object)
 
     bridge = _Bridge()
+    bridge.camera.connect(hud.show_camera_frame)
+    ui.on_camera_frame = bridge.camera.emit
     store.subscribe(lambda kind, payload: bridge.event.emit(kind, payload))
 
     def on_event(kind: str, payload: object) -> None:
@@ -254,8 +381,6 @@ def main(argv: list[str] | None = None) -> int:
         except TypeError:
             confirm_gate.resolve(bool(accepted))
 
-    brain_ref: dict = {}
-
     def reconnect() -> None:
         # The same call main.py makes when the audio device changes: rebuild
         # the Gemini session, keep the conversation.
@@ -277,7 +402,13 @@ def main(argv: list[str] | None = None) -> int:
 
     def on_settings(changed: list) -> None:
         from client_desktop.config import save
+        from memory import config_manager as cm
         save(settings)
+        # The same machine, the same microphone: the local brain follows.
+        if {"input_device", "output_device"} & set(changed):
+            cm.save_input_device(settings.input_device or "")
+            cm.save_output_device(settings.output_device or "")
+            call("on_audio_device_change")
         if "wake_word_enabled" in changed and callable(ui.on_wake_toggle):
             result = ui.on_wake_toggle(settings.wake_word_enabled)
             store.log(f"SYS: mot d'éveil — {result}")

@@ -91,6 +91,8 @@ class Settings:
     quality: object = "auto"
     #: The tier the performance governor settled on last time on this PC.
     quality_tier: int | None = None
+    #: Copying text offers to translate, summarise, explain or correct it.
+    clipboard_assist: bool = True
 
     start_collapsed: bool = False
     notifications: bool = True

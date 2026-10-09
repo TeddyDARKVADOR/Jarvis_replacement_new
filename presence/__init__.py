@@ -2,9 +2,9 @@
 presence/ — JARVIS's face and body, decided here, drawn in `avatar/`.
 
 Self-contained, exactly like `context/`: this package imports nothing from
-`main.py`, `ui.py`, `core/`, `dashboard/`, `actions/` or `server/`, and the
-selftest enforces it with the parser rather than with anyone's memory. Delete
-the folder and JARVIS is what it was before — a voice with a 2D core.
+`main.py`, `core/`, `dashboard/`, `actions/` or `server/`, and the selftest
+enforces it with the parser rather than with anyone's memory. Delete the folder
+and JARVIS is what it was before — a voice with an energy core and no face.
 
     python -m presence.selftest
 

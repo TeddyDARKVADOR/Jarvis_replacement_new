@@ -22,6 +22,7 @@ TWO DIRECTIONS, TWO MECHANISMS
 
 from __future__ import annotations
 
+import base64
 import json
 import threading
 import time
@@ -41,7 +42,7 @@ from PyQt6.QtGui import QColor, QDesktopServices, QGuiApplication, QIcon, QPaint
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineScript, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QFileDialog, QVBoxLayout, QWidget
 
 from ..config import Settings, save as save_settings
 from ..state import LinkState, Snapshot
@@ -70,6 +71,7 @@ PREF_FIELDS = {
     "maximized": "maximized",
     "quality": "quality",
     "quality_tier": "quality_tier",
+    "clipboard": "clipboard_assist",
 }
 
 _EDGES = {
@@ -226,7 +228,28 @@ class HudBridge(QObject):
 
     @pyqtSlot(str)
     def copy(self, text: str) -> None:
+        self._w._own_copy = text or ""
         QApplication.clipboard().setText(text or "")
+
+    @pyqtSlot(str, str, str)
+    def rpc(self, rid: str, op: str, payload: str) -> None:
+        """One request to the assistant's backend; answered by `HUD.rpcResult`."""
+        try:
+            data = json.loads(payload) if payload else {}
+        except ValueError:
+            data = {}
+        self._w._rpc(rid, op, data if isinstance(data, dict) else {})
+
+    @pyqtSlot()
+    def attachFile(self) -> None:  # noqa: N802
+        path, _ = QFileDialog.getOpenFileName(self._w, "Fichier à analyser par JARVIS")
+        if path:
+            self._w.attach_file(path)
+
+    @pyqtSlot()
+    def clearFile(self) -> None:  # noqa: N802
+        if self._w.backend is not None:
+            self._w.backend.clear_file()
 
     @pyqtSlot(str)
     def openUrl(self, url: str) -> None:  # noqa: N802
@@ -269,6 +292,9 @@ class HudWindow(QWidget):
     wake_install_requested = pyqtSignal()
     #: Carries a connection-test result from its worker thread to the GUI one.
     _test_done = pyqtSignal(dict)
+    #: Backend answers, from their worker threads to the GUI one.
+    _rpc_done = pyqtSignal(str, dict)
+    _file_done = pyqtSignal(dict)
 
     def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -296,6 +322,13 @@ class HudWindow(QWidget):
         #: True when the brain runs on this PC (`python main.py --local`). The
         #: HUD is the same; only what it says about "the server" changes.
         self.local_mode = False
+        #: Who answers the settings page's "assistant" questions and receives
+        #: attached files — see hud/backends.py. Set by the host.
+        self.backend = None
+        #: Local mode's audio and wake settings belong to main.py's config, not
+        #: to the network client's: the host overlays them on the page here.
+        self.settings_overrides = None
+        self._own_copy = ""
 
         self.setWindowTitle("J.A.R.V.I.S — HUD")
         self.setWindowIcon(_app_icon())
@@ -338,6 +371,16 @@ class HudWindow(QWidget):
         self._restore_saved_geometry()
         self._test_done.connect(
             lambda r: self._run(f"window.HUD&&HUD.settingsTest({json.dumps(r, ensure_ascii=False)})"))
+        self._rpc_done.connect(
+            lambda rid, r: self._run(f"window.HUD&&HUD.rpcResult({json.dumps(rid)},{json.dumps(r, ensure_ascii=False)})"))
+        self._file_done.connect(
+            lambda r: self._run(f"window.HUD&&HUD.fileAttached({json.dumps(r, ensure_ascii=False)})"))
+
+        # A file dropped anywhere on the HUD is a file for JARVIS. The view must
+        # not take the drop itself, or Chromium would navigate to the file.
+        self._view.setAcceptDrops(False)
+        self.setAcceptDrops(True)
+        QApplication.clipboard().dataChanged.connect(self._on_clipboard)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._fast_tick)
@@ -403,6 +446,7 @@ class HudWindow(QWidget):
             },
             "local": self.local_mode,
             "faceAvailable": self._face_available,
+            "caps": self.backend.capabilities() if self.backend is not None else {},
             "mini": self._mini,
         }
         self._run(f"window.HUD&&HUD.init({json.dumps(init)})")
@@ -454,6 +498,9 @@ class HudWindow(QWidget):
     def _push_settings(self) -> None:
         try:
             data = settings_mod.snapshot(self.settings)
+            if callable(self.settings_overrides):
+                data.update(self.settings_overrides())
+            data["local"] = self.local_mode
         except Exception as exc:  # an audio stack that cannot be listed, etc.
             data = {"error": str(exc)}
         self._run(f"window.HUD&&HUD.settingsData({json.dumps(data, ensure_ascii=False)})")
@@ -488,6 +535,71 @@ class HudWindow(QWidget):
                 result = {"ok": False, "step": "error", "detail": str(exc)}
             self._test_done.emit(result)
         threading.Thread(target=work, name="hud-settings-test", daemon=True).start()
+
+    # ── the assistant's backend ──────────────────────────────────────────────
+
+    def _rpc(self, rid: str, op: str, data: dict) -> None:
+        backend = self.backend
+
+        def work() -> None:
+            if backend is None:
+                result = {"error": "indisponible dans ce mode"}
+            else:
+                try:
+                    result = backend.call(op, data)
+                except Exception as exc:
+                    result = {"error": str(exc)}
+            self._rpc_done.emit(rid, result if isinstance(result, dict) else {"result": result})
+
+        threading.Thread(target=work, name=f"hud-rpc-{op}", daemon=True).start()
+
+    def attach_file(self, path: str) -> None:
+        """Hand a file to JARVIS ("analyse ce fichier"). Uploads can be slow."""
+        backend = self.backend
+        self._run("window.HUD&&HUD.fileAttached({\"busy\":true})")
+
+        def work() -> None:
+            try:
+                result = backend.attach_file(path) if backend else {"error": "indisponible"}
+            except Exception as exc:
+                result = {"error": str(exc)}
+            self._file_done.emit(result)
+
+        threading.Thread(target=work, name="hud-attach", daemon=True).start()
+
+    def dragEnterEvent(self, event) -> None:  # noqa: ANN001, N802
+        if event.mimeData().hasUrls() and any(u.isLocalFile() for u in event.mimeData().urls()):
+            event.acceptProposedAction()
+            self._run("window.HUD&&HUD.dragging(true)")
+
+    def dragLeaveEvent(self, event) -> None:  # noqa: ANN001, N802
+        self._run("window.HUD&&HUD.dragging(false)")
+
+    def dropEvent(self, event) -> None:  # noqa: ANN001, N802
+        self._run("window.HUD&&HUD.dragging(false)")
+        files = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
+        if files:
+            event.acceptProposedAction()
+            self.attach_file(files[0])
+
+    def _on_clipboard(self) -> None:
+        """Something was copied: offer to translate / summarise / explain / fix it."""
+        if not self.settings.clipboard_assist or not self._loaded:
+            return
+        if not self.isVisible() or self.isMinimized():
+            return
+        text = (QApplication.clipboard().text() or "").strip()
+        if len(text) < 8 or text == self._own_copy.strip():
+            return
+        self._run(f"window.HUD&&HUD.clipboard({json.dumps(text[:800], ensure_ascii=False)})")
+
+    def show_camera_frame(self, jpeg: bytes | None) -> None:
+        """A webcam (or screen) frame for the picture-in-picture; None hides it."""
+        if jpeg is None:
+            self._run("window.HUD&&HUD.camera(null)")
+            return
+        b64 = base64.b64encode(jpeg).decode("ascii")
+        self._run(f"window.HUD&&HUD.camera('data:image/jpeg;base64,{b64}')")
 
     # ── window behaviour ─────────────────────────────────────────────────────
 

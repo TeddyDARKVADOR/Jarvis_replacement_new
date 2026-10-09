@@ -39,6 +39,7 @@ from .config import Settings, load, save  # noqa: F401  (save: _on_settings_chan
 from .device import CapabilityProbe, LocalExecutor
 from .net import NetworkWorker
 from .state import AssistantState, JarvisStore, LinkState, Snapshot
+from .hud.backends import RemoteBackend
 from .hud.settings import RECONNECT_KEYS
 from .hud.window import HudWindow
 from .ui.debug import DebugWindow
@@ -102,6 +103,8 @@ class JarvisDesktop(QObject):
         # ── the surfaces ─────────────────────────────────────────────────────
         self.hud = HudWindow(self.settings)
         self.hud.attach_store(self.store)
+        # Settings page "assistant" questions and attached files go to Oracle.
+        self.hud.backend = RemoteBackend(self.worker.http_session)
         self.debug = DebugWindow(self.settings)
         self.tray = JarvisTray()
 
