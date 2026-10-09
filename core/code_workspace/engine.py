@@ -162,6 +162,7 @@ class StudioJob:
                 self.llm.on_wait = lambda secs, why: j.add(
                     "info", f"⏳ {why} — nouvelle tentative dans {int(secs)} s")
                 self.llm.should_stop = self.stop_event.is_set
+            j.add("info", f"Modèle de code : {llm_mod.describe(self.llm)}")
             if self.mode == "create":
                 self._plan_new()
             else:

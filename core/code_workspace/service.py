@@ -312,8 +312,8 @@ class Studio:
     def _llm(self):
         if callable(self.llm_factory):
             return self.llm_factory()
-        from .llm import StudioLLM
-        return StudioLLM(self._get().get("model") or None)
+        from .llm import make_llm
+        return make_llm(self._get())
 
     def start_job(self, mode: str, request: str, project: str | None = None) -> dict:
         from .engine import StudioJob, new_project_name
@@ -398,7 +398,12 @@ class Studio:
 
     # ── status ──────────────────────────────────────────────────────────────
     def status(self, project: str | None = None) -> dict:
-        out: dict = {"root": self.root_setting(), "options": self.options(), "admin": is_admin(),
+        from .llm import groq_key
+        cfg = self._get()
+        provider = str(cfg.get("provider") or "auto").lower()
+        coder = ("Groq" + (f" · {cfg['groq_model']}" if cfg.get("groq_model") else "")
+                 if provider == "groq" or (provider == "auto" and groq_key()) else "Gemini")
+        out: dict = {"root": self.root_setting(), "options": self.options(), "admin": is_admin(), "coder": coder,
                      "safety": SAFETY_NOTE, "projects": [], "job": None}
         try:
             ws = self.workspace()

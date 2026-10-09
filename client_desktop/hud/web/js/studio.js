@@ -100,6 +100,7 @@ export function createStudio(ctx) {
   function render(s, force) {
     last = s;
     $('st-root').textContent = s.root || '—';
+    $('st-coder').textContent = s.coder || '—';
     if (!optionsDirty) {
       const o = s.options || {};
       $('st-root-input').value = s.root || '';

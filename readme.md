@@ -36,6 +36,10 @@ présente un bilan. Le panneau **STUDIO** (bouton `</>` du HUD) s'ouvre tout seu
 affiche en direct les tâches, les fichiers (diff avant/après), le terminal, les points
 de sauvegarde (restauration en un clic) et un bouton **ARRÊTER**.
 
+- Le code est écrit par **Groq** dès que `"groq_api_key"` est présent dans
+  `config/api_keys.json` (meilleur modèle disponible pour la clé, `openai/gpt-oss-120b` en
+  priorité ; `"groq_model"` dans `plugin_config.code_studio` pour en imposer un). Sans clé
+  Groq, le Studio utilise Gemini. La conversation, elle, reste sur Gemini Live.
 - Chaque ligne du suivi est écrite par les outils qui ont agi, jamais par le modèle.
 - Fichiers : chemins vérifiés par le code (`..`, lecteurs, UNC, flux `:`, noms réservés,
   jonctions, liens physiques refusés) ; le dépôt JARVIS ne peut jamais être la racine.

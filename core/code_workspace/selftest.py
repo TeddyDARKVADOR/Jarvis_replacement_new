@@ -468,6 +468,57 @@ def _():
     return "retryDelay lu, 1 seul appel avant arrêt"
 
 
+@check("21 Groq : meilleur modèle disponible, limite 429 respectée, JSON, clé refusée")
+def _():
+    from core.code_workspace import llm as L
+
+    class Resp:
+        def __init__(self, code, data=None, headers=None):
+            self.status_code, self._d, self.headers = code, data or {}, headers or {}
+            self.ok, self.text = code < 400, json.dumps(data or {})
+
+        def json(self):
+            return self._d
+
+    class FakeHTTP:
+        def __init__(self, posts):
+            self.posts, self.bodies, self.auth = list(posts), [], None
+
+        def get(self, url, headers=None, timeout=None):
+            self.auth = headers["Authorization"]
+            return Resp(200, {"data": [{"id": "whisper-large-v3"}, {"id": "llama-3.3-70b-versatile"},
+                                       {"id": "openai/gpt-oss-120b"}]})
+
+        def post(self, url, headers=None, json=None, timeout=None):
+            self.bodies.append(json)
+            return self.posts.pop(0)
+
+    ok = Resp(200, {"choices": [{"message": {"content": '{"a": 1}'}}]})
+    http = FakeHTTP([Resp(429, {}, {"retry-after": "0.2"}), ok])
+    waits = []
+    g = L.GroqLLM(key="gsk_test", http=http)
+    g.on_wait = lambda s, why: waits.append(why)
+    assert g.model == "openai/gpt-oss-120b", g.model
+    assert L.parse_json(g.complete("plan", json_mode=True)) == {"a": 1}
+    assert waits == ["limite Groq atteinte"] and http.bodies[-1]["response_format"] == {"type": "json_object"}
+    assert http.auth == "Bearer gsk_test"
+    bad = L.GroqLLM(key="gsk_bad", http=FakeHTTP([Resp(401)]), model="openai/gpt-oss-120b")
+    bad._model = "x"
+    try:
+        bad.complete("x")
+        raise AssertionError("401 non signalé")
+    except L.LLMError as e:
+        assert "401" in str(e)
+    picked = L.make_llm({"provider": "gemini"})
+    assert isinstance(picked, L.StudioLLM)
+    os.environ["GROQ_API_KEY"] = "gsk_env"
+    try:
+        assert isinstance(L.make_llm({}), L.GroqLLM) or L.groq_key() != "gsk_env"
+    finally:
+        os.environ.pop("GROQ_API_KEY", None)
+    return f"modèle {g.model}, 429 puis OK, 401 refusé"
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(errors="replace")

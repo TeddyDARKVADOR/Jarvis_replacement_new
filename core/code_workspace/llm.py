@@ -114,6 +114,143 @@ class StudioLLM:
         raise LLMError("Le modèle n'a pas répondu.")
 
 
+GROQ_URL = "https://api.groq.com/openai/v1"
+#: Best coding models first; the first one this key can actually use wins.
+GROQ_PREFERRED = ["openai/gpt-oss-120b", "moonshotai/kimi-k2-instruct-0905", "moonshotai/kimi-k2-instruct",
+                  "qwen/qwen3-32b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
+_GROQ_SKIP = ("whisper", "guard", "tts", "playai", "orpheus", "compound", "prompt-guard")
+
+
+def groq_key() -> str:
+    import os
+    try:
+        from memory.config_manager import load_api_keys
+        key = str(load_api_keys().get("groq_api_key") or "").strip()
+    except Exception:
+        key = ""
+    return key or os.environ.get("GROQ_API_KEY", "").strip()
+
+
+class GroqLLM:
+    """The Studio's coder on Groq (OpenAI-compatible chat API, plain HTTP)."""
+
+    def __init__(self, model: str | None = None, key: str | None = None, http=None) -> None:
+        self.key = key or groq_key()
+        if not self.key:
+            raise LLMError("Aucune clé Groq (groq_api_key) dans config/api_keys.json.")
+        self.requested = (model or "").strip() or None
+        self._model: str | None = None
+        self._http = http
+        self.on_wait = None
+        self.should_stop = None
+
+    @property
+    def http(self):
+        if self._http is None:
+            import requests
+            self._http = requests
+        return self._http
+
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
+
+    @property
+    def model(self) -> str:
+        """The configured model if the key can use it, else the best available one."""
+        if self._model:
+            return self._model
+        available: list[str] = []
+        try:
+            r = self.http.get(f"{GROQ_URL}/models", headers=self._headers(), timeout=20)
+            if r.status_code == 401:
+                raise LLMError("Clé Groq refusée (401) : vérifiez groq_api_key.")
+            if r.ok:
+                available = [m.get("id", "") for m in (r.json().get("data") or [])
+                             if m.get("active", True)]
+        except LLMError:
+            raise
+        except Exception:
+            available = []
+        if not available:
+            self._model = self.requested or GROQ_PREFERRED[0]
+        elif self.requested in available:
+            self._model = self.requested
+        else:
+            self._model = next((m for m in GROQ_PREFERRED if m in available), None) or next(
+                (m for m in available if not any(s in m.lower() for s in _GROQ_SKIP)), available[0])
+        return self._model
+
+    def complete(self, prompt: str, json_mode: bool = False) -> str:
+        body = {"model": self.model, "temperature": 0.2, "max_completion_tokens": 16384,
+                "messages": [{"role": "system", "content": "You are an expert software engineer. "
+                              "Follow the output format exactly."},
+                             {"role": "user", "content": prompt}]}
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        delay, attempts = 5.0, 6
+        for attempt in range(attempts):
+            try:
+                r = self.http.post(f"{GROQ_URL}/chat/completions", headers=self._headers(),
+                                   json=body, timeout=180)
+            except Exception as e:
+                if attempt < attempts - 1:
+                    self._wait(delay, "Groq injoignable")
+                    delay = min(delay * 2, 60.0)
+                    continue
+                raise LLMError(f"Groq injoignable : {e}") from e
+            if r.status_code == 200:
+                try:
+                    text = r.json()["choices"][0]["message"].get("content") or ""
+                except (ValueError, KeyError, IndexError):
+                    text = ""
+                if text.strip():
+                    return text
+                if attempt < attempts - 1:
+                    continue
+                raise LLMError("Réponse vide de Groq.")
+            detail = r.text[:300]
+            if r.status_code == 401:
+                raise LLMError("Clé Groq refusée (401) : vérifiez groq_api_key.")
+            if r.status_code == 400 and json_mode and "json" in detail.lower() and "response_format" in body:
+                body.pop("response_format")              # model without JSON mode: ask in the prompt only
+                continue
+            if r.status_code in (429, 500, 502, 503, 504) and attempt < attempts - 1:
+                wait = delay
+                try:
+                    wait = min(90.0, float(r.headers.get("retry-after") or delay) + 0.5)
+                except ValueError:
+                    pass
+                self._wait(wait, "limite Groq atteinte" if r.status_code == 429 else "Groq indisponible")
+                delay = min(delay * 2, 60.0)
+                continue
+            raise LLMError(f"Groq a répondu {r.status_code} : {detail}")
+        raise LLMError("Groq n'a pas répondu.")
+
+    def _wait(self, secs: float, why: str) -> None:
+        if callable(self.on_wait):
+            self.on_wait(secs, why)
+        end = time.monotonic() + secs
+        while time.monotonic() < end:
+            if callable(self.should_stop) and self.should_stop():
+                raise LLMError("Arrêté pendant l'attente du modèle.")
+            time.sleep(0.25)
+
+
+def make_llm(cfg: dict):
+    """Groq when a Groq key exists (the Studio's coder), Gemini otherwise —
+    unless the HUD/config pins `provider`."""
+    provider = str(cfg.get("provider") or "auto").lower()
+    if provider == "groq" or (provider == "auto" and groq_key()):
+        return GroqLLM(cfg.get("groq_model") or None)
+    return StudioLLM(cfg.get("model") or None)
+
+
+def describe(llm) -> str:
+    if isinstance(llm, GroqLLM):
+        return f"Groq · {llm.model}"
+    return f"Gemini · {getattr(llm, 'model', '?')}"
+
+
 # ── prompts ─────────────────────────────────────────────────────────────────
 
 _RULES = """Constraints of the workspace (enforced by code, plan accordingly):
