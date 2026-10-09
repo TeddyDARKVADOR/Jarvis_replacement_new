@@ -33,6 +33,8 @@ import re
 import sys
 import threading
 import time
+import hashlib
+import math
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -53,6 +55,11 @@ _LINE = re.compile(r"^\s*(\[?[^:\]\n]{1,32}\]?):\s?(.*)$", re.S)
 
 class LocalUI(HeadlessUI):
     """What main.JarvisLive draws on, translated into the HUD's store."""
+
+    # Plugins can use this capability flag to distinguish a desktop brain with
+    # a real browser from the server's headless UI without importing either
+    # host implementation or changing the plugin protocol.
+    local_mode = True
 
     def __init__(self, store: JarvisStore) -> None:
         super().__init__(echo=True)
@@ -96,10 +103,18 @@ class LocalUI(HeadlessUI):
     def _follow_link(self, line: str) -> None:
         """The 'link' of a local JARVIS is its Gemini Live session."""
         low = line.lower()
-        if "jarvis online" in low or "reconnected" in low:
+        if "jarvis online" in low or "reconnected — conversation restored" in low:
             self.store.set_link(LinkState.CONNECTED)
+        elif low.startswith("net:") and "retrying in" in low:
+            delay = re.search(r"retrying in\s+(\d+)s", low)
+            snap = self.store.snapshot()
+            self.store.set_retry(snap.attempt, int(delay.group(1)) if delay else 0)
+            self.store.set_link(LinkState.RECONNECTING)
+        elif "applying" in low and "reconnecting" in low:
+            self.store.set_link(LinkState.RECONNECTING)
         elif "api key invalid" in low or "rejected the api key" in low:
-            self.store.set_link(LinkState.ERROR, "Clé Gemini refusée — corrigez config/api_keys.json")
+            self.store.set_link(LinkState.ERROR,
+                                "Clé Gemini refusée — corrigez config/api_keys.json")
         elif low.startswith("sys: awake"):
             # The wake word was heard: replay a rising edge so the HUD shows
             # the same acknowledgement ring it shows online.
@@ -108,8 +123,14 @@ class LocalUI(HeadlessUI):
 
     def set_state(self, state: str) -> None:
         s = str(state).upper()
-        if self.store.snapshot().link is not LinkState.CONNECTED and s in _STATES:
-            self.store.set_link(LinkState.CONNECTED)
+        # Assistant activity is not evidence of a live Gemini connection.
+        # The session watcher below and the explicit "JARVIS online" log own
+        # link transitions; otherwise the THINKING state at the start of a
+        # failed connection attempt would make the HUD claim it was connected.
+        snap = self.store.snapshot()
+        if (s == "THINKING" and snap.link is LinkState.RECONNECTING
+                and snap.next_retry_seconds == 0):
+            self.store.set_link(LinkState.CONNECTING)
         if s == "LISTENING" and self._muted:
             # Never show "listening" with the microphone shut: that is the one
             # lie a voice interface must not tell. Muted and idle is "ready".
@@ -222,12 +243,56 @@ class LocalUI(HeadlessUI):
             except Exception:
                 key = None
             if key:
+                self.store.set_link(LinkState.CONNECTING)
                 return
             if not told:
                 told = True
                 self.store.set_link(LinkState.ERROR, "Clé Gemini absente — ajoutez-la dans config/api_keys.json")
                 self.store.log(f"ERR: aucune clé Gemini dans {BASE_DIR / 'config' / 'api_keys.json'}")
             time.sleep(2)
+
+    def prompt_reconfig(self) -> None:
+        """Park local retries until the rejected key is actually changed.
+
+        main.JarvisLive already waits on ``_win._ready`` after this callback.
+        The server UI keeps its timed re-arm; locally we can watch the config
+        file and let the existing connection loop retry once a new key appears.
+        No Gemini session or retry code is changed here.
+        """
+        self._win._ready = False
+        self.store.set_link(
+            LinkState.ERROR,
+            "Clé Gemini refusée — modifiez config/api_keys.json ; Jarvis attend.",
+        )
+        self.write_log(
+            "ERR: Clé Gemini refusée. Modifiez gemini_api_key dans "
+            f"{BASE_DIR / 'config' / 'api_keys.json'} ; aucune nouvelle tentative avant modification."
+        )
+
+        try:
+            from memory.config_manager import get_gemini_key
+            previous = get_gemini_key() or ""
+        except Exception:
+            previous = ""
+        previous_hash = hashlib.sha256(previous.encode("utf-8")).digest()
+
+        def wait_for_changed_key() -> None:
+            while True:
+                time.sleep(1)
+                try:
+                    from memory.config_manager import get_gemini_key
+                    candidate = get_gemini_key() or ""
+                except Exception:
+                    candidate = ""
+                candidate_hash = hashlib.sha256(candidate.encode("utf-8")).digest()
+                if candidate and candidate_hash != previous_hash:
+                    self._win._ready = True
+                    self.store.set_link(LinkState.RECONNECTING)
+                    self.write_log("SYS: Clé Gemini modifiée — nouvelle tentative de connexion.")
+                    return
+
+        threading.Thread(target=wait_for_changed_key, daemon=True,
+                         name="jarvis-local-key-watch").start()
 
 
 class LocalBackend:
@@ -444,6 +509,53 @@ def main(argv: list[str] | None = None) -> int:
             import main as brain           # imported, so its own launcher block does not run
             jarvis = brain.JarvisLive(ui)
             brain_ref["jarvis"] = jarvis
+
+            # Read-only health observer. JarvisLive owns all connect/reconnect
+            # decisions; this thread only mirrors whether its session exists so
+            # the HUD stays truthful across failures and backoff sleeps.
+            watch_stop = threading.Event()
+
+            def watch_session() -> None:
+                was_connected = False
+                attempts = 0
+                retry_deadline = 0.0
+                while not watch_stop.wait(0.5):
+                    session_active = jarvis.session is not None
+                    current = store.snapshot()
+                    if session_active:
+                        was_connected = True
+                        attempts = 0
+                        retry_deadline = 0.0
+                        if current.link is not LinkState.CONNECTED:
+                            store.set_link(LinkState.CONNECTED)
+                        store.set_retry(0, 0)
+                    elif was_connected:
+                        was_connected = False
+                        if store.snapshot().link is not LinkState.ERROR:
+                            attempts += 1
+                            delay = int(getattr(jarvis, "_conn_backoff", 0) or 0)
+                            retry_deadline = time.monotonic() + delay
+                            store.set_retry(attempts, delay)
+                            store.set_link(LinkState.RECONNECTING)
+                    elif (current.link is LinkState.CONNECTING
+                          and int(getattr(jarvis, "_conn_backoff", 0) or 0) > 0):
+                        # Also cover failures before the first session opened.
+                        attempts += 1
+                        delay = int(getattr(jarvis, "_conn_backoff", 0) or 0)
+                        retry_deadline = time.monotonic() + delay
+                        store.set_retry(attempts, delay)
+                        store.set_link(LinkState.RECONNECTING)
+                    elif current.link is LinkState.RECONNECTING and retry_deadline:
+                        remaining = max(0, math.ceil(retry_deadline - time.monotonic()))
+                        store.set_retry(attempts or current.attempt, remaining)
+                    elif (current.link is LinkState.RECONNECTING
+                          and current.next_retry_seconds > 0):
+                        retry_deadline = time.monotonic() + current.next_retry_seconds
+
+            watcher = threading.Thread(
+                target=watch_session, daemon=True, name="jarvis-local-health"
+            )
+            watcher.start()
             # Hear about the end of speech (see LocalUI.speaking_finished). An
             # instance attribute, so main.py's own code is left as it is.
             original = jarvis.set_speaking
@@ -454,7 +566,10 @@ def main(argv: list[str] | None = None) -> int:
                     ui.speaking_finished()
 
             jarvis.set_speaking = set_speaking
-            asyncio.run(jarvis.run())
+            try:
+                asyncio.run(jarvis.run())
+            finally:
+                watch_stop.set()
         except Exception as exc:
             store.set_link(LinkState.ERROR, f"JARVIS local s'est arrêté : {exc}")
             store.log(f"ERR: {exc!r}")
