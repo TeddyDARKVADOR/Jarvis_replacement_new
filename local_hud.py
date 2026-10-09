@@ -324,11 +324,18 @@ class LocalBackend:
 
     def capabilities(self) -> dict:
         return {"local": True, "memory": True, "profile": True, "plugins": True,
-                "phone": True, "files": True}
+                "phone": True, "files": True, "studio": True}
 
     def call(self, op: str, data: dict | None = None) -> dict:
         if op == "phone.pair":
             return self._pair_phone()
+        if str(op).startswith("studio."):
+            # Jarvis Code Studio (core/code_workspace): the workspace is on
+            # this PC, so only the local brain answers these.
+            from core.code_workspace import get_studio
+            studio = get_studio()
+            studio.bind(self._ui)
+            return studio.hud(op, data)
         return self._control.call(op, data)
 
     def attach_file(self, path: str) -> dict:

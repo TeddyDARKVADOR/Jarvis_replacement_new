@@ -52,6 +52,7 @@
       <button id="btn-sound" class="ico" title="Sons de l'interface"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="on" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/><path class="off" d="M16 9l5 6M21 9l-5 6"/></svg></button>
       <button id="btn-face" class="ico" title="Visage 3D / Réacteur"><svg viewBox="0 0 24 24"><circle cx="12" cy="10" r="6"/><path d="M5 21c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg></button>
       <button id="btn-palette" class="ico" title="Couleur du HUD"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+      <button id="btn-studio" class="ico" title="Jarvis Code Studio : son atelier de développement"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/></svg></button>
       <button id="btn-help" class="ico" title="Aide et raccourcis (F1)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5V14M12 17.5v.01"/></svg></button>
       <button id="btn-settings" class="ico" title="Paramètres : connexion, jeton, audio… (Ctrl+,)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
       <span class="sep"></span>
@@ -353,6 +354,88 @@
       <button class="act" id="s-cancel">FERMER <kbd>Échap</kbd></button>
       <button class="act primary" id="s-save">ENREGISTRER</button>
     </footer>
+  </div>
+</div>
+
+<!-- Jarvis Code Studio — see js/studio.js and core/code_workspace/ -->
+<div id="studio" class="overlay" hidden>
+  <div class="modal studio">
+    <div id="st-unavailable" class="st-unavailable" hidden>
+      <h3>JARVIS CODE STUDIO</h3>
+      <div class="set-note accent">L'atelier de développement fonctionne quand JARVIS tourne sur ce PC :
+        lancez <code>python main.py --local</code>. Son espace de travail est un dossier de ce PC, jamais le serveur.</div>
+      <div class="cf-actions"><button class="act" id="st-unavailable-close">FERMER</button></div>
+    </div>
+
+    <div id="st-main">
+      <header class="st-head">
+        <div class="st-brand">
+          <div class="st-kicker">JARVIS CODE STUDIO</div>
+          <div class="st-title" id="st-title">JARVIS CODE STUDIO</div>
+          <div class="st-request" id="st-request"></div>
+        </div>
+        <label class="st-picker"><span>PROJET</span><select id="st-project"></select></label>
+        <div class="st-actions">
+          <button class="mini-btn" id="st-preview" title="Aperçu web, exécution du script ou lancement de l'application">APERÇU</button>
+          <button class="mini-btn" id="st-checkpoint" title="Créer un point de sauvegarde maintenant">SAUVEGARDER</button>
+          <button class="mini-btn" id="st-folder" title="Ouvrir le dossier dans l'Explorateur">DOSSIER</button>
+          <button class="act danger st-stop" id="st-stop" title="Arrêter le travail et la commande en cours" disabled>■ ARRÊTER</button>
+          <button class="ico" id="st-close" title="Fermer (Échap)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+      </header>
+
+      <div class="st-progress">
+        <div id="st-steps" class="st-steps"></div>
+        <div class="st-phase"><span id="st-phase"></span><span id="st-attempt"></span></div>
+      </div>
+
+      <div id="st-empty" class="set-note accent st-empty" hidden>
+        Aucun projet pour l'instant. Demandez par exemple : <b>« Crée-moi une application de gestion de budget
+        avec un historique des dépenses et des graphiques. Mets tout dans ton espace de travail et montre-moi ce que tu fais. »</b>
+      </div>
+
+      <div class="st-grid">
+        <section class="st-col">
+          <h4>TÂCHES <span id="st-task-count"></span></h4>
+          <div id="st-tasks" class="scroll st-list"></div>
+          <h4>FICHIERS <span id="st-file-count"></span></h4>
+          <div id="st-files" class="scroll st-list"></div>
+        </section>
+        <section class="st-col">
+          <h4>ACTIVITÉ <span class="st-hint">enregistrée par les outils, pas racontée par le modèle</span></h4>
+          <div id="st-events" class="scroll st-list mono"></div>
+          <h4>TERMINAL</h4>
+          <div id="st-term" class="scroll st-term mono"></div>
+        </section>
+        <section class="st-col">
+          <h4>BILAN</h4>
+          <div id="st-summary" class="st-summary"></div>
+          <div id="st-previews"></div>
+          <h4>POINTS DE SAUVEGARDE</h4>
+          <div id="st-cps" class="scroll st-list"></div>
+          <h4>ESPACE DE TRAVAIL</h4>
+          <div class="st-settings">
+            <div class="st-rootline">Racine : <code id="st-root">—</code></div>
+            <div id="st-root-error" class="test-result err" hidden></div>
+            <div id="st-admin" class="test-result err" hidden>JARVIS tourne en administrateur : le Studio refuse d'exécuter des commandes.</div>
+            <label class="field"><span>Dossier racine</span><input id="st-root-input" spellcheck="false" placeholder="C:\Jarvis_Workspace"></label>
+            <div class="row2">
+              <label class="field"><span>Corrections max.</span><input id="st-attempts" type="number" min="1" max="10"></label>
+              <label class="field"><span>Durée max. commande (s)</span><input id="st-timeout" type="number" min="10" max="900"></label>
+            </div>
+            <label class="toggle"><input id="st-confirm-plan" type="checkbox"><i></i><span>Valider le plan avant d'écrire<small>Sinon JARVIS travaille seul et ne demande votre accord que pour les actions à risque (installation, réseau, exécutable inconnu).</small></span></label>
+            <button class="mini-btn" id="st-save">ENREGISTRER</button>
+            <div class="st-safety" id="st-safety"></div>
+          </div>
+        </section>
+      </div>
+      <footer class="st-foot"><div id="st-status"></div></footer>
+
+      <div id="st-viewer" class="st-viewer" hidden>
+        <div class="st-viewer-head"><span id="st-viewer-title"></span><button class="mini-btn" id="st-viewer-close">FERMER</button></div>
+        <div id="st-viewer-body" class="scroll mono st-viewer-body"></div>
+      </div>
+    </div>
   </div>
 </div>
 

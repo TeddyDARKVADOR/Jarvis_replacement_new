@@ -25,6 +25,31 @@ l'adresse Tailscale du serveur et le **jeton d'accès** (généré sur Oracle av
 `python -m server.run_headless --pairing`), puis **Tester** et **Enregistrer**.
 Détails : [client_desktop/hud/README.md](client_desktop/hud/README.md).
 
+### 🛠️ Jarvis Code Studio — son atelier de développement
+
+En mode `--local`, JARVIS dispose d'un **espace de travail dédié** (par défaut
+`C:\Jarvis_Workspace`, modifiable uniquement depuis le HUD). Dites par exemple :
+« Crée-moi une application de gestion de budget… mets tout dans ton espace de travail
+et montre-moi ce que tu fais. » Il planifie, écrit les fichiers, **lance les vrais
+tests**, corrige (nombre de tentatives limité, il s'arrête s'il tourne en rond) puis
+présente un bilan. Le panneau **STUDIO** (bouton `</>` du HUD) s'ouvre tout seul et
+affiche en direct les tâches, les fichiers (diff avant/après), le terminal, les points
+de sauvegarde (restauration en un clic) et un bouton **ARRÊTER**.
+
+- Chaque ligne du suivi est écrite par les outils qui ont agi, jamais par le modèle.
+- Fichiers : chemins vérifiés par le code (`..`, lecteurs, UNC, flux `:`, noms réservés,
+  jonctions, liens physiques refusés) ; le dépôt JARVIS ne peut jamais être la racine.
+- Commandes : sans shell, liste blanche (python, pytest, node, npm), délai max, Job
+  Object Windows (mémoire, nombre de processus, arrêt de tout l'arbre), secrets retirés
+  de l'environnement, refus si JARVIS tourne en administrateur. Installer un paquet,
+  `python -c` ou un exécutable inconnu demandent votre accord sur le HUD.
+- Limite assumée : un programme exécuté tourne avec les droits de votre compte. Pour une
+  isolation totale, utilisez Windows Sandbox ou une VM.
+
+Code : [core/code_workspace/](core/code_workspace/__init__.py) · outil
+[actions/code_workspace.py](actions/code_workspace.py) · tests :
+`python -m core.code_workspace.selftest`.
+
 ---
 
 ## ✨ Overview
