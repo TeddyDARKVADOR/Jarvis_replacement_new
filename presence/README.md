@@ -1,6 +1,6 @@
 # `presence/` — le cerveau du corps de JARVIS
 
-Paquet autonome. **Il n'importe rien de `main.py`, `ui.py`, `core/`, `dashboard/`,
+Paquet autonome. **Il n'importe rien de `main.py`, `core/`, `dashboard/`,
 `actions/`, `server/` ou `client_desktop/`** — vérifié automatiquement par le test.
 Supprimer le dossier rend JARVIS identique à ce qu'il était : une voix avec un
 cœur 2D.
@@ -108,7 +108,7 @@ Trois précisions, du 23/09/2026 (voir `avatar/BEHAVIOUR.md`) :
   était rejeté, et l'outil répondait `ok`. Un visage que la directive ne nomme
   pas n'écrase pas celui de l'état.
 
-L'hôte (`client_desktop/ui/avatar_view.py`) redemande la décision toutes les
+L'hôte (`client_desktop/hud/face.py`) redemande la décision toutes les
 1.5 s et ne pousse que ce qui change à l'œil : c'est ce qui rend l'expiration
 et la décroissance visibles entre deux changements d'état.
 
@@ -285,7 +285,7 @@ JARVIS appelle set_presence(valence=0.45, attention=0.9, gesture="tilt_head")
         │                    joué ou plus ancien que le dernier joué (/ws
         │                    rejoue ses 50 derniers messages à qui se connecte)
         ▼
-  avatar_view.set_intent_json()   re-lit avec le MÊME parse(), puis Director —
+  FaceDriver.set_intent()         re-lit avec le MÊME parse(), puis Director —
                                   l'intention datée de la DÉCISION, pas de
                                   l'arrivée : 20 s de retard = 5 s de vie
 ```

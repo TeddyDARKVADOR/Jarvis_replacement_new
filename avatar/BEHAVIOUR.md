@@ -117,14 +117,14 @@ ses syllabes, amplifiées, qui marquent.
 
 | idée | raison |
 |---|---|
-| micro-saccades plus réalistes | 0.3 px à la taille du panneau : invisible |
+| micro-saccades plus réalistes | 0.3 px à la taille du visage dans le HUD : invisible |
 | asymétrie G/D de timing (~30 ms) | < 2 images, invisible ; l'asymétrie utile existe déjà dans `amused`, `thinking`, `confused` |
 | « brief freeze » avant une alerte | la dérive du repos amortie 0.3 s déplace le nez de < 1 px |
 | fondu plus lent vers les fermetures de bouche | fausse alerte de ma mesure ; aucun gain mesurable (+33 ms) |
 | respiration du buste en mode visage | contredit le choix de Teddy (corps tenu) ; à rouvrir avec lui |
 | nouveau mot d'intention (« merci ») | `acknowledge` + `valence` le couvre déjà ; le vocabulaire de JARVIS ne change pas |
 | règle de noms « jeu + numéro » (Rocketbox) | collisions internes (SRanipal ↔ ARKit) : renommé à la conversion |
-| clignements incomplets | invisibles à la taille du panneau |
+| clignements incomplets | invisibles à la taille du visage dans le HUD |
 
 ## Les nuances sociales, et d'où elles viennent
 

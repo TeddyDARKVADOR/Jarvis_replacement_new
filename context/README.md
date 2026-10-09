@@ -1,6 +1,6 @@
 # `context/` — contexte et politique de proactivité
 
-Paquet autonome. **Il n'importe rien de `main.py`, `ui.py`, `core/`, `dashboard/`,
+Paquet autonome. **Il n'importe rien de `main.py`, `core/`, `dashboard/`,
 `actions/` ou `server/`** — vérifié automatiquement par le test. Supprimer le
 dossier rend JARVIS identique à `v1.0-jarvis-24-7`.
 

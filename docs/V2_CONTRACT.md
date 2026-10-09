@@ -116,7 +116,6 @@ C'est ça, « retirable sans casser V1 ».
 | Fichier | Règle |
 |---|---|
 | `main.py` | hooks de délégation uniquement (§4), ou bug critique |
-| `ui.py` | idem |
 | `core/*.py` | idem — ce sont des mécanismes, pas des fonctionnalités |
 | `dashboard/server.py` | ajout de routes et de types de messages autorisé ; **jamais** de modification d'une route existante |
 | `actions/*.py` | figé — les nouvelles capacités vont dans `plugins/` |
