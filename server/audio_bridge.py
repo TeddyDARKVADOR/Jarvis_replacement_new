@@ -193,7 +193,7 @@ def build_module(hub: AudioHub, log=print) -> types.ModuleType:
       main.py            → InputStream, RawOutputStream
       core/audio_devices → InputStream, RawOutputStream, query_devices,
                            query_hostapis
-      core/tts.py        → play, wait, stop   (not on main.py's import path)
+      a plugin           → play, wait, stop   (local playback; nothing here plays)
     """
 
     class PortAudioError(Exception):
@@ -288,7 +288,7 @@ def build_module(hub: AudioHub, log=print) -> types.ModuleType:
     _warned = {"play": False}
 
     def play(*_a, **_kw):
-        # core/tts.py only — never reached from main.py's Live path. Logged
+        # A plugin playing a sound itself — main.py never does. Logged
         # once rather than silently swallowed, so a plugin that tries to speak
         # locally is diagnosable from /status instead of just being inaudible.
         if not _warned["play"]:

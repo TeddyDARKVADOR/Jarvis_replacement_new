@@ -33,7 +33,7 @@ cryptography
 
 # ── RECOMMENDED: cheap, and each one turns an action back on ─────────────────
 #
-# requests       core/llm_client (local LLM backends), several actions
+# requests       several actions, the HUD's settings calls
 # ddgs           actions/web_search — the single most useful action on a server
 requests
 ddgs

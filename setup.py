@@ -1,5 +1,5 @@
 """
-Teddy-foundation — one-time setup.
+JARVIS — one-time setup of a desktop.
 
 Installs the Python dependencies for THIS operating system only: the OS-specific
 packages in requirements.txt carry `sys_platform` markers, so a macOS or Linux
@@ -7,7 +7,8 @@ user never pulls Windows-only libraries (and vice-versa). Then it fetches the
 Playwright browsers needed for web automation (current-OS builds only).
 
 The optional local wake word ("Hey Jarvis") is NOT installed here — it's a
-one-click, opt-in download from ⚙ → WAKE WORD inside the app.
+one-click, opt-in download from the HUD's Paramètres → Audio.
+The Oracle server is set up by deployment/install.sh, not by this file.
 """
 import platform
 import subprocess
@@ -23,7 +24,7 @@ def _run(label: str, args: list[str]) -> None:
 
 
 def main() -> None:
-    print(f"⚙  Teddy-foundation setup — detected OS: {OS or 'unknown'}")
+    print(f"⚙  JARVIS setup — detected OS: {OS or 'unknown'}")
 
     # requirements.txt filters OS-specific extras by itself via pip markers.
     _run("Installing Python dependencies (OS-specific extras auto-filtered)…",
@@ -63,9 +64,12 @@ def main() -> None:
         )
 
     print("\n✅ Setup complete!")
-    print("   1) Launch it:  python main.py")
-    print("   2) Paste your free Gemini API key when the setup screen appears.")
-    print("   3) (Optional) Enable 'Hey Jarvis' from ⚙ → WAKE WORD.")
+    print("   JARVIS on Oracle :  python main.py")
+    print("       → the HUD opens on Paramètres: server address + access token")
+    print("         (token: `python -m server.run_headless --pairing` on Oracle)")
+    print("   JARVIS on this PC:  python main.py --local")
+    print("       → put your Gemini key in config/api_keys.json (\"gemini_api_key\")")
+    print("   (Optional) 'Hey Jarvis': HUD → Paramètres → Audio.")
 
 
 if __name__ == "__main__":

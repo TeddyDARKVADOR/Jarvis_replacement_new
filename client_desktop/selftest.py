@@ -314,8 +314,9 @@ def run() -> bool:  # noqa: C901
     # would be the alternative, and two divergent copies of `computer_control`
     # is a far worse outcome than one extra import.
     #
-    # The list stays closed on purpose. `core.llm_client` or `core.tts` would be
-    # a second brain arriving by the back door, and this is what refuses it.
+    # The list stays closed on purpose. Anything else from core/ - a model
+    # client, a speech engine - would be a second brain arriving by the back
+    # door, and this is what refuses it.
     ALLOWED_CORE = {"core.wake_word", "core.action_loader"}
     report.check(
         "15 only wake_word and action_loader are reached into core/",
