@@ -8,6 +8,25 @@ A real-time voice AI that can hear, see, understand, and control your computer �
 
 ---
 
+## 🖥️ Sur ce PC : lancer JARVIS
+
+Le cerveau (MARK LIII) tourne sur **Oracle**. Sur l'ordinateur, `main.py` ouvre le
+**HUD** qui s'y connecte :
+
+```
+python main.py            le HUD plein écran, relié à JARVIS sur Oracle
+python main.py --mini     démarre en orbe dans le coin de l'écran
+python main.py --local    JARVIS entièrement sur ce PC (clé Gemini locale), même HUD
+python main.py --classic  l'ancienne fenêtre, inchangée
+```
+
+Premier lancement : la page **Paramètres** (⚙, ou Ctrl+,) s'ouvre seule. Saisissez
+l'adresse Tailscale du serveur et le **jeton d'accès** (généré sur Oracle avec
+`python -m server.run_headless --pairing`), puis **Tester** et **Enregistrer**.
+Détails : [client_desktop/hud/README.md](client_desktop/hud/README.md).
+
+---
+
 ## ✨ Overview
 
 **Teddy-foundation is the hands-free & scalable release.** Say **"Hey Jarvis"** and it wakes; stay quiet and it slips back to sleep on its own — while asleep, your microphone never leaves the machine, so an off-hand _"I'll be right there"_ to someone in the room no longer sets it off. Under the hood it now runs on the faster **Gemini 3.1 Flash Live** engine, and the moment you ask for something that takes a beat — analysing a file, searching the web — it answers instantly _("On it — going through that now…")_ so you never wonder whether it heard you.

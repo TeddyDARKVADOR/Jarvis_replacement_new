@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S — HUD</title>
+<!--
+  The HUD page. Everything it shows comes from the snapshot Python pushes
+  (`HUD.tick`), and everything it does is a request sent back over the
+  QWebChannel (`hud.*`). It owns no state of its own beyond what is on screen.
+
+  Opened in an ordinary browser (no Qt), it runs a simulator instead — that is
+  how the visual is tuned without a server.
+-->
+<link rel="stylesheet" href="css/hud.css">
+</head>
+<body class="booting">
+
+<!-- resize handles for the frameless window -->
+<div class="edge" data-e="t"></div><div class="edge" data-e="b"></div>
+<div class="edge" data-e="l"></div><div class="edge" data-e="r"></div>
+<div class="edge" data-e="lt"></div><div class="edge" data-e="rt"></div>
+<div class="edge" data-e="lb"></div><div class="edge" data-e="rb"></div>
+
+<canvas id="bg"></canvas>
+<div id="vignette"></div>
+<div id="scanlines"></div>
+
+<header id="top" class="assemble">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+      <circle cx="20" cy="20" r="17" class="l1"/>
+      <circle cx="20" cy="20" r="11" class="l2"/>
+      <circle cx="20" cy="20" r="4" class="l3"/>
+    </svg>
+    <div>
+      <div class="name" data-decipher>J.A.R.V.I.S</div>
+      <div class="sub"><span>MARK LIII</span> · <span id="hostname">TERMINAL</span></div>
+    </div>
+  </div>
+
+  <div id="status" class="chip" title="État de la liaison avec MARK LIII">
+    <span class="dot"></span><span id="status-text">INITIALISATION</span><span id="status-aux"></span>
+  </div>
+
+  <div class="right">
+    <div class="clock">
+      <div id="clock-time">--:--:--</div>
+      <div id="clock-date"></div>
+    </div>
+    <nav class="tools">
+      <button id="btn-sound" class="ico" title="Sons de l'interface"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="on" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/><path class="off" d="M16 9l5 6M21 9l-5 6"/></svg></button>
+      <button id="btn-face" class="ico" title="Visage 3D / Réacteur"><svg viewBox="0 0 24 24"><circle cx="12" cy="10" r="6"/><path d="M5 21c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg></button>
+      <button id="btn-palette" class="ico" title="Couleur du HUD"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+      <button id="btn-help" class="ico" title="Aide et raccourcis (F1)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5V14M12 17.5v.01"/></svg></button>
+      <button id="btn-settings" class="ico" title="Paramètres : connexion, jeton, audio… (Ctrl+,)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
+      <span class="sep"></span>
+      <button id="btn-mini" class="ico" title="Mode orbe (Ctrl+M)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="16" cy="14" r="2.5"/></svg></button>
+      <button id="btn-min" class="ico win" title="Réduire"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+      <button id="btn-max" class="ico win" title="Agrandir / restaurer"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14"/></svg></button>
+      <button id="btn-close" class="ico win close" title="Masquer dans la barre des tâches (JARVIS reste actif)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </nav>
+  </div>
+</header>
+
+<main id="stage">
+  <aside id="left" class="col">
+    <section class="panel assemble" id="p-sys">
+      <h2><span class="idx">01</span><span data-decipher>SYSTÈME</span><span class="aux" id="sys-host"></span></h2>
+      <div class="kpi">
+        <div class="kpi-main"><span class="lbl">PROCESSEUR</span><span class="big"><span class="val" id="cpu-val">--</span><span class="unit">%</span></span></div>
+        <canvas class="spark" id="cpu-spark"></canvas>
+      </div>
+      <div class="bar-row"><span class="lbl">MÉMOIRE</span><div class="bar"><i id="ram-bar"></i></div><span class="num" id="ram-val">--</span></div>
+      <div class="bar-row"><span class="lbl">DISQUE</span><div class="bar"><i id="disk-bar"></i></div><span class="num" id="disk-val">--</span></div>
+      <div class="pair">
+        <div><span class="lbl">RÉSEAU ↓</span><span class="num" id="net-down">--</span></div>
+        <div><span class="lbl">RÉSEAU ↑</span><span class="num" id="net-up">--</span></div>
+      </div>
+      <div class="pair">
+        <div><span class="lbl">EN SERVICE</span><span class="num" id="uptime">--</span></div>
+        <div id="batt-wrap" hidden><span class="lbl">BATTERIE</span><span class="num" id="battery">--</span></div>
+      </div>
+    </section>
+
+    <section class="panel assemble" id="p-link">
+      <h2><span class="idx">02</span><span data-decipher>LIAISON</span><span class="aux">MARK LIII</span></h2>
+      <div class="link-state"><span class="dot"></span><span id="link-text">—</span></div>
+      <dl class="facts">
+        <dt>SERVEUR</dt><dd id="srv-host">—</dd>
+        <dt>APPAREIL</dt><dd id="srv-device">—</dd>
+        <dt>VOIX</dt><dd id="srv-rate">—</dd>
+        <dt>REÇU</dt><dd id="c-recv">—</dd>
+        <dt>JOUÉ</dt><dd id="c-played">—</dd>
+        <dt>ENVOYÉ</dt><dd id="c-sent">—</dd>
+        <dt>PERTES</dt><dd id="c-drop">—</dd>
+      </dl>
+      <canvas class="spark" id="link-spark"></canvas>
+    </section>
+
+    <section class="panel assemble" id="p-audio">
+      <h2><span class="idx">03</span><span data-decipher>AUDIO</span><span class="aux" id="gate-aux">MICRO FERMÉ</span></h2>
+      <div class="meter-row"><span class="lbl">MICRO</span><div class="meter" id="m-mic"></div></div>
+      <div class="meter-row"><span class="lbl">VOIX</span><div class="meter" id="m-voice"></div></div>
+      <div class="bar-row"><span class="lbl" id="wake-name">ÉVEIL</span><div class="bar thin"><i id="wake-bar"></i></div><span class="num" id="wake-val">—</span></div>
+    </section>
+  </aside>
+
+  <section id="center">
+    <div id="reactor" title="Cliquer : parler / interrompre">
+      <canvas id="r3d"></canvas>
+      <iframe id="face" title="Visage de JARVIS" hidden></iframe>
+      <canvas id="rings"></canvas>
+      <div id="state-word"><span id="state-label">INITIALISATION</span><span id="state-hint"></span></div>
+    </div>
+    <div id="caption" class="assemble">
+      <div class="who" id="caption-who">JARVIS</div>
+      <div id="caption-text"></div>
+    </div>
+    <canvas id="scope"></canvas>
+  </section>
+
+  <aside id="right" class="col">
+    <section class="panel assemble grow" id="p-chat">
+      <h2><span class="idx">04</span><span data-decipher>CONVERSATION</span><span class="aux" id="chat-count"></span></h2>
+      <div id="chat" class="scroll"></div>
+    </section>
+    <section class="panel assemble" id="p-log">
+      <h2><span class="idx">05</span><span data-decipher>JOURNAL</span><button class="mini-btn" id="log-toggle" title="Afficher / masquer">▾</button></h2>
+      <div id="log" class="scroll mono"></div>
+    </section>
+  </aside>
+</main>
+
+<footer id="dock" class="assemble">
+  <div id="chips"></div>
+  <div class="dock-row">
+    <button id="mic" title="Micro (Ctrl+Espace)" aria-pressed="false">
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <span class="ring"></span>
+    </button>
+    <div class="cmd">
+      <span class="prompt">›</span>
+      <input id="cmd" autocomplete="off" spellcheck="false" placeholder="Parlez, ou tapez une commande pour JARVIS…">
+      <kbd>Entrée</kbd>
+    </div>
+    <button id="send" class="act" title="Envoyer (Entrée)">ENVOYER</button>
+    <button id="stop" class="act danger" title="Interrompre JARVIS (Échap)" hidden>■ INTERROMPRE</button>
+  </div>
+</footer>
+
+<!-- mini mode controls -->
+<div id="mini-ctl">
+  <button id="mini-expand" class="ico" title="Ouvrir le HUD"><svg viewBox="0 0 24 24"><path d="M4 10V4h6M20 14v6h-6M4 4l6 6M20 20l-6-6"/></svg></button>
+  <button id="mini-mic" class="ico" title="Micro"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+</div>
+
+<!-- confirmation of an irreversible action -->
+<div id="confirm" class="overlay" hidden>
+  <div class="modal hazard">
+    <div class="hz-top">⚠ CONFIRMATION REQUISE</div>
+    <div class="cf-body">
+      <svg class="countdown" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="fill" id="cf-arc"/><text x="50" y="57" id="cf-secs">--</text></svg>
+      <div>
+        <div class="cf-title" id="cf-title"></div>
+        <div class="cf-detail" id="cf-detail"></div>
+        <div class="cf-note">JARVIS attend votre décision. Rien ne sera exécuté sans votre accord.</div>
+      </div>
+    </div>
+    <div class="cf-actions">
+      <button id="cf-no" class="act">ANNULER <kbd>Échap</kbd></button>
+      <button id="cf-yes" class="act danger">CONFIRMER</button>
+    </div>
+  </div>
+</div>
+
+<!-- help -->
+<div id="help" class="overlay" hidden>
+  <div class="modal">
+    <h3>COMMENT PARLER À JARVIS</h3>
+    <div class="help-grid">
+      <div class="how">
+        <p><b>À la voix</b> — dites <q>Hey Jarvis</q>, puis parlez. Le micro se referme seul après un silence.</p>
+        <p><b>Au clic</b> — cliquez sur le noyau ou sur le bouton micro pour ouvrir le micro ; recliquez pour le fermer.</p>
+        <p><b>Au clavier</b> — tapez une commande en bas et appuyez sur Entrée.</p>
+        <p><b>Interrompre</b> — cliquez sur le noyau pendant qu'il parle, ou Échap.</p>
+        <p class="legend">
+          <span style="--c:var(--c-idle)">PRÊT</span><span style="--c:var(--c-listen)">ÉCOUTE</span><span style="--c:var(--c-think)">RÉFLEXION</span><span style="--c:var(--c-speak)">RÉPONSE</span><span style="--c:var(--c-warn)">CONNEXION</span><span style="--c:var(--c-err)">ERREUR</span>
+        </p>
+      </div>
+      <dl class="keys">
+        <dt><kbd>Ctrl</kbd>+<kbd>Espace</kbd></dt><dd>Micro ouvert / fermé</dd>
+        <dt><kbd>Échap</kbd></dt><dd>Interrompre · fermer</dd>
+        <dt><kbd>/</kbd> ou <kbd>Ctrl</kbd>+<kbd>K</kbd></dt><dd>Taper une commande</dd>
+        <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>Historique des commandes</dd>
+        <dt><kbd>Ctrl</kbd>+<kbd>M</kbd></dt><dd>Mode orbe (coin d'écran)</dd>
+        <dt><kbd>F11</kbd></dt><dd>Plein écran</dd>
+        <dt><kbd>Ctrl</kbd>+<kbd>,</kbd></dt><dd>Réglages / appairage</dd>
+        <dt><kbd>F1</kbd></dt><dd>Cette aide</dd>
+        <dt><kbd>Ctrl</kbd>+<kbd>Maj</kbd>+<kbd>F</kbd></dt><dd>Compteur FPS / qualité</dd>
+      </dl>
+    </div>
+    <div class="cf-actions"><button class="act" data-close>COMPRIS</button></div>
+  </div>
+</div>
+
+<!-- settings -->
+<div id="settings" class="overlay" hidden>
+  <div class="modal settings">
+    <nav class="set-nav">
+      <div class="set-brand">PARAMÈTRES</div>
+      <button data-tab="connexion" class="sel"><span>01</span>Connexion</button>
+      <button data-tab="audio"><span>02</span>Audio</button>
+      <button data-tab="demarrage"><span>03</span>Démarrage</button>
+      <button data-tab="interface"><span>04</span>Interface</button>
+      <button data-tab="avance"><span>05</span>Avancé</button>
+      <div class="set-link"><span class="dot"></span><span id="set-link-text">—</span></div>
+    </nav>
+
+    <div class="set-body">
+      <!-- 01 connexion -->
+      <section class="set-tab" data-tab="connexion">
+        <h3>JARVIS EN LIGNE</h3>
+        <div id="set-local" class="set-note accent" hidden>
+          <b>Mode local</b> — JARVIS tourne en ce moment sur ce PC, avec la clé Gemini de <code>config/api_keys.json</code>.
+          Les réglages ci-dessous servent quand vous relancez <code>python main.py</code> avec le serveur Oracle.
+        </div>
+        <div id="set-welcome" class="set-note accent" hidden>
+          Bienvenue. Ce PC n'est pas encore relié à JARVIS. Saisissez l'adresse de votre serveur Oracle et le jeton d'accès, puis <b>Tester</b> et <b>Enregistrer</b>.
+        </div>
+        <label class="field"><span>Adresse du serveur</span>
+          <input id="s-host" placeholder="jarvis-vps.tailnet-xxxx.ts.net" spellcheck="false">
+          <small>Le nom MagicDNS Tailscale de la machine Oracle. Plus fiable qu'une adresse 100.x.y.z.</small></label>
+        <div class="row2">
+          <label class="field"><span>Port</span><input id="s-port" type="number" min="1" max="65535" value="8000"></label>
+          <label class="toggle"><input id="s-tls" type="checkbox"><i></i><span>TLS (https / wss)<small>Seulement si le serveur a des certificats. Inutile via Tailscale.</small></span></label>
+        </div>
+        <label class="field"><span>Jeton d'accès</span>
+          <div class="secret"><input id="s-token" type="password" spellcheck="false" autocomplete="off" placeholder="collez le jeton ici">
+            <button class="mini-btn" id="s-token-eye" title="Afficher / masquer">AFFICHER</button>
+            <button class="mini-btn" id="s-token-paste" title="Coller depuis le presse-papiers">COLLER</button></div>
+          <small>Généré sur Oracle avec : <code id="s-pair-cmd">python -m server.run_headless --pairing</code> <button class="mini-btn" id="s-pair-copy">COPIER</button></small></label>
+        <label class="field"><span>Nom de cet appareil</span><input id="s-device" spellcheck="false">
+          <small>Ce que JARVIS voit quand il choisit où exécuter une action (« sur le PC du bureau »).</small></label>
+        <div class="test-row">
+          <button class="act" id="s-test">TESTER LA CONNEXION</button>
+          <div id="s-test-result" class="test-result"></div>
+        </div>
+      </section>
+
+      <!-- 02 audio -->
+      <section class="set-tab" data-tab="audio" hidden>
+        <h3>AUDIO</h3>
+        <label class="field"><span>Microphone</span><select id="s-input"></select></label>
+        <label class="field"><span>Haut-parleurs (voix de JARVIS)</span><select id="s-output"></select></label>
+        <label class="toggle"><input id="s-wake" type="checkbox"><i></i><span>Mot d'éveil « Hey Jarvis »<small id="s-wake-note">Détection locale : rien ne quitte ce PC avant le mot d'éveil.</small></span></label>
+        <div id="s-wake-install" class="set-note" hidden>Le moteur de mot d'éveil n'est pas installé.
+          <button class="mini-btn" id="s-wake-install-btn">INSTALLER</button></div>
+        <label class="field"><span>Sensibilité du mot d'éveil <b id="s-thresh-val"></b></span>
+          <input id="s-thresh" type="range" min="0.2" max="0.95" step="0.05">
+          <small>Plus bas = se réveille plus facilement (et plus souvent à tort).</small></label>
+        <label class="field"><span>Le micro reste ouvert <b id="s-gate-val"></b></span>
+          <input id="s-gate" type="range" min="5" max="120" step="5">
+          <small>Après le mot d'éveil ou la dernière parole, avant de se refermer seul.</small></label>
+        <label class="toggle"><input id="s-micstart" type="checkbox"><i></i><span>Micro ouvert dès le démarrage</span></label>
+      </section>
+
+      <!-- 03 démarrage -->
+      <section class="set-tab" data-tab="demarrage" hidden>
+        <h3>DÉMARRAGE</h3>
+        <label class="toggle"><input id="s-autostart" type="checkbox"><i></i><span>Lancer JARVIS avec Windows<small>Ouvre ce HUD à l'ouverture de session (remplace l'ancien panneau).</small></span></label>
+        <label class="toggle"><input id="s-collapsed" type="checkbox"><i></i><span>Démarrer en mode orbe<small>Petit orbe dans le coin de l'écran ; double-clic pour ouvrir le HUD.</small></span></label>
+        <label class="toggle"><input id="s-maximized" type="checkbox"><i></i><span>Ouvrir en plein écran</span></label>
+        <label class="toggle"><input id="s-notif" type="checkbox"><i></i><span>Notifications Windows<small>Réponses de JARVIS quand le HUD est caché, confirmations, erreurs.</small></span></label>
+      </section>
+
+      <!-- 04 interface -->
+      <section class="set-tab" data-tab="interface" hidden>
+        <h3>INTERFACE</h3>
+        <div class="field"><span>Couleur</span><div class="swatches" id="s-swatches"></div></div>
+        <label class="toggle"><input id="s-sound" type="checkbox"><i></i><span>Sons de l'interface</span></label>
+        <label class="field"><span>Volume des sons</span><input id="s-volume" type="range" min="0" max="1" step="0.05"></label>
+        <label class="toggle" id="s-face-row"><input id="s-face" type="checkbox"><i></i><span>Visage 3D au centre<small>À la place du noyau d'énergie.</small></span></label>
+        <div class="field"><span>Performances</span><div id="s-quality" class="quality-grid"></div>
+          <small id="s-quality-note"></small></div>
+      </section>
+
+      <!-- 05 avancé -->
+      <section class="set-tab" data-tab="avance" hidden>
+        <h3>AVANCÉ</h3>
+        <dl class="facts set-facts">
+          <dt>IDENTIFIANT</dt><dd id="s-devid">—</dd>
+          <dt>FICHIER</dt><dd id="s-path">—</dd>
+        </dl>
+        <div class="set-note">Le jeton est stocké dans ce fichier, dans votre profil Windows, jamais dans le dossier du projet.</div>
+        <button class="act" id="s-debug">FENÊTRE DÉVELOPPEUR</button>
+        <div class="set-note">Compteurs réseau, journal brut et placement du panneau classique.</div>
+      </section>
+    </div>
+
+    <footer class="set-foot">
+      <div id="s-status"></div>
+      <button class="act" id="s-cancel">FERMER <kbd>Échap</kbd></button>
+      <button class="act primary" id="s-save">ENREGISTRER</button>
+    </footer>
+  </div>
+</div>
+
+<!-- accent colour -->
+<div id="palette" class="popover" hidden>
+  <div class="pop-title">COULEUR DU HUD</div>
+  <div class="swatches"></div>
+  <label class="custom">Personnalisée <input type="color" id="accent-input"></label>
+  <div class="pop-title perf-title">PERFORMANCES</div>
+  <div id="quality"></div>
+  <div id="quality-note"></div>
+</div>
+
+<!-- Ctrl+Shift+F : what the governor is doing -->
+<div id="perf" hidden></div>
+
+<div id="toasts"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

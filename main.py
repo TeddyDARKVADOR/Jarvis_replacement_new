@@ -1,3 +1,21 @@
+# ── This PC is a terminal now ────────────────────────────────────────────────
+# MARK LIII runs on Oracle (`python -m server.run_headless`, which *imports*
+# this file — so this block never runs there). Launched directly on a desktop,
+# main.py opens the HUD that talks to Oracle, before any heavy import below.
+#   python main.py --local     the brain on this PC, with the same HUD
+#   python main.py --classic   the original window, unchanged
+if __name__ == "__main__":
+    import sys as _boot_sys
+    if "--classic" in _boot_sys.argv[1:]:
+        _boot_sys.argv.remove("--classic")
+    elif "--local" in _boot_sys.argv[1:]:
+        _boot_sys.argv.remove("--local")
+        from local_hud import main as _local_main
+        raise SystemExit(_local_main(_boot_sys.argv[1:]))
+    else:
+        from client_desktop.hud.__main__ import main as _hud_main
+        raise SystemExit(_hud_main(_boot_sys.argv[1:]))
+
 import platform as _platform
 import subprocess as _subprocess
 
