@@ -417,7 +417,10 @@ class HudWindow(QWidget):
                 manifest = json.dumps(json.loads(raw), separators=(",", ":"))
                 m = QWebEngineScript()
                 m.setName("jarvis-manifest")
-                m.setSourceCode(f"window.JARVIS_MANIFEST = {manifest};")
+                from .face import DEBUG as face_debug
+                # In diagnostic mode the face also records its session.
+                record = "window.JARVIS_RECORD = true;" if face_debug else ""
+                m.setSourceCode(f"window.JARVIS_MANIFEST = {manifest};{record}")
                 m.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
                 m.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
                 m.setRunsOnSubFrames(True)

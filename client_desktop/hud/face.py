@@ -17,10 +17,29 @@ round trip; what the server sends, when it sends anything, is the *intent*.
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Callable
 
 from ..state import LinkState, Snapshot
+
+#: `JARVIS_AVATAR_DEBUG=1`: every decision pushed to the face is written to the
+#: console with its causal trace (WIRE, STATE, INTENT, AFFECT…), and the face
+#: page records the session (`window.JARVIS.recording()`, 20 min at most).
+#: Silent by default — a line per decision is noise in daily use, and precious
+#: the day a face surprises. What the body then actually PLAYED (the RENDER
+#: line) is read in the lab, where the page is not a cross-origin frame.
+DEBUG = os.environ.get("JARVIS_AVATAR_DEBUG", "").strip() not in ("", "0", "false")
+
+
+def _log(line: str) -> None:
+    """One timestamped line, forced to ASCII: the Windows console is cp1252."""
+    try:
+        print(f"[avatar] {time.strftime('%H:%M:%S')} "
+              + line.encode("ascii", "replace").decode("ascii"), flush=True)
+    except Exception:
+        pass
+
 
 # ── timing and decisions, shared with the phone's renderer ──────────────────
 # The same numbers the phone's renderer is tuned against.
@@ -204,6 +223,9 @@ class FaceDriver:
         directive, age = _envelope(event)
         if directive is None:
             return
+        if DEBUG:
+            _log(f"WIRE = {json.dumps(directive, ensure_ascii=False)[:120]} "
+                 f"(decide il y a {age * 1000:.0f} ms)")
         try:
             from presence import parse
             parsed = parse(json.dumps(directive))
@@ -221,3 +243,10 @@ class FaceDriver:
         self._post({"type": "performance", "payload": data})
         self._last_payload = data
         self._last_push_at = time.monotonic()
+        if DEBUG:
+            try:
+                from presence.director import trace
+                for line in trace(performance):
+                    _log(line)
+            except Exception as exc:
+                _log(f"TRACE indisponible ({exc})")
