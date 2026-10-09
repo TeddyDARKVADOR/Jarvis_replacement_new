@@ -61,8 +61,8 @@ def _fallback_icon(colour) -> QIcon:  # noqa: ANN001
 class JarvisTray(QSystemTrayIcon):
     """The menu, the icon, and every notification the client raises."""
 
-    show_panel = pyqtSignal()
-    toggle_panel = pyqtSignal()
+    show_hud = pyqtSignal()
+    toggle_hud = pyqtSignal()
     debug_requested = pyqtSignal()
     mic_toggled = pyqtSignal(bool)
     reconnect_requested = pyqtSignal()
@@ -80,7 +80,7 @@ class JarvisTray(QSystemTrayIcon):
 
         menu = QMenu()
         self._show_action = QAction("Afficher / masquer", menu)
-        self._show_action.triggered.connect(self.toggle_panel.emit)
+        self._show_action.triggered.connect(self.toggle_hud.emit)
         menu.addAction(self._show_action)
 
         self._mic_action = QAction("Ouvrir le micro", menu)
@@ -112,7 +112,7 @@ class JarvisTray(QSystemTrayIcon):
             QSystemTrayIcon.ActivationReason.Trigger,
             QSystemTrayIcon.ActivationReason.DoubleClick,
         ):
-            self.toggle_panel.emit()
+            self.toggle_hud.emit()
 
     def apply(self, snapshot: Snapshot) -> None:
         state = snapshot.display_state

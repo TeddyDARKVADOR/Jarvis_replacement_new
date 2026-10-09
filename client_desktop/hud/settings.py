@@ -12,7 +12,6 @@ Kept free of Qt so the selftest can exercise validation without a window.
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 from ..config import Settings, settings_path
 
@@ -192,53 +191,33 @@ def _tailscale_app_running() -> bool:
 
 # ── starting with Windows ────────────────────────────────────────────────────
 #
-# Its own Run value, beside the panel's (`autostart.VALUE_NAME`) rather than
-# rewriting it: the panel's entry belongs to the panel. Enabling the HUD
-# removes the panel's entry, so that Windows does not start both and leave the
-# single-instance mutex to pick one at random.
+# One Run entry, `client_desktop/autostart.py`'s, whose launcher opens the HUD.
+# A previous build of the HUD registered a second value, "JarvisHUD"; it is
+# removed whenever start-up is changed, so Windows never launches JARVIS twice
+# and leaves the single-instance mutex to pick one at random.
 
-RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-VALUE_NAME = "JarvisHUD"
+_LEGACY_VALUE = "JarvisHUD"
 
 
-def _command() -> str:
-    from ..autostart import pythonw
-
-    launcher = Path(__file__).resolve().parent / "launch_hud.pyw"
-    return f'"{pythonw()}" "{launcher}"'
+def _drop_legacy_entry() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import winreg
+        from ..autostart import RUN_KEY
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, _LEGACY_VALUE)
+    except OSError:
+        pass
 
 
 def autostart_enabled() -> bool:
-    if sys.platform != "win32":
-        return False
-    try:
-        import winreg
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-            value, _ = winreg.QueryValueEx(key, VALUE_NAME)
-        return bool(value)
-    except OSError:
-        return False
+    from .. import autostart
+    return autostart.is_enabled()
 
 
 def set_autostart(enabled: bool) -> tuple[bool, str]:
-    if sys.platform != "win32":
-        return False, "uniquement sous Windows"
-    import winreg
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
-            if enabled:
-                winreg.SetValueEx(key, VALUE_NAME, 0, winreg.REG_SZ, _command())
-            else:
-                try:
-                    winreg.DeleteValue(key, VALUE_NAME)
-                except FileNotFoundError:
-                    pass
-    except OSError as exc:
-        return False, str(exc)
-    if enabled:
-        from .. import autostart
-        if autostart.is_enabled():
-            autostart.disable()
-            return True, "HUD au démarrage (l'ancien panneau n'y est plus)"
-        return True, "HUD au démarrage"
-    return True, "démarrage automatique désactivé"
+    from .. import autostart
+    _drop_legacy_entry()
+    ok, detail = autostart.enable() if enabled else autostart.disable()
+    return ok, ("JARVIS démarre avec Windows" if enabled else "démarrage automatique désactivé") if ok else detail

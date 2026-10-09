@@ -38,11 +38,60 @@ avatar_scheme.register()
 from PyQt6.QtCore import QTimer  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
-from client_desktop.ui.avatar_view import JarvisAvatarWidget  # noqa: E402
+from PyQt6.QtCore import QUrl  # noqa: E402
+from PyQt6.QtWebEngineCore import QWebEngineScript  # noqa: E402
+from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
+
+from client_desktop.hud.face import FaceDriver  # noqa: E402
 from presence import Affect  # noqa: E402
 
 app = QApplication(sys.argv)
-widget = JarvisAvatarWidget()
+
+
+class _FaceHost:
+    """The face page on its own, driven by the HUD's real FaceDriver.
+
+    The HUD hosts the page in an iframe and relays the driver's messages with
+    `postMessage`; here the page is top-level and posts them to itself, which
+    `bridge.js` receives through the very same listener.
+    """
+
+    def __init__(self) -> None:
+        self._view = QWebEngineView()
+        page = self._view.page()
+        avatar_scheme.install(page.profile())
+        manifest = json.dumps(json.loads((BASE / "avatar" / "manifest.json").read_text(encoding="utf-8")))
+        script = QWebEngineScript()
+        script.setSourceCode(f"window.JARVIS_MANIFEST = {manifest};")
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+        script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        page.scripts().insert(script)
+        self._driver = FaceDriver(
+            lambda m: page.runJavaScript(f"window.postMessage({json.dumps(m)}, '*')"))
+        self._driver.enable(True)
+        self._driver.frame_ready()
+        self._director = self._driver._director
+        self._view.setUrl(QUrl(avatar_scheme.INDEX_URL))
+
+    @property
+    def _last_state(self) -> str:
+        return self._driver._last_state
+
+    @_last_state.setter
+    def _last_state(self, value: str) -> None:
+        self._driver._last_state = value
+
+    def _push(self, performance) -> None:  # noqa: ANN001
+        self._driver._push(performance)
+
+    def resize(self, w: int, h: int) -> None:
+        self._view.resize(w, h)
+
+    def show(self) -> None:
+        self._view.show()
+
+
+widget = _FaceHost()
 widget.resize(360, 420)
 widget.show()
 

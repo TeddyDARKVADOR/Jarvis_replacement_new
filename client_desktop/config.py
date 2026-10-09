@@ -22,7 +22,6 @@ import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from .placement import Anchor, PlacementConfig, PlacementMode, Rect
 from .protocol import ServerEndpoint
 
 APP_DIR_NAME = "JarvisDesktop"
@@ -77,46 +76,21 @@ class Settings:
     #: microphone that opened itself at every login.
     mic_open_at_start: bool = False
 
-    # ── the panel ────────────────────────────────────────────────────────────
-    #: Fraction of the reference width, for a LEFT/RIGHT anchor. 0.20 is the
-    #: brief; `placement` clamps it to a readable pixel range, because 20 % of a
-    #: 1366-wide laptop is not the same object as 20 % of an ultrawide.
-    width_fraction: float = 0.20
-    #: Fraction of the reference height, for a TOP/BOTTOM anchor — where the
-    #: panel becomes a wide strip rather than a tall column.
-    height_fraction: float = 0.28
-
-    # ── where it goes ────────────────────────────────────────────────────────
-    #: "screen" | "window" | "follow" | "free". See `placement.PlacementMode`.
-    placement_mode: str = "screen"
-    #: "left" | "right" | "top" | "bottom".
-    anchor: str = "right"
-    margin: int = 8
-    snap_enabled: bool = True
-    snap_distance: int = 16
-    #: Topmost is a *visibility* setting and nothing else — it never implies
-    #: activation. See the note in `ui/panel.py`.
-    always_on_top: bool = True
-
-    #: The FREE position, remembered. `free_screen` is `QScreen.name()`, kept so
-    #: a position can be recognised as belonging to a monitor that is no longer
-    #: attached rather than silently restored into empty space.
-    free_x: int | None = None
-    free_y: int | None = None
-    free_w: int | None = None
-    free_h: int | None = None
-    free_screen: str = ""
-
-    # ── the body ─────────────────────────────────────────────────────────────
-    #: Draw JARVIS as a 3D avatar (`avatar/`) instead of the 2D core.
-    #:
-    #: Opt-in, and it stays opt-in. The avatar is a QWebEngineView, which is a
-    #: Chromium process and a GPU context for as long as the workstation is on.
-    #: That is a fair price for a face and a poor one for a machine already
-    #: compiling something — so the 2 KB core remains the default, and this is a
-    #: setting rather than an upgrade. Ignored, with no error, on an install
-    #: without PyQt6-WebEngine: see `ui/avatar_view.AVAILABLE`.
+    # ── the HUD ──────────────────────────────────────────────────────────────
+    #: The user's colour. Everything decorative is drawn in it; the colours that
+    #: say what JARVIS is doing (listening, thinking, error) stay fixed.
+    accent: str = "#7DD3FC"
+    #: Draw JARVIS's 3D face (`avatar/`) inside the reactor instead of the core.
     avatar_enabled: bool = False
+    sound: bool = True
+    sound_volume: float = 0.35
+    #: Open maximised; otherwise at `window_geometry`, [x, y, w, h] logical px.
+    maximized: bool = True
+    window_geometry: list | None = None
+    #: "auto", or a tier forced by hand, 0 (ULTRA) .. 4 (MINIMAL).
+    quality: object = "auto"
+    #: The tier the performance governor settled on last time on this PC.
+    quality_tier: int | None = None
 
     start_collapsed: bool = False
     notifications: bool = True
@@ -129,42 +103,6 @@ class Settings:
     @property
     def endpoint(self) -> ServerEndpoint:
         return ServerEndpoint(host=self.host, port=self.port, use_tls=self.use_tls)
-
-    @property
-    def placement(self) -> PlacementConfig:
-        """The stored strings, turned into the enums the arithmetic uses.
-
-        Unknown values fall back rather than raise: a settings file hand-edited
-        to `"anchor": "diagonal"` must still produce a client that starts.
-        """
-        try:
-            mode = PlacementMode(self.placement_mode)
-        except ValueError:
-            mode = PlacementMode.SCREEN
-        try:
-            anchor = Anchor(self.anchor)
-        except ValueError:
-            anchor = Anchor.RIGHT
-        return PlacementConfig(
-            mode=mode,
-            anchor=anchor,
-            margin=max(0, int(self.margin)),
-            width_fraction=float(self.width_fraction),
-            height_fraction=float(self.height_fraction),
-            snap_enabled=bool(self.snap_enabled),
-            snap_distance=max(0, int(self.snap_distance)),
-        )
-
-    @property
-    def free_rect(self) -> Rect | None:
-        if None in (self.free_x, self.free_y, self.free_w, self.free_h):
-            return None
-        return Rect(int(self.free_x), int(self.free_y), int(self.free_w), int(self.free_h))  # type: ignore[arg-type]
-
-    def remember_free(self, rect: Rect, screen_name: str = "") -> None:
-        self.free_x, self.free_y = rect.x, rect.y
-        self.free_w, self.free_h = rect.w, rect.h
-        self.free_screen = screen_name
 
     @property
     def is_configured(self) -> bool:
@@ -206,12 +144,20 @@ def load() -> Settings:
     except Exception:
         data = {}
 
-    # `dock` was the only placement setting before there were four modes.
-    # Migrated rather than dropped: the filter below discards unknown keys, so
-    # without this an existing user's left-hand panel would silently jump to
-    # the right on the first run of the new version.
-    if "dock" in data and "anchor" not in data:
-        data["anchor"] = data["dock"]
+    # The HUD's look used to live in a second file, hud.json. Folded in once:
+    # one machine, one settings file, whichever mode JARVIS runs in.
+    legacy = path.with_name("hud.json")
+    if legacy.is_file():
+        try:
+            old = json.loads(legacy.read_text(encoding="utf-8"))
+            for new, key in (("accent", "accent"), ("avatar_enabled", "face"),
+                             ("sound", "sound"), ("sound_volume", "volume"),
+                             ("maximized", "maximized"), ("window_geometry", "geometry"),
+                             ("quality", "quality"), ("quality_tier", "quality_tier")):
+                if key in old and new not in data:
+                    data[new] = old[key]
+        except Exception:
+            pass
 
     known = {f.name for f in fields(Settings)}
     filtered = {k: v for k, v in data.items() if k in known}

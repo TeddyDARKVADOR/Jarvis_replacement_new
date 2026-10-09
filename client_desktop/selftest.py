@@ -13,22 +13,21 @@ are a large part of why this file exists:
 * **15** fails if anything reaches into `core/` beyond the two modules this
   client is allowed to reuse, so a second brain cannot arrive by the back door.
 
-* **45** fails if `git status` reports a modification to `main.py`,
-  `dashboard/`, `core/`, `memory/`, `actions/`, `plugins/` or
-  `requirements.txt`. This client is additive or it is broken.
+* **19** fails if `git status` reports an uncommitted modification to
+  `main.py`, `dashboard/`, `core/`, `memory/`, `actions/`, `plugins/` or
+  `requirements.txt` — the brain is changed deliberately, in its own commit,
+  never as a side effect of working on this client.
 
-Checks 16-41 are the placement arithmetic. They run on synthetic rectangles
-because placement defects live on the third monitor at 150 % scaling behind a
-maximised editor, which no real desktop can reproduce on demand.
+Checks 16-17 are the device capabilities: a capability is a promise the router
+acts on, so every declared name must be a real action that actually imported.
 
-Checks 42-43 are the device capabilities, and they are the same kind of check
-one level up: a capability is a promise the router acts on, so every declared
-name must be a real action that actually imported here.
+Checks 20-24 are the arrival of an `avatar` directive - the face JARVIS chose
+for what he is saying - from the wire to the HUD's face driver. They cover the
+one thing that is genuinely easy to get wrong: `/ws` replays its last 50 events
+to a client that connects, and a face replayed at noon is a reaction to nothing.
 
-Checks 46-48 are the arrival of an `avatar` directive - the face JARVIS chose
-for what he is saying. They cover the one thing that is genuinely easy to get
-wrong: `/ws` replays its last 50 events to a client that connects, and a face
-replayed at noon is a reaction to nothing.
+Checks 25-33 are the HUD: the controller's contract with the window, the page
+and its files, the settings page, and `main.py`'s launcher block.
 
 Run it with `python -m client_desktop --selftest`.
 """
@@ -92,11 +91,14 @@ def run() -> bool:  # noqa: C901
     # -- 1. every module imports ---------------------------------------------
     try:
         from client_desktop import (  # noqa: F401
-            app, audio, autostart, config, device, net, placement, protocol,
-            reconnect, single_instance, state, wake, win_windows,
+            app, audio, autostart, config, device, net, protocol,
+            reconnect, single_instance, state, wake,
+        )
+        from client_desktop.hud import (  # noqa: F401
+            boot, face, metrics, scheme, settings, window,
         )
         from client_desktop.ui import (  # noqa: F401
-            core_widget, debug, panel, screens, theme, tray,
+            avatar_scheme, debug, theme, tray,
         )
 
         report.check("1  every module imports", True)
@@ -109,16 +111,10 @@ def run() -> bool:  # noqa: C901
     from client_desktop import autostart as autostart_mod
     from client_desktop import config as config_mod
     from client_desktop import protocol as P
-    from client_desktop.placement import (
-        Anchor, PlacementConfig, PlacementMode, Rect,
-        apply_snap, compute, compute_screen_anchored, compute_window_aligned,
-        ensure_visible, panel_size, screen_for,
-    )
     from client_desktop.reconnect import BACKOFF_STEPS, backoff_seconds
     from client_desktop.state import (
         AssistantState, JarvisStore, LinkState, Message, Snapshot,
     )
-    from client_desktop.ui.core_widget import mood_of
     from client_desktop.wake import Gate
 
     # -- 2. the endpoints are the documented ones ----------------------------
@@ -188,9 +184,7 @@ def run() -> bool:  # noqa: C901
         "8  the link outranks the assistant state",
         Snapshot(
             link=LinkState.RECONNECTING, assistant=AssistantState.SPEAKING
-        ).display_state == "RECONNECTING"
-        and mood_of(LinkState.RECONNECTING, AssistantState.SPEAKING)
-        is not mood_of(LinkState.CONNECTED, AssistantState.SPEAKING),
+        ).display_state == "RECONNECTING",
     )
 
     # -- 9. the store --------------------------------------------------------
@@ -329,237 +323,7 @@ def run() -> bool:  # noqa: C901
         f"also imports {sorted(core_imports - ALLOWED_CORE)}",
     )
 
-    # -- 16-41. placement ----------------------------------------------------
-    WORK = Rect(0, 0, 1536, 864)          # 1920x1080 at 125 %, this machine
-    base = PlacementConfig(margin=8, width_fraction=0.20, height_fraction=0.28)
-
-    def cfg(**kw):
-        return dataclass_replace(base, **kw)
-
-    right = compute_screen_anchored(WORK, cfg(anchor=Anchor.RIGHT))
-    left = compute_screen_anchored(WORK, cfg(anchor=Anchor.LEFT))
-    top = compute_screen_anchored(WORK, cfg(anchor=Anchor.TOP))
-    bottom = compute_screen_anchored(WORK, cfg(anchor=Anchor.BOTTOM))
-
-    report.check(
-        "16 screen anchor RIGHT sits against the right edge, margin respected",
-        right.right == WORK.right - 8 and right.y == 8 and right.w == 307,
-        str(right),
-    )
-    report.check(
-        "17 screen anchor LEFT sits against the left edge",
-        left.x == 8 and left.y == 8 and left.w == right.w,
-        str(left),
-    )
-    report.check(
-        "18 screen anchor TOP is a wide strip at the top",
-        top.y == 8 and top.w > top.h and top.h == int(864 * 0.28),
-        str(top),
-    )
-    report.check(
-        "19 screen anchor BOTTOM sits against the bottom edge",
-        bottom.bottom == WORK.bottom - 8 and bottom.w == top.w and bottom.h == top.h,
-        str(bottom),
-    )
-    report.check(
-        "20 vertical anchors make a column, horizontal ones a strip",
-        right.h > right.w and left.h > left.w and top.w > top.h and bottom.w > bottom.h,
-    )
-    report.check(
-        "21 every anchored rectangle stays inside the work area",
-        all(
-            r.x >= WORK.x and r.y >= WORK.y
-            and r.right <= WORK.right and r.bottom <= WORK.bottom
-            for r in (right, left, top, bottom)
-        ),
-    )
-
-    # -- window alignment ----------------------------------------------------
-    small = Rect(300, 200, 600, 400)
-    beside = compute_window_aligned(small, WORK, cfg(anchor=Anchor.RIGHT))
-    report.check(
-        "22 a small window gets the panel beside it, not overlapping",
-        beside.x >= small.right and not beside.overlaps(small),
-        str(beside),
-    )
-
-    # A window hard against the right edge: the requested side does not fit, so
-    # the opposite one must be used rather than half the panel leaving the
-    # screen.
-    hugging = Rect(1000, 100, 536, 600)
-    flipped = compute_window_aligned(hugging, WORK, cfg(anchor=Anchor.RIGHT))
-    report.check(
-        "23 no room on the requested side -> the opposite side is used",
-        flipped.right <= hugging.x and not flipped.overlaps(hugging),
-        str(flipped),
-    )
-
-    maximised = Rect(0, 0, 1536, 864)
-    over = compute_window_aligned(maximised, WORK, cfg(anchor=Anchor.RIGHT))
-    report.check(
-        "24 a maximised window still gets a panel, on screen, on the right",
-        over.right <= WORK.right and over.x >= WORK.x and over.right > WORK.right - 400,
-        str(over),
-    )
-
-    tiny = Rect(700, 400, 220, 180)
-    tiny_panel = compute_window_aligned(tiny, WORK, cfg(anchor=Anchor.RIGHT))
-    report.check(
-        "25 a tiny window does not produce an unusably tiny panel",
-        tiny_panel.w >= 260 and tiny_panel.h >= 170,
-        str(tiny_panel),
-    )
-
-    moved = compute_window_aligned(
-        Rect(small.x + 200, small.y + 100, small.w, small.h), WORK,
-        cfg(anchor=Anchor.RIGHT),
-    )
-    report.check(
-        "26 moving the target window moves the panel with it",
-        moved.x == beside.x + 200 and moved.y == beside.y + 100,
-        f"{beside} -> {moved}",
-    )
-
-    switched = compute_window_aligned(
-        Rect(50, 50, 400, 300), WORK, cfg(anchor=Anchor.RIGHT)
-    )
-    report.check(
-        "27 switching target window recomputes against the new one",
-        switched != beside and switched.x >= 450,
-        str(switched),
-    )
-
-    # -- snapping ------------------------------------------------------------
-    loose = Rect(10, 10, 307, 848)
-    snapped = apply_snap(loose, WORK, None, cfg(snap_distance=16))
-    far = Rect(300, 300, 307, 400)
-    unsnapped = apply_snap(far, WORK, None, cfg(snap_distance=16))
-    report.check(
-        "28 snap latches inside the threshold and leaves size alone",
-        (snapped.x, snapped.y) == (8, 8)
-        and (snapped.w, snapped.h) == (loose.w, loose.h),
-        str(snapped),
-    )
-    report.check(
-        "29 snap ignores anything beyond the threshold",
-        unsnapped == far,
-        str(unsnapped),
-    )
-    report.check(
-        "30 snap disabled does nothing at all",
-        apply_snap(loose, WORK, None, cfg(snap_enabled=False)) == loose,
-    )
-
-    # -- multi-monitor -------------------------------------------------------
-    two = [Rect(0, 0, 1536, 864), Rect(1536, 0, 1920, 1080)]
-    on_second = Rect(1600, 100, 800, 600)
-    report.check(
-        "31 screen_for picks by overlapping area, not by corner",
-        screen_for(on_second, two) == 1
-        and screen_for(Rect(-40, 100, 600, 400), two) == 0,
-    )
-    placed = compute(
-        cfg(mode=PlacementMode.WINDOW, anchor=Anchor.RIGHT), two, target=on_second
-    )
-    report.check(
-        "32 a target on the second screen keeps the panel on that screen",
-        screen_for(placed, two) == 1 and placed.x >= 1536,
-        str(placed),
-    )
-
-    offscreen = Rect(4000, 2000, 307, 848)
-    rescued = ensure_visible(offscreen, two)
-    report.check(
-        "33 a saved position on a monitor that is gone is corrected",
-        rescued.intersection(two[0]).area + rescued.intersection(two[1]).area > 0,
-        str(rescued),
-    )
-    kept = Rect(1700, 200, 307, 600)
-    report.check(
-        "34 a saved position that is still valid is left exactly alone",
-        ensure_visible(kept, two) == kept,
-    )
-
-    # -- DPI -----------------------------------------------------------------
-    # The same physical 1920x1080 panel at two scale factors. Placement works in
-    # logical pixels, so the *fraction* must hold while the pixel count does
-    # not - that is what makes the panel look the same size on both.
-    w125, _ = panel_size(Rect(0, 0, 1536, 864), cfg(anchor=Anchor.RIGHT))
-    w100, _ = panel_size(Rect(0, 0, 1920, 1080), cfg(anchor=Anchor.RIGHT))
-    report.check(
-        "35 a DPI change rescales the panel with the logical work area",
-        w125 == 307 and w100 == 384 and w100 > w125,
-        f"125%={w125} 100%={w100}",
-    )
-
-    # -- FREE, and degrading gracefully --------------------------------------
-    free_rect = Rect(400, 300, 320, 500)
-    report.check(
-        "36 FREE mode returns the remembered rectangle untouched",
-        compute(cfg(mode=PlacementMode.FREE), [WORK], free=free_rect) == free_rect,
-    )
-    report.check(
-        "37 FREE with nothing remembered falls back to an anchored position",
-        compute(cfg(mode=PlacementMode.FREE), [WORK], free=None) == right,
-    )
-    report.check(
-        "38 WINDOW/FOLLOW with no target degrades to the screen anchor",
-        compute(
-            cfg(mode=PlacementMode.FOLLOW, anchor=Anchor.RIGHT), [WORK], target=None
-        ) == right,
-    )
-
-    # -- settings: persistence and migration ---------------------------------
-    with tempfile.TemporaryDirectory() as temp:
-        saved_env = os.environ.get("LOCALAPPDATA")
-        os.environ["LOCALAPPDATA"] = temp
-        try:
-            st = config_mod.Settings(
-                host="h.ts.net", device_token="t",
-                placement_mode="follow", anchor="bottom", margin=24,
-                snap_enabled=False, snap_distance=32, always_on_top=False,
-            )
-            st.remember_free(Rect(11, 22, 333, 444), r"\\.\DISPLAY2")
-            config_mod.save(st)
-            back = config_mod.load()
-            restored = (
-                back.placement.mode is PlacementMode.FOLLOW
-                and back.placement.anchor is Anchor.BOTTOM
-                and back.margin == 24
-                and back.snap_enabled is False
-                and back.snap_distance == 32
-                and back.always_on_top is False
-                and back.free_rect == Rect(11, 22, 333, 444)
-                and back.free_screen == r"\\.\DISPLAY2"
-            )
-
-            # An older settings file, from before there were four modes.
-            config_mod.settings_path().write_text(
-                '{"host":"h","device_token":"t","dock":"left"}', encoding="utf-8"
-            )
-            migrated = config_mod.load().placement.anchor is Anchor.LEFT
-
-            # And a file written by a future version, or by hand.
-            config_mod.settings_path().write_text(
-                '{"placement_mode":"diagonal","anchor":"sideways"}', encoding="utf-8"
-            )
-            nonsense = config_mod.load().placement
-            tolerant = (
-                nonsense.mode is PlacementMode.SCREEN
-                and nonsense.anchor is Anchor.RIGHT
-            )
-        finally:
-            if saved_env is None:
-                os.environ.pop("LOCALAPPDATA", None)
-            else:
-                os.environ["LOCALAPPDATA"] = saved_env
-
-    report.check("39 every placement setting survives a restart", restored)
-    report.check("40 an old `dock` setting migrates to `anchor`", migrated)
-    report.check("41 an unknown mode or anchor falls back instead of raising",
-                 tolerant)
-
-    # -- 42a. capabilities are proven, never asserted ------------------------
+    # -- 16a. capabilities are proven, never asserted ------------------------
     #
     # A capability is a promise the router acts on: a device that declares
     # `computer_control` will be sent mouse commands. So the declared set must
@@ -578,7 +342,7 @@ def run() -> bool:  # noqa: C901
         real_actions = set()
 
     report.check(
-        "42 toute capacite declaree est une action reelle et chargee",
+        "16 toute capacite declaree est une action reelle et chargee",
         declared <= real_actions and declared <= set(DEVICE_BOUND_ACTIONS),
         f"declarees={sorted(declared)} inconnues={sorted(declared - real_actions)}",
     )
@@ -586,12 +350,12 @@ def run() -> bool:  # noqa: C901
     # Network-only actions must never be device capabilities: declaring
     # `web_search` on two devices invents an ambiguity where none exists.
     report.check(
-        "43 les actions non liees a l'appareil ne sont pas declarees",
+        "17 les actions non liees a l'appareil ne sont pas declarees",
         not ({"web_search", "weather_report", "flight_finder", "reminder"} & declared),
         f"declarees={sorted(declared)}",
     )
 
-    # -- 44. shutdown must not write the settings file -----------------------
+    # -- 18. shutdown must not write the settings file -----------------------
     #
     # A regression guard for a bug that cost a working pairing: `shutdown()`
     # used to call `save(self.settings)`, so any process holding an in-memory
@@ -613,15 +377,15 @@ def run() -> bool:  # noqa: C901
                     ):
                         shutdown_saves = True
     except Exception as exc:
-        report.fail("44 shutdown does not write settings", repr(exc))
+        report.fail("18 shutdown does not write settings", repr(exc))
     else:
         report.check(
-            "44 shutdown does not overwrite the settings file",
+            "18 shutdown does not overwrite the settings file",
             not shutdown_saves,
             "shutdown() calls save() - an unpaired process would wipe the pairing",
         )
 
-    # -- 45. non-regression: the guarded tree is untouched -------------------
+    # -- 19. non-regression: the guarded tree is untouched -------------------
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain", "--"] + list(GUARDED),
@@ -632,14 +396,14 @@ def run() -> bool:  # noqa: C901
         )
         dirty = [line for line in result.stdout.splitlines() if line.strip()]
         report.check(
-            "45 MARK LIII is untouched (git status on the guarded paths)",
+            "19 MARK LIII is untouched (git status on the guarded paths)",
             result.returncode == 0 and not dirty,
             " | ".join(dirty[:5]),
         )
     except Exception as exc:
-        report.fail("45 MARK LIII is untouched", f"git unavailable: {exc}")
+        report.fail("19 MARK LIII is untouched", f"git unavailable: {exc}")
 
-    # -- 46-48. the face JARVIS chose, arriving over the wire ----------------
+    # -- 20-22. the face JARVIS chose, arriving over the wire ----------------
     #
     # `presence/` resolves the reflex locally — listening, thinking, speaking —
     # and needs nothing from the server to do it. What the server sends is the
@@ -694,15 +458,15 @@ def run() -> bool:  # noqa: C901
         malformed_survived = len(seen) == 2   # le troisieme a un ts illisible : livre
 
         report.check(
-            "46 an avatar directive arrives, and a stale one does not",
+            "20 an avatar directive arrives, and a stale one does not",
             fresh_arrived and stale_dropped and malformed_survived,
             f"fresh={fresh_arrived} stale_dropped={stale_dropped} "
             f"malformed={malformed_survived}",
         )
     except Exception as exc:
-        report.fail("46 an avatar directive arrives", repr(exc))
+        report.fail("20 an avatar directive arrives", repr(exc))
 
-    # -- 47. the client's copy of the window matches the server's ------------
+    # -- 21. the client's copy of the window matches the server's ------------
     try:
         server_window = None
         source = (_REPO_ROOT / "plugins" / "presence.py").read_text(encoding="utf-8")
@@ -711,82 +475,78 @@ def run() -> bool:  # noqa: C901
                 server_window = float(line.split("=", 1)[1].strip())
                 break
         report.check(
-            "47 the freshness window is the server's number, not a guess",
+            "21 the freshness window is the server's number, not a guess",
             server_window == P.AVATAR_FRESH_SECONDS,
             f"client {P.AVATAR_FRESH_SECONDS} vs tool {server_window}",
         )
     except Exception as exc:
-        report.fail("47 the freshness window matches the server", repr(exc))
+        report.fail("21 the freshness window matches the server", repr(exc))
 
-    # -- 48. only a body is offered an intent --------------------------------
+    # -- 22. the intent reaches the HUD, and only a face takes it -----------
     #
     # Read from the source rather than built, because building it needs Qt, a
     # display and a WebEngine process — none of which this file is allowed to
-    # require. What matters is structural anyway: the panel must ask whether the
-    # core can take an intent instead of assuming it can, or a 2D install dies
-    # on the first directive.
+    # require. Structural on purpose: the HUD hands the intent to its face
+    # driver only when there is one, and the controller forwards it above the
+    # notifications setting — an expression makes no sound and raises no
+    # toast, so switching notifications off must not take JARVIS's face away.
     try:
-        panel_source = (
-            _REPO_ROOT / "client_desktop" / "ui" / "panel.py"
+        window_source = (
+            _REPO_ROOT / "client_desktop" / "hud" / "window.py"
         ).read_text(encoding="utf-8")
         app_source = (
             _REPO_ROOT / "client_desktop" / "app.py"
         ).read_text(encoding="utf-8")
         asks_first = (
-            'getattr(self._core, "set_intent_json"' in panel_source
-            and "def set_avatar_intent" in panel_source
+            "def set_avatar_intent" in window_source
+            and "if self._face is not None:" in window_source
         )
-        # And it must be handled above the notifications setting: an expression
-        # makes no sound and raises no toast, so switching notifications off
-        # must not also take JARVIS's face away.
         above_notifications = app_source.index('kind == "avatar"') < app_source.index(
             "if not self.settings.notifications:"
         )
         report.check(
-            "48 an intent is offered to a body, and never to the 2D core",
+            "22 an intent reaches the HUD's face, whatever the notifications",
             asks_first and above_notifications,
             f"asks_first={asks_first} above_notifications={above_notifications}",
         )
     except Exception as exc:
-        report.fail("48 an intent is offered to a body only", repr(exc))
+        report.fail("22 an intent reaches the HUD's face", repr(exc))
 
-    # -- 49. the intent reaches the Director, through the real hand-off ------
+    # -- 23. the intent reaches the Director, through the real hand-off ------
     #
-    # Checks 46 and 48 each proved their half: the store emits, the panel asks
-    # the core. Nothing proved the two halves spoke the same shape — and they
-    # did not. The store emitted the bare directive, the widget looked for a
-    # `directive` key inside it, and every intent JARVIS ever sent was dropped
-    # right here. This check runs the widget's own methods on what the store
-    # actually emits, and follows the word to the JSON pushed to the page.
+    # Checks 20 and 22 each prove their half: the store emits, the HUD asks
+    # its face. Nothing in them proves the two halves speak the same shape —
+    # and once they did not: the store emitted the bare directive, the face
+    # looked for a `directive` key inside it, and every intent JARVIS sent was
+    # dropped right here. This runs the real FaceDriver on what the store
+    # actually emits, and follows the word to the JSON posted to the page.
     try:
         import json as _json
         import time as _time
 
+        from client_desktop.hud.face import FaceDriver
         from client_desktop.net import JarvisClient
         from client_desktop.state import JarvisStore
-        from client_desktop.ui import avatar_view
-        from presence import Director
 
         class _Body:
-            """The widget's state, without Qt: its real methods run on this."""
+            """What the HUD page would receive from the real FaceDriver."""
 
             def __init__(self) -> None:
-                self._director = Director()
-                self._last_state = "SPEAKING"
-                self._last_speech = 0.3
                 self.pushed: list[dict] = []
+                self.driver = FaceDriver(self._collect)
+                self.driver.enable(True)
+                self.driver.frame_ready()
+                self.driver._last_state = "SPEAKING"
+                self.driver._last_speech = 0.3
 
-            def _push(self, performance) -> None:  # noqa: ANN001
-                self.pushed.append(performance.as_json())
-
-            def set_intent(self, directive, age: float = 0.0) -> None:  # noqa: ANN001
-                avatar_view.JarvisAvatarWidget.set_intent(self, directive, age)
+            def _collect(self, message: dict) -> None:
+                if message.get("type") == "performance":
+                    self.pushed.append(message["payload"])
 
         body = _Body()
         store = JarvisStore()
         store.subscribe(
-            lambda kind, payload: avatar_view.JarvisAvatarWidget.set_intent_json(
-                body, payload) if kind == "avatar" else None)
+            lambda kind, payload: body.driver.set_intent(payload) if kind == "avatar" else None)
         client = JarvisClient(
             config_mod.Settings(host="h.ts.net", device_token="tok"),
             store, speaker=None,
@@ -805,15 +565,15 @@ def run() -> bool:  # noqa: C901
             and pushed.get("speech_level") == 0.3
         )
         report.check(
-            "49 an intent from the wire reaches the Director and the page",
+            "23 an intent from the wire reaches the Director and the page",
             reached,
             f"pushed={len(body.pushed)} intent={pushed.get('intent')} "
             f"gaze={pushed.get('gaze')} gesture_id={pushed.get('gesture_id')}",
         )
     except Exception as exc:
-        report.fail("49 an intent reaches the Director", repr(exc))
+        report.fail("23 an intent reaches the Director", repr(exc))
 
-    # -- 50. a reconnection does not replay a face, and age is honoured -------
+    # -- 24. a reconnection does not replay a face, and age is honoured -------
     #
     # `/ws` replays its last 50 events to whoever connects. The 25 s window
     # stops yesterday's faces, not the one from ten seconds ago: a quick
@@ -861,12 +621,14 @@ def run() -> bool:  # noqa: C901
         ages_carried = all(0.0 <= p.get("age", -1) < 11.0 for p in seen)
 
         report.check(
-            "50 a reconnection never replays a face, and a late one dies on time",
+            "24 a reconnection never replays a face, and a late one dies on time",
             no_replay and backdated and ages_carried,
             f"played={words} backdated={backdated} ages={ages_carried}",
         )
     except Exception as exc:
-        report.fail("50 a reconnection never replays a face", repr(exc))
+        report.fail("24 a reconnection never replays a face", repr(exc))
+
+    _hud_checks(report)
 
     total = report.passed + report.failed
     print(f"\n{report.passed}/{total}")
@@ -877,3 +639,119 @@ def run() -> bool:  # noqa: C901
 
 if __name__ == "__main__":
     raise SystemExit(0 if run() else 1)
+
+
+def _hud_checks(report: "_Report") -> None:  # noqa: C901
+    """25-33: the HUD, its page, its settings page, and main.py's launcher."""
+    import json as _json
+    import posixpath
+    import re
+
+    from client_desktop import config as config_mod
+    from client_desktop.hud import face, metrics, scheme
+    from client_desktop.hud import settings as hs
+    from client_desktop.hud.window import HudWindow, PREF_FIELDS
+
+    # -- 25. the controller's contract with the window ----------------------
+    app_src = (_REPO_ROOT / "client_desktop" / "app.py").read_text(encoding="utf-8")
+    local_src = (_REPO_ROOT / "local_hud.py").read_text(encoding="utf-8")
+    used = set(re.findall(r"self\.hud\.([A-Za-z_]\w*)", app_src))
+    used |= set(re.findall(r"\bhud\.([A-Za-z_]\w*)", local_src))
+    instance_attrs = {"_mini", "local_mode"}
+    absent = {n for n in used if not hasattr(HudWindow, n) and n not in instance_attrs}
+    report.check(f"25 every one of the {len(used)} HUD members the two hosts use exists",
+                 not absent, f"missing {sorted(absent)}")
+
+    # -- 26. the scheme ------------------------------------------------------
+    ok_index = scheme.resolve("/index.html") is not None
+    ok_three = scheme.resolve("/vendor/three.module.min.js") is not None
+    bad = ["/../ui/debug.py", "/vendor/../../client_desktop/config.py",
+           "/..%2f..%2fmain.py", "/css/../../window.py"]
+    refused = all(scheme.resolve(x) is None for x in bad)
+    report.check("26 the HUD scheme serves the page and three.js, refuses traversal",
+                 ok_index and ok_three and refused,
+                 f"index={ok_index} three={ok_three} refused={refused}")
+
+    # -- 27. every file the page references exists ---------------------------
+    web = _REPO_ROOT / "client_desktop" / "hud" / "web"
+    html = (web / "index.html").read_text(encoding="utf-8")
+    refs = re.findall(r'(?:href|src)="((?:css|js)/[^"]+)"', html)
+    js_refs = []
+    for js in (web / "js").glob("*.js"):
+        for m in re.findall(r"""(?:from|import\()\s*['"](\.{1,2}/[^'"]+)['"]""",
+                            js.read_text(encoding="utf-8")):
+            js_refs.append(posixpath.normpath("/js/" + m))
+    missing = [x for x in refs if scheme.resolve("/" + x) is None]
+    missing += [x for x in js_refs if scheme.resolve(x) is None]
+    report.check(f"27 all {len(refs) + len(js_refs)} page references resolve",
+                 not missing, f"missing {missing}")
+
+    # -- 28. one settings file: the HUD's look lives in Settings ------------
+    with tempfile.TemporaryDirectory() as temp:
+        saved = os.environ.get("LOCALAPPDATA")
+        os.environ["LOCALAPPDATA"] = temp
+        try:
+            folder = config_mod.settings_path().parent
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "hud.json").write_text(_json.dumps(
+                {"accent": "#F43F5E", "face": True, "quality": 3}), encoding="utf-8")
+            migrated = config_mod.load()
+            fields_exist = all(hasattr(migrated, attr) for attr in PREF_FIELDS.values())
+            ok = (fields_exist and migrated.accent == "#F43F5E"
+                  and migrated.avatar_enabled is True and migrated.quality == 3)
+        finally:
+            if saved is None:
+                os.environ.pop("LOCALAPPDATA", None)
+            else:
+                os.environ["LOCALAPPDATA"] = saved
+    report.check("28 the HUD's look is in settings.json, and hud.json migrates", ok)
+
+    # -- 29. the face driver -------------------------------------------------
+    try:
+        from client_desktop.state import AssistantState, LinkState, Snapshot
+        posted: list[dict] = []
+        d = face.FaceDriver(posted.append)
+        snap = Snapshot(link=LinkState.CONNECTED, assistant=AssistantState.SPEAKING,
+                        speaker_level=.6)
+        d.set_snapshot(snap)
+        silent = not posted
+        d.enable(True)
+        d.frame_ready()
+        d.set_snapshot(snap)
+        kinds = {m["type"] for m in posted}
+        report.check("29 the face is silent until enabled, then performs and speaks",
+                     silent and {"performance", "speak"} <= kinds,
+                     f"silent={silent} kinds={kinds}")
+    except Exception as exc:
+        report.fail("29 the face driver", repr(exc))
+
+    # -- 30. machine metrics -------------------------------------------------
+    sample = metrics.Metrics().sample()
+    report.check("30 machine metrics produce numbers",
+                 not sample.get("available") or isinstance(sample.get("cpu"), (int, float)),
+                 str(sample)[:80])
+
+    # -- 31. the settings page cleans what is pasted -------------------------
+    st = config_mod.Settings()
+    changed = hs.apply(st, {"host": " https://jarvis-vps.tailnet.ts.net:8000/ ", "port": 0,
+                            "device_token": "  abc  ", "wake_word_threshold": 7,
+                            "gate_seconds": 1, "device_name": "", "evil": "x"})
+    ok = (st.host == "jarvis-vps.tailnet.ts.net" and st.port == 8000
+          and st.device_token == "abc" and st.wake_word_threshold == 0.95
+          and st.gate_seconds == 5.0 and "device_name" not in changed
+          and not hasattr(st, "evil"))
+    report.check("31 the settings page cleans what is pasted and clamps the rest", ok,
+                 f"host={st.host!r} port={st.port} th={st.wake_word_threshold}")
+
+    # -- 32. one start-up entry, the HUD's ------------------------------------
+    launcher = _REPO_ROOT / "client_desktop" / "launch.pyw"
+    launcher_src = launcher.read_text(encoding="utf-8")
+    report.check("32 Windows start-up opens the HUD, through the one launcher",
+                 "client_desktop.__main__" in launcher_src
+                 and "HudWindow" in app_src and "JarvisPanel" not in app_src)
+
+    # -- 33. main.py's launcher block ----------------------------------------
+    head = (_REPO_ROOT / "main.py").read_text(encoding="utf-8").split("import platform", 1)[0]
+    report.check("33 python main.py opens the HUD, --local the HUD on the local brain",
+                 'if __name__ == "__main__":' in head
+                 and "client_desktop.__main__" in head and "local_hud" in head)

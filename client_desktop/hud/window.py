@@ -1,20 +1,16 @@
 """
-`HudWindow` — a drop-in for `ui.panel.JarvisPanel`, rendered as a web HUD.
+`HudWindow` — JARVIS on this PC: one window, whichever brain it shows.
 
-THE CONTRACT IT HONOURS
-    `app.JarvisDesktop` builds `JarvisPanel(settings)` and then talks to it
-    through seven signals and a handful of methods. This class has exactly that
-    surface, so the controller runs unmodified and cannot tell which one it is
-    driving. `selftest.py` in this package compares the two surfaces, so a
-    signal added to the panel one day fails a check instead of being silently
-    missing here.
+WHO DRIVES IT
+    Online, `app.JarvisDesktop` (the network worker's store, Oracle's events).
+    Local, `local_hud.py` (main.py's brain, through `LocalUI`). Both talk to it
+    the same way: a `JarvisStore` it pulls snapshots from, seven intent signals
+    out, and a handful of methods in. Nothing in here knows which one it is.
 
-WHAT IS DIFFERENT, ON PURPOSE
-    The panel is furniture: narrow, topmost, never focused. The HUD is the
-    opposite — a real window you look at and type in, maximised by default. Its
-    "collapse" is the *mini* mode: a small topmost orb in the corner that is the
-    panel's spirit (presence without obstruction). The placement modes belong
-    to the panel; here `set_target` / `apply_placement` are accepted and ignored.
+WHAT IT IS
+    A real window you look at and type in, maximised by default. Its compact
+    form is the *mini* mode: a small topmost orb in the corner — presence
+    without obstruction.
 
 TWO DIRECTIONS, TWO MECHANISMS
     Python → page   `runJavaScript("HUD.tick(...)")`, ~30 Hz for levels and
@@ -47,12 +43,10 @@ from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineScript, QWebEngineSe
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
-from ..config import Settings
-from ..placement import Rect
+from ..config import Settings, save as save_settings
 from ..state import LinkState, Snapshot
 from ..ui import avatar_scheme
 from . import metrics as metrics_mod
-from . import prefs as prefs_mod
 from . import scheme
 from . import settings as settings_mod
 
@@ -66,6 +60,18 @@ LOG_LINES = 80
 
 MINI_SIZE = (260, 300)
 
+#: The page's names for the look-and-feel settings, and where each one lives in
+#: `config.Settings` — the one settings file, shared by both modes.
+PREF_FIELDS = {
+    "accent": "accent",
+    "face": "avatar_enabled",
+    "sound": "sound",
+    "volume": "sound_volume",
+    "maximized": "maximized",
+    "quality": "quality",
+    "quality_tier": "quality_tier",
+}
+
 _EDGES = {
     "l": Qt.Edge.LeftEdge,
     "r": Qt.Edge.RightEdge,
@@ -75,12 +81,12 @@ _EDGES = {
 
 
 def _face_available() -> bool:
+    """The 3D face needs the `jarvis://` scheme and the `presence` package."""
     try:
-        from ..ui import avatar_view
         import presence  # noqa: F401
     except Exception:
         return False
-    return bool(avatar_view.AVAILABLE and avatar_scheme.AVAILABLE)
+    return bool(avatar_scheme.AVAILABLE)
 
 
 def _app_icon() -> QIcon:
@@ -267,8 +273,12 @@ class HudWindow(QWidget):
     def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.settings = settings
-        self.prefs = prefs_mod.load()
-        self._collapsed = False          # the controller's word for "mini"
+        #: Geometry is written a second after the window stops moving, not on
+        #: every pixel of a drag.
+        self._geometry_timer = QTimer(self)
+        self._geometry_timer.setSingleShot(True)
+        self._geometry_timer.setInterval(1000)
+        self._geometry_timer.timeout.connect(lambda: save_settings(self.settings))
         self._mini = False
         self._restore_geometry: QRect | None = None
         self._restore_maximized = False
@@ -333,6 +343,11 @@ class HudWindow(QWidget):
         self._timer.timeout.connect(self._fast_tick)
         self._timer.start(1000 // FAST_HZ)
 
+    @property
+    def prefs(self) -> dict:
+        """The look-and-feel settings, under the names the page uses."""
+        return {key: getattr(self.settings, attr) for key, attr in PREF_FIELDS.items()}
+
     # ── page setup ───────────────────────────────────────────────────────────
 
     def _inject_scripts(self, page: QWebEnginePage) -> None:
@@ -352,7 +367,7 @@ class HudWindow(QWidget):
 
         if self._face_available:
             # The face reads its manifest from a global, never from fetch —
-            # `avatar_view._inject_manifest` explains why. Here it is in a
+            # `ui/avatar_scheme.py` explains why. Here it is in a
             # sub-frame, so the script must run on sub-frames.
             try:
                 raw = (avatar_scheme.ROOT / "manifest.json").read_text(encoding="utf-8")
@@ -405,11 +420,6 @@ class HudWindow(QWidget):
         """Let the HUD pull snapshots at its own rate (the controller pushes at 10 Hz)."""
         self._store = store
 
-    def apply(self, snapshot: Snapshot) -> None:
-        self._snapshot = snapshot
-        if self._store is None:
-            self._push(snapshot, full=True)
-
     def set_avatar_intent(self, event: dict) -> None:
         if self._face is not None:
             self._face.set_intent(event)
@@ -417,18 +427,6 @@ class HudWindow(QWidget):
         directive = event.get("directive") if isinstance(event, dict) else None
         if isinstance(directive, dict):
             self._run(f"window.HUD&&HUD.intent({json.dumps(directive)})")
-
-    def set_target(self, target: Rect | None) -> None:
-        self._target = target
-
-    def apply_placement(self) -> None:
-        """Placement modes belong to the panel. The HUD is a normal window."""
-
-    def sync_always_on_top(self) -> None:
-        """Only the mini mode is topmost; nothing to sync from settings."""
-
-    def _toggle_collapse(self) -> None:
-        self._set_mini(not self._mini)
 
     def show(self) -> None:  # noqa: D401 - Qt override
         if self._first_show:
@@ -494,7 +492,7 @@ class HudWindow(QWidget):
     # ── window behaviour ─────────────────────────────────────────────────────
 
     def _restore_saved_geometry(self) -> None:
-        geo = self.prefs.get("geometry")
+        geo = self.settings.window_geometry
         screen = QGuiApplication.primaryScreen()
         avail = screen.availableGeometry() if screen else QRect(0, 0, 1600, 900)
         if isinstance(geo, list) and len(geo) == 4:
@@ -529,7 +527,7 @@ class HudWindow(QWidget):
         if mini:
             self._restore_maximized = self.isMaximized() or self.isFullScreen()
             self._restore_geometry = self.normalGeometry()
-            self._mini = self._collapsed = True
+            self._mini = True
             self.setWindowFlags(Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
                                 | Qt.WindowType.WindowStaysOnTopHint)
             screen = self.screen() or QGuiApplication.primaryScreen()
@@ -538,7 +536,7 @@ class HudWindow(QWidget):
             self.setGeometry(avail.right() - w - 16, avail.bottom() - h - 16, w, h)
             super().show()
         else:
-            self._mini = self._collapsed = False
+            self._mini = False
             self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
             if self._restore_geometry is not None:
                 self.setGeometry(self._restore_geometry)
@@ -550,9 +548,11 @@ class HudWindow(QWidget):
         self._run(f"window.HUD&&HUD.setMini({'true' if mini else 'false'})")
 
     def _update_prefs(self, data: dict) -> None:
-        face_before = bool(self.prefs.get("face"))
-        self.prefs.update({k: v for k, v in data.items() if k in prefs_mod.DEFAULTS})
-        prefs_mod.save(self.prefs)
+        face_before = bool(self.settings.avatar_enabled)
+        for key, value in data.items():
+            if key in PREF_FIELDS:
+                setattr(self.settings, PREF_FIELDS[key], value)
+        save_settings(self.settings)
         face_now = bool(self.prefs.get("face")) and self._face_available
         if self._face is not None and face_now != face_before:
             self._face.enable(face_now)
@@ -561,7 +561,8 @@ class HudWindow(QWidget):
         if self._mini or self.isMaximized() or self.isFullScreen() or self.isMinimized():
             return
         g = self.geometry()
-        self.prefs["geometry"] = [g.x(), g.y(), g.width(), g.height()]
+        self.settings.window_geometry = [g.x(), g.y(), g.width(), g.height()]
+        self._geometry_timer.start()
 
     def moveEvent(self, event) -> None:  # noqa: ANN001, N802
         super().moveEvent(event)
@@ -572,7 +573,6 @@ class HudWindow(QWidget):
         self._save_geometry()
 
     def closeEvent(self, event) -> None:  # noqa: ANN001, N802
-        prefs_mod.save(self.prefs)
         self._timer.stop()
         super().closeEvent(event)
 

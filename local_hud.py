@@ -178,14 +178,12 @@ class LocalUI(HeadlessUI):
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
-    from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
+    from PyQt6.QtCore import QObject, QTimer, pyqtSignal
     from PyQt6.QtWidgets import QApplication
 
     from client_desktop.config import load
+    from client_desktop.hud import boot
     from client_desktop.single_instance import SingleInstance
-    from client_desktop.ui import avatar_scheme
-    from client_desktop.hud import __main__ as hud_main
-    from client_desktop.hud import scheme
 
     guard = SingleInstance()
     if not guard.acquire():
@@ -193,12 +191,10 @@ def main(argv: list[str] | None = None) -> int:
         print("JARVIS est déjà en cours d'exécution — instance existante affichée.")
         return 0
 
-    avatar_scheme.register()
-    if not scheme.register():
-        print("PyQt6-WebEngine est requis pour le HUD : pip install PyQt6-WebEngine")
+    if not boot.prepare():
+        print(boot.MISSING_WEBENGINE)
+        guard.release()
         return 1
-    hud_main._gpu_flags()
-    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv[:1])
     app.setApplicationName("JARVIS")
     app.setQuitOnLastWindowClosed(False)
@@ -230,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             if settings.notifications:
                 tray.notify(f"JARVIS — confirmation : {payload[1]}", payload[2] or "")
         elif kind == "message" and getattr(payload, "from_jarvis", False) and settings.notifications:
-            if not hud.isVisible() or hud.isMinimized() or hud._collapsed:
+            if not hud.isVisible() or hud.isMinimized() or hud._mini:
                 tray.notify("JARVIS", payload.text[:180])
 
     bridge.event.connect(on_event)
@@ -297,13 +293,13 @@ def main(argv: list[str] | None = None) -> int:
     def toggle() -> None:
         hud.hide() if hud.isVisible() else (hud.show(), hud.raise_())
 
-    tray.toggle_panel.connect(toggle)
-    tray.show_panel.connect(lambda: (hud.show(), hud.raise_()))
+    tray.toggle_hud.connect(toggle)
+    tray.show_hud.connect(lambda: (hud.show(), hud.raise_()))
     tray.debug_requested.connect(lambda: hud.open_settings("avance"))
     tray.mic_toggled.connect(set_mic)
     tray.reconnect_requested.connect(reconnect)
     tray.quit_requested.connect(quit_all)
-    guard.listen(tray.show_panel.emit)
+    guard.listen(tray.show_hud.emit)
 
     pulse = QTimer()
     pulse.timeout.connect(lambda: tray.apply(store.snapshot()))

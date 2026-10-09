@@ -13,7 +13,7 @@ if __name__ == "__main__":
         from local_hud import main as _local_main
         raise SystemExit(_local_main(_boot_sys.argv[1:]))
     else:
-        from client_desktop.hud.__main__ import main as _hud_main
+        from client_desktop.__main__ import main as _hud_main
         raise SystemExit(_hud_main(_boot_sys.argv[1:]))
 
 import platform as _platform
