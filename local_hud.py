@@ -67,11 +67,23 @@ class LocalUI(HeadlessUI):
         #: The file the user attached in the HUD (📎 or drag-and-drop): what
         #: main.py's file_processor reads when asked about "this file".
         self.attached: str | None = None
+        self.health_provider = None
         #: Set by the host: receives JPEG bytes for the HUD's camera view, or
         #: None when it closes. Called from the camera thread.
         self.on_camera_frame = None
         self._camera_stop = threading.Event()
         store.set_link(LinkState.CONNECTING)
+
+    def health_snapshot(self) -> dict:
+        """Read-only local runtime facts for the optional health plugin."""
+        provider = self.health_provider
+        if not callable(provider):
+            return {"error": "état détaillé indisponible pendant le démarrage"}
+        try:
+            result = provider()
+            return result if isinstance(result, dict) else {"error": "état invalide"}
+        except Exception as exc:
+            return {"error": f"lecture de l'état impossible : {exc}"}
 
     @property
     def current_file(self) -> str | None:
@@ -509,6 +521,26 @@ def main(argv: list[str] | None = None) -> int:
             import main as brain           # imported, so its own launcher block does not run
             jarvis = brain.JarvisLive(ui)
             brain_ref["jarvis"] = jarvis
+
+            def local_health_snapshot() -> dict:
+                from memory.config_manager import (
+                    get_gemini_key, get_input_device, get_output_device,
+                )
+                plugins = jarvis._plugin_registry.list_for_ui()
+                return {
+                    "link": store.snapshot().link.value,
+                    "gemini_key_configured": bool(get_gemini_key()),
+                    "microphone_setting": get_input_device() or "défaut système",
+                    "speaker_setting": get_output_device() or "défaut système",
+                    "actions_loaded": len(jarvis._action_registry.names()),
+                    "plugins_loaded": sum(1 for p in plugins if p.get("valid")),
+                    "plugins_enabled": sum(
+                        1 for p in plugins if p.get("valid") and p.get("enabled")
+                    ),
+                    "dashboard_initialized": jarvis._dashboard is not None,
+                }
+
+            ui.health_provider = local_health_snapshot
 
             # Read-only health observer. JarvisLive owns all connect/reconnect
             # decisions; this thread only mirrors whether its session exists so
