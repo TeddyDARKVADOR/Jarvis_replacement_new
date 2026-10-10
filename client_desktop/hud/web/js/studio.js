@@ -130,6 +130,7 @@ export function createStudio(ctx) {
       $('st-confirm-plan').checked = !!o.confirm_plan;
       $('st-auto-preview').checked = o.auto_preview !== false;
       $('st-auto-run').checked = o.auto_run_scripts !== false;
+      $('st-escalate').checked = o.escalate !== false;
       $('st-provider').value = o.provider || 'auto';
       $('st-local-model').value = o.local_model || '';
     }
@@ -292,15 +293,26 @@ export function createStudio(ctx) {
       <h5>CONTRÔLES</h5>
       <ul class="st-checks">${checks || '<li class="muted">Aucun contrôle.</li>'}</ul>
       ${crit ? `<h5>CRITÈRES D'ACCEPTATION <span>${proven}/${lr.criteria.length} prouvés</span></h5><ul class="st-crit">${crit}</ul>` : ''}
+      ${amendedBlock(lr)}
       ${analysis}
       ${launch}
       <dl class="facts">
         <dt>FICHIERS</dt><dd>${lr.files ?? '—'}</dd>
         <dt>CORRECTIONS</dt><dd>${lr.fix_attempts ?? 0}</dd>
+        <dt>MODÈLE</dt><dd>${esc(lr.coder || '—')}${lr.escalated ? ` → ${esc(lr.escalated)}` : ''}</dd>
         <dt>DURÉE</dt><dd>${lr.seconds ?? '—'} s</dd>
         <dt>LANCER</dt><dd>${esc(lr.launch || '—')}</dd>
         <dt>DÉPENDANCES</dt><dd>${esc((lr.dependencies || []).join(', ') || 'aucune')}</dd>
       </dl>`;
+  }
+
+  // Verifications the model rewrote while fixing: never silent (engine.py, _amend).
+  function amendedBlock(lr) {
+    const a = lr.amended || [];
+    if (!a.length) return '';
+    return `<div class="st-amended"><b>VÉRIFICATIONS MODIFIÉES PAR LE MODÈLE</b>`
+      + a.map((x) => `<div><code>${esc(x.what)}</code> — ${esc(x.why)}</div>`).join('')
+      + '<small>Relisez-les : un modèle qui corrige son propre test peut aussi l\'affaiblir.</small></div>';
   }
 
   function renderCheckpoints(s) {
@@ -531,7 +543,7 @@ export function createStudio(ctx) {
       $('st-local-list').innerHTML = (r.models || []).map((m) => `<option value="${esc(m.name)}">${esc(m.gb)} Go</option>`).join('');
       if (r.error) status(r.error, 'err');
     });
-    ['st-root-input', 'st-attempts', 'st-timeout', 'st-confirm-plan', 'st-auto-preview', 'st-auto-run', 'st-provider', 'st-local-model'].forEach((id) => $(id).addEventListener('input', () => { optionsDirty = true; }));
+    ['st-root-input', 'st-attempts', 'st-timeout', 'st-confirm-plan', 'st-auto-preview', 'st-auto-run', 'st-provider', 'st-local-model', 'st-escalate'].forEach((id) => $(id).addEventListener('input', () => { optionsDirty = true; }));
     $('st-save').addEventListener('click', async () => {
       const root = $('st-root-input').value.trim();
       if (last && root && root !== last.root) {
@@ -543,6 +555,7 @@ export function createStudio(ctx) {
         confirm_plan: $('st-confirm-plan').checked,
         auto_preview: $('st-auto-preview').checked, auto_run_scripts: $('st-auto-run').checked,
         provider: $('st-provider').value, local_model: $('st-local-model').value.trim(),
+        escalate: $('st-escalate').checked,
       });
       if (r.error) { status(r.error, 'err'); return; }
       optionsDirty = false; project = null;

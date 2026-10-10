@@ -22,6 +22,17 @@ THE VERDICT IS EARNED, NEVER ASSUMED
                   syntax alone proves nothing
     bloqué        a check still fails after the fix attempts
 
+WHEN THE MODEL STRUGGLES (research-backed, see llm.py for the transport side)
+    • every fix starts with an explanation of what the code really does
+      (Self-Debugging, Chen et al., ICLR 2024) and sees the diff of the
+      attempts that already failed, so it does not repeat them;
+    • a model that goes in circles hands the fixes to a stronger one when one
+      is configured (a cascade: local first, Groq when it is stuck) before
+      the job is declared blocked;
+    • a verification the model itself wrote may be wrong (the test-oracle
+      problem): the fixer may correct an impossible browser check or a test,
+      and every such change is listed in the summary — never silent.
+
 Runs on its own thread. `stop()` is honoured between every step and kills the
 running command. Risky steps (installing a package, validating the plan when
 the user asked to) wait for the HUD's CONFIRM, never for the model's say-so.
@@ -30,6 +41,7 @@ the user asked to) wait for the HUD's CONFIRM, never for the model's say-so.
 from __future__ import annotations
 
 import ast
+import difflib
 import json
 import sys
 import threading
@@ -105,13 +117,19 @@ def scan_dependencies(ws, project: str) -> list[str]:
 
 class StudioJob:
     def __init__(self, studio, project: str, request: str, mode: str = "create",
-                 llm=None, options: dict | None = None) -> None:
+                 llm=None, options: dict | None = None, escalate=None) -> None:
         self.studio = studio
         self.project = project
         self.request = request.strip()
         self.mode = mode
         self.llm = llm
         self.options = dict(options or {})
+        #: escalate() -> a stronger coder (or None) for the fixes when stuck.
+        self.escalate = escalate
+        self.fix_llm = None
+        self.escalated = ""
+        #: Verifications the model changed after writing them (shown in the summary).
+        self.amended: list[dict] = []
         self.stop_event = threading.Event()
         self.phase = "planification"
         self.step = ""
@@ -176,10 +194,7 @@ class StudioJob:
         try:
             j = self.ctx.journal
             j.add("info", f"Demande : {self.request[:400]}", mode=self.mode)
-            if hasattr(self.llm, "on_wait"):
-                self.llm.on_wait = lambda secs, why: j.add(
-                    "info", f"⏳ {why} — nouvelle tentative dans {int(secs)} s" if secs > 0 else f"↪ {why}")
-                self.llm.should_stop = self.stop_event.is_set
+            self._wire(self.llm)
             j.add("info", f"Modèle de code : {llm_mod.describe(self.llm)}")
             if self.mode == "create":
                 self._plan_new()
@@ -203,6 +218,18 @@ class StudioJob:
         finally:
             self.finished = time.time()
             self.studio.job_finished(self)
+
+    def _wire(self, llm) -> None:
+        """Waits are journaled (the HUD shows WHY nothing moves); ARRÊTER interrupts them."""
+        if hasattr(llm, "on_wait"):
+            j = self.ctx.journal
+            llm.on_wait = lambda secs, why: j.add(
+                "info", f"⏳ {why} — nouvelle tentative dans {int(secs)} s" if secs > 0 else f"↪ {why}")
+            llm.should_stop = self.stop_event.is_set
+
+    @property
+    def fixer(self):
+        return self.fix_llm or self.llm
 
     def _failed(self, j, e: Exception) -> None:
         traceback.print_exc()
@@ -345,7 +372,8 @@ class StudioJob:
         for p, c in reversed(list(written.items())):
             if p == current_path:
                 continue
-            snippet = c if len(c) < 3500 else c[:2500] + "\n…\n" + c[-800:]
+            snippet = c if len(c) < 3500 else (
+                (p.endswith(".py") and _py_interface(c)) or c[:2500] + "\n…\n" + c[-800:])
             block = f"--- {p} ---\n{snippet}\n"
             if len(block) > budget:
                 break
@@ -502,7 +530,12 @@ class StudioJob:
                 return {"ok": True, "checks": checks, "attempts": self.attempt}
             sig = diagnose.signature(failing["output"])
             seen[sig] = seen.get(sig, 0) + 1
-            if seen[sig] >= 3 or (seen[sig] >= 2 and self.attempt >= 2):
+            circling = seen[sig] >= 3 or (seen[sig] >= 2 and self.attempt >= 2)
+            if (circling or self.attempt >= max_attempts) and self._escalate():
+                seen = {sig: 1}                     # the stronger model starts with a clean slate
+                max_attempts = self.attempt + 2
+                circling = False
+            if circling:
                 msg = ("Je tourne en rond : la même erreur revient après correction — "
                        f"{diagnose.headline(failing['output'])}")
                 self.ctx.journal.add("blocked", msg, signature=sig)
@@ -516,6 +549,24 @@ class StudioJob:
             self.attempt += 1
             self._step(f"correction {self.attempt}/{max_attempts}")
             history.append(self._fix(failing, history))
+
+    def _escalate(self) -> bool:
+        """Stuck: hand the fixes to a stronger coder, once, if one is configured."""
+        if self.escalated or not callable(self.escalate) or not self.options.get("escalate", True):
+            return False
+        try:
+            stronger = self.escalate()
+        except llm_mod.LLMError as e:
+            self.ctx.journal.add("info", f"Escalade impossible : {e}")
+            return False
+        if stronger is None:
+            return False
+        self._wire(stronger)
+        self.fix_llm = stronger
+        self.escalated = llm_mod.describe(stronger)
+        self.ctx.journal.add("info", f"↗ Le modèle bloque : escalade vers {self.escalated} pour les corrections "
+                                     "(2 tentatives de plus)", escalated=self.escalated)
+        return True
 
     def _coverage(self, checks: list[dict]) -> list[dict]:
         tests: dict[str, str] = {}
@@ -545,7 +596,7 @@ class StudioJob:
                 continue
             c = ws.read_optional(project, p) or ""
             (tests if llm_mod.is_test_file(p) else code).append(f"--- {p} ---\n{c[:4000]}")
-        proposal = llm_mod.cover(self.llm, self.plan.get("title") or project, missing,
+        proposal = llm_mod.cover(self.fixer, self.plan.get("title") or project, missing,
                                  "\n".join(tests), "\n".join(code))
         self._check()
         changed = []
@@ -597,7 +648,7 @@ class StudioJob:
             numbered = "\n".join(f"{i+1:4d}| {l}" for i, l in enumerate(c.splitlines()[:600]))
             contents.append(f"--- {p} ---\n{numbered}")
         located = f"The error points at {path}, line {line}." if path else "No project frame located."
-        proposal = llm_mod.fix(self.llm, self.plan.get("title") or project, failing["name"], kind,
+        proposal = llm_mod.fix(self.fixer, self.plan.get("title") or project, failing["name"], kind,
                                diagnose.excerpt(failing["output"]), located, files,
                                "\n\n".join(contents), history,
                                web_checks=self.plan.get("web_checks") if web else None)
@@ -605,23 +656,60 @@ class StudioJob:
         if proposal.get("give_up"):
             self.ctx.journal.add("blocked", f"Le correcteur demande de l'aide : {proposal['give_up']}")
         diag = str(proposal.get("diagnosis", ""))[:300]
-        changed = []
+        changed, diffs = [], []
         for f in (proposal.get("files") or [])[:3]:
             if not isinstance(f, dict) or not isinstance(f.get("content"), str):
                 continue
+            rel = str(f.get("path", ""))
+            before = ws.read_optional(project, rel) if rel else None
             try:
-                self.studio.write_file(project, str(f.get("path", "")), f["content"],
-                                       reason=f"correction {self.attempt}")
-                changed.append(str(f.get("path")))
+                self.studio.write_file(project, rel, f["content"], reason=f"correction {self.attempt}")
             except SandboxError as e:
-                self.ctx.journal.add("error", f"Correction refusée pour {f.get('path')} : {e}")
+                self.ctx.journal.add("error", f"Correction refusée pour {rel} : {e}")
+                continue
+            changed.append(rel)
+            diffs.append(_short_diff(rel, before or "", f["content"]))
+            if llm_mod.is_test_file(rel) and before is not None:
+                self._amend(rel, diag or "test modifié par le correcteur")
+        if web and isinstance(proposal.get("check_fix"), dict):
+            self._amend_check(proposal["check_fix"], failing)
         dep = str(proposal.get("needs_dependency") or "").strip()
         if dep and not changed:
             self._install_dependencies([dep])
         self.ctx.journal.add("info", f"Correction {self.attempt} : {diag or 'sans explication'} "
                                      f"({', '.join(changed) or 'aucun fichier modifié'})")
-        return f"attempt {self.attempt}: {diag} — changed {changed} — error was: " \
-               f"{diagnose.headline(failing['output'])}"
+        return (f"Attempt {self.attempt} — meant to fix: {diagnose.headline(failing['output'])}\n"
+                f"Diagnosis then: {diag or '(none)'}\nChanged: {', '.join(changed) or 'nothing'}\n"
+                + "\n".join(diffs))[:1800]
+
+    def _amend(self, what: str, why: str) -> None:
+        if not any(a["what"] == what for a in self.amended):
+            self.amended.append({"what": what, "why": str(why)[:200]})
+
+    def _amend_check(self, fix: dict, failing: dict) -> None:
+        """The fixer says a browser check is itself impossible: accept a corrected one
+        for the SAME criterion, once, never an empty one — and say so in the summary."""
+        cid = str(fix.get("id") or "").upper().replace(" ", "")
+        checks = self.plan.get("web_checks") or []
+        old = next((c for c in checks if c.get("id") == cid), None)
+        failed = {c.get("id") for c in ((failing.get("report") or {}).get("checks") or []) if not c.get("ok")}
+        why = str(fix.get("reason") or "").strip()
+        if old is None or cid not in failed or not why or any(a["what"] == f"parcours {cid}" for a in self.amended):
+            self.ctx.journal.add("error", f"Correction du parcours {cid or '?'} refusée (parcours inconnu, qui "
+                                          "n'échoue pas, sans raison, ou déjà corrigé une fois)")
+            return
+        ids = {c["id"] for c in self.plan.get("acceptance") or []}
+        new = acceptance.normalize({"acceptance": [{"id": i, "criterion": "x"} for i in sorted(ids)],
+                                    "web_checks": [{"id": cid, "name": old.get("name") or cid,
+                                                    "steps": fix.get("steps"), "expect": fix.get("expect")}]})
+        if not new["web_checks"] or not new["web_checks"][0]["expect"]:
+            self.ctx.journal.add("error", f"Correction du parcours {cid} refusée : aucune vérification valable")
+            return
+        self.plan["web_checks"] = [new["web_checks"][0] if c is old else c for c in checks]
+        self._amend(f"parcours {cid}", why)
+        self.studio.update_map(self.project, self.plan)
+        self.ctx.journal.add("blocked", f"⚠ Parcours {cid} corrigé par le modèle : {why[:200]} — signalé dans le bilan",
+                             check=cid)
 
     # 4 ── present ───────────────────────────────────────────────────────────
     def _verdict(self, report: dict, criteria: list[dict], run: dict | None) -> tuple[str, str]:
@@ -716,6 +804,10 @@ class StudioJob:
         checks = report.get("checks", [])
         web_report = next((c.get("report") for c in checks if c["kind"] == "web"), None) or {}
         criteria = self._coverage(checks)
+        amended_ids = {a["what"].split()[-1] for a in self.amended if a["what"].startswith("parcours ")}
+        for c in criteria:
+            if c["id"] in amended_ids:
+                c["evidence"] = (c["evidence"] + " — parcours corrigé par le modèle").strip(" —")
 
         analysis, typing = self._analyses()
         self.studio.update_map(project, self.plan)          # the preview reads the map
@@ -747,6 +839,9 @@ class StudioJob:
             "remaining": report.get("blocked", ""),
             "launch": launch,
             "fix_attempts": report.get("attempts", 0),
+            "amended": self.amended,
+            "coder": llm_mod.describe(self.llm),
+            "escalated": self.escalated,
             "dependencies": deps,
             "folder": str(ws.project_dir(project)),
             "seconds": round(time.time() - self.started),
@@ -775,8 +870,55 @@ class StudioJob:
             + ("Never call it validated or fully working: the verdict is not 'ok'. " if status != "ok" else "")
             + (f"Remaining problem: {report.get('blocked')}. Ask them for help with it. " if status == "blocked" else "")
             + ("The preview window is open on the HUD. " if preview.get("opened") else "")
+            + (f"Warn them that the model changed {len(summary['amended'])} of its own verification(s) while "
+               "fixing; they are listed in the Studio panel. " if summary.get("amended") else "")
+            + (f"The fixes needed a stronger model ({summary['escalated']}). " if summary.get("escalated") else "")
             + f"How to launch: {summary['launch'] or 'see the README'}. The full report is in the HUD's Studio "
               "panel. Do not invent anything beyond these facts.")
+
+
+def _short_diff(path: str, before: str, after: str, limit: int = 900) -> str:
+    """What an attempt changed, small enough to show the next attempt."""
+    lines = list(difflib.unified_diff(before.splitlines(), after.splitlines(), f"{path} (avant)",
+                                      f"{path} (après)", n=1, lineterm=""))
+    text = "\n".join(lines[2:]) if lines else "(contenu identique)"
+    return f"--- diff {path} ---\n" + (text if len(text) <= limit else text[:limit] + "\n…")
+
+
+def _py_interface(src: str) -> str | None:
+    """Imports, constants and signatures (+ first docstring line) of a Python
+    module: what the next file needs to call it, at a fraction of the tokens."""
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return None
+    lines = src.splitlines()
+
+    def header(node) -> list[str]:
+        end = node.body[0].lineno - 1 if node.body else node.lineno
+        out = [lines[i] for i in range(node.lineno - 1, min(end, len(lines)))]
+        doc = ast.get_docstring(node)
+        if doc:
+            out.append(" " * (node.col_offset + 4) + '"""' + doc.strip().splitlines()[0][:120] + '"""')
+        return out
+
+    out = ["# interface (corps des fonctions omis)"]
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            out.append(ast.get_source_segment(src, node) or "")
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out += [*(f"@{ast.get_source_segment(src, d)}" for d in node.decorator_list), *header(node), "    ..."]
+        elif isinstance(node, ast.ClassDef):
+            out += header(node)
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    out += [*header(item), "        ..."]
+                elif isinstance(item, (ast.Assign, ast.AnnAssign)):
+                    out.append(ast.get_source_segment(src, item) or "")
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            seg = ast.get_source_segment(src, node) or ""
+            out.append(seg if len(seg) < 300 else seg[:300] + " …")
+    return "\n".join(out)
 
 
 def _test_summary(output: str) -> str:

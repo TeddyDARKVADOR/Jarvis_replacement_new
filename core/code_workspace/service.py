@@ -33,8 +33,9 @@ from .tasks import TaskList
 
 CONFIG_NS = "code_studio"
 DEFAULT_OPTIONS = {"max_fix_attempts": 4, "command_timeout": 120, "confirm_plan": False,
-                   "auto_preview": True, "auto_run_scripts": True, "provider": "auto", "local_model": ""}
-_BOOL_OPTIONS = ("confirm_plan", "auto_preview", "auto_run_scripts")
+                   "auto_preview": True, "auto_run_scripts": True, "provider": "auto", "local_model": "",
+                   "escalate": True}
+_BOOL_OPTIONS = ("confirm_plan", "auto_preview", "auto_run_scripts", "escalate")
 #: Who writes the code — see llm.make_llm.
 PROVIDERS = ("auto", "groq", "groq+local", "local", "gemini")
 
@@ -66,6 +67,7 @@ class Studio:
         self.current_project: str | None = None
         self.player = None
         self.llm_factory = None          # tests inject a fake model here
+        self.escalation_factory = None   # ... and the stronger one, for escalation
         #: Set by the HUD host: opens the preview window (any thread). Returns
         #: True when a window really opened.
         self.preview_opener = None
@@ -341,6 +343,26 @@ class Studio:
         from .llm import make_llm
         return make_llm(self._get())
 
+    def _escalation_llm(self):
+        """The stronger coder a stuck LOCAL model hands its fixes to: Groq, else Gemini."""
+        if callable(self.escalation_factory):
+            return self.escalation_factory()
+        if callable(self.llm_factory):
+            return None                               # a scripted model: nothing real to escalate to
+        cfg = self._get()
+        if str(cfg.get("provider") or "auto").lower() not in ("local", "ollama"):
+            return None
+        from .llm import GroqLLM, StudioLLM, groq_key
+        if groq_key():
+            return GroqLLM(cfg.get("groq_model") or None)
+        try:
+            from memory.config_manager import get_gemini_key
+            if get_gemini_key():
+                return StudioLLM(cfg.get("model") or None)
+        except Exception:
+            pass
+        return None
+
     def start_job(self, mode: str, request: str, project: str | None = None) -> dict:
         from .engine import StudioJob, new_project_name
         with self._lock:
@@ -357,7 +379,8 @@ class Studio:
                 self.workspace().project_dir(name, create=True)
             else:
                 name = self._existing(project)
-            job = StudioJob(self, name, request, mode=mode, llm=self._llm(), options=self.options())
+            job = StudioJob(self, name, request, mode=mode, llm=self._llm(), options=self.options(),
+                            escalate=self._escalation_llm)
             self.job = job
             self.current_project = name
             job.start()

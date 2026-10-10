@@ -132,8 +132,51 @@ def groq_key() -> str:
     return key or os.environ.get("GROQ_API_KEY", "").strip()
 
 
+#: Output budget (tokens) by role — what a call is for decides how much it may write.
+OUT_BUDGET = {"plan": 3000, "write": 4000, "fix": 5000, "cover": 3000}
+
+
+def estimate_tokens(text: str) -> int:
+    """A conservative token count (code and French run ~3.5-4.2 characters a token)."""
+    return int(len(text or "") / 3.2) + 64
+
+
+def duration(text) -> float:
+    """Groq's reset times: '7.66s', '2m59.56s', '14h12m', '320ms' -> seconds."""
+    total = 0.0
+    for value, unit in re.findall(r"(\d+(?:\.\d+)?)(ms|h|m|s)", str(text or "")):
+        total += float(value) * {"ms": 0.001, "s": 1, "m": 60, "h": 3600}[unit]
+    return total
+
+
+def configure(llm, role: str, schema: dict | None = None) -> None:
+    """Tell a provider what the next call is for. Anything without these
+    attributes (the selftest's scripted models) simply ignores it."""
+    if llm is not None and hasattr(llm, "role"):
+        llm.role = role
+    if llm is not None and hasattr(llm, "schema"):
+        llm.schema = schema
+
+
 class GroqLLM:
-    """The Studio's coder on Groq (OpenAI-compatible chat API, plain HTTP)."""
+    """The Studio's coder on Groq (OpenAI-compatible chat API, plain HTTP).
+
+    Groq's free/developer limits are tight (gpt-oss-120b: 8 000 tokens per
+    minute, 1 000 requests per day), so the client paces itself: every answer
+    carries `x-ratelimit-*` headers, and a call that would not fit in what is
+    left of the minute waits for the exact reset (or goes to the local relay)
+    instead of earning a 429. A daily quota that is gone is said plainly.
+
+    With a `fallback` (the local model), only calls whose quality matters less
+    are relayed — writing a file from a plan, adding missing tests — while the
+    plan and the fixes wait for Groq. Once the daily quota is gone, everything
+    goes to the relay.
+    """
+
+    #: Roles a rate-limited call may hand to the local relay.
+    RELAY_ROLES = ("write", "cover")
+    #: gpt-oss reasoning effort per role: thinking is spent where it pays.
+    EFFORT = {"plan": "medium", "fix": "medium", "write": "low", "cover": "low"}
 
     def __init__(self, model: str | None = None, key: str | None = None, http=None, fallback=None) -> None:
         self.key = key or groq_key()
@@ -148,6 +191,10 @@ class GroqLLM:
         #: rate limit or an outage. None: wait, as before.
         self.fallback = fallback
         self.relayed = 0
+        self.role = "write"
+        self.schema = None
+        self.limits: dict = {}
+        self.exhausted_until = 0.0
 
     @property
     def http(self):
@@ -160,6 +207,7 @@ class GroqLLM:
         self.relayed += 1
         if callable(self.on_wait):
             self.on_wait(0, f"{why} — le modèle local prend le relais")
+        configure(self.fallback, self.role, self.schema)
         self.fallback.should_stop = self.should_stop
         return self.fallback.complete(prompt, json_mode)
 
@@ -192,14 +240,71 @@ class GroqLLM:
                 (m for m in available if not any(s in m.lower() for s in _GROQ_SKIP)), available[0])
         return self._model
 
+    # -- rate limits ---------------------------------------------------------
+    def _read_limits(self, r) -> None:
+        h = getattr(r, "headers", None) or {}
+        now = time.monotonic()
+        try:
+            if h.get("x-ratelimit-remaining-tokens") is not None:
+                self.limits["tokens"] = int(float(h["x-ratelimit-remaining-tokens"]))
+                self.limits["tokens_reset"] = now + duration(h.get("x-ratelimit-reset-tokens"))
+            if h.get("x-ratelimit-remaining-requests") is not None:
+                self.limits["requests"] = int(float(h["x-ratelimit-remaining-requests"]))
+                self.limits["requests_reset"] = now + duration(h.get("x-ratelimit-reset-requests"))
+            if h.get("x-ratelimit-limit-tokens") is not None:
+                self.limits["tpm"] = int(float(h["x-ratelimit-limit-tokens"]))
+        except (TypeError, ValueError):
+            pass
+
+    def _pace(self, prompt: str, json_mode: bool) -> str | None:
+        """Before a call: wait for the minute's budget, or relay. Returns the relayed answer, if any."""
+        now = time.monotonic()
+        if self.exhausted_until > now:
+            if self.fallback is not None:
+                return self._relay(prompt, json_mode, "quota quotidien Groq épuisé")
+            raise LLMError(self._daily_message(self.exhausted_until - now))
+        need = estimate_tokens(prompt) + OUT_BUDGET.get(self.role, 4000)
+        left, reset = self.limits.get("tokens"), self.limits.get("tokens_reset", 0.0)
+        if left is not None and left < need and reset > now:
+            if self.fallback is not None and self.role in self.RELAY_ROLES:
+                return self._relay(prompt, json_mode, "budget Groq de la minute épuisé")
+            self._wait(reset - now + 0.5, "budget Groq de la minute épuisé (attente calculée)")
+            self.limits.pop("tokens", None)
+        return None
+
+    @staticmethod
+    def _daily_message(secs: float) -> str:
+        return (f"Quota quotidien Groq épuisé (retour dans environ {max(1, round(secs / 60))} min). "
+                "Choisissez « Groq + relais local » ou « IA locale » dans les réglages du Studio.")
+
+    def _daily_exhausted(self, r) -> float:
+        """Seconds until the daily quota is back, when THAT is what the 429 means; else 0."""
+        try:
+            retry = float(r.headers.get("retry-after") or 0)
+        except (TypeError, ValueError):
+            retry = 0.0
+        self._read_limits(r)
+        if self.limits.get("requests") == 0 or retry > 120:
+            back = max(retry, self.limits.get("requests_reset", 0.0) - time.monotonic())
+            return back if back > 0 else 3600.0
+        return 0.0
+
+    # -- the call --------------------------------------------------------------
     def complete(self, prompt: str, json_mode: bool = False) -> str:
+        relayed = self._pace(prompt, json_mode)
+        if relayed is not None:
+            return relayed
+        role = self.role if self.role in OUT_BUDGET else "write"
         body = {"model": self.model, "temperature": 0.2, "max_completion_tokens": 16384,
                 "messages": [{"role": "system", "content": "You are an expert software engineer. "
                               "Follow the output format exactly."},
                              {"role": "user", "content": prompt}]}
+        if self.model.startswith("openai/gpt-oss"):
+            body["reasoning_effort"] = self.EFFORT.get(role, "medium")
+            body["include_reasoning"] = False
         if json_mode:
             body["response_format"] = {"type": "json_object"}
-        delay, attempts = 5.0, 6
+        delay, attempts, longer = 5.0, 6, False
         for attempt in range(attempts):
             try:
                 r = self.http.post(f"{GROQ_URL}/chat/completions", headers=self._headers(),
@@ -213,10 +318,20 @@ class GroqLLM:
                     continue
                 raise LLMError(f"Groq injoignable : {e}") from e
             if r.status_code == 200:
+                self._read_limits(r)
                 try:
-                    text = r.json()["choices"][0]["message"].get("content") or ""
-                except (ValueError, KeyError, IndexError):
-                    text = ""
+                    choice = r.json()["choices"][0]
+                    text = choice["message"].get("content") or ""
+                    finish = choice.get("finish_reason")
+                except (ValueError, KeyError, IndexError, TypeError):
+                    text, finish = "", None
+                if finish == "length" and not longer:
+                    # Cut mid-file: a truncated file would only send the fix loop chasing it.
+                    longer = True
+                    body["max_completion_tokens"] = 32768
+                    continue
+                if finish == "length":
+                    raise LLMError("Réponse de Groq tronquée (limite de sortie atteinte).")
                 if text.strip():
                     return text
                 if attempt < attempts - 1:
@@ -232,14 +347,32 @@ class GroqLLM:
             if r.status_code == 400 and json_mode and "json" in detail.lower() and "response_format" in body:
                 body.pop("response_format")              # model without JSON mode: ask in the prompt only
                 continue
-            if r.status_code in (429, 500, 502, 503, 504) and self.fallback is not None:
+            if r.status_code == 400 and ("reasoning" in detail.lower()) and "reasoning_effort" in body:
+                body.pop("reasoning_effort", None)       # a model that does not take it
+                body.pop("include_reasoning", None)
+                continue
+            if r.status_code == 413:
+                # Bigger than the whole per-minute budget: waiting can never make it fit.
+                if self.fallback is not None:
+                    return self._relay(prompt, json_mode, "requête trop grosse pour la limite Groq")
+                raise LLMError("Requête trop grosse pour la limite de Groq par minute. Choisissez « Groq + "
+                               "relais local » ou « IA locale » dans les réglages du Studio.")
+            if r.status_code == 429:
+                back = self._daily_exhausted(r)
+                if back:
+                    self.exhausted_until = time.monotonic() + back
+                    if self.fallback is not None:
+                        return self._relay(prompt, json_mode, "quota quotidien Groq épuisé")
+                    raise LLMError(self._daily_message(back))
+            if r.status_code in (429, 500, 502, 503, 504) and self.fallback is not None \
+                    and self.role in self.RELAY_ROLES:
                 return self._relay(prompt, json_mode,
                                    "limite Groq atteinte" if r.status_code == 429 else "Groq indisponible")
             if r.status_code in (429, 500, 502, 503, 504) and attempt < attempts - 1:
                 wait = delay
                 try:
                     wait = min(90.0, float(r.headers.get("retry-after") or delay) + 0.5)
-                except ValueError:
+                except (TypeError, ValueError):
                     pass
                 self._wait(wait, "limite Groq atteinte" if r.status_code == 429 else "Groq indisponible")
                 delay = min(delay * 2, 60.0)
@@ -261,16 +394,26 @@ LOCAL_URL = "http://127.0.0.1:11434"
 #: Coding models first; the first one installed in Ollama wins.
 LOCAL_PREFERRED = ["qwen3-coder", "qwen2.5-coder", "devstral", "gemma4", "qwen3", "deepseek-coder",
                    "codellama", "llama3"]
+LOCAL_MAX_CTX = 32768
 
 
 class LocalLLM:
     """The Studio's coder on this PC, through Ollama (no quota, no key, slower).
 
-    Ollama's defaults do not fit the Studio: its 4096-token context would cut
-    a plan in half, so `num_ctx` is raised; the model stays loaded between
-    calls (`keep_alive`). A model that can think does it in Ollama's separate
-    `thinking` field — some (Qwen3) leak their reasoning into the answer when
-    told not to — so thinking is on by default when the model supports it.
+    Ollama's defaults do not fit the Studio, and it fails SILENTLY: a prompt
+    longer than the context window is cut without any error (only
+    `prompt_eval_count`, stuck at the window size, tells). So:
+      • the window is sized from the prompt (16k, or 32k for a big one), and a
+        prompt that still filled it is retried larger, or refused — never used;
+      • an answer cut by the output budget (`done_reason: length`) is retried
+        with a bigger budget, never written as a half file;
+      • JSON answers are constrained by a JSON schema (`format`), not merely
+        asked for — a small model cannot produce an invalid plan;
+      • the answer is streamed, so ARRÊTER stops it mid-sentence, and a model
+        silent for 3 minutes is treated as stuck.
+    A model that can think does it in Ollama's separate `thinking` field — some
+    (Qwen3) leak their reasoning into the answer when told not to — so
+    thinking is on by default when the model supports it.
     """
 
     def __init__(self, model: str | None = None, url: str | None = None, think: bool | None = None,
@@ -283,6 +426,8 @@ class LocalLLM:
         self._http = http
         self.on_wait = None
         self.should_stop = None
+        self.role = "write"
+        self.schema = None
         self.stats = {"calls": 0, "seconds": 0.0, "tokens": 0}
 
     @property
@@ -321,36 +466,86 @@ class LocalLLM:
             self.think = "thinking" in caps
         return self._model
 
+    def _post(self, body: dict) -> tuple[int, str, dict]:
+        """(status, content, final stats) — streamed, stoppable, with an idle timeout."""
+        try:
+            r = self.http.post(f"{self.url}/api/chat", json=body, timeout=(10, 180), stream=True)
+        except Exception as e:
+            raise LLMError(f"Ollama ne répond pas : {type(e).__name__}") from e
+        if r.status_code != 200 or not hasattr(r, "iter_lines"):
+            if r.status_code != 200:
+                return r.status_code, r.text, {}
+            data = r.json()                                  # a non-streaming stand-in (tests)
+            return 200, (data.get("message") or {}).get("content") or "", data
+        parts: list[str] = []
+        last: dict = {}
+        try:
+            for raw in r.iter_lines():
+                if callable(self.should_stop) and self.should_stop():
+                    raise LLMError("Arrêté pendant la réponse du modèle local.")
+                if not raw:
+                    continue
+                d = json.loads(raw)
+                if d.get("error"):
+                    raise LLMError(f"Ollama : {str(d['error'])[:200]}")
+                parts.append((d.get("message") or {}).get("content") or "")
+                if d.get("done"):
+                    last = d
+                    break
+        except LLMError:
+            raise
+        except Exception as e:                               # read timeout: 3 minutes without a token
+            raise LLMError(f"Le modèle local ne répond plus ({type(e).__name__}).") from e
+        finally:
+            try:
+                r.close()
+            except Exception:
+                pass
+        return 200, "".join(parts), last
+
     def complete(self, prompt: str, json_mode: bool = False) -> str:
         model = self.model
-        body = {"model": model, "stream": False, "keep_alive": "30m", "think": bool(self.think),
+        role = self.role if self.role in OUT_BUDGET else "write"
+        predict = OUT_BUDGET[role] * 2 + (4096 if self.think else 0)
+        need = estimate_tokens(prompt) + OUT_BUDGET[role] + (2048 if self.think else 0)
+        ctx = self.num_ctx if need <= self.num_ctx else LOCAL_MAX_CTX
+        body = {"model": model, "stream": True, "keep_alive": "30m", "think": bool(self.think),
                 "messages": [{"role": "system", "content": "You are an expert software engineer. "
                               "Follow the output format exactly."},
                              {"role": "user", "content": prompt}],
-                "options": {"temperature": 0.2, "num_ctx": self.num_ctx, "num_predict": 12000}}
+                "options": {"temperature": 0.2, "num_ctx": ctx, "num_predict": predict}}
         if json_mode:
-            body["format"] = "json"
-        for _attempt in range(3):
+            body["format"] = self.schema or "json"
+        for _attempt in range(4):
             if callable(self.should_stop) and self.should_stop():
                 raise LLMError("Arrêté pendant l'attente du modèle local.")
             t0 = time.monotonic()
-            try:
-                r = self.http.post(f"{self.url}/api/chat", json=body, timeout=1800)
-            except Exception as e:
-                raise LLMError(f"Ollama ne répond pas : {type(e).__name__}") from e
-            if r.status_code == 400 and "think" in r.text.lower() and body.get("think"):
+            status, text, data = self._post(body)
+            if status == 400 and "think" in text.lower() and body.get("think"):
                 body["think"] = self.think = False          # a model without thinking
                 continue
-            if r.status_code != 200:
-                raise LLMError(f"Ollama a répondu {r.status_code} : {r.text[:200]}")
-            data = r.json()
+            if status != 200:
+                raise LLMError(f"Ollama a répondu {status} : {text[:200]}")
             self.stats["calls"] += 1
             self.stats["seconds"] += time.monotonic() - t0
             self.stats["tokens"] += int(data.get("eval_count") or 0)
-            text = re.sub(r"<think>.*?</think>", "", (data.get("message") or {}).get("content") or "", flags=re.S)
+            used = int(data.get("prompt_eval_count") or 0)
+            if used >= body["options"]["num_ctx"] - 8:
+                # The prompt filled the window: Ollama cut it without saying so.
+                if body["options"]["num_ctx"] < LOCAL_MAX_CTX:
+                    body["options"]["num_ctx"] = LOCAL_MAX_CTX
+                    continue
+                raise LLMError(f"Demande trop longue pour le modèle local ({used} jetons au moins, "
+                               f"contexte {LOCAL_MAX_CTX}) : elle serait tronquée.")
+            if data.get("done_reason") == "length":
+                if body["options"]["num_predict"] < 32768:
+                    body["options"]["num_predict"] = min(32768, body["options"]["num_predict"] * 2)
+                    continue
+                raise LLMError("Réponse du modèle local tronquée (budget de sortie atteint).")
+            text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
             if text.strip():
                 return text
-        raise LLMError("Réponse vide du modèle local (budget de sortie épuisé ?).")
+        raise LLMError("Réponse vide du modèle local.")
 
 
 def local_available(url: str | None = None) -> bool:
@@ -407,7 +602,13 @@ _RULES = """Constraints of the workspace (enforced by code, plan accordingly):
   `python -m unittest discover -s tests -t . -v` (so tests can import project modules). Test the
   logic (keep logic in importable modules, separate from UI). For a pure web app, put the
   logic in a small Python or JS module you can test, or test the files' structure in Python.
-- The program must never block waiting for keyboard input when run by the tests.
+- The program must never block waiting for keyboard input when run by the tests. A CLI takes its
+  inputs as command-line arguments (argparse); run without arguments it prints a useful default
+  (help, a demo, a table…) and exits. Use input() menus ONLY if the user asked for an interactive
+  program — and then keep the logic in importable functions the tests call directly.
+- Never call str.format() or an f-string on a template that contains literal braces (CSS, JS,
+  JSON): `{ color: red }` becomes a KeyError. Use string.Template, concatenation, or double the
+  braces.
 - Keep it small and complete: usually 3 to 12 files. Include a README.md explaining how to run it.
 - ACCEPTANCE CRITERIA: list 3 to 8 observable behaviours that together cover EVERY feature
   the user asked for, ids AC1, AC2… Each says how it is verified:
@@ -423,6 +624,8 @@ _RULES = """Constraints of the workspace (enforced by code, plan accordingly):
   ONE of text (contained, case-insensitive), count, value, visible. Use ids/classes that the
   HTML you plan really has. The page must also load with no JavaScript error, no console error
   and no missing local file: the browser blocks the Internet, so ship every asset locally.
+  Play each check in your head before writing it: its expectations describe the page AFTER its
+  own steps (e.g. add one item then delete it -> expect count 0, not 1).
 """
 
 PLAN_PROMPT = """You are the senior engineer of "Jarvis Code Studio". Plan a NEW project.
@@ -507,12 +710,20 @@ Project files (path: size): {files}
 Relevant file contents:
 {contents}
 {spec}
-Previous attempts that did NOT fix it:
+Previous attempts that did NOT fix it (what was changed, and the error it was meant to fix):
 {history}
 
-Find the root cause. Fix the CODE (or the test if the test is clearly wrong).
+Work like a careful developer:
+1. "explanation": walk through what the failing code ACTUALLY does on the failing case, step by
+   step, and say where it diverges from what the check expects.
+2. "diagnosis": the root cause in one sentence, in French.
+3. "files": the fix. If previous attempts are listed above, they did NOT work: do something
+   different, do not repeat them.
+Fix the CODE. Change a test only if it contradicts the acceptance criterion it is named after.
+{check_rule}
 Return ONLY a JSON object:
 {{
+  "explanation": "step-by-step trace of the failing case",
   "diagnosis": "one sentence, in French",
   "files": [{{"path": "relative/path", "content": "the COMPLETE new content of the file"}}],
   "needs_dependency": "pypi package name if a third-party package is genuinely missing, else empty",
@@ -521,15 +732,99 @@ Return ONLY a JSON object:
 Change at most 3 files."""
 
 
+# ── JSON answers: a schema (constrained decoding where the provider has it) and
+#    one repairing retry everywhere — an unusable answer is sent back with the
+#    exact problem instead of failing the whole job ──
+
+_STR = {"type": "string"}
+_STRS = {"type": "array", "items": _STR}
+_CHECK = {"type": "object", "properties": {
+    "id": _STR, "name": _STR,
+    "steps": {"type": "array", "items": {"type": "object", "properties": {
+        "action": {"type": "string", "enum": ["click", "fill", "press", "check", "uncheck", "select", "wait"]},
+        "selector": _STR, "value": _STR, "key": _STR, "ms": {"type": "integer"}}, "required": ["action"]}},
+    "expect": {"type": "array", "items": {"type": "object", "properties": {
+        "selector": _STR, "text": _STR, "count": {"type": "integer"}, "value": _STR,
+        "visible": {"type": "boolean"}}, "required": ["selector"]}}},
+    "required": ["id", "steps", "expect"]}
+_ACCEPTANCE = {"type": "array", "items": {"type": "object", "properties": {
+    "id": _STR, "criterion": _STR, "verify": {"type": "string", "enum": ["test", "web", "manual"]}},
+    "required": ["id", "criterion", "verify"]}}
+_TASKS = {"type": "array", "items": {"type": "object", "properties": {"title": _STR, "files": _STRS},
+                                     "required": ["title", "files"]}}
+PLAN_SCHEMA = {"type": "object", "properties": {
+    "project_name": _STR, "title": _STR, "summary": _STR,
+    "kind": {"type": "string", "enum": ["web", "script", "cli", "gui", "library"]},
+    "stack": _STRS, "entry_point": _STR, "run_command": _STR, "test_command": _STR,
+    "dependencies": _STRS, "features": _STRS, "acceptance": _ACCEPTANCE,
+    "web_checks": {"type": "array", "items": _CHECK}, "tasks": _TASKS,
+    "files": {"type": "array", "items": {"type": "object", "properties": {"path": _STR, "purpose": _STR},
+                                         "required": ["path", "purpose"]}}},
+    "required": ["project_name", "title", "summary", "kind", "entry_point", "run_command", "test_command",
+                 "dependencies", "features", "acceptance", "web_checks", "tasks", "files"]}
+CHANGE_SCHEMA = {"type": "object", "properties": {
+    "summary": _STR, "test_command": _STR, "run_command": _STR, "dependencies": _STRS,
+    "acceptance": _ACCEPTANCE, "web_checks": {"type": "array", "items": _CHECK}, "tasks": _TASKS,
+    "files": {"type": "array", "items": {"type": "object", "properties": {
+        "path": _STR, "action": {"type": "string", "enum": ["create", "modify", "delete"]}, "purpose": _STR},
+        "required": ["path", "action", "purpose"]}}},
+    "required": ["summary", "test_command", "run_command", "dependencies", "acceptance", "web_checks",
+                 "tasks", "files"]}
+_FILES = {"type": "array", "items": {"type": "object", "properties": {"path": _STR, "content": _STR},
+                                     "required": ["path", "content"]}}
+FIX_SCHEMA = {"type": "object", "properties": {
+    "explanation": _STR, "diagnosis": _STR, "files": _FILES,
+    "check_fix": {"type": "object", "properties": {
+        "id": _STR, "reason": _STR, "steps": _CHECK["properties"]["steps"],
+        "expect": _CHECK["properties"]["expect"]}, "required": ["id", "reason", "steps", "expect"]},
+    "needs_dependency": _STR, "give_up": _STR},
+    "required": ["explanation", "diagnosis", "files", "needs_dependency", "give_up"]}
+COVER_SCHEMA = {"type": "object", "properties": {"files": _FILES}, "required": ["files"]}
+
+REPAIR = ("\n\nYOUR PREVIOUS ANSWER WAS NOT USABLE: {problem}\n"
+          "Answer again with ONLY the JSON object described above, complete and valid.")
+
+
+def _has_files(data: dict) -> str:
+    files = data.get("files")
+    if not isinstance(files, list) or not any(isinstance(f, dict) and str(f.get("path", "")).strip()
+                                              for f in files):
+        return "\"files\" must be a non-empty list of objects with a \"path\"."
+    return ""
+
+
+def _files_list(data: dict) -> str:
+    files = data.get("files", [])
+    if not isinstance(files, list) or any(not isinstance(f, dict) for f in files):
+        return "\"files\" must be a list of {\"path\", \"content\"} objects."
+    return ""
+
+
+def ask_json(llm, prompt: str, role: str, schema: dict | None = None, check=None) -> dict:
+    """One JSON answer for `role`; an unusable one is sent back once with the reason."""
+    problem = ""
+    for _attempt in range(2):
+        configure(llm, role, schema)
+        text = llm.complete(prompt + (REPAIR.format(problem=problem[:300]) if problem else ""), json_mode=True)
+        try:
+            data = parse_json(text)
+            problem = check(data) if check else ""
+        except LLMError as e:
+            problem = str(e)
+        if not problem:
+            return data
+    raise LLMError(f"Réponse du modèle inutilisable, même après une relance : {problem}")
+
+
 def plan_new(llm, request: str) -> dict:
-    return parse_json(llm.complete(PLAN_PROMPT.format(request=request, rules=_RULES), json_mode=True))
+    return ask_json(llm, PLAN_PROMPT.format(request=request, rules=_RULES), "plan", PLAN_SCHEMA, _has_files)
 
 
 def plan_change(llm, request: str, project_map: dict, files: list[dict]) -> dict:
     listing = "\n".join(f"{f['path']}: {f['size']}" for f in files[:200]) or "(vide)"
-    return parse_json(llm.complete(CHANGE_PROMPT.format(
+    return ask_json(llm, CHANGE_PROMPT.format(
         project_map=json.dumps(project_map, ensure_ascii=False, indent=1)[:6000],
-        files=listing, request=request, rules=_RULES), json_mode=True))
+        files=listing, request=request, rules=_RULES), "plan", CHANGE_SCHEMA, _has_files)
 
 
 def write_file(llm, plan: dict, path: str, purpose: str, context: str, current: str | None) -> str:
@@ -538,6 +833,7 @@ def write_file(llm, plan: dict, path: str, purpose: str, context: str, current: 
     brief = {k: plan.get(k) for k in ("title", "summary", "kind", "stack", "entry_point",
                                       "run_command", "test_command", "features", "acceptance",
                                       "web_checks", "files")}
+    configure(llm, "write")
     text = llm.complete(WRITE_PROMPT.format(
         title=plan.get("title") or plan.get("project_name", ""),
         plan=json.dumps(brief, ensure_ascii=False, indent=1)[:9000],
@@ -585,19 +881,26 @@ Return ONLY a JSON object:
 
 
 def cover(llm, title: str, missing: list[dict], tests: str, code: str) -> dict:
-    return parse_json(llm.complete(COVER_PROMPT.format(
+    return ask_json(llm, COVER_PROMPT.format(
         title=title, missing="\n".join(f"- {c['id']}: {c['criterion']}" for c in missing),
-        tests=tests[:12000] or NONE, code=code[:12000] or NONE), json_mode=True))
+        tests=tests[:12000] or NONE, code=code[:12000] or NONE), "cover", COVER_SCHEMA, _files_list)
+
+
+CHECK_RULE = """If, and ONLY if, a browser check is ITSELF impossible (its expectations cannot describe the
+page after its own steps, whatever the code), add "check_fix": {"id": "<the check's id>", "reason":
+"why it is impossible", "steps": [...], "expect": [...]} — the corrected check for the SAME criterion.
+It is shown to the user as a change you made to a verification. Never use it to make a check easier."""
 
 
 def fix(llm, title: str, check: str, kind: str, output: str, located: str,
         files: list[dict], contents: str, history: list[str], web_checks: list | None = None) -> dict:
-    # The browser paths encode the user's criteria: the fixer changes the code
-    # to satisfy them, it is never offered a way to weaken them.
-    spec = ("\nBrowser checks the page must pass (fixed, change the CODE so they pass):\n"
+    # The browser paths encode the user's criteria. The fixer changes the code to
+    # satisfy them; it may correct a check only when the check itself is
+    # impossible — and the engine shows that correction in the summary.
+    spec = ("\nBrowser checks the page must pass:\n"
             + json.dumps(web_checks, ensure_ascii=False)[:4000] + "\n") if web_checks else ""
-    return parse_json(llm.complete(FIX_PROMPT.format(
+    return ask_json(llm, FIX_PROMPT.format(
         title=title, check=check, kind=kind, output=output, located=located,
         files=", ".join(f"{f['path']}: {f['size']}" for f in files[:120]),
-        contents=contents[:24000], spec=spec, history="\n".join(history[-4:]) or "(aucune)"),
-        json_mode=True))
+        contents=contents[:24000], spec=spec, history="\n\n".join(history[-3:]) or "(aucune)",
+        check_rule=CHECK_RULE if web_checks else ""), "fix", FIX_SCHEMA, _files_list)

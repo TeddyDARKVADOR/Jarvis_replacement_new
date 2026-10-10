@@ -38,6 +38,10 @@ What it checks:
   34    the HUD's own edit and test buttons: journaled, undoable, fenced
   35-36 the local coder (Ollama) and Groq with a local relay on rate limits
   37    a program waiting for the keyboard is interactive, not crashed
+  38-42 robustness with real models: Ollama's silent truncation caught, Groq
+        paced on its own headers (daily quota, 413, truncated answers, effort
+        per role), unusable JSON sent back once, escalation with the diff of
+        failed attempts, an impossible browser check corrected — and shown
 """
 from __future__ import annotations
 
@@ -768,7 +772,7 @@ def _():
         def get(self, url, timeout=0):
             return R(data={"models": [{"name": "llama3:latest"}, {"name": "gemma4:12b"}, {"name": "qwen3:30b"}]})
 
-        def post(self, url, json=None, timeout=0):
+        def post(self, url, json=None, timeout=0, **_kw):
             if url.endswith("/api/show"):
                 return R(data={"capabilities": self.caps})
             self.bodies.append(json)
@@ -861,6 +865,241 @@ def _():
     assert run.get("interactive") and not run.get("crashed"), run
     assert job.result["status"] == "ok", (job.result["status"], job.result.get("why"))
     return "EOFError d'input() → « interactif », verdict validé"
+
+
+@check("38 IA locale : un prompt coupé en silence par Ollama est refait plus grand, une réponse tronquée aussi")
+def _():
+    from core.code_workspace import llm as L
+
+    class R:
+        status_code, ok, text = 200, True, ""
+
+        def __init__(self, data):
+            self._d = data
+
+        def json(self):
+            return self._d
+
+    class Seq:
+        def __init__(self, answers):
+            self.answers, self.bodies = list(answers), []
+
+        def get(self, url, timeout=0):
+            return R({"models": [{"name": "gemma4:12b"}]})
+
+        def post(self, url, json=None, timeout=0, **_kw):
+            if url.endswith("/api/show"):
+                return R({"capabilities": []})
+            self.bodies.append({**json, "options": dict(json["options"])})
+            return R(self.answers.pop(0))
+
+    good = {"message": {"content": "ok"}, "prompt_eval_count": 900, "done_reason": "stop"}
+    cut = {"message": {"content": "faux"}, "prompt_eval_count": 16384, "done_reason": "stop"}
+    http = Seq([cut, good])
+    assert L.LocalLLM(http=http).complete("x") == "ok"
+    assert [b["options"]["num_ctx"] for b in http.bodies] == [16384, L.LOCAL_MAX_CTX], http.bodies
+    full = {"message": {"content": "faux"}, "prompt_eval_count": L.LOCAL_MAX_CTX, "done_reason": "stop"}
+    try:
+        L.LocalLLM(http=Seq([cut, full])).complete("x")
+        raise AssertionError("prompt tronqué accepté")
+    except L.LLMError as e:
+        assert "tronquée" in str(e)
+    longer = Seq([{"message": {"content": "moit"}, "prompt_eval_count": 10, "done_reason": "length"}, good])
+    assert L.LocalLLM(http=longer).complete("x") == "ok"
+    assert longer.bodies[1]["options"]["num_predict"] == 2 * longer.bodies[0]["options"]["num_predict"]
+    big = Seq([good])
+    L.LocalLLM(http=big).complete("y" * 60000)
+    assert big.bodies[0]["options"]["num_ctx"] == L.LOCAL_MAX_CTX, "gros prompt : contexte non agrandi"
+    sch = Seq([{"message": {"content": '{"files": []}'}, "prompt_eval_count": 10, "done_reason": "stop"}])
+    m = L.LocalLLM(http=sch)
+    L.configure(m, "cover", L.COVER_SCHEMA)
+    m.complete("z", json_mode=True)
+    assert sch.bodies[0]["format"] == L.COVER_SCHEMA, "schéma JSON non transmis"
+    return "coupure détectée → 32k, puis refus ; sortie tronquée → budget doublé ; schéma transmis"
+
+
+@check("39 Groq : rythme calculé sur ses en-têtes, quota du jour, requête trop grosse, effort par rôle")
+def _():
+    from core.code_workspace import llm as L
+
+    class Resp:
+        def __init__(self, code, data=None, headers=None):
+            self.status_code, self._d, self.text = code, data or {}, ""
+            self.headers = headers or {}
+            self.ok = code == 200
+
+        def json(self):
+            return self._d
+
+    def ok(text="RÉPONSE", finish="stop", left="7000"):
+        return Resp(200, {"choices": [{"message": {"content": text}, "finish_reason": finish}]},
+                    {"x-ratelimit-remaining-tokens": left, "x-ratelimit-reset-tokens": "1.2s",
+                     "x-ratelimit-remaining-requests": "900", "x-ratelimit-reset-requests": "2m"})
+
+    class Seq:
+        def __init__(self, answers):
+            self.answers, self.bodies = list(answers), []
+
+        def post(self, url, headers=None, json=None, timeout=0):
+            self.bodies.append(json)
+            return self.answers.pop(0)
+
+    class Local:
+        role, schema, should_stop = "write", None, None
+
+        def complete(self, prompt, json_mode=False):
+            return f"LOCAL({self.role})"
+
+    waits: list = []
+
+    def groq(answers, fallback=None):
+        g = L.GroqLLM(key="gsk_test", http=Seq(answers), fallback=fallback)
+        g._model = "openai/gpt-oss-120b"
+        g.on_wait = lambda secs, why: waits.append((round(secs, 1), why))
+        return g
+
+    g = groq([ok(left="50"), ok()])
+    L.configure(g, "plan")
+    g.complete("p")
+    assert g.http.bodies[0]["reasoning_effort"] == "medium"
+    t0 = time.monotonic()
+    L.configure(g, "fix")
+    g.complete("q")
+    assert 1.0 < time.monotonic() - t0 < 4 and "attente calculée" in waits[-1][1], waits
+    g = groq([ok(left="50")], fallback=Local())
+    L.configure(g, "write")
+    g.complete("p")
+    assert g.http.bodies[0]["reasoning_effort"] == "low"
+    assert g.complete("q") == "LOCAL(write)" and g.relayed == 1, "écriture non relayée sur budget épuisé"
+    day = Resp(429, headers={"retry-after": "3600", "x-ratelimit-remaining-requests": "0"})
+    try:
+        groq([day]).complete("p")
+        raise AssertionError("quota du jour non signalé")
+    except L.LLMError as e:
+        assert "quotidien" in str(e)
+    g = groq([day], fallback=Local())
+    L.configure(g, "plan")
+    assert g.complete("p") == "LOCAL(plan)" and g.complete("p2") == "LOCAL(plan)", "quota du jour : pas de relais"
+    assert len(g.http.bodies) == 1, "Groq rappelé alors que le quota du jour est épuisé"
+    try:
+        groq([Resp(413)]).complete("p")
+        raise AssertionError("413 non signalé")
+    except L.LLMError as e:
+        assert "trop grosse" in str(e)
+    g = groq([ok(text="tronq", finish="length"), ok(text="complet")])
+    assert g.complete("p") == "complet" and g.http.bodies[1]["max_completion_tokens"] == 32768
+    g = groq([Resp(429, headers={"retry-after": "1"}), ok()], fallback=Local())
+    L.configure(g, "fix")
+    assert g.complete("p") == "RÉPONSE" and g.relayed == 0, "une correction a été relayée au modèle local"
+    return "attente exacte, relais des écritures seulement, quota du jour et 413 clairs, sortie tronquée refaite"
+
+
+@check("40 une réponse JSON inutilisable est renvoyée une fois avec la raison, pas d'échec du travail")
+def _():
+    class Sloppy(PlanLLM):
+        def __init__(self, bad, **k):
+            super().__init__(**k)
+            self.bad, self.plans = bad, []
+
+        def complete(self, prompt, json_mode=False):
+            if "Plan a NEW project" in prompt:
+                self.plans.append(prompt)
+                if self.bad > 0:
+                    self.bad -= 1
+                    return "Voici le plan : (oups, pas de JSON)"
+            return super().complete(prompt, json_mode)
+    files = {"calc.py": FIXED, "tests/__init__.py": "", "tests/test_calc.py": TEST}
+    extra = {"test_command": "python -m unittest discover -s tests -t . -v"}
+    llm = Sloppy(1, extra=extra, contents=files)
+    st = _studio(llm)
+    st.start_job("create", "calc après un plan raté")
+    job = _wait(st)
+    assert job.phase == "termine" and len(llm.plans) == 2, (job.phase, len(llm.plans))
+    assert "NOT USABLE" in llm.plans[1], "la relance ne dit pas ce qui n'allait pas"
+    st = _studio(Sloppy(5, extra=extra, contents=files))
+    st.start_job("create", "plan toujours raté")
+    job = _wait(st)
+    assert job.phase == "erreur" and "relance" in job.result.get("error", ""), job.result
+    return "1 relance avec la raison ; deux échecs → erreur claire"
+
+
+@check("41 bloqué en boucle : escalade vers un modèle plus fort, qui voit le diff des tentatives ratées")
+def _():
+    class Stuck(FakeLLM):
+        def __init__(self):
+            super().__init__(fix_content=BUGGY)
+            self.fix_prompts = []
+
+        def complete(self, prompt, json_mode=False):
+            if "You are fixing the project" in prompt:
+                self.fix_prompts.append(prompt)
+                return json.dumps({"explanation": "x", "diagnosis": "tentative",
+                                   "files": [{"path": "calc.py", "content": "def add(a, b):\n    return b - a\n"}]})
+            return super().complete(prompt, json_mode)
+    weak, strong = Stuck(), FakeLLM()
+    st = _studio(weak)
+    st.escalation_factory = lambda: strong
+    st.start_job("create", "calc qui demande de l'aide")
+    job = _wait(st)
+    assert job.phase == "termine" and job.result["status"] == "ok", (job.phase, job.result.get("why"))
+    assert strong.calls["fix"] >= 1 and job.result["escalated"], job.result.get("escalated")
+    assert any("escalade" in e["msg"] for e in st.project_ctx(job.project).journal.recent(300))
+    assert len(weak.fix_prompts) >= 2 and "--- diff calc.py" in weak.fix_prompts[1], "diff absent de l'historique"
+    st = _studio(Stuck())
+    st.start_job("create", "calc sans escalade")
+    assert _wait(st).phase == "bloque"
+    return f"{len(weak.fix_prompts)} essais faibles (diff transmis) → escalade → validé"
+
+
+AMEND_HTML = ('<!doctype html><html><head><meta charset="utf-8"><title>L</title><script src="app.js" defer></script>'
+              '</head><body><input id="t"><button id="add">+</button><ul id="list"></ul></body></html>\n')
+AMEND_JS = ("document.getElementById('add').onclick = () => {\n  const li = document.createElement('li');\n"
+            "  const b = document.createElement('button'); b.className = 'del'; b.textContent = 'x';\n"
+            "  b.onclick = () => li.remove();\n  li.textContent = document.getElementById('t').value; li.appendChild(b);\n"
+            "  document.getElementById('list').appendChild(li);\n};\n")
+
+
+@check("42 parcours impossible : le correcteur peut le corriger, c'est encadré et affiché au bilan")
+def _():
+    from core.code_workspace import webcheck
+    if webcheck.available():
+        return f"non lancé : {webcheck.available()}"
+    steps = [{"action": "fill", "selector": "#t", "value": "lait"}, {"action": "click", "selector": "#add"},
+             {"action": "click", "selector": "#list .del"}]
+    extra = {"kind": "web", "entry_point": "index.html",
+             "acceptance": [{"id": "AC1", "criterion": "supprimer un article", "verify": "web"}],
+             "web_checks": [{"id": "AC1", "name": "suppression", "steps": steps,
+                             "expect": [{"selector": "#list li", "count": 1}]}]}
+
+    class Fixer(PlanLLM):
+        def __init__(self, check_fix, **k):
+            super().__init__(**k)
+            self.check_fix = check_fix
+
+        def complete(self, prompt, json_mode=False):
+            if "You are fixing the project" in prompt:
+                self.calls["fix"] += 1
+                assert "check_fix" in prompt, "règle du parcours absente du prompt"
+                return json.dumps({"explanation": "ajout puis suppression", "diagnosis": "parcours impossible",
+                                   "files": [], "check_fix": self.check_fix})
+            return super().complete(prompt, json_mode)
+    good = {"id": "AC1", "reason": "après ajout puis suppression il reste 0 article, pas 1",
+            "steps": steps, "expect": [{"selector": "#list li", "count": 0}]}
+    st = _studio(Fixer(good, extra=extra, contents={"index.html": AMEND_HTML, "app.js": AMEND_JS}))
+    st.start_job("create", "liste avec suppression")
+    job = _wait(st, 240)
+    st.stop_previews()
+    res = job.result
+    assert res["status"] == "ok", (res["status"], res.get("why"))
+    assert res["amended"] and res["amended"][0]["what"] == "parcours AC1", res.get("amended")
+    assert "corrigé par le modèle" in res["criteria"][0]["evidence"], res["criteria"]
+    empty = dict(good, expect=[])
+    st = _studio(Fixer(empty, extra=extra, contents={"index.html": AMEND_HTML, "app.js": AMEND_JS}))
+    st.start_job("create", "liste, correction vide")
+    job = _wait(st, 240)
+    st.stop_previews()
+    assert job.result["status"] == "blocked" and not job.result.get("amended"), job.result.get("amended")
+    return "parcours corrigé et signalé ; une correction sans vérification est refusée"
 
 
 WEB_HTML = ('<!doctype html><html><head><meta charset="utf-8"><title>Courses</title>'
