@@ -38,7 +38,7 @@ import traceback
 from pathlib import Path
 
 from . import acceptance, diagnose, lint as lint_mod, llm as llm_mod, webcheck
-from .runner import CommandRefused, classify, clean_env, parse
+from .runner import CommandRefused, classify, parse
 from .sandbox import SandboxError, safe_project_name
 
 PHASES = {
@@ -692,6 +692,21 @@ class StudioJob:
                          "headline": c.get("note") or (diagnose.headline(c["output"]) if c["ok"] is not True else "")})
         return rows
 
+    def _analyses(self) -> tuple[dict, dict]:
+        """Ruff then Pyright: informative, never part of the verdict (lint.py)."""
+        self._step("analyse du code")
+        pdir = self.ws.project_dir(self.project)
+        out = []
+        for name, label, run, head in (("analyse", "Analyse statique", lint_mod.run, lint_mod.headline),
+                                       ("types", "Analyse des types", lint_mod.run_types, lint_mod.types_headline)):
+            self._check()
+            r = run(pdir)
+            self.ctx.journal.add("test", f"{label} (informative) : {head(r)}", name=name, ok=r.get("ok"),
+                                 informative=True)
+            out.append({"ok": r.get("ok"), "count": r.get("count", 0), "headline": head(r),
+                        "findings": r.get("findings", [])[:20]})
+        return out[0], out[1]
+
     def _present(self, report: dict) -> None:
         self._phase("presentation", "bilan")
         ws, project = self.ws, self.project
@@ -699,10 +714,7 @@ class StudioJob:
         web_report = next((c.get("report") for c in checks if c["kind"] == "web"), None) or {}
         criteria = self._coverage(checks)
 
-        self._step("analyse du code")
-        analysis = lint_mod.run(ws.project_dir(project))
-        self.ctx.journal.add("test", f"Analyse statique (informative) : {lint_mod.headline(analysis)}",
-                             name="analyse", ok=analysis.get("ok"), informative=True)
+        analysis, typing = self._analyses()
         self.studio.update_map(project, self.plan)          # the preview reads the map
         run, preview = self._launch(report)
         status, why = self._verdict(report, criteria, run)
@@ -723,8 +735,8 @@ class StudioJob:
             "written": [t["path"] for t in touched][:60],
             "checks": self._summary_checks(checks, web_report),
             "criteria": criteria,
-            "analysis": {"ok": analysis.get("ok"), "count": analysis.get("count", 0),
-                         "headline": lint_mod.headline(analysis), "findings": analysis.get("findings", [])[:20]},
+            "analysis": analysis,
+            "types": typing,
             "browser": {"blocked": web_report.get("blocked") or [], "title": web_report.get("title", ""),
                         "screenshot": bool(web_report.get("screenshot"))} if web_report else None,
             "run": run,
@@ -740,7 +752,7 @@ class StudioJob:
         self.studio.update_map(project, self.plan, last_run=summary, dependencies=deps)
         self.ctx.journal.add("summary", f"Bilan : {summary['title']} — {STATUS_TEXT[status]}"
                                         + (f" ({why})" if why and status != "ok" else ""),
-                             **{k: v for k, v in summary.items() if k not in ("run", "analysis")})
+                             **{k: v for k, v in summary.items() if k not in ("run", "analysis", "types")})
         self.phase = "bloque" if status == "blocked" else "termine"
         self._announce(summary, report)
 

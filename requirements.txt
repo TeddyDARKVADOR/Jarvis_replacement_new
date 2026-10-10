@@ -12,7 +12,11 @@ websockets               # the HUD's link to JARVIS on Oracle
 # ── Web search & browser control ─────────────────────────────────────────────
 requests
 ddgs                     # formerly duckduckgo-search; web_search falls back to it
-playwright
+playwright               # also the Code Studio's browser check of web projects
+
+# ── Code Studio: informative analyses (Python code, types) ──────────────────
+ruff
+pyright                  # fetches the Pyright engine (Node.js) on first use
 
 # ── Automation / input control ───────────────────────────────────────────────
 pyautogui

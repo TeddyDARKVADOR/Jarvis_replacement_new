@@ -377,6 +377,8 @@
         <label class="st-picker"><span>PROJET</span><select id="st-project"></select></label>
         <div class="st-actions">
           <button class="mini-btn" id="st-preview" title="Aperçu web, exécution du script ou lancement de l'application">APERÇU</button>
+          <button class="mini-btn" id="st-sandbox" title="Lancer le projet dans Windows Sandbox : machine jetable, réseau coupé, projet en lecture seule">SANDBOX</button>
+          <button class="mini-btn" id="st-test" title="Relancer les tests du projet maintenant">TESTS</button>
           <button class="mini-btn" id="st-checkpoint" title="Créer un point de sauvegarde maintenant">SAUVEGARDER</button>
           <button class="mini-btn" id="st-folder" title="Ouvrir le dossier dans l'Explorateur">DOSSIER</button>
           <button class="act danger st-stop" id="st-stop" title="Arrêter le travail et la commande en cours" disabled>■ ARRÊTER</button>
@@ -439,6 +441,9 @@
           <div class="st-viewer-tools">
             <button class="mini-btn" id="st-tab-src" hidden>SOURCE</button>
             <button class="mini-btn" id="st-tab-diff" hidden>DIFFÉRENCES</button>
+            <button class="mini-btn" id="st-edit" hidden title="Modifier ce fichier (enregistré par le Studio, annulable)">ÉDITER</button>
+            <button class="mini-btn" id="st-save-file" hidden title="Ctrl+S">ENREGISTRER</button>
+            <button class="mini-btn" id="st-cancel-edit" hidden>ANNULER</button>
             <input id="st-find" class="st-find" placeholder="Rechercher…" spellcheck="false" hidden>
             <span id="st-find-count" class="st-find-count"></span>
             <button class="mini-btn" id="st-viewer-close">FERMER</button>

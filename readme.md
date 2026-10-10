@@ -51,8 +51,17 @@ affiche son **code complet** (numéros de ligne, couleurs, recherche) ou ses dif
   d'aperçu isolée** (profil privé, aucun lien avec JARVIS, requêtes externes bloquées et
   comptées) ; un script est lancé une fois et sa sortie s'affiche dans le bilan ; une
   application graphique n'est jamais lancée seule (bouton dédié). Réglable dans le HUD.
-- **Analyse Ruff** (noms indéfinis, imports inutiles…) affichée à titre informatif : elle
-  n'entre pas dans le verdict.
+- **Analyses Ruff et Pyright** (noms indéfinis, imports inutiles, erreurs de type)
+  affichées à titre informatif : elles n'entrent pas dans le verdict ; chaque remarque
+  ouvre le fichier à la bonne ligne.
+- **Retouches depuis le HUD** : ÉDITER un fichier (Ctrl+S, enregistré par le Studio,
+  annulable), puis **TESTS** pour relancer les tests du projet.
+- **Windows Sandbox** (bouton SANDBOX, sur demande uniquement) : le projet tourne dans
+  une machine jetable, **réseau coupé**, projet et Python montés **en lecture seule**,
+  presse-papiers/micro/caméra coupés ; fermer la fenêtre efface tout. Prérequis, une fois :
+  « Activer ou désactiver des fonctionnalités Windows » → « Bac à sable Windows » →
+  redémarrer (Windows Pro/Entreprise). Seuls la bibliothèque standard et `_deps/` du
+  projet y sont disponibles ; pas de Node.js.
 - `dev_agent` et la création via `code_helper` passent désormais par le Studio sur ce PC.
 - Le code est écrit par **Groq** dès que `"groq_api_key"` est présent dans
   `config/api_keys.json` (meilleur modèle disponible pour la clé, `openai/gpt-oss-120b` en
@@ -65,8 +74,8 @@ affiche son **code complet** (numéros de ligne, couleurs, recherche) ou ses dif
   Object Windows (mémoire, nombre de processus, arrêt de tout l'arbre), secrets retirés
   de l'environnement, refus si JARVIS tourne en administrateur. Installer un paquet,
   `python -c` ou un exécutable inconnu demandent votre accord sur le HUD.
-- Limite assumée : un programme exécuté tourne avec les droits de votre compte. Pour une
-  isolation totale, utilisez Windows Sandbox ou une VM.
+- Limite assumée : un programme exécuté par le Studio (tests, aperçu) tourne avec les
+  droits de votre compte. Pour une isolation forte, utilisez le bouton SANDBOX.
 
 Code : [core/code_workspace/](core/code_workspace/__init__.py) · outil
 [actions/code_workspace.py](actions/code_workspace.py) · tests :

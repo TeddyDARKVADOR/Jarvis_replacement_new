@@ -61,7 +61,9 @@ TOOL = {
         "told the real verdict later. action=modify does the same on an existing "
         "project. Other actions: status, list_projects, info, files, read_file, write_file, delete_file, "
         "run (one allowed command: python/pytest/node/npm, no shell), test, checkpoint, checkpoints, "
-        "restore, diff, preview, stop, workspace. Never claim a result the tool did not return."
+        "restore, diff, preview, sandbox (run the project inside Windows Sandbox: a throwaway VM, no "
+        "network, read-only project — only when the user asks for it), stop, workspace. Never claim a "
+        "result the tool did not return."
     ),
     "parameters": {
         "type": "OBJECT",
@@ -70,7 +72,7 @@ TOOL = {
                 "type": "STRING",
                 "description": "create | modify | status | list_projects | info | files | read_file | "
                                "write_file | delete_file | run | test | checkpoint | checkpoints | restore | "
-                               "diff | preview | stop | workspace (default: status)",
+                               "diff | preview | sandbox | stop | workspace (default: status)",
             },
             "request": {
                 "type": "STRING",
