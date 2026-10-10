@@ -28,6 +28,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import com.jarvis.ui.FACE_MEDALLION
+import com.jarvis.ui.FACE_SLOT
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -79,20 +83,31 @@ class AvatarPathHandler(context: Context, private val root: File, private val st
         if (f.isFile) WebResourceResponse(mime, null, f.inputStream()) else null
 }
 
-/** What the page tells the app. Called on a WebView thread; hops to main. */
-class PageReports(private val onReady: () -> Unit, private val onFailed: (String) -> Unit) {
-    private val main = Handler(Looper.getMainLooper())
-
+/**
+ * What the page tells the app. Called on a WebView thread; hops to main.
+ *
+ * The callbacks are NOT named like the bridge methods. They were, and inside
+ * `fun onFailed(json)` the call `onFailed(json)` resolves to the method itself
+ * before the property: a failing page re-posted its own report to the main
+ * thread forever (~100 a second) and the host never learned it had failed.
+ */
+class PageReports(
+    private val whenReady: () -> Unit,
+    private val whenFailed: (String) -> Unit,
+    private val post: (Runnable) -> Unit = Handler(Looper.getMainLooper())::post,
+    private val log: (failure: Boolean, String) -> Unit =
+        { failure, m -> if (failure) Log.w("JarvisFace", m) else Log.i("JarvisFace", m) },
+) {
     @JavascriptInterface
     fun onReady(json: String) {
-        Log.i("JarvisFace", "page prete : $json")
-        main.post(onReady)
+        log(false, "page prete : $json")
+        post(Runnable { whenReady() })
     }
 
     @JavascriptInterface
     fun onFailed(json: String) {
-        Log.w("JarvisFace", "page en echec : $json")
-        main.post { onFailed(json) }
+        log(true, "page en echec : $json")
+        post(Runnable { whenFailed(json) })
     }
 
     /** Every `avatar` event and what host.js did with it (played, stale, older…). */
@@ -127,6 +142,8 @@ fun JarvisFace(
     avatarEvent: String?,
     avatarSeq: Long,
     onTap: (() -> Unit)?,
+    /** What frames the face once it is shown: the core, drawn around it. */
+    frame: @Composable () -> Unit = {},
     core: @Composable () -> Unit,
 ) {
     val model by AvatarModels.state.collectAsState()
@@ -136,9 +153,17 @@ fun JarvisFace(
     val usable = model is AvatarModelStore.Outcome.Ready && failed == null
 
     // One slot, two layers: the face is laid over the core and only covers it
-    // once the page said it is ready.
-    Box(contentAlignment = Alignment.Center) {
+    // once the page said it is ready. Then the core is not gone: it becomes the
+    // frame — same state colours, same arcs — and the face is its centre.
+    // With a verified model the slot is the face's from the start: the core
+    // shown while the page loads sits in it, and nothing below moves when the
+    // face arrives. Without one, the core keeps its own slot, as before.
+    Box(
+        modifier = if (usable) Modifier.size(FACE_SLOT) else Modifier,
+        contentAlignment = Alignment.Center,
+    ) {
         if (!ready || !usable) core()
+        if (ready && usable) frame()
         if (usable) FaceLayer(
             facts, wokeAt, speakerLevel, micLevel, avatarEvent, avatarSeq, onTap,
             ready = ready,
@@ -210,14 +235,15 @@ private fun FaceLayer(
 
     Box(
         Modifier
-            // The core's own 240 dp slot, a little larger: a face needs its
-            // shoulders' worth of margin to not look cropped.
-            .size(280.dp)
+            // A medallion, not a rectangle: the portrait's shoulders end on a
+            // curve inside the core's ring instead of a straight cut.
+            .size(FACE_MEDALLION)
+            .clip(CircleShape)
             .alpha(if (ready) 1f else 0f)
-            .let { if (onTap != null) it.clickable { onTap() } else it },
+            .let { if (onTap != null) it.clickable(onClickLabel = "Interrupt") { onTap() } else it },
     ) {
         AndroidView(
-            modifier = Modifier.size(280.dp),
+            modifier = Modifier.size(FACE_MEDALLION),
             factory = { ctx ->
                 val root = AvatarModels.root(ctx)
                 val loader = WebViewAssetLoader.Builder()
@@ -237,7 +263,7 @@ private fun FaceLayer(
                     settings.allowContentAccess = false
                     settings.mediaPlaybackRequiresUserGesture = true
                     overScrollMode = View.OVER_SCROLL_NEVER
-                    addJavascriptInterface(PageReports(onReady = onReady, onFailed = onFailed), "JarvisAndroid")
+                    addJavascriptInterface(PageReports(whenReady = onReady, whenFailed = onFailed), "JarvisAndroid")
                     webViewClient = object : WebViewClient() {
                         override fun shouldInterceptRequest(v: WebView, request: WebResourceRequest) =
                             loader.shouldInterceptRequest(request.url)

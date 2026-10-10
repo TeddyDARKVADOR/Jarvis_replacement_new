@@ -129,6 +129,17 @@ fun HomeScreen(
             avatarEvent = snap.avatarEvent,
             avatarSeq = snap.avatarSeq,
             onTap = tap,
+            frame = {
+                JarvisCore(
+                    link = snap.link,
+                    assistant = snap.assistant,
+                    level = level,
+                    animated = animationsEnabled,
+                    wokeAt = snap.wokeAt,
+                    onTap = tap,
+                    aroundFace = true,
+                )
+            },
         ) {
             JarvisCore(
                 link = snap.link,

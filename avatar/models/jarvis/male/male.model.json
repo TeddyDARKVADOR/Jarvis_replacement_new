@@ -90,7 +90,12 @@
       0,
       0
     ],
-    "armRest": {},
-    "gaze": {}
+    "armRest": {
+      "shoulder": -0.3,
+      "elbow": 0.0,
+      "forward": 0.0
+    },
+    "gaze": {},
+    "armRestWhy": "mesure 2026-09-24 (avatar/checks/framing.py) : sans repos, bras en pose A, mains et avant-bras dans le portrait ; a -0.45 (valeur du feminin, autre squelette) le coude gauche reste au bord en 520x180 ; a -0.3 les deux coudes sortent par le bas a toutes les tailles"
   }
 }
