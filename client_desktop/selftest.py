@@ -638,9 +638,6 @@ def run() -> bool:  # noqa: C901
     return report.failed == 0
 
 
-if __name__ == "__main__":
-    raise SystemExit(0 if run() else 1)
-
 
 def _hud_checks(report: "_Report") -> None:  # noqa: C901
     """25-33: the HUD, its page, its settings page, and main.py's launcher."""
@@ -756,3 +753,7 @@ def _hud_checks(report: "_Report") -> None:  # noqa: C901
     report.check("33 python main.py opens the HUD, --local the HUD on the local brain",
                  'if __name__ == "__main__":' in head
                  and "client_desktop.__main__" in head and "local_hud" in head)
+
+
+if __name__ == "__main__":
+    raise SystemExit(0 if run() else 1)

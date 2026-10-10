@@ -425,6 +425,8 @@
               <label class="field"><span>Durée max. commande (s)</span><input id="st-timeout" type="number" min="10" max="900"></label>
             </div>
             <label class="toggle"><input id="st-confirm-plan" type="checkbox"><i></i><span>Valider le plan avant d'écrire<small>Sinon JARVIS travaille seul et ne demande votre accord que pour les actions à risque (installation, réseau, exécutable inconnu).</small></span></label>
+            <label class="toggle"><input id="st-auto-preview" type="checkbox"><i></i><span>Ouvrir l'aperçu web à la fin<small>Une page qui passe ses contrôles s'ouvre dans la fenêtre d'aperçu isolée (profil privé, Internet bloqué).</small></span></label>
+            <label class="toggle"><input id="st-auto-run" type="checkbox"><i></i><span>Lancer les scripts à la fin<small>Exécute le programme une fois (30 s max) pour montrer sa sortie dans le bilan. C'est une vraie exécution sur ce PC. Les applications graphiques ne se lancent jamais seules.</small></span></label>
             <button class="mini-btn" id="st-save">ENREGISTRER</button>
             <div class="st-safety" id="st-safety"></div>
           </div>
@@ -433,7 +435,15 @@
       <footer class="st-foot"><div id="st-status"></div></footer>
 
       <div id="st-viewer" class="st-viewer" hidden>
-        <div class="st-viewer-head"><span id="st-viewer-title"></span><button class="mini-btn" id="st-viewer-close">FERMER</button></div>
+        <div class="st-viewer-head"><span id="st-viewer-title"></span>
+          <div class="st-viewer-tools">
+            <button class="mini-btn" id="st-tab-src" hidden>SOURCE</button>
+            <button class="mini-btn" id="st-tab-diff" hidden>DIFFÉRENCES</button>
+            <input id="st-find" class="st-find" placeholder="Rechercher…" spellcheck="false" hidden>
+            <span id="st-find-count" class="st-find-count"></span>
+            <button class="mini-btn" id="st-viewer-close">FERMER</button>
+          </div>
+        </div>
         <div id="st-viewer-body" class="scroll mono st-viewer-body"></div>
       </div>
     </div>

@@ -20,7 +20,7 @@ MODEL_PLANNER    = "gemini-flash-latest"
 MODEL_WRITER     = "gemini-flash-latest"
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(API_CONFIG_PATH, "r", encoding="utf-8-sig") as f:
         return json.load(f)["gemini_api_key"]
 
 
@@ -592,6 +592,14 @@ def dev_agent(
     if not description:
         return "Please describe the project you want me to build, sir."
 
+    # On this PC the Code Studio builds it: sandboxed files, controlled
+    # commands, real tests, an honest verdict and the HUD panel. The path below
+    # stays for where the Studio does not exist (the Oracle server).
+    from actions.code_workspace import route_create
+    routed = route_create(description, language, project_name, player)
+    if routed is not None:
+        return routed
+
     return _build_project(
         description  = description,
         language     = language,
@@ -605,7 +613,8 @@ def dev_agent(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "dev_agent",
-    "description": "Builds complete multi-file projects from scratch: plans, writes files, installs deps, opens VSCode, runs and fixes errors.",
+    "description": ("Legacy alias of code_studio action=create: builds a complete multi-file project. On this PC "
+                    "the job is handed to the Code Studio (prefer calling code_studio directly)."),
     "parameters": {
         "type": "OBJECT",
         "properties": {

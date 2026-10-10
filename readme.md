@@ -34,8 +34,26 @@ et montre-moi ce que tu fais. » Il planifie, écrit les fichiers, **lance les v
 tests**, corrige (nombre de tentatives limité, il s'arrête s'il tourne en rond) puis
 présente un bilan. Le panneau **STUDIO** (bouton `</>` du HUD) s'ouvre tout seul et
 affiche en direct les tâches, les fichiers (diff avant/après), le terminal, les points
-de sauvegarde (restauration en un clic) et un bouton **ARRÊTER**.
+de sauvegarde (restauration en un clic) et un bouton **ARRÊTER**. Cliquer un fichier
+affiche son **code complet** (numéros de ligne, couleurs, recherche) ou ses différences.
 
+- **Un verdict mérité, jamais supposé** : le plan contient des *critères d'acceptation*
+  (AC1, AC2…). Un critère n'est « prouvé » que si un test qui porte son nom
+  (`test_ac1_…`) ou un parcours navigateur passe réellement. Le bilan dit **VALIDÉ**,
+  **PARTIELLEMENT VÉRIFIÉ** (un critère sans preuve, ou le programme lancé plante),
+  **NON VÉRIFIÉ** (aucun contrôle fonctionnel n'a tourné : la syntaxe seule ne prouve
+  rien) ou **PROBLÈME RESTANT**. S'il manque des tests, une passe les ajoute (dans
+  `tests/` uniquement, jamais en modifiant le code).
+- **Pages web testées dans un vrai navigateur** (Playwright, Chromium headless) : erreurs
+  JavaScript et console, fichiers manquants, parcours scriptés (remplir, cliquer, vérifier),
+  capture d'écran. Internet y est bloqué : seul le serveur local du projet répond.
+- **Aperçu automatique** à la fin : une page web validée s'ouvre dans une **fenêtre
+  d'aperçu isolée** (profil privé, aucun lien avec JARVIS, requêtes externes bloquées et
+  comptées) ; un script est lancé une fois et sa sortie s'affiche dans le bilan ; une
+  application graphique n'est jamais lancée seule (bouton dédié). Réglable dans le HUD.
+- **Analyse Ruff** (noms indéfinis, imports inutiles…) affichée à titre informatif : elle
+  n'entre pas dans le verdict.
+- `dev_agent` et la création via `code_helper` passent désormais par le Studio sur ce PC.
 - Le code est écrit par **Groq** dès que `"groq_api_key"` est présent dans
   `config/api_keys.json` (meilleur modèle disponible pour la clé, `openai/gpt-oss-120b` en
   priorité ; `"groq_model"` dans `plugin_config.code_studio` pour en imposer un). Sans clé

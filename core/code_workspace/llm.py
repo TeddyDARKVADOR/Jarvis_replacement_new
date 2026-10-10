@@ -18,6 +18,7 @@ import re
 import time
 
 DEFAULT_MODEL = "gemini-flash-latest"
+NONE = "(aucun)"
 
 
 class LLMError(RuntimeError):
@@ -206,6 +207,10 @@ class GroqLLM:
                 if text.strip():
                     return text
                 if attempt < attempts - 1:
+                    # Often a reasoning model that spent its budget thinking, or a
+                    # throttled account: an immediate retry fails the same way.
+                    self._wait(delay, "réponse vide de Groq")
+                    delay = min(delay * 2, 60.0)
                     continue
                 raise LLMError("Réponse vide de Groq.")
             detail = r.text[:300]
@@ -268,6 +273,20 @@ _RULES = """Constraints of the workspace (enforced by code, plan accordingly):
   logic in a small Python or JS module you can test, or test the files' structure in Python.
 - The program must never block waiting for keyboard input when run by the tests.
 - Keep it small and complete: usually 3 to 12 files. Include a README.md explaining how to run it.
+- ACCEPTANCE CRITERIA: list 3 to 8 observable behaviours that together cover EVERY feature
+  the user asked for, ids AC1, AC2… Each says how it is verified:
+    verify="test"   at least one test method whose NAME contains the id in lower case,
+                    e.g. `def test_ac1_adds_an_expense(self):` — this is how the Studio
+                    knows which criterion a test proves; a criterion without one is
+                    reported "unverified".
+    verify="web"    (kind=web only) a `web_checks` entry with that id, run in a real browser.
+    verify="manual" ONLY for what no program can judge (look, feel, sound).
+- WEB_CHECKS (kind=web only): scripted paths a headless browser plays on the page, each from
+  a freshly loaded page with an empty localStorage. Step actions: click | fill (value) |
+  press (key) | check | uncheck | select (value) | wait (ms). Expectations: a CSS selector plus
+  ONE of text (contained, case-insensitive), count, value, visible. Use ids/classes that the
+  HTML you plan really has. The page must also load with no JavaScript error, no console error
+  and no missing local file: the browser blocks the Internet, so ship every asset locally.
 """
 
 PLAN_PROMPT = """You are the senior engineer of "Jarvis Code Studio". Plan a NEW project.
@@ -288,11 +307,18 @@ Return ONLY a JSON object:
   "test_command": "python -m unittest discover -s tests -t . -v",
   "dependencies": [],
   "features": ["feature, in the user's language", ...],
+  "acceptance": [{{"id": "AC1", "criterion": "observable behaviour, in the user's language",
+                  "verify": "test | web | manual"}}, ...],
+  "web_checks": [{{"id": "AC2", "name": "short name",
+                  "steps": [{{"action": "fill", "selector": "#amount", "value": "12"}},
+                            {{"action": "click", "selector": "#add"}}],
+                  "expect": [{{"selector": "#history li", "count": 1}},
+                             {{"selector": "#total", "text": "12"}}]}}],
   "tasks": [{{"title": "task in the user's language", "files": ["path", ...]}}, ...],
   "files": [{{"path": "relative/path.ext", "purpose": "what it contains"}}, ...]
 }}
 Every file in "files" must appear in exactly one task. Order tasks so a file's
-dependencies are written before it."""
+dependencies are written before it. "web_checks" is [] unless kind is "web"."""
 
 CHANGE_PROMPT = """You are the senior engineer of "Jarvis Code Studio". Plan a CHANGE to an
 existing project.
@@ -313,6 +339,8 @@ Return ONLY a JSON object:
   "test_command": "command to run the tests after the change (keep the existing one if fine)",
   "run_command": "unchanged unless needed",
   "dependencies": [],
+  "acceptance": "the FULL updated list (keep the map's existing criteria and their ids, add new ones)",
+  "web_checks": "the FULL updated list for a web project (keep the existing ones that still apply)",
   "tasks": [{{"title": "task in the user's language", "files": ["path", ...]}}, ...],
   "files": [{{"path": "relative/path.ext", "action": "create | modify | delete", "purpose": "..."}}, ...]
 }}"""
@@ -325,7 +353,7 @@ Project plan:
 Files already written (excerpts):
 {context}
 
-{current}
+{current}{tests_rule}
 Write the COMPLETE content of: {path}
 Purpose: {purpose}
 
@@ -342,7 +370,7 @@ Project files (path: size): {files}
 
 Relevant file contents:
 {contents}
-
+{spec}
 Previous attempts that did NOT fix it:
 {history}
 
@@ -372,17 +400,68 @@ def write_file(llm, plan: dict, path: str, purpose: str, context: str, current: 
     cur = (f"Current content of {path} (modify it, keep what still applies):\n{current[:12000]}\n"
            if current else "")
     brief = {k: plan.get(k) for k in ("title", "summary", "kind", "stack", "entry_point",
-                                      "run_command", "test_command", "features", "files")}
+                                      "run_command", "test_command", "features", "acceptance",
+                                      "web_checks", "files")}
     text = llm.complete(WRITE_PROMPT.format(
         title=plan.get("title") or plan.get("project_name", ""),
-        plan=json.dumps(brief, ensure_ascii=False, indent=1)[:6000],
-        context=context[:14000] or "(aucun)", current=cur, path=path, purpose=purpose))
-    return _strip_fences(text) + ("\n" if not text.endswith("\n") else "")
+        plan=json.dumps(brief, ensure_ascii=False, indent=1)[:9000],
+        context=context[:14000] or NONE, current=cur, tests_rule=_tests_rule(plan, path),
+        path=path, purpose=purpose))
+    content = _strip_fences(text)
+    return content + ("\n" if not content.endswith("\n") else "")
+
+
+def is_test_file(path: str) -> bool:
+    rel = path.replace("\\", "/")
+    name = rel.rsplit("/", 1)[-1]
+    if not name.endswith(".py") or name == "__init__.py":
+        return False
+    return rel.startswith("tests/") or name.startswith("test_")
+
+
+def _tests_rule(plan: dict, path: str) -> str:
+    """The naming rule, repeated where it matters: in the test file itself."""
+    wanted = [c for c in plan.get("acceptance") or [] if c.get("verify") == "test"]
+    if not wanted or not is_test_file(path):
+        return ""
+    lines = "\n".join(f"- {c['id']}: {c['criterion']}" for c in wanted)
+    return ("\nTHIS IS A TEST FILE. The Studio knows which acceptance criterion a test proves ONLY by its "
+            "name: every criterion below needs at least one test method (in this file or another test file "
+            "of the plan) whose name contains its id in lower case, e.g. `def test_ac1_converts_zero(self):`. "
+            "A criterion without such a test is reported UNVERIFIED.\n" + lines + "\n")
+
+
+COVER_PROMPT = """The project "{title}" passes its checks, but these acceptance criteria have NO
+test proving them (no test method whose name contains the id):
+{missing}
+
+Current test files:
+{tests}
+
+Code under test (excerpts):
+{code}
+
+Add the missing tests. Each new test method name MUST contain the criterion id in lower case
+(`def test_ac2_...`). Test the real behaviour described, headless, fast, standard library only.
+Keep every existing test. Only files under tests/ may be written.
+Return ONLY a JSON object:
+{{"files": [{{"path": "tests/test_xxx.py", "content": "the COMPLETE file"}}]}}"""
+
+
+def cover(llm, title: str, missing: list[dict], tests: str, code: str) -> dict:
+    return parse_json(llm.complete(COVER_PROMPT.format(
+        title=title, missing="\n".join(f"- {c['id']}: {c['criterion']}" for c in missing),
+        tests=tests[:12000] or NONE, code=code[:12000] or NONE), json_mode=True))
 
 
 def fix(llm, title: str, check: str, kind: str, output: str, located: str,
-        files: list[dict], contents: str, history: list[str]) -> dict:
+        files: list[dict], contents: str, history: list[str], web_checks: list | None = None) -> dict:
+    # The browser paths encode the user's criteria: the fixer changes the code
+    # to satisfy them, it is never offered a way to weaken them.
+    spec = ("\nBrowser checks the page must pass (fixed, change the CODE so they pass):\n"
+            + json.dumps(web_checks, ensure_ascii=False)[:4000] + "\n") if web_checks else ""
     return parse_json(llm.complete(FIX_PROMPT.format(
         title=title, check=check, kind=kind, output=output, located=located,
         files=", ".join(f"{f['path']}: {f['size']}" for f in files[:120]),
-        contents=contents[:24000], history="\n".join(history[-4:]) or "(aucune)"), json_mode=True))
+        contents=contents[:24000], spec=spec, history="\n".join(history[-4:]) or "(aucune)"),
+        json_mode=True))

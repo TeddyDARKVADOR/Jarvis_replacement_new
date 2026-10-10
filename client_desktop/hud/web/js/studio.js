@@ -7,6 +7,10 @@
  * polls once a second while open, and asks `studio.ping` every few seconds
  * while closed so the header button can glow when JARVIS is at work (and the
  * panel opens by itself when a new job starts).
+ *
+ * The summary keeps apart what was CHECKED (tests, browser paths), what was
+ * LAUNCHED (the script's own run) and what was SHOWN (the preview window): an
+ * app that opens is not an app that works, and the verdict says which.
  */
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,6 +23,17 @@ const STEPS = [
   ['presentation', 'PRÉSENTATION'],
 ];
 const TASK_LABEL = { todo: 'À FAIRE', doing: 'EN COURS', done: 'TERMINÉ', blocked: 'BLOQUÉ' };
+const VERDICT = {
+  ok: ['VALIDÉ', 'ok', 'Les contrôles passent et chaque critère est prouvé par un test réel.'],
+  partial: ['PARTIELLEMENT VÉRIFIÉ', 'warn', ''],
+  unverified: ['NON VÉRIFIÉ', 'warn', ''],
+  blocked: ['PROBLÈME RESTANT', 'bad', ''],
+};
+const CRIT = {
+  passed: ['✓', 'ok', 'prouvé'], failed: ['✗', 'bad', 'échoue'],
+  unverified: ['?', 'warn', 'non vérifié'], manual: ['◇', 'muted', 'à vérifier par vous'],
+};
+const CHECK_STATE = (ok) => (ok === true ? ['✓', 'ok'] : ok === false ? ['✗', 'bad'] : ['•', 'muted']);
 const KIND_ICON = {
   phase: '◆', plan: '✎', task: '☐', file: '▤', command: '›', test: '✓', error: '⚠', checkpoint: '⛁',
   restore: '↺', summary: '★', info: '·', blocked: '⛔', confirm: '?', preview: '▶',
@@ -92,7 +107,13 @@ export function createStudio(ctx) {
     }
     if (job && !job.running && job.finished && job.finished !== lastFinished) {
       lastFinished = job.finished;
-      ctx.toast('CODE STUDIO', `« ${job.project} » : ${job.phase_label}`, job.phase === 'termine' ? null : '#FBBF6B', 6000);
+      const res = job.result || {};
+      const v = VERDICT[res.status];
+      ctx.toast('CODE STUDIO', `« ${job.project} » : ${v ? v[0] : job.phase_label}`, res.status === 'ok' ? null : '#FBBF6B', 6000);
+      // The engine opens the preview itself when the HUD host lets it; this is
+      // the fallback when it could not (no opener at that moment).
+      const pv = res.preview;
+      if (pv && pv.url && !pv.opened) ctx.call('openPreview', job.project, pv.url, res.title || job.project, res.status || '');
     }
   }
 
@@ -107,6 +128,8 @@ export function createStudio(ctx) {
       $('st-attempts').value = o.max_fix_attempts ?? 4;
       $('st-timeout').value = o.command_timeout ?? 120;
       $('st-confirm-plan').checked = !!o.confirm_plan;
+      $('st-auto-preview').checked = o.auto_preview !== false;
+      $('st-auto-run').checked = o.auto_run_scripts !== false;
     }
     $('st-safety').textContent = s.safety || '';
     $('st-admin').hidden = !s.admin;
@@ -184,7 +207,7 @@ export function createStudio(ctx) {
     });
     all.forEach((f) => { if (!seen.has(f.path)) rows.push({ path: f.path, op: changed.get(f.path) || '', size: f.size }); });
     $('st-files').innerHTML = rows.length ? rows.map((f) => `
-      <button class="st-file ${f.op}" data-path="${esc(f.path)}" title="Voir les différences avant / après">
+      <button class="st-file ${f.op}" data-path="${esc(f.path)}" title="Voir le code (et les différences avant / après)">
         <span class="st-op">${f.op === 'create' || f.op === 'added' ? '+' : f.op === 'delete' || f.op === 'deleted' ? '−' : f.op ? '~' : ' '}</span>
         <span class="st-path">${esc(f.path)}</span>
         <span class="st-meta">${f.lines ? f.lines + ' l.' : ''} ${f.ts ? hm(f.ts) : ''}</span>
@@ -216,12 +239,51 @@ export function createStudio(ctx) {
     const lr = s.map && s.map.last_run;
     const el = $('st-summary');
     if (!lr) { el.innerHTML = '<div class="st-none">Le bilan apparaît à la fin d\'un travail.</div>'; return; }
-    const checks = (lr.checks || []).map((c) => `<li class="${c.ok ? 'ok' : 'bad'}">${c.ok ? '✓' : '✗'} ${esc(c.name)}`
-      + `${c.tests ? ` — ${esc(c.tests)}` : ''}${c.headline ? `<small>${esc(c.headline)}</small>` : ''}</li>`).join('');
+    // Summaries written before verdicts existed only knew ok / blocked.
+    const status = VERDICT[lr.status] ? lr.status : 'blocked';
+    const [label, cls, okText] = VERDICT[status];
+    const checks = (lr.checks || []).map((c) => {
+      const [icon, k] = CHECK_STATE(c.ok);
+      const name = c.kind === 'web' ? 'navigateur' : c.kind === 'run' ? `exécution : ${c.name}` : c.kind === 'syntax' ? 'syntaxe' : c.name;
+      return `<li class="${k}">${icon} ${esc(name)}${c.ok === null ? ' — non lancé / non concluant' : ''}`
+        + `${c.tests ? ` — ${esc(c.tests)}` : ''}${c.headline ? `<small>${esc(c.headline)}</small>` : ''}</li>`;
+    }).join('');
+    const crit = (lr.criteria || []).map((c) => {
+      const [icon, k, word] = CRIT[c.status] || CRIT.unverified;
+      const ev = c.evidence && c.status !== 'manual' ? ` — ${esc(c.evidence)}` : '';
+      return `<li class="${k}"><b>${icon} ${esc(c.id)}</b> ${esc(c.criterion)}<small>${esc(word)}${ev}</small></li>`;
+    }).join('');
+    const proven = (lr.criteria || []).filter((c) => c.status === 'passed').length;
+    const an = lr.analysis, run = lr.run, pv = lr.preview, br = lr.browser;
+    let launch = '';
+    if (run) {
+      const st = run.timed_out ? 'toujours actif après le délai (arrêté)' : `code ${run.code}`;
+      launch += `<div class="st-run ${run.crashed ? 'bad' : ''}"><b>PROGRAMME LANCÉ</b> <code>${esc(run.command)}</code> — ${esc(st)}`
+        + `${run.crashed ? ' — arrêté sur une erreur' : ''}<button class="mini-btn" data-sum="run">VOIR LA SORTIE</button></div>`;
+    }
+    if (pv && pv.kind === 'web') {
+      launch += `<div class="st-run"><b>APERÇU</b> ${pv.opened ? 'ouvert dans la fenêtre d\'aperçu' : pv.url ? 'prêt' : 'non ouvert'}`
+        + `<button class="mini-btn" data-sum="preview">${pv.opened ? 'RÉOUVRIR' : 'OUVRIR L\'APERÇU'}</button></div>`;
+    } else if (pv && pv.kind === 'gui') {
+      launch += '<div class="st-run"><b>APPLICATION</b> jamais lancée automatiquement'
+        + '<button class="mini-btn" data-sum="preview">LANCER L\'APPLICATION</button></div>';
+    }
+    if (br) {
+      const blocked = br.blocked && br.blocked.length ? `${br.blocked.length} requête(s) Internet bloquée(s)` : 'aucune requête externe';
+      launch += `<div class="st-run"><b>NAVIGATEUR DE TEST</b> ${blocked}`
+        + `${br.screenshot ? '<button class="mini-btn" data-sum="shot">CAPTURE</button>' : ''}</div>`;
+    }
+    const analysis = an ? `<div class="st-analysis ${an.ok === false ? 'warn' : ''}"><b>ANALYSE</b> ${esc(an.headline || '')}`
+      + `${an.count ? '<button class="mini-btn" data-sum="lint">DÉTAIL</button>' : ''}`
+      + '<small>informative : n\'entre pas dans le verdict</small></div>' : '';
     el.innerHTML = `
-      <div class="st-sum-state ${lr.status === 'ok' ? 'ok' : 'bad'}">${lr.status === 'ok' ? 'TOUS LES CONTRÔLES PASSENT' : 'PROBLÈME RESTANT'}</div>
-      <ul class="st-checks">${checks || '<li>Aucun contrôle.</li>'}</ul>
-      ${lr.remaining ? `<div class="st-remaining">${esc(lr.remaining)}</div>` : ''}
+      <div class="st-sum-state ${cls}">${label}</div>
+      <div class="st-why">${esc(status === 'ok' ? okText : (lr.why || lr.remaining || ''))}</div>
+      <h5>CONTRÔLES</h5>
+      <ul class="st-checks">${checks || '<li class="muted">Aucun contrôle.</li>'}</ul>
+      ${crit ? `<h5>CRITÈRES D'ACCEPTATION <span>${proven}/${lr.criteria.length} prouvés</span></h5><ul class="st-crit">${crit}</ul>` : ''}
+      ${analysis}
+      ${launch}
       <dl class="facts">
         <dt>FICHIERS</dt><dd>${lr.files ?? '—'}</dd>
         <dt>CORRECTIONS</dt><dd>${lr.fix_attempts ?? 0}</dd>
@@ -260,15 +322,109 @@ export function createStudio(ctx) {
     return r;
   }
 
+  // ── viewer: source (line numbers, colours, search), diff, outputs, screenshot ──
+  const KEYWORDS = {
+    py: 'and|as|assert|async|await|break|class|continue|def|del|elif|else|except|False|finally|for|from|global|if|import|in|is|lambda|None|nonlocal|not|or|pass|raise|return|self|True|try|while|with|yield',
+    js: 'async|await|break|case|catch|class|const|continue|default|delete|do|else|export|extends|false|finally|for|function|if|import|in|instanceof|let|new|null|of|return|static|super|switch|this|throw|true|try|typeof|undefined|var|void|while|yield',
+  };
+  const LANG = { py: 'py', js: 'js', mjs: 'js', ts: 'js', json: 'js', css: 'css', html: 'html', htm: 'html' };
+  const TOKENS = {
+    py: new RegExp(`(#.*$)|("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*')|\\b(\\d+(?:\\.\\d+)?)\\b|\\b(${KEYWORDS.py})\\b`, 'g'),
+    js: new RegExp(`(\\/\\/.*$)|("(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*'|\`(?:\\\\.|[^\`\\\\])*\`)|\\b(\\d+(?:\\.\\d+)?)\\b|\\b(${KEYWORDS.js})\\b`, 'g'),
+  };
+  function highlight(line, lang) {
+    if (lang === 'html' || lang === 'css') {
+      return esc(line).replace(/(&lt;\/?[\w-]+|\/?&gt;)/g, '<span class="hk">$1</span>')
+        .replace(/(&quot;.*?&quot;)/g, '<span class="hs">$1</span>');
+    }
+    const re = TOKENS[lang];
+    if (!re) return esc(line);
+    re.lastIndex = 0;
+    let out = '', lastIdx = 0, m;
+    while ((m = re.exec(line))) {
+      if (!m[0].length) { re.lastIndex += 1; continue; }
+      out += esc(line.slice(lastIdx, m.index));
+      const cls = m[1] ? 'hc' : m[2] ? 'hs' : m[3] ? 'hn' : 'hk';
+      out += `<span class="${cls}">${esc(m[0])}</span>`;
+      lastIdx = m.index + m[0].length;
+    }
+    return out + esc(line.slice(lastIdx));
+  }
+
+  let viewing = null;            // {path, mode: 'src' | 'diff'}
+  function openViewer(title, html, opts = {}) {
+    $('st-viewer-title').textContent = title;
+    $('st-viewer-body').innerHTML = html;
+    $('st-viewer-body').scrollTop = 0;
+    $('st-tab-src').hidden = !opts.file;
+    $('st-tab-diff').hidden = !opts.file;
+    $('st-find').hidden = !opts.find;
+    $('st-find-count').textContent = '';
+    if (!opts.file) viewing = null;
+    $('st-tab-src').classList.toggle('on', opts.mode === 'src');
+    $('st-tab-diff').classList.toggle('on', opts.mode === 'diff');
+    $('st-viewer').hidden = false;
+  }
+  const plain = (text) => esc(text || '').split('\n').map((l) => `<div>${l || '&nbsp;'}</div>`).join('');
+
+  async function showFile(path, mode = 'src') {
+    viewing = { path, mode };
+    if (mode === 'diff') { showDiff(path); return; }
+    const r = await ctx.rpc('studio.file', { project: last && last.project, path });
+    if (r.error) { openViewer(path, esc(r.error), { file: true, mode }); return; }
+    const lang = LANG[(path.split('.').pop() || '').toLowerCase()];
+    const lines = String(r.content || '').replace(/\n$/, '').split('\n');
+    const html = lines.map((l, i) => `<div class="sl"><span class="ln">${i + 1}</span><span class="lc">${highlight(l, lang) || '&nbsp;'}</span></div>`).join('');
+    openViewer(`${path} — ${lines.length} lignes`, `<div class="st-code">${html}</div>`, { file: true, mode, find: true });
+    const q = $('st-find').value.trim();
+    if (q) find(q);
+  }
+
   async function showDiff(path) {
     const r = await ctx.rpc('studio.diff', { project: last && last.project, path });
-    const v = $('st-viewer');
-    $('st-viewer-title').textContent = path;
-    $('st-viewer-body').innerHTML = r.error ? esc(r.error) : esc(r.diff).split('\n').map((l) => {
+    const html = r.error ? esc(r.error) : (r.diff ? esc(r.diff).split('\n').map((l) => {
       const c = l.startsWith('+') && !l.startsWith('+++') ? 'add' : l.startsWith('-') && !l.startsWith('---') ? 'del' : l.startsWith('@@') ? 'hunk' : '';
       return `<div class="${c}">${l || '&nbsp;'}</div>`;
-    }).join('');
-    v.hidden = false;
+    }).join('') : '<div class="st-none">Aucune différence avec le dernier point de sauvegarde.</div>');
+    openViewer(path, html, { file: true, mode: 'diff' });
+  }
+
+  function find(q) {
+    const rows = [...$('st-viewer-body').querySelectorAll('.sl')];
+    const needle = q.toLowerCase();
+    let first = null, n = 0;
+    rows.forEach((row) => {
+      const hit = !!needle && row.textContent.toLowerCase().includes(needle);
+      row.classList.toggle('hit', hit);
+      if (hit) { n += 1; first = first || row; }
+    });
+    $('st-find-count').textContent = needle ? `${n} ligne${n > 1 ? 's' : ''}` : '';
+    if (first) first.scrollIntoView({ block: 'center' });
+  }
+
+  async function openPreview() {
+    const r = await act('studio.preview', {}, (x) => (x.url ? (x.opened ? 'Aperçu ouvert dans la fenêtre d\'aperçu.' : `Aperçu : ${x.url}`)
+      : x.kind === 'gui' ? 'Application lancée : fermez-la ou utilisez ARRÊTER.' : `Exécution terminée (code ${x.code}).`));
+    if (!r || r.error) return;
+    if (r.url && !r.opened) {
+      const lr = (last && last.map && last.map.last_run) || {};
+      ctx.call('openPreview', (last && last.project) || '', r.url, (last && last.map && last.map.title) || '', lr.status || '');
+    }
+    if (r.output !== undefined) openViewer('Résultat de l\'exécution', plain(r.output || '(aucune sortie)'));
+  }
+
+  async function summaryAction(what) {
+    const lr = last && last.map && last.map.last_run;
+    if (!lr) return;
+    if (what === 'run' && lr.run) openViewer(`Sortie de ${lr.run.command}`, plain(lr.run.output || '(aucune sortie)'));
+    else if (what === 'preview') openPreview();
+    else if (what === 'lint' && lr.analysis) {
+      openViewer('Analyse statique (Ruff : F, E9, PLE)', plain((lr.analysis.findings || [])
+        .map((f) => `${f.path}:${f.line}  ${f.code}  ${f.message}`).join('\n')));
+    } else if (what === 'shot') {
+      const r = await ctx.rpc('studio.screenshot', { project: last && last.project });
+      openViewer('Capture du navigateur de test', r.error ? esc(r.error) : `<img class="st-shot" src="${r.url}" alt="capture de la page">`);
+    }
   }
 
   function wire() {
@@ -278,19 +434,15 @@ export function createStudio(ctx) {
     box.addEventListener('mousedown', (e) => { if (e.target === box) hide(); });
     $('st-project').addEventListener('change', (e) => { project = e.target.value || null; lastSeq = -1; refresh(true); });
     $('st-stop').addEventListener('click', () => act('studio.stop', {}, () => 'Arrêt demandé.'));
-    $('st-preview').addEventListener('click', async () => {
-      const r = await act('studio.preview', {}, (x) => (x.url ? `Aperçu : ${x.url}` : x.kind === 'gui' ? 'Application lancée.' : `Exécution terminée (code ${x.code}).`));
-      if (r && r.url) ctx.call('openUrl', r.url);
-      if (r && r.output !== undefined) {
-        $('st-viewer-title').textContent = 'Résultat de l\'exécution';
-        $('st-viewer-body').innerHTML = esc(r.output || '(aucune sortie)').split('\n').map((l) => `<div>${l || '&nbsp;'}</div>`).join('');
-        $('st-viewer').hidden = false;
-      }
-    });
+    $('st-preview').addEventListener('click', openPreview);
+    $('st-summary').addEventListener('click', (e) => { const b = e.target.closest('[data-sum]'); if (b) summaryAction(b.dataset.sum); });
+    $('st-tab-src').addEventListener('click', () => { if (viewing) showFile(viewing.path, 'src'); });
+    $('st-tab-diff').addEventListener('click', () => { if (viewing) showFile(viewing.path, 'diff'); });
+    $('st-find').addEventListener('input', (e) => find(e.target.value.trim()));
     $('st-checkpoint').addEventListener('click', () => act('studio.checkpoint', { label: 'manuel (HUD)' }, (r) => `Point de sauvegarde créé (${r.files} fichiers).`));
     $('st-folder').addEventListener('click', () => act('studio.open_folder', {}, (r) => r.folder));
     $('st-viewer-close').addEventListener('click', () => { $('st-viewer').hidden = true; });
-    $('st-files').addEventListener('click', (e) => { const b = e.target.closest('[data-path]'); if (b) showDiff(b.dataset.path); });
+    $('st-files').addEventListener('click', (e) => { const b = e.target.closest('[data-path]'); if (b) showFile(b.dataset.path, 'src'); });
     $('st-cps').addEventListener('click', (e) => {
       const b = e.target.closest('[data-restore]');
       if (!b) return;
@@ -302,7 +454,7 @@ export function createStudio(ctx) {
       if (a) { e.preventDefault(); ctx.call('openUrl', a.dataset.url); return; }
       if (e.target.closest('[data-stop-preview]')) act('studio.stop_preview', {}, () => 'Aperçu arrêté.');
     });
-    ['st-root-input', 'st-attempts', 'st-timeout', 'st-confirm-plan'].forEach((id) => $(id).addEventListener('input', () => { optionsDirty = true; }));
+    ['st-root-input', 'st-attempts', 'st-timeout', 'st-confirm-plan', 'st-auto-preview', 'st-auto-run'].forEach((id) => $(id).addEventListener('input', () => { optionsDirty = true; }));
     $('st-save').addEventListener('click', async () => {
       const root = $('st-root-input').value.trim();
       if (last && root && root !== last.root) {
@@ -312,6 +464,7 @@ export function createStudio(ctx) {
       const r = await ctx.rpc('studio.options', {
         max_fix_attempts: Number($('st-attempts').value), command_timeout: Number($('st-timeout').value),
         confirm_plan: $('st-confirm-plan').checked,
+        auto_preview: $('st-auto-preview').checked, auto_run_scripts: $('st-auto-run').checked,
       });
       if (r.error) { status(r.error, 'err'); return; }
       optionsDirty = false; project = null;
