@@ -33,6 +33,9 @@ What it checks:
         through; Ruff is informative; the HUD options
   31    criteria left without a test: one pass writes the missing tests
         (tests/ only, never the code), then the verdict is earned again
+  32-33 Windows Sandbox: no network, every mapped folder read-only, the
+        launch fits the project; Pyright is informative and honest
+  34    the HUD's own edit and test buttons: journaled, undoable, fenced
 """
 from __future__ import annotations
 
@@ -670,6 +673,78 @@ def _():
     by = {c["id"]: c["status"] for c in job.result["criteria"]}
     assert by == {"AC1": "passed", "AC2": "passed"}, by
     return "règle donnée au fichier de tests, AC2 couvert, calc.py refusé à cette étape"
+
+
+@check("32 Windows Sandbox : réseau coupé, tout en lecture seule, lancement adapté au projet")
+def _():
+    import xml.etree.ElementTree as ET
+
+    from core.code_workspace import winsandbox as W
+    pdir = WS.project_dir("sbx", create=True)
+    meta = WS.meta_dir("sbx")
+    wsb = W.prepare("sbx", pdir, meta, {"kind": "script", "run_command": "python main.py --table",
+                                        "test_command": ""})
+    root = ET.fromstring(wsb.read_text(encoding="utf-8"))
+    assert root.findtext("Networking") == "Disable" and root.findtext("ClipboardRedirection") == "Disable"
+    folders = root.findall("MappedFolders/MappedFolder")
+    assert len(folders) == 3 and all(f.findtext("ReadOnly") == "true" for f in folders), \
+        [(f.findtext("HostFolder"), f.findtext("ReadOnly")) for f in folders]
+    hosts = {Path(f.findtext("HostFolder")).resolve() for f in folders}
+    assert BASE_DIR.resolve() not in hosts and Path.home().resolve() not in hosts, hosts
+    run = (meta / "sandbox" / "boot" / "run.cmd").read_text(encoding="ascii")
+    assert 'C:\\Sandbox\\python\\python.exe" main.py --table' in run and "robocopy" in run, run
+    web = W.launch_line("web", "", "", "app/index.html")
+    assert "http.server 8000 --bind 127.0.0.1" in web and "http://127.0.0.1:8000/app/index.html" in web, web
+    lib = W.launch_line("library", "", "pytest -q", "")
+    assert '-m pytest -q' in lib, lib
+    for bad in ("node app.js", "npm start", "calc.exe", "python main.py & del *"):
+        assert refuses(W.launch_line, "script", bad, "", ""), bad
+    assert refuses(W.launch_line, "library", "", "", "")
+    why = W.available()
+    st = _studio(FakeLLM())
+    r = st.hud("studio.sandbox", {"project": "sbx"})
+    if why:
+        assert r.get("ok") is False and r.get("error") == why, r
+    assert st.hud("studio.status", {"project": "sbx"})["sandbox"]["available"] == (not why)
+    return "3 montages en lecture seule, réseau coupé ; ici : " + ("disponible" if not why else why[:50])
+
+
+@check("33 Pyright : erreur de type trouvée, config du projet ignorée, 0 fichier ≠ « aucune erreur »")
+def _():
+    from core.code_workspace import lint
+    p = WS.project_dir("typedemo", create=True)
+    (p / "app.py").write_text("def f(x: int) -> str:\n    return x\n\nimport absent_pkg\n", encoding="utf-8")
+    (p / "pyrightconfig.json").write_text('{"exclude": ["app.py"], "typeCheckingMode": "off"}', encoding="utf-8")
+    r = lint.run_types(p)
+    if r.get("unavailable") and "installé" in r["unavailable"]:
+        return f"non lancé : {r['unavailable']}"
+    assert r["ok"] is False and r["count"] == 1 and r["findings"][0]["line"] == 2, r
+    empty = WS.project_dir("typeempty", create=True)
+    (empty / "README.md").write_text("x", encoding="utf-8")
+    assert lint.run_types(empty)["ok"] is None
+    return lint.types_headline(r)[:70]
+
+
+@check("34 éditer et tester depuis le HUD : journalisé, annulable, jamais hors du projet")
+def _():
+    from core import undo
+    st = _studio(FakeLLM())
+    WS.project_dir("hudedit", create=True)
+    st.update_map("hudedit", {"test_command": "python -m unittest discover -s tests -t . -v"})
+    for path, content in (("calc.py", BUGGY), ("tests/__init__.py", ""), ("tests/test_calc.py", TEST)):
+        st.write_file("hudedit", path, content, reason="fixture")
+    r = st.hud("studio.test", {"project": "hudedit"})
+    assert r["ok"] is False and "FAIL" in r["output"], r
+    w = st.hud("studio.write", {"project": "hudedit", "path": "calc.py", "content": FIXED})
+    assert w.get("ok") and w["op"] == "modify", w
+    assert st.hud("studio.test", {"project": "hudedit"})["ok"] is True
+    evs = [e for e in st.project_ctx("hudedit").journal.recent(50) if e["kind"] == "file"]
+    assert evs[-1]["data"]["path"] == "calc.py" and evs[-1]["data"]["reason"] == "manuel", evs[-1]
+    undo.undo_last()
+    assert WS.read_text("hudedit", "calc.py") == BUGGY, "l'édition du HUD n'est pas annulable"
+    bad = st.hud("studio.write", {"project": "hudedit", "path": "../evil.py", "content": "x"})
+    assert "error" in bad and not (ROOT / "evil.py").exists(), bad
+    return "test en échec → édition → test vert → annulée ; '../' refusé"
 
 
 WEB_HTML = ('<!doctype html><html><head><meta charset="utf-8"><title>Courses</title>'

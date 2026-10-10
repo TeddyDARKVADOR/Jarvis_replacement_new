@@ -24,7 +24,6 @@ import sys
 import threading
 import time
 import unicodedata
-from pathlib import Path
 
 from .checkpoints import Checkpoints
 from .journal import Journal
@@ -426,6 +425,23 @@ class Studio:
         return {"ok": True, "url": "data:image/png;base64," + base64.b64encode(data).decode("ascii"),
                 "ts": shot.stat().st_mtime}
 
+    def sandbox(self, project: str | None) -> dict:
+        """Launch the project inside Windows Sandbox (winsandbox.py). Only on request."""
+        from . import winsandbox
+        project = self._existing(project)
+        if self.job is not None and self.job.running and self.job.project == project:
+            raise SandboxError("Le Studio travaille encore sur ce projet : attendez la fin.")
+        why = winsandbox.available()
+        if why:
+            return {"ok": False, "error": why}
+        ctx = self.project_ctx(project)
+        wsb = winsandbox.prepare(project, self.workspace().project_dir(project), ctx.meta, self.project_map(project))
+        winsandbox.launch(wsb)
+        ctx.journal.add("preview", "▶ Projet lancé dans Windows Sandbox : machine jetable, réseau coupé, "
+                                   "dossier du projet en lecture seule", key=f"sandbox:{project}")
+        return {"ok": True, "message": "Windows Sandbox démarre (quelques secondes) : le projet s'y lance seul. "
+                                       "Fermer sa fenêtre efface tout."}
+
     def stop_previews(self, project: str | None = None) -> dict:
         n = 0
         for item in self.runner.background():
@@ -440,8 +456,11 @@ class Studio:
         provider = str(cfg.get("provider") or "auto").lower()
         coder = ("Groq" + (f" · {cfg['groq_model']}" if cfg.get("groq_model") else "")
                  if provider == "groq" or (provider == "auto" and groq_key()) else "Gemini")
+        from . import winsandbox
+        why = winsandbox.available()
         out: dict = {"root": self.root_setting(), "options": self.options(), "admin": is_admin(), "coder": coder,
-                     "safety": SAFETY_NOTE, "projects": [], "job": None}
+                     "safety": SAFETY_NOTE, "projects": [], "job": None,
+                     "sandbox": {"available": not why, "reason": why}}
         try:
             ws = self.workspace()
         except (SandboxError, OSError) as e:
@@ -516,6 +535,24 @@ class Studio:
                 return r
             if op == "studio.screenshot":
                 return self.screenshot(data.get("project"))
+            if op == "studio.sandbox":
+                return self.sandbox(data.get("project"))
+            if op == "studio.write":
+                # The user's own edit from the HUD: same journaled, undoable path as the tool.
+                project = self._existing(data.get("project"))
+                self._guard_running("enregistrer")
+                content = str(data.get("content", ""))
+                if len(content) > 1_000_000:
+                    raise SandboxError("Fichier trop gros pour l'éditeur du HUD (1 Mo max).")
+                return {"ok": True, **self.write_file(project, str(data.get("path", "")), content)}
+            if op == "studio.test":
+                project = self._existing(data.get("project"))
+                self._guard_running("tests")
+                cmd = self.project_map(project).get("test_command") or "python -m unittest discover -s tests -t . -v"
+                r = self.run_command(project, cmd)
+                return {"ok": bool(r.get("ok")), "command": cmd, "code": r.get("code"),
+                        "output": (r.get("output") or r.get("refused") or r.get("message") or "")[-12000:],
+                        "timed_out": r.get("timed_out")}
             if op == "studio.stop_preview":
                 return self.stop_previews(data.get("project") or None)
             if op == "studio.open_folder":
@@ -602,6 +639,9 @@ class Studio:
                         f"{r['removed']} removed. A safety checkpoint {r['safety']} was taken first.")
             if action == "diff":
                 return self.project_ctx(name).checkpoints.diff(str(p.get("path", "")), p.get("checkpoint") or None)[:8000]
+            if action == "sandbox":
+                r = self.sandbox(name)
+                return r.get("message") or f"Windows Sandbox unavailable: {r.get('error')}"
             if action == "preview":
                 r = self.preview(name)
                 if r.get("url"):

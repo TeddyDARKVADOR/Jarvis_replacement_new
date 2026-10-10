@@ -132,6 +132,11 @@ export function createStudio(ctx) {
       $('st-auto-run').checked = o.auto_run_scripts !== false;
     }
     $('st-safety').textContent = s.safety || '';
+    const sb = s.sandbox || {};
+    $('st-sandbox').classList.toggle('off', !sb.available);
+    $('st-sandbox').title = sb.available
+      ? 'Lancer le projet dans Windows Sandbox : machine jetable, réseau coupé, projet en lecture seule'
+      : (sb.reason || 'Windows Sandbox indisponible');
     $('st-admin').hidden = !s.admin;
     $('st-root-error').hidden = !s.root_error;
     $('st-root-error').textContent = s.root_error || '';
@@ -266,16 +271,18 @@ export function createStudio(ctx) {
         + `<button class="mini-btn" data-sum="preview">${pv.opened ? 'RÉOUVRIR' : 'OUVRIR L\'APERÇU'}</button></div>`;
     } else if (pv && pv.kind === 'gui') {
       launch += '<div class="st-run"><b>APPLICATION</b> jamais lancée automatiquement'
-        + '<button class="mini-btn" data-sum="preview">LANCER L\'APPLICATION</button></div>';
+        + '<button class="mini-btn" data-sum="preview">LANCER L\'APPLICATION</button>'
+        + '<button class="mini-btn" data-sum="sandbox">DANS WINDOWS SANDBOX</button></div>';
     }
     if (br) {
       const blocked = br.blocked && br.blocked.length ? `${br.blocked.length} requête(s) Internet bloquée(s)` : 'aucune requête externe';
       launch += `<div class="st-run"><b>NAVIGATEUR DE TEST</b> ${blocked}`
         + `${br.screenshot ? '<button class="mini-btn" data-sum="shot">CAPTURE</button>' : ''}</div>`;
     }
-    const analysis = an ? `<div class="st-analysis ${an.ok === false ? 'warn' : ''}"><b>ANALYSE</b> ${esc(an.headline || '')}`
-      + `${an.count ? '<button class="mini-btn" data-sum="lint">DÉTAIL</button>' : ''}`
-      + '<small>informative : n\'entre pas dans le verdict</small></div>' : '';
+    const analysisRow = (a, label, key) => (a ? `<div class="st-analysis ${a.ok === false ? 'warn' : ''}"><b>${label}</b> ${esc(a.headline || '')}`
+      + `${a.count ? `<button class="mini-btn" data-sum="${key}">DÉTAIL</button>` : ''}`
+      + '<small>informative : n\'entre pas dans le verdict</small></div>' : '');
+    const analysis = analysisRow(an, 'ANALYSE', 'lint') + analysisRow(lr.types, 'TYPES', 'types');
     el.innerHTML = `
       <div class="st-sum-state ${cls}">${label}</div>
       <div class="st-why">${esc(status === 'ok' ? okText : (lr.why || lr.remaining || ''))}</div>
@@ -351,7 +358,8 @@ export function createStudio(ctx) {
     return out + esc(line.slice(lastIdx));
   }
 
-  let viewing = null;            // {path, mode: 'src' | 'diff'}
+  let viewing = null;            // {path, mode, content}
+  let editing = false;           // the source is a textarea
   function openViewer(title, html, opts = {}) {
     $('st-viewer-title').textContent = title;
     $('st-viewer-body').innerHTML = html;
@@ -363,21 +371,68 @@ export function createStudio(ctx) {
     if (!opts.file) viewing = null;
     $('st-tab-src').classList.toggle('on', opts.mode === 'src');
     $('st-tab-diff').classList.toggle('on', opts.mode === 'diff');
+    $('st-edit').hidden = !(opts.file && opts.mode === 'src' && !opts.error);
+    $('st-save-file').hidden = true;
+    $('st-cancel-edit').hidden = true;
+    editing = false;
     $('st-viewer').hidden = false;
   }
   const plain = (text) => esc(text || '').split('\n').map((l) => `<div>${l || '&nbsp;'}</div>`).join('');
 
-  async function showFile(path, mode = 'src') {
+  async function showFile(path, mode = 'src', line = 0) {
     viewing = { path, mode };
     if (mode === 'diff') { showDiff(path); return; }
     const r = await ctx.rpc('studio.file', { project: last && last.project, path });
-    if (r.error) { openViewer(path, esc(r.error), { file: true, mode }); return; }
+    if (r.error) { openViewer(path, esc(r.error), { file: true, mode, error: true }); return; }
+    viewing.content = String(r.content || '');
     const lang = LANG[(path.split('.').pop() || '').toLowerCase()];
-    const lines = String(r.content || '').replace(/\n$/, '').split('\n');
+    const lines = viewing.content.replace(/\n$/, '').split('\n');
     const html = lines.map((l, i) => `<div class="sl"><span class="ln">${i + 1}</span><span class="lc">${highlight(l, lang) || '&nbsp;'}</span></div>`).join('');
     openViewer(`${path} — ${lines.length} lignes`, `<div class="st-code">${html}</div>`, { file: true, mode, find: true });
     const q = $('st-find').value.trim();
     if (q) find(q);
+    const target = line > 0 ? $('st-viewer-body').querySelectorAll('.sl')[line - 1] : null;
+    if (target) { target.classList.add('goto'); target.scrollIntoView({ block: 'center' }); }
+  }
+
+  // ── a quick edit, saved through the Studio (journaled, undoable) ──
+  function editFile() {
+    if (!viewing || viewing.content === undefined) return;
+    editing = true;
+    $('st-viewer-body').innerHTML = '<textarea id="st-editor" class="st-editor" spellcheck="false"></textarea>';
+    const ta = $('st-editor');
+    ta.value = viewing.content;
+    ta.focus();
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        ta.setRangeText('    ', ta.selectionStart, ta.selectionEnd, 'end');
+      } else if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        saveFile();
+      }
+    });
+    ['st-edit', 'st-tab-src', 'st-tab-diff', 'st-find'].forEach((id) => { $(id).hidden = true; });
+    $('st-find-count').textContent = '';
+    $('st-save-file').hidden = false;
+    $('st-cancel-edit').hidden = false;
+  }
+  const dirty = () => editing && $('st-editor') && $('st-editor').value !== viewing.content;
+  async function saveFile() {
+    if (!editing || !viewing) return;
+    const r = await act('studio.write', { path: viewing.path, content: $('st-editor').value },
+      (x) => `${x.path} enregistré (${x.lines} lignes) — annulable. Relancez les TESTS pour vérifier.`);
+    if (r && !r.error) showFile(viewing.path, 'src');
+  }
+
+  async function runTests() {
+    status('Tests en cours…', 'busy');
+    const r = await ctx.rpc('studio.test', { project: last && last.project });
+    if (r.error) { status(r.error, 'err'); ctx.sound.play('error'); return; }
+    const verdict = r.ok ? 'RÉUSSIS' : r.timed_out ? 'DÉLAI DÉPASSÉ' : `ÉCHEC (code ${r.code ?? '—'})`;
+    status(`Tests ${verdict.toLowerCase()} : ${r.command}`, r.ok ? 'ok' : 'err');
+    openViewer(`Tests ${verdict} — ${r.command}`, plain(r.output || '(aucune sortie)'));
+    refresh(true);
   }
 
   async function showDiff(path) {
@@ -418,9 +473,13 @@ export function createStudio(ctx) {
     if (!lr) return;
     if (what === 'run' && lr.run) openViewer(`Sortie de ${lr.run.command}`, plain(lr.run.output || '(aucune sortie)'));
     else if (what === 'preview') openPreview();
-    else if (what === 'lint' && lr.analysis) {
-      openViewer('Analyse statique (Ruff : F, E9, PLE)', plain((lr.analysis.findings || [])
-        .map((f) => `${f.path}:${f.line}  ${f.code}  ${f.message}`).join('\n')));
+    else if (what === 'sandbox') act('studio.sandbox', {}, (r) => r.message || '');
+    else if ((what === 'lint' && lr.analysis) || (what === 'types' && lr.types)) {
+      const a = what === 'lint' ? lr.analysis : lr.types;
+      // Each remark opens its file at its line.
+      openViewer(what === 'lint' ? 'Analyse statique (Ruff : F, E9, PLE)' : 'Analyse des types (Pyright, mode basic)',
+        (a.findings || []).map((f) => `<div class="st-goto" data-goto-path="${esc(f.path)}" data-goto-line="${Number(f.line) || 0}">`
+          + `<b>${esc(f.path)}:${esc(f.line)}</b>  ${esc(f.code)}  ${esc(f.message)}</div>`).join('') || plain('(rien)'));
     } else if (what === 'shot') {
       const r = await ctx.rpc('studio.screenshot', { project: last && last.project });
       openViewer('Capture du navigateur de test', r.error ? esc(r.error) : `<img class="st-shot" src="${r.url}" alt="capture de la page">`);
@@ -435,6 +494,15 @@ export function createStudio(ctx) {
     $('st-project').addEventListener('change', (e) => { project = e.target.value || null; lastSeq = -1; refresh(true); });
     $('st-stop').addEventListener('click', () => act('studio.stop', {}, () => 'Arrêt demandé.'));
     $('st-preview').addEventListener('click', openPreview);
+    $('st-sandbox').addEventListener('click', () => act('studio.sandbox', {}, (r) => r.message || ''));
+    $('st-test').addEventListener('click', runTests);
+    $('st-edit').addEventListener('click', editFile);
+    $('st-save-file').addEventListener('click', saveFile);
+    $('st-cancel-edit').addEventListener('click', () => { if (viewing) showFile(viewing.path, 'src'); });
+    $('st-viewer-body').addEventListener('click', (e) => {
+      const g = e.target.closest('[data-goto-path]');
+      if (g) showFile(g.dataset.gotoPath, 'src', Number(g.dataset.gotoLine) || 0);
+    });
     $('st-summary').addEventListener('click', (e) => { const b = e.target.closest('[data-sum]'); if (b) summaryAction(b.dataset.sum); });
     $('st-tab-src').addEventListener('click', () => { if (viewing) showFile(viewing.path, 'src'); });
     $('st-tab-diff').addEventListener('click', () => { if (viewing) showFile(viewing.path, 'diff'); });
@@ -482,6 +550,10 @@ export function createStudio(ctx) {
     close: hide,
     get isOpen() { return open; },
     get viewerOpen() { return !$('st-viewer').hidden; },
-    closeViewer() { $('st-viewer').hidden = true; },
+    closeViewer() {
+      // Escape never throws away an unsaved edit.
+      if (dirty()) { status('Modifications non enregistrées : ENREGISTRER (Ctrl+S) ou ANNULER.', 'err'); return; }
+      $('st-viewer').hidden = true;
+    },
   };
 }
