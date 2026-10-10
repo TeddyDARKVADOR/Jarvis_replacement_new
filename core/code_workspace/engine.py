@@ -548,7 +548,18 @@ class StudioJob:
                 return {"ok": False, "blocked": msg, "checks": checks, "attempts": self.attempt}
             self.attempt += 1
             self._step(f"correction {self.attempt}/{max_attempts}")
-            history.append(self._fix(failing, history))
+            try:
+                history.append(self._fix(failing, history))
+            except llm_mod.LLMError as e:
+                if self.fix_llm is None:
+                    raise                           # the job's own model is gone: a real error
+                # The stronger model is unreachable (quota, network): the job ends
+                # blocked on its real problem, not in an error about the escalation.
+                msg = (f"Escalade vers {self.escalated} impossible ({e}) — problème restant : "
+                       f"{diagnose.headline(failing['output'])}")
+                self.ctx.journal.add("blocked", msg)
+                self.ctx.tasks.set(tid, "blocked", "escalade impossible")
+                return {"ok": False, "blocked": msg, "checks": checks, "attempts": self.attempt}
 
     def _escalate(self) -> bool:
         """Stuck: hand the fixes to a stronger coder, once, if one is configured."""
@@ -615,8 +626,7 @@ class StudioJob:
         return bool(changed)
 
     def _fix(self, failing: dict, history: list[str]) -> str:
-        ws, project = self.ws, self.project
-        files = ws.list_files(project)
+        files = self.ws.list_files(self.project)
         paths = [f["path"] for f in files]
         kind = diagnose.classify(failing["output"], failing.get("timed_out", False))
         if (failing.get("report") or {}).get("page_errors"):
@@ -633,7 +643,30 @@ class StudioJob:
                     return f"tentative {self.attempt}: installation de {mod}"
         self.ctx.checkpoints.create(f"avant correction {self.attempt}")
         web = failing.get("kind") == "web"
-        wanted = [p for p in [path] if p]
+        contents = self._fix_contents(paths, path, web)
+        located = f"The error points at {path}, line {line}." if path else "No project frame located."
+        proposal = llm_mod.fix(self.fixer, self.plan.get("title") or self.project, failing["name"], kind,
+                               diagnose.excerpt(failing["output"]), located, files, contents, history,
+                               web_checks=self.plan.get("web_checks") if web else None)
+        self._check()
+        if proposal.get("give_up"):
+            self.ctx.journal.add("blocked", f"Le correcteur demande de l'aide : {proposal['give_up']}")
+        diag = str(proposal.get("diagnosis", ""))[:300]
+        changed, diffs = self._apply_fix(proposal, diag)
+        if web:
+            self._check_suspected(proposal, failing, changed, contents)
+        dep = str(proposal.get("needs_dependency") or "").strip()
+        if dep and not changed:
+            self._install_dependencies([dep])
+        self.ctx.journal.add("info", f"Correction {self.attempt} : {diag or 'sans explication'} "
+                                     f"({', '.join(changed) or 'aucun fichier modifié'})")
+        return (f"Attempt {self.attempt} — meant to fix: {diagnose.headline(failing['output'])}\n"
+                f"Diagnosis then: {diag or '(none)'}\nChanged: {', '.join(changed) or 'nothing'}\n"
+                + "\n".join(diffs))[:1800]
+
+    def _fix_contents(self, paths: list[str], located: str | None, web: bool) -> str:
+        """The files the fixer sees, numbered: the located one first, then the likely ones."""
+        wanted = [p for p in [located] if p]
         if web:
             wanted += [p for p in paths if Path(p).suffix in (".html", ".htm", ".js", ".mjs", ".css")][:8]
         else:
@@ -644,26 +677,21 @@ class StudioJob:
             if p in seen or Path(p).suffix not in TEXT_EXT:
                 continue
             seen.add(p)
-            c = ws.read_optional(project, p) or ""
+            c = self.ws.read_optional(self.project, p) or ""
             numbered = "\n".join(f"{i+1:4d}| {l}" for i, l in enumerate(c.splitlines()[:600]))
             contents.append(f"--- {p} ---\n{numbered}")
-        located = f"The error points at {path}, line {line}." if path else "No project frame located."
-        proposal = llm_mod.fix(self.fixer, self.plan.get("title") or project, failing["name"], kind,
-                               diagnose.excerpt(failing["output"]), located, files,
-                               "\n\n".join(contents), history,
-                               web_checks=self.plan.get("web_checks") if web else None)
-        self._check()
-        if proposal.get("give_up"):
-            self.ctx.journal.add("blocked", f"Le correcteur demande de l'aide : {proposal['give_up']}")
-        diag = str(proposal.get("diagnosis", ""))[:300]
+        return "\n\n".join(contents)
+
+    def _apply_fix(self, proposal: dict, diag: str) -> tuple[list[str], list[str]]:
+        """Write the proposed files (sandboxed, journaled); keep each diff for the next attempt."""
         changed, diffs = [], []
         for f in (proposal.get("files") or [])[:3]:
             if not isinstance(f, dict) or not isinstance(f.get("content"), str):
                 continue
             rel = str(f.get("path", ""))
-            before = ws.read_optional(project, rel) if rel else None
+            before = self.ws.read_optional(self.project, rel) if rel else None
             try:
-                self.studio.write_file(project, rel, f["content"], reason=f"correction {self.attempt}")
+                self.studio.write_file(self.project, rel, f["content"], reason=f"correction {self.attempt}")
             except SandboxError as e:
                 self.ctx.journal.add("error", f"Correction refusée pour {rel} : {e}")
                 continue
@@ -671,16 +699,38 @@ class StudioJob:
             diffs.append(_short_diff(rel, before or "", f["content"]))
             if llm_mod.is_test_file(rel) and before is not None:
                 self._amend(rel, diag or "test modifié par le correcteur")
-        if web and isinstance(proposal.get("check_fix"), dict):
+        return changed, diffs
+
+    def _check_suspected(self, proposal: dict, failing: dict, changed: list[str], contents: str) -> None:
+        if isinstance(proposal.get("check_fix"), dict):
             self._amend_check(proposal["check_fix"], failing)
-        dep = str(proposal.get("needs_dependency") or "").strip()
-        if dep and not changed:
-            self._install_dependencies([dep])
-        self.ctx.journal.add("info", f"Correction {self.attempt} : {diag or 'sans explication'} "
-                                     f"({', '.join(changed) or 'aucun fichier modifié'})")
-        return (f"Attempt {self.attempt} — meant to fix: {diagnose.headline(failing['output'])}\n"
-                f"Diagnosis then: {diag or '(none)'}\nChanged: {', '.join(changed) or 'nothing'}\n"
-                + "\n".join(diffs))[:1800]
+            return
+        real_code = [p for p in changed if not llm_mod.is_test_file(p) and not p.endswith("__init__.py")]
+        if proposal.get("give_up") or not real_code:
+            # The fixer touched no real code or asked for help: it suspects the check.
+            # Small models do not use an optional field — ask the question directly.
+            self._review_check(failing, contents)
+
+    def _review_check(self, failing: dict, contents: str) -> None:
+        bad = [c for c in ((failing.get("report") or {}).get("checks") or []) if not c.get("ok") and c.get("id")]
+        check = next((c for c in self.plan.get("web_checks") or [] if bad and c.get("id") == bad[0]["id"]), None)
+        if check is None or any(a["what"] == f"parcours {check['id']}" for a in self.amended):
+            return
+        criterion = next((c["criterion"] for c in self.plan.get("acceptance") or [] if c["id"] == check["id"]), "")
+        self._step(f"revue du parcours {check['id']}")
+        try:
+            r = llm_mod.review_check(self.fixer, self.plan.get("title") or self.project, criterion, check,
+                                     str(bad[0].get("detail") or ""), contents)
+        except llm_mod.LLMError as e:
+            self.ctx.journal.add("info", f"Revue du parcours {check['id']} impossible : {e}")
+            return
+        self._check()
+        if r.get("verdict") == "check":
+            self._amend_check({"id": check["id"], "reason": r.get("reason"), "steps": r.get("steps"),
+                               "expect": r.get("expect")}, failing)
+        else:
+            self.ctx.journal.add("info", f"Revue du parcours {check['id']} : le parcours est juste, c'est le code "
+                                         f"qui doit changer ({str(r.get('reason') or '')[:160]})")
 
     def _amend(self, what: str, why: str) -> None:
         if not any(a["what"] == what for a in self.amended):

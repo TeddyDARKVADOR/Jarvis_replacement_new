@@ -42,6 +42,8 @@ What it checks:
         paced on its own headers (daily quota, 413, truncated answers, effort
         per role), unusable JSON sent back once, escalation with the diff of
         failed attempts, an impossible browser check corrected — and shown
+  43-44 a model that hints a check is wrong is asked directly; an escalation
+        that cannot be reached ends the job blocked, not in an error
 """
 from __future__ import annotations
 
@@ -1100,6 +1102,57 @@ def _():
     st.stop_previews()
     assert job.result["status"] == "blocked" and not job.result.get("amended"), job.result.get("amended")
     return "parcours corrigé et signalé ; une correction sans vérification est refusée"
+
+
+@check("43 un petit modèle soupçonne le parcours sans le dire : une question directe le fait corriger")
+def _():
+    from core.code_workspace import webcheck
+    if webcheck.available():
+        return f"non lancé : {webcheck.available()}"
+    steps = [{"action": "fill", "selector": "#t", "value": "lait"}, {"action": "click", "selector": "#add"},
+             {"action": "click", "selector": "#list .del"}]
+    extra = {"kind": "web", "entry_point": "index.html",
+             "acceptance": [{"id": "AC1", "criterion": "supprimer un article", "verify": "web"}],
+             "web_checks": [{"id": "AC1", "name": "suppression", "steps": steps,
+                             "expect": [{"selector": "#list li", "count": 1}]}]}
+
+    class Shy(PlanLLM):
+        """Like gemma4 in the benchmark: sees the check is wrong, gives up, never fills check_fix."""
+        reviews = 0
+
+        def complete(self, prompt, json_mode=False):
+            if "the fixer suspects" in prompt:
+                Shy.reviews += 1
+                return json.dumps({"verdict": "check", "reason": "il reste 0 article après la suppression",
+                                   "steps": steps, "expect": [{"selector": "#list li", "count": 0}]})
+            if "You are fixing the project" in prompt:
+                self.calls["fix"] += 1
+                return json.dumps({"explanation": "x", "diagnosis": "le parcours attend 1 article",
+                                   "files": [], "give_up": "le test semble faux"})
+            return super().complete(prompt, json_mode)
+    st = _studio(Shy(extra=extra, contents={"index.html": AMEND_HTML, "app.js": AMEND_JS}))
+    st.start_job("create", "liste, modèle timide")
+    job = _wait(st, 240)
+    st.stop_previews()
+    res = job.result
+    assert Shy.reviews == 1, f"{Shy.reviews} revues"
+    assert res["status"] == "ok" and res["amended"][0]["what"] == "parcours AC1", (res["status"], res.get("amended"))
+    return "abandon sans check_fix → 1 question directe → parcours corrigé, signalé, validé"
+
+
+@check("44 escalade injoignable (quota, réseau) : le travail finit bloqué, jamais en erreur")
+def _():
+    from core.code_workspace.llm import LLMError
+
+    class Gone(FakeLLM):
+        def complete(self, prompt, json_mode=False):
+            raise LLMError("Quota quotidien Groq épuisé (retour dans environ 20 min).")
+    st = _studio(FakeLLM(fix_content=BUGGY))
+    st.escalation_factory = lambda: Gone()
+    st.start_job("create", "calc, escalade sans quota")
+    job = _wait(st)
+    assert job.phase == "bloque" and "Escalade" in job.result.get("remaining", ""), (job.phase, job.result)
+    return job.result["remaining"][:80]
 
 
 WEB_HTML = ('<!doctype html><html><head><meta charset="utf-8"><title>Courses</title>'

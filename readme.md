@@ -68,6 +68,14 @@ affiche son **code complet** (numéros de ligne, couleurs, recherche) ou ses dif
   répond au lieu d'attendre), **IA locale seulement** (Ollama : aucun quota, plus lent),
   Groq ou Gemini seuls. Le modèle local se choisit dans la même section (liste des modèles
   installés dans Ollama).
+- **Robustesse face aux modèles** : chaque appel a un rôle (planifier, écrire, corriger) qui
+  règle l'effort de réflexion et ce qui peut passer au relais local ; Groq est rythmé sur ses
+  propres en-têtes de limite (attente exacte, quota du jour détecté) ; Ollama est surveillé
+  (troncature silencieuse du prompt détectée, JSON contraint par schéma, réponse en flux
+  interruptible) ; une réponse JSON inutilisable est renvoyée une fois avec la raison. Les
+  corrections expliquent d'abord le code (Self-Debugging) et voient le diff des tentatives
+  ratées ; un modèle local bloqué passe la main à Groq ; toute vérification modifiée par le
+  modèle est listée au bilan.
 - Par défaut, le code est écrit par **Groq** dès que `"groq_api_key"` est présent dans
   `config/api_keys.json` (meilleur modèle disponible pour la clé, `openai/gpt-oss-120b` en
   priorité ; `"groq_model"` dans `plugin_config.code_studio` pour en imposer un). Sans clé

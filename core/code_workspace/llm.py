@@ -195,6 +195,7 @@ class GroqLLM:
         self.schema = None
         self.limits: dict = {}
         self.exhausted_until = 0.0
+        self.exhausted_why = ""
 
     @property
     def http(self):
@@ -272,10 +273,10 @@ class GroqLLM:
             self.limits.pop("tokens", None)
         return None
 
-    @staticmethod
-    def _daily_message(secs: float) -> str:
-        return (f"Quota quotidien Groq épuisé (retour dans environ {max(1, round(secs / 60))} min). "
-                "Choisissez « Groq + relais local » ou « IA locale » dans les réglages du Studio.")
+    def _daily_message(self, secs: float) -> str:
+        return (f"Quota quotidien Groq épuisé{self.exhausted_why} (retour dans environ "
+                f"{max(1, round(secs / 60))} min). Choisissez « Groq + relais local » ou « IA locale » "
+                "dans les réglages du Studio.")
 
     def _daily_exhausted(self, r) -> float:
         """Seconds until the daily quota is back, when THAT is what the 429 means; else 0."""
@@ -285,6 +286,10 @@ class GroqLLM:
             retry = 0.0
         self._read_limits(r)
         if self.limits.get("requests") == 0 or retry > 120:
+            text = (getattr(r, "text", "") or "").lower()
+            self.exhausted_why = (" : jetons par jour (TPD)" if "tokens per day" in text or "tpd" in text else
+                                  " : requêtes par jour (RPD)" if "requests per day" in text or "rpd" in text
+                                  else "")
             back = max(retry, self.limits.get("requests_reset", 0.0) - time.monotonic())
             return back if back > 0 else 3600.0
         return 0.0
@@ -884,6 +889,40 @@ def cover(llm, title: str, missing: list[dict], tests: str, code: str) -> dict:
     return ask_json(llm, COVER_PROMPT.format(
         title=title, missing="\n".join(f"- {c['id']}: {c['criterion']}" for c in missing),
         tests=tests[:12000] or NONE, code=code[:12000] or NONE), "cover", COVER_SCHEMA, _files_list)
+
+
+CHECK_REVIEW_PROMPT = """A browser check of the project "{title}" keeps failing, and the fixer suspects the
+CHECK rather than the code. Decide which one is wrong.
+
+The acceptance criterion the check verifies: {criterion}
+The check (each run starts from a freshly loaded page with an empty localStorage):
+{check}
+Its failure: {detail}
+
+Relevant code:
+{contents}
+
+Play the steps in your head on the page as the code builds it. The CHECK is wrong only if its
+expectations cannot be true after its own steps, whatever the code does (e.g. add one item then
+delete it, and expect one item left). Otherwise the CODE is wrong.
+Return ONLY a JSON object:
+{{"verdict": "check" or "code", "reason": "one sentence, in French",
+  "steps": [...corrected steps, same criterion — [] if verdict is "code"],
+  "expect": [...corrected expectations — [] if verdict is "code"]}}"""
+
+CHECK_REVIEW_SCHEMA = {"type": "object", "properties": {
+    "verdict": {"type": "string", "enum": ["check", "code"]}, "reason": _STR,
+    "steps": _CHECK["properties"]["steps"], "expect": _CHECK["properties"]["expect"]},
+    "required": ["verdict", "reason", "steps", "expect"]}
+
+
+def review_check(llm, title: str, criterion: str, check: dict, detail: str, contents: str) -> dict:
+    """One required question when a small model hints the check is wrong but did not
+    say so in the optional field: is it the check or the code? (engine._fix)"""
+    return ask_json(llm, CHECK_REVIEW_PROMPT.format(
+        title=title, criterion=criterion or "?", check=json.dumps(check, ensure_ascii=False)[:2500],
+        detail=detail[:600], contents=contents[:12000]), "fix", CHECK_REVIEW_SCHEMA,
+        lambda d: "" if d.get("verdict") in ("check", "code") else "\"verdict\" must be \"check\" or \"code\".")
 
 
 CHECK_RULE = """If, and ONLY if, a browser check is ITSELF impossible (its expectations cannot describe the
