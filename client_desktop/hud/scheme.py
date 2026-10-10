@@ -85,7 +85,9 @@ def register() -> bool:
         _registered = True
         return True
     scheme = QWebEngineUrlScheme(SCHEME)
-    scheme.setSyntax(QWebEngineUrlScheme.Syntax.HostAndPort)
+    # These origins never use a port. Host syntax requires PortUnspecified;
+    # HostAndPort paired with PortUnspecified triggers Qt's default-port warning.
+    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
     scheme.setDefaultPort(QWebEngineUrlScheme.SpecialPort.PortUnspecified.value)
     scheme.setFlags(
         QWebEngineUrlScheme.Flag.SecureScheme

@@ -39,6 +39,10 @@ def prepare() -> bool:
     """Schemes, GPU flags, DPI policy. False when PyQt6-WebEngine is missing."""
     from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QApplication
+    # QtWebEngineWidgets must be loaded before QApplication is constructed.
+    # Importing HudWindow afterwards is too late: QtWebEngine then rejects the
+    # view unless shared OpenGL contexts were enabled before the app existed.
+    from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: F401
 
     from ..ui import avatar_scheme
     from . import scheme
@@ -47,6 +51,7 @@ def prepare() -> bool:
     if not scheme.register():         # jarvis-hud:// — the HUD page
         return False
     gpu_flags()
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     return True

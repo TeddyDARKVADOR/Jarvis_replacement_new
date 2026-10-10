@@ -129,7 +129,9 @@ def register() -> bool:
         return True
 
     scheme = QWebEngineUrlScheme(SCHEME)
-    scheme.setSyntax(QWebEngineUrlScheme.Syntax.HostAndPort)
+    # The avatar origin never uses a port. Host syntax is the valid pairing
+    # with PortUnspecified and avoids Qt's default-port warning.
+    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
     scheme.setDefaultPort(QWebEngineUrlScheme.SpecialPort.PortUnspecified.value)
     scheme.setFlags(
         # Secure : sans cela le contexte n'est pas "secure" et WebGL, les

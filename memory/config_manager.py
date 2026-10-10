@@ -23,7 +23,7 @@ def save_api_keys(gemini_api_key: str) -> None:
     data: dict = {}
     if CONFIG_FILE.exists():
         try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
         except Exception:
             data = {}
 
@@ -38,7 +38,7 @@ def load_api_keys() -> dict:
     if not CONFIG_FILE.exists():
         return {}
     try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        return json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
     except Exception as e:
         print(f"❌ Failed to load api_keys.json: {e}")
         return {}
@@ -67,7 +67,7 @@ def save_assistant_config(assistant_name: str, user_name: str) -> None:
     data: dict = {}
     if CONFIG_FILE.exists():
         try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
         except Exception:
             data = {}
     data["assistant_name"] = assistant_name.strip() or "JARVIS"
