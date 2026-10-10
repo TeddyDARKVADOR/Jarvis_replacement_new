@@ -19,7 +19,7 @@ GEMINI_MODEL       = "gemini-flash-latest"
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(API_CONFIG_PATH, "r", encoding="utf-8-sig") as f:
         return json.load(f)["gemini_api_key"]
 
 
@@ -292,6 +292,17 @@ def _build(description, language, output_path, args, timeout, speak=None, player
     if speak: speak(msg)
     return f"{msg}\n\nLast code saved to: {path}"
 
+def _syntax_note(code: str, path: Path) -> str:
+    """What was checked, said plainly: Python is compiled (never run), the rest is not checked."""
+    if path.suffix.lower() != ".py":
+        return "Not checked and not executed."
+    try:
+        compile(code, str(path), "exec", dont_inherit=True)
+        return "Python syntax OK (compiled, not executed: its behaviour is NOT verified)."
+    except SyntaxError as e:
+        return f"SYNTAX ERROR line {e.lineno}: {e.msg} — the file is saved but will not run."
+
+
 def _write_action(description, language, output_path, player) -> str:
     if not description:
         return "Please describe what you want me to write, sir."
@@ -300,7 +311,8 @@ def _write_action(description, language, output_path, player) -> str:
     try:
         code, path = _write(description, language, output_path, player)
         print(f"[Code] ✅ Written: {path}")
-        return f"Code written. Saved to: {path}\n\nPreview:\n{_preview(code)}"
+        return (f"Code written. Saved to: {path}\n{_syntax_note(code, path)}\n\n"
+                f"Code:\n{_preview(code, 150)}")
     except Exception as e:
         return f"Could not generate code: {e}"
 
@@ -521,6 +533,16 @@ Be specific and actionable. If you see an error message, quote it exactly."""
         return f"Screen analysis failed: {e}"
 
 
+def _to_studio(action: str, description: str, language: str, output_path: str, player) -> str | None:
+    """A NEW program goes to the Code Studio on this PC (sandbox, real tests,
+    verdict, HUD panel). code_helper keeps what the Studio does not do: one
+    file at a path the user named, and work on existing files."""
+    if action == "build" or (action == "write" and not output_path):
+        from actions.code_workspace import route_create
+        return route_create(description, language, "", player)
+    return None
+
+
 def code_helper(
     parameters: dict,
     response=None,
@@ -555,6 +577,10 @@ def code_helper(
         action = _detect_intent(description, file_path, code)
         print(f"[Code] 🤖 Auto-detected: {action}")
 
+    routed = _to_studio(action, description, language, output_path, player)
+    if routed is not None:
+        return routed
+
     if action == "write":
         return _write_action(description, language, output_path, player)
 
@@ -587,7 +613,9 @@ def code_helper(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "code_helper",
-    "description": "Writes, edits, explains, runs, or builds code files.",
+    "description": ("Works on ONE code file: edit, explain, run or optimize an EXISTING file, or write a single "
+                    "file to a path the user named. To create or build a new program, app or project, use "
+                    "code_studio (build / write without a path are handed to it on this PC)."),
     "parameters": {
         "type": "OBJECT",
         "properties": {

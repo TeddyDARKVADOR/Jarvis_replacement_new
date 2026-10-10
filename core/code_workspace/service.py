@@ -9,6 +9,10 @@ tool did not do, and the tool can never do something the HUD cannot see.
 
 What only the HUD can do: choose the workspace root and change the options.
 The model can read them, not move its own fence.
+
+The preview window (client_desktop/hud/preview.py) is the HUD's: the host sets
+`preview_opener(project, url, title)`; without a HUD, a preview is started but
+nothing opens by itself.
 """
 
 from __future__ import annotations
@@ -29,7 +33,9 @@ from .sandbox import SandboxError, Workspace, default_root, safe_project_name, v
 from .tasks import TaskList
 
 CONFIG_NS = "code_studio"
-DEFAULT_OPTIONS = {"max_fix_attempts": 4, "command_timeout": 120, "confirm_plan": False}
+DEFAULT_OPTIONS = {"max_fix_attempts": 4, "command_timeout": 120, "confirm_plan": False,
+                   "auto_preview": True, "auto_run_scripts": True}
+_BOOL_OPTIONS = ("confirm_plan", "auto_preview", "auto_run_scripts")
 
 SAFETY_NOTE = ("Les outils de fichiers de JARVIS sont strictement limités à ce dossier. "
                "En revanche, un programme qu'il exécute tourne avec les droits de votre compte "
@@ -59,6 +65,9 @@ class Studio:
         self.current_project: str | None = None
         self.player = None
         self.llm_factory = None          # tests inject a fake model here
+        #: Set by the HUD host: opens the preview window (any thread). Returns
+        #: True when a window really opened.
+        self.preview_opener = None
 
     # ── configuration ───────────────────────────────────────────────────────
     def root_setting(self) -> str:
@@ -72,7 +81,8 @@ class Studio:
                 out[k] = cfg[k]
         out["max_fix_attempts"] = max(1, min(int(out["max_fix_attempts"]), 10))
         out["command_timeout"] = max(10, min(int(out["command_timeout"]), 900))
-        out["confirm_plan"] = bool(out["confirm_plan"])
+        for k in _BOOL_OPTIONS:
+            out[k] = bool(out[k])
         return out
 
     def set_root(self, path: str) -> dict:
@@ -91,8 +101,9 @@ class Studio:
             clean["max_fix_attempts"] = max(1, min(int(data["max_fix_attempts"]), 10))
         if "command_timeout" in data:
             clean["command_timeout"] = max(10, min(int(data["command_timeout"]), 900))
-        if "confirm_plan" in data:
-            clean["confirm_plan"] = bool(data["confirm_plan"])
+        for k in _BOOL_OPTIONS:
+            if k in data:
+                clean[k] = bool(data[k])
         if clean:
             self._save(clean)
         return {"ok": True, "options": self.options()}
@@ -201,7 +212,7 @@ class Studio:
         data.setdefault("created", time.time())
         if plan:
             for k in ("title", "summary", "kind", "stack", "entry_point", "run_command",
-                      "test_command", "features"):
+                      "test_command", "features", "acceptance", "web_checks"):
                 if plan.get(k):
                     data[k] = plan[k]
         if request:
@@ -389,6 +400,32 @@ class Studio:
         return {"ok": bool(r.get("ok")), "kind": "script", "output": (r.get("output") or "")[-6000:],
                 "code": r.get("code"), "error": r.get("refused")}
 
+    def open_preview(self, project: str, url: str) -> bool:
+        """Show a running web preview in the HUD's preview window, if there is one."""
+        fn = self.preview_opener
+        if not callable(fn):
+            return False
+        title = str(self.project_map(project).get("title") or project)
+        last = self.project_map(project).get("last_run") or {}
+        try:
+            return bool(fn(project, url, title, last.get("status") or ""))
+        except Exception as e:
+            self.log(f"Studio — aperçu non ouvert : {e}")
+            return False
+
+    def screenshot(self, project: str | None) -> dict:
+        """The browser check's screenshot, as a data URL the HUD can show."""
+        import base64
+        project = self._existing(project)
+        shot = self.project_ctx(project).meta / "reports" / "apercu.png"
+        if not shot.is_file():
+            return {"ok": False, "error": "Aucune capture : le contrôle navigateur n'a pas tourné."}
+        data = shot.read_bytes()
+        if len(data) > 6_000_000:
+            return {"ok": False, "error": "Capture trop lourde."}
+        return {"ok": True, "url": "data:image/png;base64," + base64.b64encode(data).decode("ascii"),
+                "ts": shot.stat().st_mtime}
+
     def stop_previews(self, project: str | None = None) -> dict:
         n = 0
         for item in self.runner.background():
@@ -426,7 +463,7 @@ class Studio:
             "folder": str(ws.project_dir(name)),
             "map": {k: pmap.get(k) for k in ("title", "summary", "kind", "stack", "entry_point",
                                               "run_command", "test_command", "features",
-                                              "dependencies", "last_run", "updated")},
+                                              "acceptance", "dependencies", "last_run", "updated")},
             "tasks": ctx.tasks.all(),
             "counts": ctx.tasks.counts(),
             "touched": ctx.journal.files_touched()[:80],
@@ -473,7 +510,12 @@ class Studio:
                 project = self._existing(data.get("project"))
                 return {"ok": True, "content": self.workspace().read_text(project, str(data.get("path", "")))}
             if op == "studio.preview":
-                return self.preview(data.get("project"))
+                r = self.preview(data.get("project"))
+                if r.get("url"):
+                    r["opened"] = self.open_preview(self._existing(data.get("project")), r["url"])
+                return r
+            if op == "studio.screenshot":
+                return self.screenshot(data.get("project"))
             if op == "studio.stop_preview":
                 return self.stop_previews(data.get("project") or None)
             if op == "studio.open_folder":
@@ -563,6 +605,8 @@ class Studio:
             if action == "preview":
                 r = self.preview(name)
                 if r.get("url"):
+                    if self.open_preview(name, r["url"]):
+                        return f"Preview running at {r['url']}, shown in the HUD's preview window."
                     _open_url(r["url"])
                     return f"Preview running at {r['url']} (opened in the browser)."
                 return json.dumps(r, ensure_ascii=False)[:4000]
@@ -611,9 +655,15 @@ def _status_text(st: dict) -> str:
                      + (f", step {job['step']}" if job.get("step") else "")
                      + (f", fix attempt {job['attempt']}/{job['max_attempts']}" if job.get("attempt") else "") + ".")
         res = job.get("result") or {}
+        if res.get("status_text"):
+            parts.append(f"Verdict: {res['status']} ({res['status_text']}"
+                         + (f" — {res['why']}" if res.get("why") else "") + ").")
         if res.get("checks"):
-            parts.append("Checks: " + "; ".join(f"{c['name']}={'OK' if c['ok'] else 'FAILED'}"
+            state = {True: "OK", False: "FAILED", None: "NOT RUN"}
+            parts.append("Checks: " + "; ".join(f"{c['name']}={state.get(c['ok'], 'FAILED')}"
                                                 for c in res["checks"]) + ".")
+        if res.get("criteria"):
+            parts.append("Criteria: " + "; ".join(f"{c['id']} {c['status']}" for c in res["criteria"]) + ".")
         if res.get("remaining"):
             parts.append(f"Remaining problem: {res['remaining']}.")
     if st.get("tasks"):

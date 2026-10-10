@@ -22,6 +22,17 @@ What it checks:
   17-19 the tool: manual write is undoable; the action is discovered by the
         real loader and refuses on the Oracle server; the HUD cannot set the
         root inside the JARVIS repo
+  20-21 the coders: Gemini quota, Groq model choice
+  22-25 the verdict is earned: criteria matched to real test names, no test →
+        "non vérifié", a criterion without proof → "partiel", a script still
+        running at the deadline no longer counts as a success
+  26    a web page in a real headless browser: the JS bug is found and
+        located, fixed, the criterion proven, the preview opens by itself
+  27-30 dev_agent / code_helper hand new programs to the Studio (not on the
+        server); the preview window lets only the project's local server
+        through; Ruff is informative; the HUD options
+  31    criteria left without a test: one pass writes the missing tests
+        (tests/ only, never the code), then the verdict is earned again
 """
 from __future__ import annotations
 
@@ -40,6 +51,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from core.code_workspace import diagnose                                   # noqa: E402
+from core.code_workspace import webcheck  # noqa: E402,F401 - reads the real browser path before the env is faked
 from core.code_workspace.checkpoints import Checkpoints                    # noqa: E402
 from core.code_workspace.journal import Journal                            # noqa: E402
 from core.code_workspace.runner import (                                   # noqa: E402
@@ -517,6 +529,274 @@ def _():
     finally:
         os.environ.pop("GROQ_API_KEY", None)
     return f"modèle {g.model}, 429 puis OK, 401 refusé"
+
+
+# ── verdicts, criteria, browser, preview, routing ──────────────────────────
+
+class PlanLLM(FakeLLM):
+    """FakeLLM with a plan of its own (`extra`) and file contents (`contents`)."""
+
+    def __init__(self, extra=None, contents=None, fixes=None, cover=None, **k):
+        super().__init__(**k)
+        self.extra = extra or {}
+        self.contents = contents or {}
+        self.fixes = list(fixes or [])
+        self.cover = list(cover or [])
+        self.prompts: dict[str, str] = {}
+
+    def complete(self, prompt, json_mode=False):
+        if "Plan a NEW project" in prompt:
+            self.calls["plan"] += 1
+            files = [{"path": p, "purpose": ""} for p in self.contents]
+            plan = {"project_name": "proj", "title": "Projet", "summary": "x", "kind": "library",
+                    "stack": ["python"], "entry_point": "", "run_command": "", "test_command": "",
+                    "dependencies": [], "features": [], "acceptance": [], "web_checks": [],
+                    "tasks": [{"title": "Tout", "files": list(self.contents)}], "files": files}
+            plan.update(self.extra)
+            return json.dumps(plan)
+        if "Write the COMPLETE content of:" in prompt:
+            self.calls["write"] += 1
+            path = prompt.split("Write the COMPLETE content of:")[1].split("\n")[0].strip()
+            self.prompts[path] = prompt
+            return self.contents.get(path, "# x\n")
+        if "have NO\ntest proving them" in prompt:
+            self.calls["cover"] = self.calls.get("cover", 0) + 1
+            self.prompts["cover"] = prompt
+            return json.dumps({"files": [{"path": p, "content": c} for p, c in self.cover]})
+        if "You are fixing the project" in prompt:
+            self.calls["fix"] += 1
+            if not self.fixes:
+                return json.dumps({"diagnosis": "rien", "files": []})
+            path, content = self.fixes.pop(0)
+            return json.dumps({"diagnosis": "corrigé", "files": [{"path": path, "content": content}]})
+        raise AssertionError("prompt inattendu")
+
+
+@check("22 critères d'acceptation : plan nettoyé, résultats unittest/pytest lus, AC1 ≠ AC10")
+def _():
+    from core.code_workspace import acceptance as A
+    plan = {"acceptance": [{"id": "AC1", "criterion": "ajout"}, "liste", {"id": "AC1", "criterion": "doublon"},
+                           {"criterion": "joli", "verify": "manual"}, {"id": "x"}],
+            "web_checks": [{"id": "ac1", "steps": [{"action": "click", "selector": "#a"}, {"action": "rm -rf"}],
+                            "expect": [{"selector": "#l li", "count": "2"}, {"bad": 1}]},
+                           {"id": "AC2", "expect": []}, "n'importe quoi"]}
+    A.normalize(plan)
+    ids = [c["id"] for c in plan["acceptance"]]
+    assert ids == ["AC1", "AC2", "AC3", "AC4"], ids
+    assert plan["acceptance"][3]["verify"] == "manual"
+    assert len(plan["web_checks"]) == 1 and plan["web_checks"][0]["steps"] == [{"action": "click", "selector": "#a"}]
+    assert A.normalize({"acceptance": "texte", "web_checks": "texte"}) == {"acceptance": [], "web_checks": []}
+    out = ("test_ac1_add (tests.test_a.T.test_ac1_add) ... ok\n"
+           "test_ac10_big (tests.test_a.T.test_ac10_big)\nDocstring ... FAIL\n"
+           "test_other (tests.test_a.T.test_other) ... skipped 'x'\n")
+    r = A.test_results(out)
+    assert r == {"test_ac1_add": "passed", "test_ac10_big": "failed", "test_other": "skipped"}, r
+    assert A.test_results("tests/t.py::test_ac2_x PASSED [50%]\ntests/t.py::test_ac3[a] FAILED") == \
+        {"test_ac2_x": "passed", "test_ac3": "failed"}
+    crit = [{"id": "AC1", "criterion": "a", "verify": "test"}, {"id": "AC2", "criterion": "b", "verify": "test"},
+            {"id": "AC3", "criterion": "c", "verify": "web"}, {"id": "AC4", "criterion": "d", "verify": "manual"}]
+    cov = {c["id"]: c["status"] for c in A.coverage(crit, r, {"AC3": {"ok": False, "detail": "x"}})}
+    assert cov == {"AC1": "passed", "AC2": "unverified", "AC3": "failed", "AC4": "manual"}, cov
+    return "ids renumérotés, 2 formats de sortie lus, AC1 non confondu avec AC10"
+
+
+@check("23 sans aucun test : « non vérifié », jamais « validé »")
+def _():
+    llm = PlanLLM(contents={"calc.py": FIXED, "README.md": "# x\n"})
+    st = _studio(llm)
+    st.start_job("create", "calc sans tests")
+    job = _wait(st)
+    assert job.phase == "termine", (job.phase, job.result)
+    assert job.result["status"] == "unverified", job.result.get("status")
+    assert "unverified" in st.said[-1] and "Never call it validated" in st.said[-1], st.said[-1]
+    return f"verdict {job.result['status']} : {job.result['why'][:60]}"
+
+
+@check("24 critère sans test qui le prouve : « partiel » ; tous prouvés : « validé »")
+def _():
+    test = TEST.replace("def test_add", "def test_ac1_add")
+    base = {"test_command": "python -m unittest discover -s tests -t . -v"}
+    files = {"calc.py": FIXED, "tests/__init__.py": "", "tests/test_calc.py": test}
+    two = dict(base, acceptance=[{"id": "AC1", "criterion": "additionne"}, {"id": "AC2", "criterion": "soustrait"}])
+    st = _studio(PlanLLM(extra=two, contents=files))
+    st.start_job("create", "calc partielle")
+    job = _wait(st)
+    assert job.result["status"] == "partial", (job.result.get("status"), job.result.get("why"))
+    by = {c["id"]: c["status"] for c in job.result["criteria"]}
+    assert by == {"AC1": "passed", "AC2": "unverified"}, by
+    one = dict(base, acceptance=[{"id": "AC1", "criterion": "additionne"},
+                                 {"id": "AC2", "criterion": "jolie", "verify": "manual"}])
+    st = _studio(PlanLLM(extra=one, contents=files))
+    st.start_job("create", "calc complète")
+    job = _wait(st)
+    assert job.result["status"] == "ok", (job.result.get("status"), job.result.get("why"))
+    return "AC2 sans test → partiel ; AC1 prouvé + AC2 manuel → validé"
+
+
+@check("25 un script encore actif au délai n'est plus compté comme réussi")
+def _():
+    slow = "import time\nprint('demarre', flush=True)\ntime.sleep(120)\n"
+    st = _studio(PlanLLM(extra={"kind": "script", "run_command": "python main.py", "entry_point": "main.py"},
+                         contents={"main.py": slow}))
+    t0 = time.monotonic()
+    st.start_job("create", "script qui ne finit jamais")
+    job = _wait(st, 120)
+    run = [c for c in job.result["checks"] if c["kind"] == "run"]
+    assert run and run[0]["ok"] is None, job.result["checks"]
+    assert job.result["status"] == "unverified", job.result["status"]
+    assert job.result["run"] and job.result["run"]["timed_out"], job.result.get("run")
+    return f"verdict {job.result['status']} en {time.monotonic() - t0:.0f} s, sortie gardée"
+
+
+@check("31 critères sans test : une passe ajoute les tests manquants (tests/ seulement), puis « validé »")
+def _():
+    test = TEST.replace("def test_add", "def test_ac1_add")
+    files = {"calc.py": FIXED, "tests/__init__.py": "", "tests/test_calc.py": test}
+    extra = {"test_command": "python -m unittest discover -s tests -t . -v",
+             "acceptance": [{"id": "AC1", "criterion": "additionne"}, {"id": "AC2", "criterion": "commute"}]}
+    more = ("import unittest\nfrom calc import add\n\n\nclass C(unittest.TestCase):\n"
+            "    def test_ac2_commutes(self):\n        self.assertEqual(add(2, 5), add(5, 2))\n")
+    llm = PlanLLM(extra=extra, contents=files,
+                  cover=[("calc.py", "def add(a, b):\n    return 0\n"), ("tests/test_ac2.py", more)])
+    st = _studio(llm)
+    st.start_job("create", "calc couverte")
+    job = _wait(st)
+    rule = llm.prompts.get("tests/test_calc.py", "")
+    assert "THIS IS A TEST FILE" in rule and "AC2: commute" in rule, "règle absente du fichier de tests"
+    assert "THIS IS A TEST FILE" not in llm.prompts.get("calc.py", ""), "règle donnée à un fichier non-test"
+    assert llm.calls.get("cover") == 1 and "AC2: commute" in llm.prompts["cover"], llm.calls
+    assert WS.read_text(job.project, "calc.py") == FIXED, "le code a été modifié par la passe des tests"
+    assert job.result["status"] == "ok", (job.result["status"], job.result.get("why"))
+    by = {c["id"]: c["status"] for c in job.result["criteria"]}
+    assert by == {"AC1": "passed", "AC2": "passed"}, by
+    return "règle donnée au fichier de tests, AC2 couvert, calc.py refusé à cette étape"
+
+
+WEB_HTML = ('<!doctype html><html><head><meta charset="utf-8"><title>Courses</title>'
+            '<script src="app.js" defer></script></head><body><input id="t"><button id="add">Ajouter</button>'
+            '<ul id="list"></ul></body></html>\n')
+WEB_BUG = ("document.getElementById('add').onclick = () => {\n  const li = document.createElement('li');\n"
+           "  li.textContent = document.getElementById('t').value;\n"
+           "  document.getElementById('lst').appendChild(li);\n};\n")
+WEB_OK = WEB_BUG.replace("'lst'", "'list'")
+
+
+@check("26 page web : un vrai navigateur trouve le bug, la correction passe, l'aperçu s'ouvre seul")
+def _():
+    from core.code_workspace import webcheck
+    if webcheck.available():
+        return f"non lancé : {webcheck.available()}"
+    extra = {"kind": "web", "entry_point": "index.html", "stack": ["html", "js"],
+             "acceptance": [{"id": "AC1", "criterion": "ajouter un article", "verify": "web"}],
+             "web_checks": [{"id": "AC1", "name": "ajout",
+                             "steps": [{"action": "fill", "selector": "#t", "value": "lait"},
+                                       {"action": "click", "selector": "#add"}],
+                             "expect": [{"selector": "#list li", "count": 1}, {"selector": "#list", "text": "lait"}]}]}
+    llm = PlanLLM(extra=extra, contents={"index.html": WEB_HTML, "app.js": WEB_BUG, "README.md": "# c\n"},
+                  fixes=[("app.js", WEB_OK)])
+    st = _studio(llm)
+    opened: list = []
+    st.preview_opener = lambda *a: (opened.append(a), True)[1]
+    st.start_job("create", "liste de courses")
+    job = _wait(st, 240)
+    try:
+        res = job.result
+        if res.get("status") == "unverified":
+            return f"navigateur indisponible : {res.get('why')}"
+        assert llm.calls["fix"] == 1, llm.calls
+        evs = st.project_ctx(job.project).journal.recent(400)
+        fails = [e for e in evs if e["kind"] == "test" and e["data"].get("name") == "navigateur"
+                 and e["data"].get("ok") is False]
+        located = [e for e in evs if e["kind"] == "error" and "app.js" in e["msg"]]
+        assert fails and located, [e["msg"] for e in evs if e["kind"] in ("test", "error")]
+        assert res["status"] == "ok", (res["status"], res.get("why"))
+        assert res["criteria"][0]["status"] == "passed", res["criteria"]
+        assert res["preview"]["opened"] and opened and opened[0][1].startswith("http://127.0.0.1:"), opened
+        shot = st.hud("studio.screenshot", {"project": job.project})
+        assert shot.get("url", "").startswith("data:image/png;base64,"), shot
+        return f"bug JS localisé ({located[0]['msg'][12:60]}…), corrigé, AC1 prouvé, aperçu ouvert"
+    finally:
+        st.stop_previews()
+
+
+@check("27 dev_agent et code_helper confient la création au Studio sur ce PC, pas sur Oracle")
+def _():
+    import importlib
+
+    import core.code_workspace as cw
+    calls: list = []
+
+    class Stub:
+        def tool(self, p, player=None):
+            calls.append(p)
+            return "[STUDIO_STARTED] stub"
+    saved = cw.get_studio
+    cw.get_studio = lambda: Stub()
+    try:
+        dev = importlib.import_module("actions.dev_agent")
+        helper = importlib.import_module("actions.code_helper")
+        assert dev.dev_agent({"description": "un jeu de morpion", "language": "javascript"}).startswith("[STUDIO")
+        assert "javascript" in calls[-1]["request"] and calls[-1]["action"] == "create"
+        assert helper.code_helper({"action": "build", "description": "un convertisseur"}).startswith("[STUDIO")
+        assert helper.code_helper({"action": "write", "description": "un script"}).startswith("[STUDIO")
+        n = len(calls)
+
+        class HeadlessUI:
+            local_mode = False
+        ws = importlib.import_module("actions.code_workspace")
+        assert ws.route_create("un jeu", player=HeadlessUI()) is None
+        assert ws.route_create("", player=None) is None
+        assert len(calls) == n
+    finally:
+        cw.get_studio = saved
+    return f"{len(calls)} créations routées, aucune côté serveur"
+
+
+@check("28 la fenêtre d'aperçu ne laisse passer que le serveur local du projet")
+def _():
+    try:
+        from PyQt6.QtCore import QUrl
+
+        from client_desktop.hud.preview import allowed
+    except Exception as e:
+        return f"non lancé : PyQt6-WebEngine absent ({type(e).__name__})"
+    port = 51234
+    ok = ["http://127.0.0.1:51234/index.html", "http://127.0.0.1:51234/js/app.js?x=1", "data:image/png;base64,AA",
+          "blob:http://127.0.0.1:51234/abc", "about:blank", "ws://127.0.0.1:51234/live"]
+    no = ["https://cdn.jsdelivr.net/x.js", "http://127.0.0.1:8000/", "http://localhost:51234/",
+          "http://127.0.0.2:51234/", "file:///C:/Windows/win.ini", "jarvis-hud://hud/index.html",
+          "https://example.com/?u=http://127.0.0.1:51234/"]
+    bad = [u for u in ok if not allowed(QUrl(u), port)] + [u for u in no if allowed(QUrl(u), port)]
+    assert not bad, bad
+    return f"{len(ok)} autorisées, {len(no)} bloquées"
+
+
+@check("29 analyse Ruff : informative, trouve un nom indéfini, ignore la config du projet")
+def _():
+    from core.code_workspace import lint
+    p = WS.project_dir("lintdemo", create=True)
+    (p / "app.py").write_text("import os\n\ndef f():\n    return undefined_name\n", encoding="utf-8")
+    (p / "pyproject.toml").write_text("[tool.ruff]\nexclude = ['app.py']\n", encoding="utf-8")
+    r = lint.run(p)
+    if r.get("unavailable"):
+        return f"non lancé : {r['unavailable']}"
+    codes = {f["code"] for f in r["findings"]}
+    assert r["ok"] is False and {"F401", "F821"} <= codes, r
+    assert all(f["path"] == "app.py" for f in r["findings"]), r["findings"]
+    return lint.headline(r)[:70]
+
+
+@check("30 options du HUD : aperçu et lancement automatiques réglables, capture absente signalée")
+def _():
+    st = _studio(FakeLLM())
+    o = st.hud("studio.options", {"auto_preview": False, "auto_run_scripts": 0})["options"]
+    assert o["auto_preview"] is False and o["auto_run_scripts"] is False, o
+    o = st.hud("studio.options", {"auto_preview": True})["options"]
+    assert o["auto_preview"] is True and o["auto_run_scripts"] is False, o
+    r = st.hud("studio.screenshot", {"project": "demo"})
+    assert r.get("ok") is False and "navigateur" in r.get("error", ""), r
+    return "options enregistrées, pas de fausse capture"
+
 
 
 def main() -> int:

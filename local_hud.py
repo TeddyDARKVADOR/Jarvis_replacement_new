@@ -408,6 +408,9 @@ def main(argv: list[str] | None = None) -> int:
     ui = LocalUI(store)
     brain_ref: dict = {}
     hud.backend = LocalBackend(ui, brain_ref)
+    # The Code Studio opens its web previews in the HUD's isolated preview window.
+    from core.code_workspace import get_studio
+    get_studio().preview_opener = hud.request_preview
 
     def local_audio() -> dict:
         """The page's audio tab shows main.py's own devices and wake word."""

@@ -256,6 +256,11 @@ class HudBridge(QObject):
         if url.startswith(("http://", "https://")):
             QDesktopServices.openUrl(QUrl(url))
 
+    @pyqtSlot(str, str, str, str)
+    def openPreview(self, project: str, url: str, title: str, status: str) -> None:  # noqa: N802
+        """The Studio's web preview, in its own isolated window (hud/preview.py)."""
+        self._w.request_preview(project, url, title, status)
+
 
 class _Page(QWebEnginePage):
     """Links in JARVIS's answers open in the real browser, never inside the HUD."""
@@ -295,6 +300,8 @@ class HudWindow(QWidget):
     #: Backend answers, from their worker threads to the GUI one.
     _rpc_done = pyqtSignal(str, dict)
     _file_done = pyqtSignal(dict)
+    #: Any thread → GUI thread: show the Studio's preview window.
+    _preview_requested = pyqtSignal(str, str, str, str)
 
     def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -329,6 +336,7 @@ class HudWindow(QWidget):
         #: to the network client's: the host overlays them on the page here.
         self.settings_overrides = None
         self._own_copy = ""
+        self._preview = None
 
         self.setWindowTitle("J.A.R.V.I.S — HUD")
         self.setWindowIcon(_app_icon())
@@ -375,6 +383,7 @@ class HudWindow(QWidget):
             lambda rid, r: self._run(f"window.HUD&&HUD.rpcResult({json.dumps(rid)},{json.dumps(r, ensure_ascii=False)})"))
         self._file_done.connect(
             lambda r: self._run(f"window.HUD&&HUD.fileAttached({json.dumps(r, ensure_ascii=False)})"))
+        self._preview_requested.connect(self._show_preview)
 
         # A file dropped anywhere on the HUD is a file for JARVIS. The view must
         # not take the drop itself, or Chromium would navigate to the file.
@@ -385,6 +394,31 @@ class HudWindow(QWidget):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._fast_tick)
         self._timer.start(1000 // FAST_HZ)
+
+    # ── the Studio's preview window ──────────────────────────────────────────
+
+    def request_preview(self, project: str, url: str, title: str = "", status: str = "") -> bool:
+        """Thread-safe. Only the project's own local server can be previewed."""
+        if not str(url).startswith("http://127.0.0.1:"):
+            return False
+        self._preview_requested.emit(str(project), str(url), str(title), str(status))
+        return True
+
+    def _show_preview(self, project: str, url: str, title: str, status: str) -> None:
+        if self._preview is None:
+            from .preview import PreviewWindow
+
+            def stop(name: str) -> None:
+                backend = self.backend
+                if backend is not None:
+                    try:
+                        backend.call("studio.stop_preview", {"project": name})
+                    except Exception:
+                        pass
+
+            self._preview = PreviewWindow(on_stop=stop)
+            self._preview.setWindowIcon(self.windowIcon())
+        self._preview.show_preview(project, url, title, status)
 
     @property
     def prefs(self) -> dict:
