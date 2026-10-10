@@ -1,3 +1,18 @@
+# ── This PC is a terminal now ────────────────────────────────────────────────
+# MARK LIII runs on Oracle (`python -m server.run_headless`, which *imports*
+# this file — so this block never runs there). Launched directly on a desktop,
+# main.py opens the HUD that talks to Oracle, before any heavy import below.
+#   python main.py --local     the brain on this PC, with the same HUD
+if __name__ == "__main__":
+    import sys as _boot_sys
+    if "--local" in _boot_sys.argv[1:]:
+        _boot_sys.argv.remove("--local")
+        from local_hud import main as _local_main
+        raise SystemExit(_local_main(_boot_sys.argv[1:]))
+    else:
+        from client_desktop.__main__ import main as _hud_main
+        raise SystemExit(_hud_main(_boot_sys.argv[1:]))
+
 import platform as _platform
 import subprocess as _subprocess
 
@@ -48,7 +63,6 @@ import sounddevice as sd
 import numpy as np
 from google import genai
 from google.genai import types
-from ui import JarvisUI
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
@@ -121,7 +135,7 @@ def _pcm_level(samples) -> float:
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+    with open(API_CONFIG_PATH, "r", encoding="utf-8-sig") as f:
         return json.load(f)["gemini_api_key"]
 
 
@@ -386,7 +400,10 @@ def _keep_context_of(exc: BaseException) -> bool:
 
 
 class JarvisLive:
-    def __init__(self, ui: JarvisUI):
+    def __init__(self, ui):
+        # `ui` is whatever draws this assistant: `local_hud.LocalUI` on a
+        # desktop, `server.headless_ui.HeadlessUI` on Oracle. Both have the
+        # same surface, which server/selftest.py checks against this file.
         self.ui             = ui
         self._asst_name     = "JARVI    S"   # updated each session from config
         self.session              = None
@@ -1892,18 +1909,9 @@ class JarvisLive:
             await asyncio.sleep(delay)
 
 def main():
-    ui = JarvisUI("face.png")
-
-    def runner():
-        ui.wait_for_api_key()
-        jarvis = JarvisLive(ui)
-        try:
-            asyncio.run(jarvis.run())
-        except KeyboardInterrupt:
-            print("\n🔴 Shutting down...")
-
-    threading.Thread(target=runner, daemon=True).start()
-    ui.root.mainloop()
+    """The assistant on this PC, shown by the HUD — `python main.py --local`."""
+    from local_hud import main as local_main
+    return local_main([])
 
 if __name__ == "__main__":
     main()

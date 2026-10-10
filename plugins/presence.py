@@ -241,11 +241,10 @@ def deliver(ui, raw: dict) -> bool:  # noqa: ANN001
     Returns True only when an event was actually handed to the transport, so the
     caller can say "no body is listening" instead of guessing.
 
-    `ui` is `server.headless_ui.HeadlessUI` on a server and `ui.JarvisUI` on the
-    desktop. The desktop one has no `emit_event` and never will: that JARVIS
-    draws his own window and has no client to tell. The absence of the method is
-    a supported answer and not a fault, which is why it is checked rather than
-    assumed — and why nothing here imports either of those classes.
+    `ui` is `server.headless_ui.HeadlessUI` on a server and `local_hud.LocalUI`
+    on a desktop; both deliver the event to the HUD's face. A host without
+    `emit_event` is still a supported answer and not a fault, which is why it is
+    checked rather than assumed — and why nothing here imports either class.
     """
     event = build_event(raw)
     if event is None:
@@ -490,9 +489,8 @@ def run(parameters: dict, player=None, session_memory=None) -> str:  # noqa: ANN
         _log(_summary(raw) + (f" : {reason}" if reason else ""))
     else:
         # Three ways to land here, and telling them apart is the whole point of
-        # printing it: no client is connected, this host draws its own window
-        # (desktop `ui.JarvisUI` has no `emit_event`), or the arguments were not
-        # a directive at all. The first two are normal.
+        # printing it: no client is connected, this host has no `emit_event`,
+        # or the arguments were not a directive at all. The first two are normal.
         _log(f"aucune destination pour {_summary(raw)}")
     return "ok"
 

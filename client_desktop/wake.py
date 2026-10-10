@@ -125,6 +125,10 @@ class Gate:
             if self._held or time.monotonic() < self._open_until:
                 self._open_until = time.monotonic() + self._seconds
 
+    def set_seconds(self, seconds: float) -> None:
+        """How long a wake keeps the microphone open. Applies from the next open."""
+        self._seconds = float(seconds)
+
     def hold(self, held: bool) -> None:
         """Latch the gate open (or release it) — the panel's mic toggle."""
         was = self.is_open
@@ -213,6 +217,10 @@ class WakeWord:
         except Exception as exc:
             self._logger(f"Wake word: could not start — {exc}")
             return False
+
+    def set_threshold(self, threshold: float) -> None:
+        """Detection threshold. Takes effect at the next `start()`."""
+        self._threshold = float(threshold)
 
     def stop(self) -> None:
         detector, self._detector = self._detector, None

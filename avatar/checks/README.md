@@ -12,7 +12,7 @@ sur un corps sans rendu (`js/body_null.js`) avec une graine fixée :
 
 ```bash
 node   avatar/checks/engine_test.mjs        # le moteur, mesuré par sa sortie (42)
-python avatar/checks/director_parity.py     # le labo décide-t-il comme le panneau (3 432 + 85 pas)
+python avatar/checks/director_parity.py     # le labo décide-t-il comme le HUD (3 432 + 85 pas)
 python avatar/checks/chain_test.py          # de set_presence au modèle, 44 chaînes + le temps + l'écoute
 python avatar/checks/model_swap.py          # changer de visage sans toucher au cerveau
 node   avatar/checks/situations.mjs         # les 12 moments du labo, chacun mesuré (12)
@@ -27,7 +27,7 @@ page, le vrai GPU :
 ```bash
 python avatar/checks/adapter_contract.py    # le modèle est-il interchangeable
 python avatar/checks/affect_parity.py       # Python et JS dérivent-ils pareil
-python avatar/checks/behaviour.py           # le labo joue-t-il ce que le panneau jouerait
+python avatar/checks/behaviour.py           # le labo joue-t-il ce que le HUD jouerait
 python avatar/checks/facial_performance.py  # le temps d'un visage, sur les écritures réelles
 python avatar/checks/idle_motion.py         # le repos bouge-t-il, sans aucune décision
 python avatar/checks/face_first.py          # le corps tient-il vraiment en place
@@ -70,7 +70,7 @@ ailleurs ; la surprise retient le clignement ; les clignements sont
 irréguliers ; six visages restent lisibles en parlant ; les réflexes d'une
 conversation s'usent. Chacun a d'abord été écrit rouge contre le moteur d'avant.
 
-### `director_parity.py` — le labo décide comme le panneau
+### `director_parity.py` — le labo décide comme le HUD
 
 `js/director.js` refait `presence/director.py` pour le labo. Confrontés sur
 3 432 décisions — directives de toutes formes, onze états, intention vivante, à
@@ -170,7 +170,7 @@ Corrigé à la racine — l'arrondi est sorti du calcul et ne vit plus qu'au bor
 fil. **Le remettre dans une dérivation casse cette vérification**, ce qui est
 exactement ce qu'on veut.
 
-### `behaviour.py` — le labo joue ce que le panneau jouerait
+### `behaviour.py` — le labo joue ce que le HUD jouerait
 
 Pilote `lab.html` comme une personne — la demande collée, « Exécuter » — sur le
 modèle installé, et confronte au vrai Director Python : la décision (visage,

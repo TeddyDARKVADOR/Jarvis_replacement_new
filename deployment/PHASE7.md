@@ -1,5 +1,8 @@
 # Phase 7 — Oracle deployment: where we are
 
+> **Historical note (15 September 2026).** The VM has existed since; the
+> runbook is [ORACLE.md](ORACLE.md). Kept for the git-history audit below.
+
 Handover note. Phase 7 is **started but not finished**, and it is blocked on one
 thing only: the VM does not exist yet.
 
@@ -34,7 +37,7 @@ Everything after that can be done from here once there is an SSH target.
 | `config/api_keys.json` in any commit | **never committed** ✓ |
 | `config/device_credentials.json` | **never committed** ✓ |
 | `memory/long_term.json` | **never committed** ✓ |
-| `AIza…` strings in history | only `ui.py`'s placeholder text (`setPlaceholderText("AIza…")`, 4 chars) — **not a key** ✓ |
+| `AIza…` strings in history | only the old desktop window's placeholder text (`setPlaceholderText("AIza…")`, 4 chars) — **not a key** ✓ |
 | `config/certs/jarvis.key` | ⚠️ **committed in `067f528`, deleted in `8a79f40`, still reachable in history** |
 
 **Your Gemini key was never exposed.** That was the thing that mattered and it

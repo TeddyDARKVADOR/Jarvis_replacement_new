@@ -8,6 +8,54 @@ A real-time voice AI that can hear, see, understand, and control your computer �
 
 ---
 
+## 🖥️ Sur ce PC : lancer JARVIS
+
+Le cerveau (MARK LIII) tourne sur **Oracle**. Sur l'ordinateur, `main.py` ouvre le
+**HUD** qui s'y connecte :
+
+```
+python main.py            le HUD plein écran, relié à JARVIS sur Oracle
+python main.py --mini     démarre en orbe dans le coin de l'écran
+python main.py --local    JARVIS entièrement sur ce PC (clé Gemini locale), même HUD
+python main.py --classic  l'ancienne fenêtre, inchangée
+```
+
+Premier lancement : la page **Paramètres** (⚙, ou Ctrl+,) s'ouvre seule. Saisissez
+l'adresse Tailscale du serveur et le **jeton d'accès** (généré sur Oracle avec
+`python -m server.run_headless --pairing`), puis **Tester** et **Enregistrer**.
+Détails : [client_desktop/hud/README.md](client_desktop/hud/README.md).
+
+### 🛠️ Jarvis Code Studio — son atelier de développement
+
+En mode `--local`, JARVIS dispose d'un **espace de travail dédié** (par défaut
+`C:\Jarvis_Workspace`, modifiable uniquement depuis le HUD). Dites par exemple :
+« Crée-moi une application de gestion de budget… mets tout dans ton espace de travail
+et montre-moi ce que tu fais. » Il planifie, écrit les fichiers, **lance les vrais
+tests**, corrige (nombre de tentatives limité, il s'arrête s'il tourne en rond) puis
+présente un bilan. Le panneau **STUDIO** (bouton `</>` du HUD) s'ouvre tout seul et
+affiche en direct les tâches, les fichiers (diff avant/après), le terminal, les points
+de sauvegarde (restauration en un clic) et un bouton **ARRÊTER**.
+
+- Le code est écrit par **Groq** dès que `"groq_api_key"` est présent dans
+  `config/api_keys.json` (meilleur modèle disponible pour la clé, `openai/gpt-oss-120b` en
+  priorité ; `"groq_model"` dans `plugin_config.code_studio` pour en imposer un). Sans clé
+  Groq, le Studio utilise Gemini. La conversation, elle, reste sur Gemini Live.
+- Chaque ligne du suivi est écrite par les outils qui ont agi, jamais par le modèle.
+- Fichiers : chemins vérifiés par le code (`..`, lecteurs, UNC, flux `:`, noms réservés,
+  jonctions, liens physiques refusés) ; le dépôt JARVIS ne peut jamais être la racine.
+- Commandes : sans shell, liste blanche (python, pytest, node, npm), délai max, Job
+  Object Windows (mémoire, nombre de processus, arrêt de tout l'arbre), secrets retirés
+  de l'environnement, refus si JARVIS tourne en administrateur. Installer un paquet,
+  `python -c` ou un exécutable inconnu demandent votre accord sur le HUD.
+- Limite assumée : un programme exécuté tourne avec les droits de votre compte. Pour une
+  isolation totale, utilisez Windows Sandbox ou une VM.
+
+Code : [core/code_workspace/](core/code_workspace/__init__.py) · outil
+[actions/code_workspace.py](actions/code_workspace.py) · tests :
+`python -m core.code_workspace.selftest`.
+
+---
+
 ## ✨ Overview
 
 **Teddy-foundation is the hands-free & scalable release.** Say **"Hey Jarvis"** and it wakes; stay quiet and it slips back to sleep on its own — while asleep, your microphone never leaves the machine, so an off-hand _"I'll be right there"_ to someone in the room no longer sets it off. Under the hood it now runs on the faster **Gemini 3.1 Flash Live** engine, and the moment you ask for something that takes a beat — analysing a file, searching the web — it answers instantly _("On it — going through that now…")_ so you never wonder whether it heard you.

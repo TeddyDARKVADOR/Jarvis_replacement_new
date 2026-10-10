@@ -33,7 +33,7 @@ cryptography
 
 # ── RECOMMENDED: cheap, and each one turns an action back on ─────────────────
 #
-# requests       core/llm_client (local LLM backends), several actions
+# requests       several actions, the HUD's settings calls
 # ddgs           actions/web_search — the single most useful action on a server
 requests
 ddgs
@@ -60,8 +60,8 @@ ddgs
 
 # ── DELIBERATELY ABSENT ──────────────────────────────────────────────────────
 #
-# PyQt6        the headless entry point installs a stand-in for `ui`, so the
-#              real ui.py is never imported. ~100 MB not installed.
+# PyQt6        main.py imports no UI: run_headless hands it HeadlessUI, so no
+#              Qt is ever loaded on the server. ~100 MB not installed.
 # sounddevice  same: server/audio_bridge stands in for it. A VPS has no sound
 #              card and does not need a PortAudio binding to pretend otherwise.
 # pyautogui    needs an X display. The five desktop-control actions that import

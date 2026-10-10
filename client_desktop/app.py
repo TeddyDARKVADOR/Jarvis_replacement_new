@@ -8,7 +8,7 @@ The controller — the one place that knows about all the others.
        │                          │                  │
     WakeWord                  three sockets       snapshot
        │                          │                  │
-    Gate.open()  ◄────────────────┘             panel / tray / debug
+    Gate.open()  ◄────────────────┘              HUD / tray / debug
 ```
 
 Three threads, and exactly two rules keep it honest:
@@ -39,13 +39,12 @@ from .config import Settings, load, save  # noqa: F401  (save: _on_settings_chan
 from .device import CapabilityProbe, LocalExecutor
 from .net import NetworkWorker
 from .state import AssistantState, JarvisStore, LinkState, Snapshot
-from .placement import PlacementMode, Rect
-from .ui import screens
+from .hud.backends import RemoteBackend
+from .hud.settings import RECONNECT_KEYS
+from .hud.window import HudWindow
 from .ui.debug import DebugWindow
-from .ui.panel import JarvisPanel
 from .ui.tray import JarvisTray
 from .wake import Gate, WakeWord, engine_available, install
-from .win_windows import foreground_window
 
 #: How often the UI pulls a snapshot. The core repaints faster than this off its
 #: own timer; this is for everything made of text.
@@ -64,22 +63,6 @@ SNAPSHOT_HZ = 10
 #: downloads folder"; a silent second attempt at an irreversible action is a
 #: far worse failure than a sentence the user has to repeat.
 COMMAND_ANSWER_TIMEOUT = 25.0
-
-
-def _close_enough(a: Rect, b: Rect, epsilon: int) -> bool:
-    """True when two rectangles are the same window to within rounding.
-
-    Physical-to-logical conversion divides by a scale factor, so a window that
-    has not moved can still report a coordinate one pixel different between two
-    reads. Re-applying the geometry on that makes the panel shiver against a
-    window being dragged.
-    """
-    return (
-        abs(a.x - b.x) <= epsilon
-        and abs(a.y - b.y) <= epsilon
-        and abs(a.w - b.w) <= epsilon
-        and abs(a.h - b.h) <= epsilon
-    )
 
 
 class _Bridge(QObject):
@@ -118,16 +101,12 @@ class JarvisDesktop(QObject):
         )
 
         # ── the surfaces ─────────────────────────────────────────────────────
-        self.panel = JarvisPanel(self.settings)
+        self.hud = HudWindow(self.settings)
+        self.hud.attach_store(self.store)
+        # Settings page "assistant" questions and attached files go to Oracle.
+        self.hud.backend = RemoteBackend(self.worker.http_session)
         self.debug = DebugWindow(self.settings)
         self.tray = JarvisTray()
-
-        # ── following the active window ──────────────────────────────────────
-        self._follow_timer = QTimer(self)
-        self._follow_timer.timeout.connect(self._follow_tick)
-        self._last_target_hwnd = 0
-        self._target_seen_at = 0.0
-        self._last_target_rect: Rect | None = None
 
         # What this machine can honestly claim to do. Proven by import in a
         # background thread — see `device.CapabilityProbe`.
@@ -146,24 +125,23 @@ class JarvisDesktop(QObject):
     # ── wiring ───────────────────────────────────────────────────────────────
 
     def _wire(self) -> None:
-        self.panel.command_submitted.connect(self._send_command)
-        self.panel.interrupt_requested.connect(self.worker.send_interrupt)
-        self.panel.mic_toggled.connect(self._set_mic)
-        self.panel.confirmation_answered.connect(self.worker.send_confirmation)
-        self.panel.debug_requested.connect(self._show_debug)
-        self.panel.quit_requested.connect(self.shutdown)
+        self.hud.command_submitted.connect(self._send_command)
+        self.hud.interrupt_requested.connect(self.worker.send_interrupt)
+        self.hud.mic_toggled.connect(self._set_mic)
+        self.hud.confirmation_answered.connect(self.worker.send_confirmation)
+        self.hud.debug_requested.connect(self._show_debug)
+        self.hud.quit_requested.connect(self.shutdown)
+        self.hud.settings_saved.connect(self._on_hud_settings_saved)
+        self.hud.wake_install_requested.connect(self._install_wake_word_async)
 
         self.debug.connect_requested.connect(self.worker.connect)
         self.debug.disconnect_requested.connect(self.worker.disconnect)
         self.debug.settings_changed.connect(self._on_settings_changed)
         self.debug.wake_word_install_requested.connect(self._install_wake_word)
         self.debug.autostart_toggled.connect(self._set_autostart)
-        self.debug.placement_changed.connect(self._on_placement_settings_changed)
-        self.debug.realign_requested.connect(self._capture_target_now)
-        self.panel.placement_changed.connect(self._on_panel_dragged)
 
-        self.tray.toggle_panel.connect(self._toggle_panel)
-        self.tray.show_panel.connect(self._show_panel)
+        self.tray.toggle_hud.connect(self._toggle_hud)
+        self.tray.show_hud.connect(self._show_hud)
         self.tray.debug_requested.connect(self._show_debug)
         self.tray.mic_toggled.connect(self._set_mic)
         self.tray.reconnect_requested.connect(self.worker.connect)
@@ -173,14 +151,10 @@ class JarvisDesktop(QObject):
 
     def start(self) -> None:
         self.tray.show()
-        self.panel.show()
-        if self.settings.start_collapsed:
-            self.panel._toggle_collapse()
-
-        # After show(): winId() is only meaningful once the window exists, and
-        # the exclusion set is what stops FOLLOW aligning the panel against
-        # itself.
-        self._apply_placement_mode()
+        if self.settings.start_collapsed or getattr(self, "start_mini", False):
+            self.hud._set_mini(True)
+        else:
+            self.hud.show()
 
         self.worker.start()
         self.debug.set_autostart_checked(autostart.is_enabled())
@@ -212,114 +186,13 @@ class JarvisDesktop(QObject):
             self._set_mic(True)
 
         if not self.settings.is_configured:
-            # Nothing to connect to yet. The debug window is the pairing screen.
+            # Nothing to connect to yet: the HUD's settings page is the pairing
+            # screen.
             self.store.log("Non appairé — renseignez l'hôte et le jeton.")
-            self._show_debug()
+            self.hud.open_settings("connexion")
             return
 
         self.worker.connect()
-
-    # ── placement ────────────────────────────────────────────────────────────
-
-    #: How often FOLLOW re-reads the foreground window. One syscall, and the
-    #: whole feature costs less than a frame of the core animation.
-    FOLLOW_HZ = 4
-    #: A new foreground window must hold still this long before the panel moves
-    #: to it. Alt-tabbing through six windows should not drag the panel across
-    #: the desktop six times.
-    TARGET_SETTLE = 0.25
-    #: Below this, a target that has "moved" is just rounding, and re-applying
-    #: the geometry would make the panel shiver against a window being dragged.
-    TARGET_MOVE_EPSILON = 8
-
-    def _our_windows(self) -> frozenset[int]:
-        """Our own handles, so the panel never aligns itself against itself.
-
-        Without this, clicking the panel makes it the foreground window; it then
-        computes a position beside its own rectangle, which moves it, which it
-        then aligns against again — a slow drift into a corner that reads as the
-        panel wandering off.
-        """
-        handles = []
-        for widget in (self.panel, self.debug):
-            try:
-                handles.append(int(widget.winId()))
-            except Exception:
-                pass
-        return frozenset(handles)
-
-    def _read_target(self) -> Rect | None:
-        window = foreground_window(exclude=self._our_windows())
-        if window is None:
-            return None
-        return screens.to_logical(window)
-
-    def _apply_placement_mode(self) -> None:
-        """Start or stop following, and place the panel once, now."""
-        mode = self.settings.placement.mode
-        if mode is PlacementMode.FOLLOW:
-            if not self._follow_timer.isActive():
-                self._follow_timer.start(1000 // self.FOLLOW_HZ)
-        else:
-            self._follow_timer.stop()
-
-        if mode is PlacementMode.WINDOW:
-            # A one-shot alignment: the window that is in front *now*. Following
-            # it continuously is a separate mode on purpose — a panel that moves
-            # on every Alt-Tab is a different product from one that sits beside
-            # the editor you told it about.
-            self._capture_target_now()
-            return
-        if mode is not PlacementMode.FOLLOW:
-            self.panel.set_target(None)
-        self.panel.apply_placement()
-
-    def _capture_target_now(self) -> None:
-        target = self._read_target()
-        if target is None:
-            self.store.log("Aucune fenêtre cible utilisable — ancrage à l'écran.")
-        self.panel.set_target(target)
-        self.panel.apply_placement()
-
-    def _follow_tick(self) -> None:
-        window = foreground_window(exclude=self._our_windows())
-        if window is None:
-            # Nothing sensible in front — the desktop, the Start menu, or our
-            # own panel. Keep the last position rather than snapping away: a
-            # panel that jumps every time Start opens is worse than one that
-            # waits.
-            return
-
-        now = time.monotonic()
-        if window.hwnd != self._last_target_hwnd:
-            self._last_target_hwnd = window.hwnd
-            self._target_seen_at = now
-            return
-        if now - self._target_seen_at < self.TARGET_SETTLE:
-            return
-
-        rect = screens.to_logical(window)
-        if rect is None:
-            return
-        previous = self._last_target_rect
-        if previous is not None and _close_enough(
-            previous, rect, self.TARGET_MOVE_EPSILON
-        ):
-            return
-        self._last_target_rect = rect
-        self.panel.set_target(rect)
-        self.panel.apply_placement()
-
-    def _on_placement_settings_changed(self) -> None:
-        save(self.settings)
-        self.panel.sync_always_on_top()
-        self._apply_placement_mode()
-
-    def _on_panel_dragged(self) -> None:
-        """The panel was moved by hand — it is FREE now and that was persisted."""
-        save(self.settings)
-        self._follow_timer.stop()
-        self.debug.refresh_placement_controls()
 
     # ── device identity ──────────────────────────────────────────────────────
 
@@ -377,15 +250,15 @@ class JarvisDesktop(QObject):
         # letting it expire mid-conversation.
         self.gate.touch()
 
-    def _show_panel(self) -> None:
-        self.panel.show()
-        self.panel.raise_()
+    def _show_hud(self) -> None:
+        self.hud.show()
+        self.hud.raise_()
 
-    def _toggle_panel(self) -> None:
-        if self.panel.isVisible():
-            self.panel.hide()
+    def _toggle_hud(self) -> None:
+        if self.hud.isVisible() and not self.hud.isMinimized():
+            self.hud.hide()
         else:
-            self._show_panel()
+            self._show_hud()
 
     def _show_debug(self) -> None:
         self.debug.show()
@@ -406,6 +279,36 @@ class JarvisDesktop(QObject):
         )
         self.debug.set_autostart_checked(autostart.is_enabled())
 
+    def _on_hud_settings_saved(self, changed: list) -> None:
+        """The HUD's settings page saved. Apply each change where it lives."""
+        save(self.settings)
+        changed = set(changed)
+        if changed:
+            self.store.log("Paramètres modifiés : " + ", ".join(sorted(changed)))
+        if "gate_seconds" in changed:
+            self.gate.set_seconds(self.settings.gate_seconds)
+        if "input_device" in changed:
+            self.microphone.set_device(self.settings.input_device)
+        if changed & {"wake_word_enabled", "wake_word_threshold"}:
+            self.wake.set_threshold(self.settings.wake_word_threshold)
+            self.wake.stop()
+            if self.settings.wake_word_enabled and engine_available():
+                if self.wake.start():
+                    self.microphone.start()
+            elif not self.gate.is_open:
+                self.microphone.stop()
+        if not self.settings.is_configured:
+            self.store.log("Non appairé — renseignez l'hôte et le jeton.")
+        elif changed & RECONNECT_KEYS or not self.store.snapshot().connected:
+            self.worker.connect()
+
+    def _install_wake_word_async(self) -> None:
+        """pip + a model download: never on the GUI thread."""
+        import threading
+
+        self.store.log("Installation du mot d'éveil en cours…")
+        threading.Thread(target=self._install_wake_word, name="wake-install", daemon=True).start()
+
     def _install_wake_word(self) -> None:
         ok, message = install(self.store.log)
         self.store.log(message)
@@ -420,7 +323,6 @@ class JarvisDesktop(QObject):
         self.gate.tick()
         self._check_unanswered()
         snapshot = self.store.snapshot()
-        self.panel.apply(snapshot)
         self.tray.apply(snapshot)
         if self.debug.isVisible():
             self.debug.apply(snapshot)
@@ -441,7 +343,7 @@ class JarvisDesktop(QObject):
         # off wanted to stop being interrupted, not to give JARVIS a blank face.
         if kind == "avatar":
             if isinstance(payload, dict):
-                self.panel.set_avatar_intent(payload)
+                self.hud.set_avatar_intent(payload)
             return
 
         if not self.settings.notifications:
@@ -449,15 +351,15 @@ class JarvisDesktop(QObject):
         snapshot: Snapshot = self.store.snapshot()
 
         if kind == "confirm":
-            # This one is raised whatever the panel is doing: the request dies
+            # This one is raised whatever the HUD is doing: the request dies
             # in ninety seconds and the user is looking at their editor.
             _, title, detail = payload  # type: ignore[misc]
             self.tray.notify(f"JARVIS — confirmation : {title}", detail or "")
-            self._show_panel()
+            self._show_hud()
 
         elif kind == "message":
             message = payload  # type: ignore[assignment]
-            if getattr(message, "from_jarvis", False) and not self._panel_readable():
+            if getattr(message, "from_jarvis", False) and not self._hud_readable():
                 self.tray.notify("JARVIS", getattr(message, "text", "")[:180])
 
         elif kind == "link":
@@ -497,19 +399,15 @@ class JarvisDesktop(QObject):
                 "La commande s'est perdue. Renvoyez-la si elle comptait.",
             )
 
-    def _panel_readable(self) -> bool:
-        """True when the user could actually have read the answer on screen."""
-        return (
-            self.panel.isVisible()
-            and not self.panel.isMinimized()
-            and not self.panel._collapsed
-        )
+    def _hud_readable(self) -> bool:
+        """True when the user could actually have read the answer on screen —
+        the orb's two-line caption does not count."""
+        return self.hud.isVisible() and not self.hud.isMinimized() and not self.hud._mini
 
     # ── shutdown ─────────────────────────────────────────────────────────────
 
     def shutdown(self) -> None:
         self._timer.stop()
-        self._follow_timer.stop()
         self.gate.close()
         self.wake.stop()
         self.microphone.stop()
@@ -524,7 +422,7 @@ class JarvisDesktop(QObject):
         # cleanly wiped a working pairing, and the next launch came up
         # unpaired with nothing to explain why.
         self.tray.hide()
-        self.panel.close()
+        self.hud.close()
         self.debug.close()
         from PyQt6.QtWidgets import QApplication
 

@@ -6,7 +6,7 @@ le fait vivre.
 
 ```
 avatar/
-  index.html            le corps, tel que le panneau l'affiche (fond transparent)
+  index.html            le corps, tel que le HUD l'affiche (fond transparent)
   lab.html              le labo : demande → décision → sortie effective
   manifest.json         QUEL modèle, QUELS gestes — le seul point d'extension
   models/               les personnages et leurs profils (binaires non versionnés)
@@ -36,7 +36,7 @@ avatar/
     body_vrm.js         un .vrm, ses expressions, son lookAt
     body_procedural.js  le dernier recours, quand aucun modèle n'est installé
     body_null.js        un corps sans rendu : tests et rejeu
-    main.js             le panneau : manifeste, corps, moteur, boucle
+    main.js             la page : manifeste, corps, moteur, boucle
     lab.js              le labo, sur le même moteur
     bridge.js           le transport : perform() / speak() / viseme()
     affect.js           la dérivation (générée depuis presence/affect.py)
@@ -80,7 +80,7 @@ JARVIS appelle set_presence(intent="investigate")        plugins/presence.py
   → {"type":"avatar","ts":…,"directive":{…}}  sur /ws    validé par presence.parse
   → client_desktop/net.py       trop vieux (>25 s) ? déjà vu ? plus ancien que le
                                 dernier joué ? → jeté. Sinon, avec son âge.
-  → avatar_view.set_intent_json  parse(), le MÊME ; l'intention est datée de
+  → hud/face FaceDriver.set_intent parse(), le MÊME ; l'intention est datée de
                                  la décision, pas de l'arrivée du paquet
   → Director.resolve             réflexe → affect → intention ; repli du geste
   → Performance.as_json          + state, gaze_source, gesture_id, accent
@@ -101,7 +101,7 @@ la nuque en mode visage.
 
 ## Le moteur
 
-`engine.js` est le seul moteur : le panneau et le labo construisent le même
+`engine.js` est le seul moteur : le HUD et le labo construisent le même
 objet sur le corps qu'ils ont chargé. Il ne connaît pas three.js — le corps est
 une interface (`setMorph`, `nodes`, `update`, `capabilities()`) — et tourne donc
 tel quel sous Node, sur `body_null.js`, pour les tests et le rejeu.
@@ -296,7 +296,7 @@ Ouvrir `avatar/lab.html` (servi par le client sous `jarvis://`, ou par
 Le labo ne joue rien lui-même. Il construit une **demande** — ce que JARVIS
 enverrait — la fait lire et résoudre par `director.js`, miroir exact de
 `presence/director.py` (`director_parity.py` : **3 432 décisions et 85 pas de séquence identiques**),
-et donne la Performance au **même** moteur que le panneau. Puis il affiche ce que
+et donne la Performance au **même** moteur que le HUD. Puis il affiche ce que
 le moteur rapporte avoir fait :
 
 ```
@@ -310,7 +310,7 @@ TRACE             INTENT greet · GAZE user (intent) · MODEL CAPABILITY face ·
 ```
 
 L'ancien labo dérivait avec une règle à lui : `greet` y affichait `wave → idle`
-pendant que le panneau hochait la tête, un visage forcé y prenait la posture
+pendant que le HUD hochait la tête, un visage forcé y prenait la posture
 dérivée, et `angry` y montait à 0.9 au lieu d'être plafonné à 0.45.
 
 On y trouve aussi : les états machine, les seize intentions, les visages forcés,
@@ -331,7 +331,7 @@ prouve en comparant ses échantillons de sortie à ceux de l'enregistrement.
 
 Labo : « Enregistrer » (moteur neuf, graine neuve), « Exporter », « Rejouer… » —
 le rejeu vérifie d'abord l'exactitude hors écran, puis rejoue image par image.
-Panneau : `JARVIS_AVATAR_DEBUG=1` fait enregistrer la séance
+HUD : `JARVIS_AVATAR_DEBUG=1` fait enregistrer la séance
 (`window.JARVIS.recording()`), 20 minutes au plus.
 
 ## Diagnostic
@@ -540,7 +540,7 @@ Ce qui est déjà portable tel quel dans une `WebView` :
 | `bridge.js` | **oui** | `window.JARVIS.perform()` ou `postMessage` |
 | `main.js` | oui, à la marge | lit `window.JARVIS_MANIFEST` injecté par l'hôte |
 | `lab.html` | inutile sur téléphone | outil de poste |
-| `client_desktop/ui/avatar_view.py` | **non** | l'hôte Qt : injection du manifeste, `runJavaScript` |
+| `client_desktop/hud/face.py` | **non** | l'hôte du HUD : `FaceDriver`, messages `postMessage` vers l'iframe |
 | `client_desktop/ui/avatar_scheme.py` | **non** | le schéma `jarvis://` ; `WebViewAssetLoader` joue ce rôle sur Android |
 | le Director | à décider | côté client en Python aujourd'hui ; sur téléphone, soit le serveur résout, soit `director.js` (déjà confronté au Python) |
 

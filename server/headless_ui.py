@@ -1,12 +1,11 @@
 """
 server/headless_ui.py — the HUD, with no screen behind it.
 
-WHY THIS WORKS WITHOUT TOUCHING main.py
+WHY THIS WORKS
     JarvisLive never asks what kind of object its `ui` is. It assigns callbacks
-    onto it, reads two properties, and calls twenty-odd methods — ui.py's
-    JarvisUI is already just a façade over the Qt window (see ui.py:4526). So a
-    class with the same surface is accepted as-is, and `python main.py` on the
-    desktop is not affected in any way: it still builds the real JarvisUI.
+    onto it, reads two properties, and calls twenty-odd methods. So any class
+    with this surface is accepted as-is: this one on Oracle, and its subclass
+    `local_hud.LocalUI` on a desktop, which forwards everything to the HUD.
 
     The surface is not guessed. server/selftest.py parses main.py with `ast`,
     collects every `self.ui.<attr>` it touches, and fails if one is missing
@@ -80,7 +79,7 @@ class _RootShim:
 
 
 class HeadlessUI:
-    """Stand-in for ui.JarvisUI. No Qt, no window, no display required."""
+    """What JarvisLive draws on, without a screen. No Qt, no window, no display."""
 
     def __init__(self, state: RuntimeState | None = None, echo: bool = True):
         self.state = state or RuntimeState()
@@ -276,7 +275,7 @@ class HeadlessUI:
     def stop_camera_stream(self) -> None:
         pass
 
-    # ── convenience mirrors of JarvisUI ──────────────────────────────────────
+    # ── convenience mirrors, kept for actions that call them ─────────────────
 
     def start_speaking(self) -> None:
         self.set_state("SPEAKING")
@@ -314,20 +313,3 @@ class HeadlessUI:
                 loop.call_soon_threadsafe(_fire)
         except RuntimeError:
             pass
-
-
-class _JarvisUICompat(HeadlessUI):
-    """Same constructor signature as ui.JarvisUI(face_path, size=None).
-
-    run_headless builds its HeadlessUI directly, so this is only reached if
-    something calls the module the way main.main() would — in which case it
-    should get a working headless UI rather than a TypeError, or worse, a
-    HeadlessUI whose `state` is the string "face.png"."""
-
-    def __init__(self, face_path=None, size=None, *, state=None, echo=True):
-        super().__init__(state=state, echo=echo)
-
-
-# main.py does `from ui import JarvisUI`. run_headless installs this module
-# under the name "ui", so that import resolves to the class below.
-JarvisUI = _JarvisUICompat

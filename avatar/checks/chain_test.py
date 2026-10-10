@@ -7,7 +7,7 @@
       -> trame JSON                  json.dumps               le websocket
       -> JarvisClient._handle_event  client_desktop/net.py    fraicheur, ordre
       -> JarvisStore                 client_desktop/state.py  l'enveloppe
-      -> set_intent_json             ui/avatar_view.py        parse(), le MEME
+      -> FaceDriver.set_intent       client_desktop/hud/face  parse(), le MEME
       -> Director.resolve            presence/director.py     reflexe, affect, intention
       -> catalogue.resolve           presence/catalog.py      le repli
       -> Performance.as_json         le JSON pousse a la page
@@ -47,7 +47,7 @@ sys.path.insert(0, str(BASE))
 from client_desktop import config as config_mod  # noqa: E402
 from client_desktop.net import JarvisClient  # noqa: E402
 from client_desktop.state import JarvisStore  # noqa: E402
-from client_desktop.ui import avatar_view  # noqa: E402
+from client_desktop.hud import face as face_mod  # noqa: E402
 from plugins import presence as tool  # noqa: E402
 from presence import Director, Intent  # noqa: E402
 from presence.catalog import Catalogue, catalogue  # noqa: E402
@@ -65,19 +65,19 @@ class _Host:
 
 
 class _Widget:
-    """L'etat du widget du panneau ; ses VRAIES methodes tournent dessus."""
+    """Le VRAI pilote du visage du HUD, en train de parler ; on garde ce qu'il pousse."""
 
     def __init__(self, cat: Catalogue) -> None:
-        self._director = Director(cat)
-        self._last_state = "SPEAKING"
-        self._last_speech = 0.35
         self.pushed: list[dict] = []
+        self.driver = face_mod.FaceDriver(self._collect, director=Director(cat))
+        self.driver.enable(True)
+        self.driver.frame_ready()
+        self.driver._last_state = "SPEAKING"
+        self.driver._last_speech = 0.35
 
-    def _push(self, performance) -> None:  # noqa: ANN001
-        self.pushed.append(performance.as_json())
-
-    def set_intent(self, directive, age: float = 0.0) -> None:  # noqa: ANN001
-        avatar_view.JarvisAvatarWidget.set_intent(self, directive, age)
+    def _collect(self, message: dict) -> None:
+        if message.get("type") == "performance":
+            self.pushed.append(message["payload"])
 
 
 def full_catalogue() -> Catalogue:
@@ -95,8 +95,8 @@ def through_the_wire(arguments: dict, cat: Catalogue) -> dict | None:
 
     widget = _Widget(cat)
     store = JarvisStore()
-    store.subscribe(lambda kind, payload: avatar_view.JarvisAvatarWidget.set_intent_json(
-        widget, payload) if kind == "avatar" else None)
+    store.subscribe(lambda kind, payload: widget.driver.set_intent(payload)
+                    if kind == "avatar" else None)
     client = JarvisClient(config_mod.Settings(host="h.ts.net", device_token="tok"), store,
                           speaker=None, on_connected=lambda: None,
                           on_disconnected=lambda _r, _f: None)
@@ -198,30 +198,35 @@ class _Clock:
 
 
 class _TimedWidget:
-    """Le widget sans Qt : `set_snapshot`, `reresolve` et `_push` sont les vrais."""
+    """Le VRAI FaceDriver, sans Qt. Chaque message qu'il poste a la page est
+    noté sous la forme de l'appel `window.JARVIS` que `bridge.js` en fait —
+    c'est ce que le moteur Node rejoue."""
 
     def __init__(self) -> None:
-        self._director = Director(catalogue(force=True))
-        self._loaded = True
-        self._animated = True
-        self._last_state = ""
-        self._last_gesture = ""
-        self._last_speech_at = 0.0
-        self._last_speech = -1.0
-        self._last_payload = None
-        self._last_push_at = 0.0
-        self._last_listen_at = 0.0
-        self._last_listen = -1.0
-        self._listening = False
         self.scripts: list[tuple[float, str]] = []
+        self.driver = face_mod.FaceDriver(self._collect, director=Director(catalogue(force=True)))
+        self.driver.enable(True)
+        self.driver.frame_ready()
 
-    def _run(self, script: str) -> None:
-        self.scripts.append((avatar_view.time.monotonic(), script))
+    def _collect(self, m: dict) -> None:
+        kind = m.get("type")
+        if kind == "performance":
+            script = f"window.JARVIS&&window.JARVIS.perform({json.dumps(m['payload'], separators=(',', ':'))})"
+        elif kind == "speak":
+            script = f"window.JARVIS&&window.JARVIS.speak({float(m['level']):.3f})"
+        elif kind == "listen":
+            level = float(m['level'])
+            # the stop is sent as a bare 0, exactly as the panel's widget did
+            script = f"window.JARVIS&&window.JARVIS.listen&&window.JARVIS.listen({'0' if level == 0 else f'{level:.3f}'})"
+        else:
+            return
+        self.scripts.append((face_mod.time.monotonic(), script))
 
-    def __getattr__(self, name):  # noqa: ANN001
-        # Toutes les autres methodes sont celles du vrai widget.
-        method = getattr(avatar_view.JarvisAvatarWidget, name)
-        return method.__get__(self)
+    def set_snapshot(self, snapshot) -> None:  # noqa: ANN001
+        self.driver.set_snapshot(snapshot)
+
+    def set_intent_json(self, event: dict) -> None:
+        self.driver.set_intent(event)
 
 
 _PERFORM = "window.JARVIS&&window.JARVIS.perform("
@@ -237,8 +242,8 @@ def timed_section() -> int:
     from client_desktop.state import AssistantState, LinkState, Snapshot
 
     clock = _Clock()
-    saved = (avatar_view.time.monotonic, director_mod.time.monotonic)
-    avatar_view.time.monotonic = clock
+    saved = (face_mod.time.monotonic, director_mod.time.monotonic)
+    face_mod.time.monotonic = clock
     director_mod.time.monotonic = clock
     problems: list[str] = []
     try:
@@ -261,14 +266,14 @@ def timed_section() -> int:
         expired = [p for p in pushes if p["t"] > 24 and p["perf"].get("intent") is None]
         if not expired:
             problems.append("warn : aucune poussee n'a montre l'expiration de l'intention")
-        elif expired[0]["t"] > 25.0 + avatar_view.RERESOLVE_S + 0.1:
+        elif expired[0]["t"] > 25.0 + face_mod.RERESOLVE_S + 0.1:
             problems.append(f"warn : expiration montree a {expired[0]['t']:.1f} s")
         # Pas de tempete : hors changement d'etat, jamais deux poussees plus
         # rapprochees que la cadence. Et le visage se POSE : une fois l'etat
         # revenu a sa base, plus rien ne part.
         quiet = [p["t"] for p in pushes if p["t"] > 4.5]
         tight = [round(b - a, 2) for a, b in zip(quiet, quiet[1:])
-                 if b - a < avatar_view.RERESOLVE_S - 1e-6]
+                 if b - a < face_mod.RERESOLVE_S - 1e-6]
         if tight:
             problems.append(f"warn : poussees rapprochees de {tight} s")
         if any(t > 150 for t in quiet):
@@ -326,7 +331,7 @@ def timed_section() -> int:
             print(f"         {problem}")
         return len(problems)
     finally:
-        avatar_view.time.monotonic, director_mod.time.monotonic = saved
+        face_mod.time.monotonic, director_mod.time.monotonic = saved
 
 
 # ── la voix de l'utilisateur, du micro jusqu'au hochement ────────────────────
@@ -371,8 +376,8 @@ def listen_section() -> int:
     from client_desktop.state import AssistantState, LinkState, Snapshot
 
     clock = _Clock()
-    saved = (avatar_view.time.monotonic, director_mod.time.monotonic)
-    avatar_view.time.monotonic = clock
+    saved = (face_mod.time.monotonic, director_mod.time.monotonic)
+    face_mod.time.monotonic = clock
     director_mod.time.monotonic = clock
     problems: list[str] = []
     try:
@@ -427,7 +432,7 @@ def listen_section() -> int:
             print(f"         {problem}")
         return len(problems)
     finally:
-        avatar_view.time.monotonic, director_mod.time.monotonic = saved
+        face_mod.time.monotonic, director_mod.time.monotonic = saved
 
 
 def main() -> int:

@@ -86,9 +86,9 @@ def _nobody_imports_us():
     return "supprimer eval_lab/ ne casse rien"
 
 
-@check("the core is untouched (main.py, ui.py, core/, actions/, dashboard/, memory/, plugins/)")
+@check("the core is untouched (main.py, core/, actions/, dashboard/, memory/, plugins/)")
 def _core_untouched():
-    paths = ["main.py", "ui.py", "core", "actions", "dashboard", "memory", "plugins",
+    paths = ["main.py", "core", "actions", "dashboard", "memory", "plugins",
              "context", "server", "presence", "requirements.txt"]
     out = subprocess.run(["git", "status", "--porcelain", "--", *paths], cwd=BASE_DIR,
                          capture_output=True, text=True).stdout.strip()

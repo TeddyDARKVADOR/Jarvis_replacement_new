@@ -1,47 +1,44 @@
-# ── Core: UI, audio, Gemini Live ──────────────────────────────────────────────
+# JARVIS on a desktop — `python setup.py` installs this, for your OS only.
+# (The Oracle server installs deployment/requirements-server.txt instead.)
+
+# ── The HUD, audio, Gemini Live ──────────────────────────────────────────────
 PyQt6
+PyQt6-WebEngine          # the HUD and the 3D face are web pages in Qt
 sounddevice
 numpy
 google-genai>=2.8.0
+websockets               # the HUD's link to JARVIS on Oracle
 
-# ── Web search & browser control ──────────────────────────────────────────────
+# ── Web search & browser control ─────────────────────────────────────────────
 requests
-beautifulsoup4
-duckduckgo-search
+ddgs                     # formerly duckduckgo-search; web_search falls back to it
 playwright
 
-# ── Automation / input control ────────────────────────────────────────────────
+# ── Automation / input control ───────────────────────────────────────────────
 pyautogui
 pyperclip
 pygetwindow
 
-# ── Vision & media ────────────────────────────────────────────────────────────
+# ── Vision & media ───────────────────────────────────────────────────────────
 pillow
 opencv-python
 mss
 
-# ── System, files & documents ─────────────────────────────────────────────────
+# ── System, files & documents ────────────────────────────────────────────────
 psutil
 send2trash
 youtube-transcript-api
 python-pptx
 openpyxl
 
-# ── Remote dashboard (control from your phone) ────────────────────────────────
+# ── The dashboard JARVIS serves (phone, uploads, local mode's QR pairing) ────
 fastapi
 uvicorn[standard]
 cryptography
 python-multipart
 qrcode[pil]
 
-# ── Plugin extras: Gmail / Google Calendar (OAuth) ────────────────────────────
-google-api-python-client
-google-auth-oauthlib
-
-# ── Plugin extras: Tuya / Smart Life smart light (home_assistant) ─────────────
-tinytuya
-
-# ── Windows-only (pip skips these automatically on macOS / Linux) ─────────────
+# ── Windows-only (pip skips these automatically on macOS / Linux) ────────────
 comtypes;   sys_platform == "win32"
 pycaw;      sys_platform == "win32"
 win10toast; sys_platform == "win32"
@@ -49,25 +46,13 @@ pywinauto;  sys_platform == "win32"
 pywin32;    sys_platform == "win32"
 wmi;        sys_platform == "win32"
 
-# ── Optional: the 3D avatar (avatar/ + presence/) ─────────────────────────────
+# ── Optional ─────────────────────────────────────────────────────────────────
 #
-# Deliberately NOT installed by default, like the wake word. The avatar renders
-# in a QWebEngineView, which is a Chromium process and a GPU context for as long
-# as the session lasts — a fair price for a face, a poor one for a machine that
-# is already compiling. The 2 KB core stays the default and the setting
-# `avatar_enabled` turns this on.
+# The local wake word ("Hey Jarvis") is opt-in: one click in the HUD's
+# Paramètres → Audio, or `pip install openwakeword`.
 #
-#     pip install PyQt6-WebEngine
-#     python -m presence.install_model --demo
-#
-# three.js and its transcoders are vendored in avatar/vendor/ — no npm, no build
-# step, and no network needed to have a face.
-
-# ── Optional: local wake word ("Hey Jarvis") ──────────────────────────────────
-# Deliberately NOT installed by default — it's opt-in. Enable it (and download
-# the tiny model) with one click from ⚙ → WAKE WORD in the app, or install it
-# yourself with:  pip install openwakeword
+# The 3D face's model is installed separately (`python -m presence.install_model`);
+# three.js is vendored in avatar/vendor/, so no npm and no network are needed.
 #
 # macOS / Linux OS actions (volume, brightness, reminders) shell out to native
-# tools (pactl / brightnessctl / osascript / systemd), so no extra Python
-# packages are needed there — nothing Windows-specific is ever pulled in.
+# tools (pactl / brightnessctl / osascript / systemd) — no extra packages.

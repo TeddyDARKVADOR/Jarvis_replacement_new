@@ -28,16 +28,15 @@ directory existed. That is verified on every run of `server/selftest.py`, which
 fails if `git status` reports a modification to `main.py`, `dashboard/`,
 `core/`, `memory/`, `actions/`, `plugins/` or `requirements.txt`.
 
-The same JarvisLive runs in both modes. Two things differ, and both are
-substitutions rather than edits:
+The same JarvisLive runs in both modes. Two things differ:
 
-| | Desktop | Server |
+| | Desktop (`python main.py --local`) | Server |
 |---|---|---|
-| `sys.modules["ui"]` | `ui.py` (PyQt6) | `server/headless_ui.py` |
+| the UI it is handed | `local_hud.LocalUI` → the HUD | `server/headless_ui.HeadlessUI` |
 | `sys.modules["sounddevice"]` | the real binding | `server/audio_bridge.py` |
 
-Installing the `ui` stand-in is also why **PyQt6 is not installed on the
-server**: the real `ui.py` is never imported.
+main.py imports no UI module, which is why **PyQt6 is not installed on the
+server**.
 
 ---
 
@@ -45,8 +44,9 @@ server**: the real `ui.py` is never imported.
 
 | File | What it is |
 |---|---|
-| `run_headless.py` | The entry point. Installs the two stand-ins *before* importing `main`, then builds the same `JarvisLive`. |
-| `headless_ui.py` | A stand-in for `ui.JarvisUI` — the same 26-attribute surface, no window. |
+| `run_headless.py` | The entry point. Installs the sound-card stand-in *before* importing `main`, then builds the same `JarvisLive`. |
+| `headless_ui.py` | The UI `JarvisLive` is handed on the server — the 26-attribute surface, no window. `local_hud.LocalUI` derives from it. |
+| `assistant_control.py` | `POST /api/assistant`: memory, name, voice, plugins — what the HUD's settings page changes. The local HUD calls the same object in-process. |
 | `audio_bridge.py` | A stand-in for `sounddevice`: a microphone that delivers nothing, and a speaker that publishes to the phone. |
 | `api.py` | Grafts `/health`, `/status` and `WS /ws/phone-out` onto the FastAPI app `dashboard/server.py` already runs. |
 | `auth.py` | The persistent device credential, seeded into the dashboard's own pairing store. |

@@ -150,6 +150,13 @@ class Microphone:
                 self._on_error(f"microphone unavailable: {exc}")
                 return False
 
+    def set_device(self, name: str | None) -> None:
+        """Switch microphone. Re-opened at once if it was running."""
+        self._device_name = name
+        if self.running:
+            self.stop()
+            self.start()
+
     def stop(self) -> None:
         with self._lock:
             stream, self._stream = self._stream, None

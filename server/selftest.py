@@ -53,7 +53,7 @@ def check(name: str):
 
 @check("MARK LIII core is unmodified")
 def _untouched():
-    guarded = ["main.py", "ui.py", "dashboard", "core", "memory",
+    guarded = ["main.py", "dashboard", "core", "memory",
                "actions", "plugins", "requirements.txt"]
     try:
         out = subprocess.run(
@@ -63,12 +63,10 @@ def _untouched():
     except Exception as e:
         return f"skipped (git unavailable: {e})"
     dirty = [l for l in out.stdout.splitlines() if l.strip()]
-    # ui.py was already modified in the working tree before this layer existed;
-    # what must hold is that nothing here added to that list.
-    unexpected = [l for l in dirty if not l.endswith("ui.py")]
-    assert not unexpected, "modified by this layer: " + "; ".join(unexpected)
-    return f"{len(guarded)} paths clean" + (" (ui.py pre-existing edit ignored)"
-                                            if dirty else "")
+    # Uncommitted only: the brain is changed deliberately, in its own commit,
+    # never as a side effect of working on the layer around it.
+    assert not dirty, "modified by this layer: " + "; ".join(dirty)
+    return f"{len(guarded)} paths clean"
 
 
 # ── 2. the UI façade is complete ─────────────────────────────────────────────
@@ -94,14 +92,47 @@ def _facade():
     return f"{len(used)} attributes, all present"
 
 
-@check("the 'ui' stand-in satisfies `from ui import JarvisUI`")
-def _ui_module():
-    import server.headless_ui as headless
-    assert hasattr(headless, "JarvisUI"), "no JarvisUI in the stand-in module"
-    inst = headless.JarvisUI("face.png")        # main.main()'s call shape
-    assert inst.muted is False, "a headless UI must never start muted"
-    assert inst._win._ready is True, "main.py waits on _win._ready"
-    return "constructs with ui.py's signature"
+@check("main.py imports no UI module — it is handed one")
+def _no_ui_import():
+    tree = ast.parse((BASE_DIR / "main.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module == "ui":
+            raise AssertionError("main.py imports `ui` at module level again")
+        if isinstance(node, ast.Import) and any(a.name == "ui" for a in node.names):
+            raise AssertionError("main.py imports `ui` at module level again")
+    return "HeadlessUI here, LocalUI on a desktop"
+
+
+@check("/api/assistant: bearer required, operations answer, nonsense refused")
+def _assistant_api():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from server.assistant_control import AssistantControl, attach
+
+    class _Dash:
+        app = FastAPI()
+        _tokens = {"tok"}
+
+    class _UI:
+        def get_plugins(self):
+            return [{"name": "p", "valid": True, "enabled": True}]
+
+        def get_plugin_settings(self):
+            return []
+
+    attach(_Dash, AssistantControl(lambda: _UI()), log=lambda m: None)
+    client = TestClient(_Dash.app)
+    auth = {"Authorization": "Bearer tok"}
+    assert client.post("/api/assistant", json={"op": "profile.get"}).status_code == 401
+    assert client.post("/api/assistant", json={"op": "profile.get"},
+                       headers={"Authorization": "Bearer nope"}).status_code == 401
+    profile = client.post("/api/assistant", json={"op": "profile.get"}, headers=auth)
+    assert profile.status_code == 200 and "voices" in profile.json(), profile.text
+    plugins = client.post("/api/assistant", json={"op": "plugins.list"}, headers=auth).json()
+    assert plugins["plugins"][0]["name"] == "p", plugins
+    assert client.post("/api/assistant", json={"op": "nope"}, headers=auth).status_code == 400
+    return "401 without the bearer, 200 with it, 400 on an unknown op"
 
 
 # ── 3. the sound-card stand-in ───────────────────────────────────────────────

@@ -23,10 +23,11 @@ client_desktop/  ──────►  core.wake_word   (import, read-only)
 client_desktop/  ◄──X──   (nothing existing imports this package)
 ```
 
-Nothing here is imported by `main.py`, `ui.py`, `dashboard/`, `server/`,
-`actions/`, `plugins/` or `memory/`. `server/selftest.py` fails if any of those
-report a git modification, so this package must remain strictly additive. The
-one thing it reaches into is `core.wake_word`, which it only ever imports.
+Nothing in `main.py`, `dashboard/`, `server/`, `actions/`, `plugins/` or
+`memory/` imports this package. The one thing it reaches into is
+`core.wake_word` (and `core.action_loader` to prove its capabilities), which
+it only ever imports. `local_hud.py`, beside main.py, reuses its HUD to show
+the brain running on this PC.
 
 **Why it does not reuse `JarvisLive`.** `JarvisLive` (`main.py`) *is* the brain:
 constructing one opens a Gemini Live session. Oracle already runs exactly one.

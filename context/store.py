@@ -16,7 +16,7 @@ WHY IT ACCEPTS ANYTHING AND VALIDATES EVERYTHING
     sending nonsense must not be able to raise inside a WebSocket handler.
 
 WHY IT NEVER TALKS TO JARVIS
-    Nothing here imports main.py, ui.py or the dashboard. The store is written
+    Nothing here imports main.py or the dashboard. The store is written
     to by whoever receives phone messages and read by whoever needs context;
     neither is named in this file. That is what makes the package deletable.
 """
