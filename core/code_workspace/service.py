@@ -33,8 +33,10 @@ from .tasks import TaskList
 
 CONFIG_NS = "code_studio"
 DEFAULT_OPTIONS = {"max_fix_attempts": 4, "command_timeout": 120, "confirm_plan": False,
-                   "auto_preview": True, "auto_run_scripts": True}
+                   "auto_preview": True, "auto_run_scripts": True, "provider": "auto", "local_model": ""}
 _BOOL_OPTIONS = ("confirm_plan", "auto_preview", "auto_run_scripts")
+#: Who writes the code — see llm.make_llm.
+PROVIDERS = ("auto", "groq", "groq+local", "local", "gemini")
 
 SAFETY_NOTE = ("Les outils de fichiers de JARVIS sont strictement limités à ce dossier. "
                "En revanche, un programme qu'il exécute tourne avec les droits de votre compte "
@@ -82,6 +84,10 @@ class Studio:
         out["command_timeout"] = max(10, min(int(out["command_timeout"]), 900))
         for k in _BOOL_OPTIONS:
             out[k] = bool(out[k])
+        out["provider"] = str(out["provider"] or "auto").lower()
+        if out["provider"] not in PROVIDERS:
+            out["provider"] = "auto"
+        out["local_model"] = str(out["local_model"] or "")
         return out
 
     def set_root(self, path: str) -> dict:
@@ -103,6 +109,16 @@ class Studio:
         for k in _BOOL_OPTIONS:
             if k in data:
                 clean[k] = bool(data[k])
+        if "provider" in data:
+            provider = str(data["provider"] or "auto").lower()
+            if provider not in PROVIDERS:
+                raise SandboxError(f"Fournisseur inconnu « {provider} ».")
+            clean["provider"] = provider
+        if "local_model" in data:
+            model = str(data["local_model"] or "").strip()
+            if model and not re.fullmatch(r"[\w.:/@-]{1,80}", model):
+                raise SandboxError("Nom de modèle local invalide.")
+            clean["local_model"] = model
         if clean:
             self._save(clean)
         return {"ok": True, "options": self.options()}
@@ -454,8 +470,15 @@ class Studio:
         from .llm import groq_key
         cfg = self._get()
         provider = str(cfg.get("provider") or "auto").lower()
-        coder = ("Groq" + (f" · {cfg['groq_model']}" if cfg.get("groq_model") else "")
-                 if provider == "groq" or (provider == "auto" and groq_key()) else "Gemini")
+        local = f"Local · {cfg.get('local_model') or 'choix automatique'} (Ollama)"
+        if provider in ("local", "ollama"):
+            coder = local
+        elif provider == "groq+local":
+            coder = f"Groq, relais {local}"
+        elif provider == "groq" or (provider == "auto" and groq_key()):
+            coder = "Groq" + (f" · {cfg['groq_model']}" if cfg.get("groq_model") else "")
+        else:
+            coder = "Gemini"
         from . import winsandbox
         why = winsandbox.available()
         out: dict = {"root": self.root_setting(), "options": self.options(), "admin": is_admin(), "coder": coder,
@@ -537,6 +560,8 @@ class Studio:
                 return self.screenshot(data.get("project"))
             if op == "studio.sandbox":
                 return self.sandbox(data.get("project"))
+            if op == "studio.local_models":
+                return local_models()
             if op == "studio.write":
                 # The user's own edit from the HUD: same journaled, undoable path as the tool.
                 project = self._existing(data.get("project"))
@@ -711,6 +736,19 @@ def _status_text(st: dict) -> str:
         parts.append(f"Tasks on '{st.get('project')}': {c.get('done', 0)} done, {c.get('doing', 0)} in progress, "
                      f"{c.get('todo', 0)} to do, {c.get('blocked', 0)} blocked.")
     return " ".join(parts)
+
+
+def local_models() -> dict:
+    """What Ollama has installed, for the HUD's model picker."""
+    from .llm import LOCAL_URL
+    try:
+        import requests
+        r = requests.get(f"{LOCAL_URL}/api/tags", timeout=3)
+        models = [{"name": m.get("name", ""), "gb": round((m.get("size") or 0) / 2**30, 1)}
+                  for m in (r.json().get("models") or [])] if r.ok else []
+    except Exception:
+        return {"ok": False, "models": [], "error": "Ollama ne répond pas (lancez Ollama)."}
+    return {"ok": True, "models": models}
 
 
 def _open_url(url: str) -> None:

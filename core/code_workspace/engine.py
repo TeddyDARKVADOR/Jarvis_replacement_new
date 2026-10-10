@@ -178,7 +178,7 @@ class StudioJob:
             j.add("info", f"Demande : {self.request[:400]}", mode=self.mode)
             if hasattr(self.llm, "on_wait"):
                 self.llm.on_wait = lambda secs, why: j.add(
-                    "info", f"⏳ {why} — nouvelle tentative dans {int(secs)} s")
+                    "info", f"⏳ {why} — nouvelle tentative dans {int(secs)} s" if secs > 0 else f"↪ {why}")
                 self.llm.should_stop = self.stop_event.is_set
             j.add("info", f"Modèle de code : {llm_mod.describe(self.llm)}")
             if self.mode == "create":
@@ -675,7 +675,10 @@ class StudioJob:
                        "timed_out": bool(r.get("timed_out")), "output": (r.get("output") or "")[-4000:],
                        "source": "lancement"}
         if run is not None:
-            run["crashed"] = (not run["ok"] and not run["timed_out"]
+            # A menu asking for the keyboard gets no keyboard here (stdin is
+            # closed): that is an interactive program, not a crash.
+            run["interactive"] = "EOF when reading a line" in run["output"]
+            run["crashed"] = (not run["ok"] and not run["timed_out"] and not run["interactive"]
                               and "Traceback (most recent call last)" in run["output"])
         return run
 

@@ -130,6 +130,8 @@ export function createStudio(ctx) {
       $('st-confirm-plan').checked = !!o.confirm_plan;
       $('st-auto-preview').checked = o.auto_preview !== false;
       $('st-auto-run').checked = o.auto_run_scripts !== false;
+      $('st-provider').value = o.provider || 'auto';
+      $('st-local-model').value = o.local_model || '';
     }
     $('st-safety').textContent = s.safety || '';
     const sb = s.sandbox || {};
@@ -262,7 +264,8 @@ export function createStudio(ctx) {
     const an = lr.analysis, run = lr.run, pv = lr.preview, br = lr.browser;
     let launch = '';
     if (run) {
-      const st = run.timed_out ? 'toujours actif après le délai (arrêté)' : `code ${run.code}`;
+      const st = run.interactive ? 'interactif : attend une saisie au clavier (lancez-le vous-même ou dans la SANDBOX)'
+        : run.timed_out ? 'toujours actif après le délai (arrêté)' : `code ${run.code}`;
       launch += `<div class="st-run ${run.crashed ? 'bad' : ''}"><b>PROGRAMME LANCÉ</b> <code>${esc(run.command)}</code> — ${esc(st)}`
         + `${run.crashed ? ' — arrêté sur une erreur' : ''}<button class="mini-btn" data-sum="run">VOIR LA SORTIE</button></div>`;
     }
@@ -522,7 +525,13 @@ export function createStudio(ctx) {
       if (a) { e.preventDefault(); ctx.call('openUrl', a.dataset.url); return; }
       if (e.target.closest('[data-stop-preview]')) act('studio.stop_preview', {}, () => 'Aperçu arrêté.');
     });
-    ['st-root-input', 'st-attempts', 'st-timeout', 'st-confirm-plan', 'st-auto-preview', 'st-auto-run'].forEach((id) => $(id).addEventListener('input', () => { optionsDirty = true; }));
+    // The local models Ollama has, offered in the picker (fetched when the panel opens).
+    $('st-local-model').addEventListener('focus', async () => {
+      const r = await ctx.rpc('studio.local_models');
+      $('st-local-list').innerHTML = (r.models || []).map((m) => `<option value="${esc(m.name)}">${esc(m.gb)} Go</option>`).join('');
+      if (r.error) status(r.error, 'err');
+    });
+    ['st-root-input', 'st-attempts', 'st-timeout', 'st-confirm-plan', 'st-auto-preview', 'st-auto-run', 'st-provider', 'st-local-model'].forEach((id) => $(id).addEventListener('input', () => { optionsDirty = true; }));
     $('st-save').addEventListener('click', async () => {
       const root = $('st-root-input').value.trim();
       if (last && root && root !== last.root) {
@@ -533,6 +542,7 @@ export function createStudio(ctx) {
         max_fix_attempts: Number($('st-attempts').value), command_timeout: Number($('st-timeout').value),
         confirm_plan: $('st-confirm-plan').checked,
         auto_preview: $('st-auto-preview').checked, auto_run_scripts: $('st-auto-run').checked,
+        provider: $('st-provider').value, local_model: $('st-local-model').value.trim(),
       });
       if (r.error) { status(r.error, 'err'); return; }
       optionsDirty = false; project = null;

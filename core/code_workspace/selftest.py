@@ -36,6 +36,8 @@ What it checks:
   32-33 Windows Sandbox: no network, every mapped folder read-only, the
         launch fits the project; Pyright is informative and honest
   34    the HUD's own edit and test buttons: journaled, undoable, fenced
+  35-36 the local coder (Ollama) and Groq with a local relay on rate limits
+  37    a program waiting for the keyboard is interactive, not crashed
 """
 from __future__ import annotations
 
@@ -745,6 +747,120 @@ def _():
     bad = st.hud("studio.write", {"project": "hudedit", "path": "../evil.py", "content": "x"})
     assert "error" in bad and not (ROOT / "evil.py").exists(), bad
     return "test en échec → édition → test vert → annulée ; '../' refusé"
+
+
+@check("35 IA locale (Ollama) : modèle choisi, contexte élargi, réflexion séparée, JSON, panne claire")
+def _():
+    from core.code_workspace import llm as L
+
+    class R:
+        def __init__(self, code=200, data=None, text=""):
+            self.status_code, self._d, self.text = code, data or {}, text or json.dumps(data or {})
+            self.ok = code == 200
+
+        def json(self):
+            return self._d
+
+    class FakeOllama:
+        def __init__(self, caps, answers):
+            self.caps, self.answers, self.bodies = caps, list(answers), []
+
+        def get(self, url, timeout=0):
+            return R(data={"models": [{"name": "llama3:latest"}, {"name": "gemma4:12b"}, {"name": "qwen3:30b"}]})
+
+        def post(self, url, json=None, timeout=0):
+            if url.endswith("/api/show"):
+                return R(data={"capabilities": self.caps})
+            self.bodies.append(json)
+            return self.answers.pop(0)
+
+    ok = R(data={"message": {"content": "<think>hmm</think>def f():\n    return 1\n"}, "eval_count": 40})
+    http = FakeOllama(["completion", "thinking"], [ok])
+    m = L.LocalLLM(http=http)
+    assert m.model == "gemma4:12b", m.model                  # coding preference, not the first listed
+    assert m.complete("x", json_mode=True).startswith("def f()"), "bloc <think> non retiré"
+    b = http.bodies[0]
+    assert b["think"] is True and b["format"] == "json" and b["options"]["num_ctx"] >= 16384, b
+    no_think = FakeOllama(["completion", "thinking"], [R(400, text='"model does not support thinking"'), ok])
+    m2 = L.LocalLLM("qwen3:30b", http=no_think)
+    m2.complete("x")
+    assert m2.think is False and no_think.bodies[1]["think"] is False
+    try:
+        L.LocalLLM("absent", http=FakeOllama([], [])).complete("x")
+        raise AssertionError("modèle absent accepté")
+    except L.LLMError as e:
+        assert "absent" in str(e)
+
+    class Down:
+        def get(self, *a, **k):
+            raise ConnectionError("refused")
+    try:
+        L.LocalLLM(http=Down()).complete("x")
+        raise AssertionError("Ollama éteint non signalé")
+    except L.LLMError as e:
+        assert "Ollama" in str(e)
+    assert isinstance(L.make_llm({"provider": "local"}), L.LocalLLM)
+    return f"{m.model}, réflexion séparée, contexte {b['options']['num_ctx']}, panne signalée"
+
+
+@check("36 Groq + relais local : une limite 429 passe au modèle local sans attendre")
+def _():
+    from core.code_workspace import llm as L
+
+    class Resp:
+        def __init__(self, code, data=None):
+            self.status_code, self._d, self.text, self.headers = code, data or {}, "", {"retry-after": "30"}
+            self.ok = code == 200
+
+        def json(self):
+            return self._d
+
+    class Groq429:
+        calls = 0
+
+        def post(self, *a, **k):
+            Groq429.calls += 1
+            return Resp(429)
+
+    class Local:
+        should_stop = None
+
+        def complete(self, prompt, json_mode=False):
+            return "LOCAL:" + prompt
+
+    notes = []
+    g = L.GroqLLM(key="gsk_test", http=Groq429(), fallback=Local())
+    g._model = "openai/gpt-oss-120b"
+    g.on_wait = lambda secs, why: notes.append((secs, why))
+    t0 = time.monotonic()
+    out = g.complete("p")
+    assert out == "LOCAL:p" and g.relayed == 1 and Groq429.calls == 1, (out, g.relayed)
+    assert time.monotonic() - t0 < 2, "le relais a attendu"
+    assert notes == [(0, "limite Groq atteinte — le modèle local prend le relais")], notes
+    st = _studio(FakeLLM())
+    st.hud("studio.options", {"provider": "groq+local", "local_model": "gemma4:12b"})
+    s = st.hud("studio.status", {})
+    assert s["options"]["provider"] == "groq+local" and "relais" in s["coder"], s["coder"]
+    assert "error" in st.hud("studio.options", {"provider": "openai"})
+    assert "error" in st.hud("studio.options", {"local_model": "x; rm -rf /"})
+    return f"relais immédiat, HUD : {s['coder']}"
+
+
+@check("37 un programme interactif (input) n'est pas compté comme planté")
+def _():
+    test = TEST.replace("def test_add", "def test_ac1_add")
+    files = {"calc.py": FIXED, "main.py": "from calc import add\nn = int(input('Nombre ? '))\nprint(add(n, 1))\n",
+             "tests/__init__.py": "", "tests/test_calc.py": test}
+    extra = {"kind": "cli", "run_command": "python main.py", "entry_point": "main.py",
+             "test_command": "python -m unittest discover -s tests -t . -v",
+             "acceptance": [{"id": "AC1", "criterion": "additionne"}]}
+    st = _studio(PlanLLM(extra=extra, contents=files))
+    st.start_job("create", "calc interactive")
+    job = _wait(st)
+    run = job.result.get("run") or {}
+    assert run.get("interactive") and not run.get("crashed"), run
+    assert job.result["status"] == "ok", (job.result["status"], job.result.get("why"))
+    return "EOFError d'input() → « interactif », verdict validé"
 
 
 WEB_HTML = ('<!doctype html><html><head><meta charset="utf-8"><title>Courses</title>'

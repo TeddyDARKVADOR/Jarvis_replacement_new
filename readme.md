@@ -63,7 +63,12 @@ affiche son **code complet** (numéros de ligne, couleurs, recherche) ou ses dif
   redémarrer (Windows Pro/Entreprise). Seuls la bibliothèque standard et `_deps/` du
   projet y sont disponibles ; pas de Node.js.
 - `dev_agent` et la création via `code_helper` passent désormais par le Studio sur ce PC.
-- Le code est écrit par **Groq** dès que `"groq_api_key"` est présent dans
+- **Qui écrit le code** se choisit dans les réglages du Studio : Auto (Groq, sinon Gemini),
+  **Groq + relais local** (quand Groq dit « limite atteinte », le modèle local d'Ollama
+  répond au lieu d'attendre), **IA locale seulement** (Ollama : aucun quota, plus lent),
+  Groq ou Gemini seuls. Le modèle local se choisit dans la même section (liste des modèles
+  installés dans Ollama).
+- Par défaut, le code est écrit par **Groq** dès que `"groq_api_key"` est présent dans
   `config/api_keys.json` (meilleur modèle disponible pour la clé, `openai/gpt-oss-120b` en
   priorité ; `"groq_model"` dans `plugin_config.code_studio` pour en imposer un). Sans clé
   Groq, le Studio utilise Gemini. La conversation, elle, reste sur Gemini Live.

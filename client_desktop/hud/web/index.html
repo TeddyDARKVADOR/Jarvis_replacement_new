@@ -423,6 +423,17 @@
             <div id="st-admin" class="test-result err" hidden>JARVIS tourne en administrateur : le Studio refuse d'exécuter des commandes.</div>
             <label class="field"><span>Dossier racine</span><input id="st-root-input" spellcheck="false" placeholder="C:\Jarvis_Workspace"></label>
             <div class="row2">
+              <label class="field"><span>Qui écrit le code</span>
+                <select id="st-provider">
+                  <option value="auto">Auto (Groq, sinon Gemini)</option>
+                  <option value="groq+local">Groq + relais local (sans attente)</option>
+                  <option value="local">IA locale seulement (Ollama)</option>
+                  <option value="groq">Groq seulement</option>
+                  <option value="gemini">Gemini seulement</option>
+                </select></label>
+              <label class="field"><span>Modèle local</span><input id="st-local-model" list="st-local-list" spellcheck="false" placeholder="automatique"><datalist id="st-local-list"></datalist></label>
+            </div>
+            <div class="row2">
               <label class="field"><span>Corrections max.</span><input id="st-attempts" type="number" min="1" max="10"></label>
               <label class="field"><span>Durée max. commande (s)</span><input id="st-timeout" type="number" min="10" max="900"></label>
             </div>

@@ -135,7 +135,7 @@ def groq_key() -> str:
 class GroqLLM:
     """The Studio's coder on Groq (OpenAI-compatible chat API, plain HTTP)."""
 
-    def __init__(self, model: str | None = None, key: str | None = None, http=None) -> None:
+    def __init__(self, model: str | None = None, key: str | None = None, http=None, fallback=None) -> None:
         self.key = key or groq_key()
         if not self.key:
             raise LLMError("Aucune clé Groq (groq_api_key) dans config/api_keys.json.")
@@ -144,6 +144,10 @@ class GroqLLM:
         self._http = http
         self.on_wait = None
         self.should_stop = None
+        #: Another coder (the local one) that answers instead of waiting out a
+        #: rate limit or an outage. None: wait, as before.
+        self.fallback = fallback
+        self.relayed = 0
 
     @property
     def http(self):
@@ -151,6 +155,13 @@ class GroqLLM:
             import requests
             self._http = requests
         return self._http
+
+    def _relay(self, prompt: str, json_mode: bool, why: str) -> str:
+        self.relayed += 1
+        if callable(self.on_wait):
+            self.on_wait(0, f"{why} — le modèle local prend le relais")
+        self.fallback.should_stop = self.should_stop
+        return self.fallback.complete(prompt, json_mode)
 
     def _headers(self) -> dict:
         return {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
@@ -194,6 +205,8 @@ class GroqLLM:
                 r = self.http.post(f"{GROQ_URL}/chat/completions", headers=self._headers(),
                                    json=body, timeout=180)
             except Exception as e:
+                if self.fallback is not None:
+                    return self._relay(prompt, json_mode, "Groq injoignable")
                 if attempt < attempts - 1:
                     self._wait(delay, "Groq injoignable")
                     delay = min(delay * 2, 60.0)
@@ -219,6 +232,9 @@ class GroqLLM:
             if r.status_code == 400 and json_mode and "json" in detail.lower() and "response_format" in body:
                 body.pop("response_format")              # model without JSON mode: ask in the prompt only
                 continue
+            if r.status_code in (429, 500, 502, 503, 504) and self.fallback is not None:
+                return self._relay(prompt, json_mode,
+                                   "limite Groq atteinte" if r.status_code == 429 else "Groq indisponible")
             if r.status_code in (429, 500, 502, 503, 504) and attempt < attempts - 1:
                 wait = delay
                 try:
@@ -241,18 +257,138 @@ class GroqLLM:
             time.sleep(0.25)
 
 
+LOCAL_URL = "http://127.0.0.1:11434"
+#: Coding models first; the first one installed in Ollama wins.
+LOCAL_PREFERRED = ["qwen3-coder", "qwen2.5-coder", "devstral", "gemma4", "qwen3", "deepseek-coder",
+                   "codellama", "llama3"]
+
+
+class LocalLLM:
+    """The Studio's coder on this PC, through Ollama (no quota, no key, slower).
+
+    Ollama's defaults do not fit the Studio: its 4096-token context would cut
+    a plan in half, so `num_ctx` is raised; the model stays loaded between
+    calls (`keep_alive`). A model that can think does it in Ollama's separate
+    `thinking` field — some (Qwen3) leak their reasoning into the answer when
+    told not to — so thinking is on by default when the model supports it.
+    """
+
+    def __init__(self, model: str | None = None, url: str | None = None, think: bool | None = None,
+                 num_ctx: int = 16384, http=None) -> None:
+        self.url = (url or LOCAL_URL).rstrip("/")
+        self.requested = (model or "").strip() or None
+        self.think = think
+        self.num_ctx = num_ctx
+        self._model: str | None = None
+        self._http = http
+        self.on_wait = None
+        self.should_stop = None
+        self.stats = {"calls": 0, "seconds": 0.0, "tokens": 0}
+
+    @property
+    def http(self):
+        if self._http is None:
+            import requests
+            self._http = requests
+        return self._http
+
+    def _get(self, path: str, body: dict | None = None):
+        try:
+            if body is None:
+                return self.http.get(f"{self.url}{path}", timeout=10)
+            return self.http.post(f"{self.url}{path}", json=body, timeout=30)
+        except Exception as e:
+            raise LLMError(f"Ollama ne répond pas sur {self.url} : lancez Ollama ({type(e).__name__}).") from e
+
+    @property
+    def model(self) -> str:
+        if self._model:
+            return self._model
+        r = self._get("/api/tags")
+        names = [m.get("name", "") for m in (r.json().get("models") or [])] if r.ok else []
+        if not names:
+            raise LLMError("Aucun modèle dans Ollama : installez-en un (ollama pull qwen2.5-coder:14b).")
+        if self.requested:
+            match = [n for n in names if n == self.requested or n.split(":")[0] == self.requested]
+            if not match:
+                raise LLMError(f"Le modèle local « {self.requested} » n'est pas installé dans Ollama.")
+            self._model = match[0]
+        else:
+            self._model = next((n for p in LOCAL_PREFERRED for n in names if n.startswith(p)), names[0])
+        if self.think is None:
+            show = self._get("/api/show", {"model": self._model})
+            caps = (show.json().get("capabilities") or []) if show.ok else []
+            self.think = "thinking" in caps
+        return self._model
+
+    def complete(self, prompt: str, json_mode: bool = False) -> str:
+        model = self.model
+        body = {"model": model, "stream": False, "keep_alive": "30m", "think": bool(self.think),
+                "messages": [{"role": "system", "content": "You are an expert software engineer. "
+                              "Follow the output format exactly."},
+                             {"role": "user", "content": prompt}],
+                "options": {"temperature": 0.2, "num_ctx": self.num_ctx, "num_predict": 12000}}
+        if json_mode:
+            body["format"] = "json"
+        for _attempt in range(3):
+            if callable(self.should_stop) and self.should_stop():
+                raise LLMError("Arrêté pendant l'attente du modèle local.")
+            t0 = time.monotonic()
+            try:
+                r = self.http.post(f"{self.url}/api/chat", json=body, timeout=1800)
+            except Exception as e:
+                raise LLMError(f"Ollama ne répond pas : {type(e).__name__}") from e
+            if r.status_code == 400 and "think" in r.text.lower() and body.get("think"):
+                body["think"] = self.think = False          # a model without thinking
+                continue
+            if r.status_code != 200:
+                raise LLMError(f"Ollama a répondu {r.status_code} : {r.text[:200]}")
+            data = r.json()
+            self.stats["calls"] += 1
+            self.stats["seconds"] += time.monotonic() - t0
+            self.stats["tokens"] += int(data.get("eval_count") or 0)
+            text = re.sub(r"<think>.*?</think>", "", (data.get("message") or {}).get("content") or "", flags=re.S)
+            if text.strip():
+                return text
+        raise LLMError("Réponse vide du modèle local (budget de sortie épuisé ?).")
+
+
+def local_available(url: str | None = None) -> bool:
+    try:
+        import requests
+        return requests.get(f"{(url or LOCAL_URL).rstrip('/')}/api/tags", timeout=2).ok
+    except Exception:
+        return False
+
+
 def make_llm(cfg: dict):
-    """Groq when a Groq key exists (the Studio's coder), Gemini otherwise —
-    unless the HUD/config pins `provider`."""
+    """Which model writes the code — `provider` in the Studio's config:
+
+        auto        Groq when a Groq key exists, Gemini otherwise (the default)
+        groq        Groq only
+        groq+local  Groq, and the local model takes over whenever Groq says
+                    "rate limit" instead of waiting for it
+        local       the local model only (Ollama): no quota, slower
+        gemini      Gemini only
+    """
     provider = str(cfg.get("provider") or "auto").lower()
+    local = lambda: LocalLLM(cfg.get("local_model") or None, cfg.get("local_url") or None,  # noqa: E731
+                             cfg.get("local_think"))
+    if provider in ("local", "ollama"):
+        return local()
+    if provider == "groq+local":
+        return GroqLLM(cfg.get("groq_model") or None, fallback=local())
     if provider == "groq" or (provider == "auto" and groq_key()):
         return GroqLLM(cfg.get("groq_model") or None)
     return StudioLLM(cfg.get("model") or None)
 
 
 def describe(llm) -> str:
+    if isinstance(llm, LocalLLM):
+        return f"Local · {llm.model}" + (" (réflexion)" if llm.think else "")
     if isinstance(llm, GroqLLM):
-        return f"Groq · {llm.model}"
+        relay = f" + relais local {describe(llm.fallback)}" if llm.fallback is not None else ""
+        return f"Groq · {llm.model}{relay}"
     return f"Gemini · {getattr(llm, 'model', '?')}"
 
 
