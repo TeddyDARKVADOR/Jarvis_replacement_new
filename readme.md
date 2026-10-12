@@ -104,6 +104,8 @@ It's not just an assistant — it's an extension of your digital life.
 | 🚀 Faster Live Engine      | Runs on **Gemini 3.1 Flash Live** — roughly 2× faster time-to-first-word than the previous model                                                                                                     |
 | 🧩 Self-Describing Skills  | Actions and plugins share one shape (`TOOL` / `PLUGIN` dict + `run()`), auto-discovered at launch — adding or moving a skill is a single file, no core edits                                         |
 | 🧠 Recallable Memory       | No size limit and nothing silently forgotten — the prompt carries what fits, the rest is looked up on demand from a local search                                                                     |
+| 📊 Token Meter             | Reads Gemini usage metadata per session, splits voice, text, images, tools and action sources, and reports Google Search grounding requests                                                            |
+| 🗂️ Repository Review       | Starts with a compact overview, then inspects ranked files for focused questions while excluding dependency/build, credential, and memory files                                                      |
 | 👁️ Memory Panel            | See every fact JARVIS has stored about you, when it learned it, and delete any of it in one click                                                                                                    |
 | ↩️ Undo                    | Take back what the assistant did — files it moved, renamed, created or wrote, and settings it changed                                                                                                |
 | ⚠️ Real Confirmation       | Shutdown, restart and WiFi wait for a button **you** press — the model cannot confirm its own irreversible actions                                                                                   |
@@ -142,6 +144,22 @@ It's not just an assistant — it's an extension of your digital life.
 | ⚡ Auto-Start on Boot      | Registers with the OS startup system (registry / LaunchAgent / .desktop)                                                                                                                             |
 | 📋 Clipboard Intelligence  | Copy any text → floating panel with Translate / Summarise / Explain / Fix                                                                                                                            |
 | 🪪 Assistant Customization | Change the assistant name, your name, voice, and colour from the UI — takes effect immediately                                                                                                       |
+
+### Token usage and repository review
+
+Ask JARVIS **"how many tokens have I used this session?"** to read its actual
+Gemini usage metadata. Each completed turn with usage metadata updates the HUD log, and compact
+per-session records are appended to `memory/token_usage.jsonl` (ignored by Git;
+prompts, source text, and credentials are never stored). Paid-tier dollar values
+are estimates only when the returned model and modality counts are known; the
+free tier, account discounts, and Google Search monthly free-query allowance
+are not inferable from token metadata.
+
+For a codebase, ask for a **repository overview** first, then ask a focused
+follow-up. JARVIS sends a bounded set of ranked text excerpts to Gemini Flash
+Lite, with path and line citations. Repeating the same excerpts may hit Gemini's
+automatic context cache on supported GenerateContent models; cache hits appear
+in usage metadata. Gemini 3.1 Flash Live does not support context caching.
 
 ---
 

@@ -30,7 +30,10 @@ def _get_gemini(model: str = GEMINI_MODEL):
 
     class _W:
         def generate_content(self, contents):
-            return _c.models.generate_content(model=model, contents=contents)
+            response = _c.models.generate_content(model=model, contents=contents)
+            from core.token_usage import record_response
+            record_response(response, model, "code_helper")
+            return response
 
     return _W()
 
@@ -504,6 +507,8 @@ Be specific and actionable. If you see an error message, quote it exactly."""
             model="gemini-flash-latest",
             contents=contents,
         )
+        from core.token_usage import record_response
+        record_response(response, "gemini-flash-latest", "code_screen_analysis")
 
         analysis = response.text.strip()
         print(f"[Code] ✅ Screen analysis complete")

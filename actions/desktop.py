@@ -144,6 +144,8 @@ Task: {task}"""
 
     try:
         response = _client.models.generate_content(model="gemini-flash-latest", contents=prompt)
+        from core.token_usage import record_response
+        record_response(response, "gemini-flash-latest", "desktop_code")
         code = response.text.strip()
         if code.startswith("```"):
             lines = code.split("\n")

@@ -31,7 +31,10 @@ def _get_model(model_name: str):
 
     class _W:
         def generate_content(self, contents):
-            return _c.models.generate_content(model=model_name, contents=contents)
+            response = _c.models.generate_content(model=model_name, contents=contents)
+            from core.token_usage import record_response
+            record_response(response, model_name, "dev_agent")
+            return response
 
     return _W()
 

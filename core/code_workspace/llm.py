@@ -87,6 +87,8 @@ class StudioLLM:
         for attempt in range(attempts):
             try:
                 r = client.models.generate_content(model=self.model, contents=prompt, config=cfg)
+                from core.token_usage import record_response
+                record_response(r, self.model, "code_workspace")
                 text = getattr(r, "text", None) or ""
                 if text.strip():
                     return text

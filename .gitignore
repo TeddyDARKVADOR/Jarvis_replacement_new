@@ -17,6 +17,7 @@
 # your Gemini API key, plus per-plugin credentials
 config/api_keys.json
 config/api_key.json
+memory/token_usage.jsonl
 # the dashboard's TLS private key and certificate
 config/certs/
 # a LINKED WhatsApp session — committing it hands somebody your WhatsApp

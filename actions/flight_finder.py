@@ -70,6 +70,8 @@ def _parse_date(raw: str) -> str:
                 f"Return ONLY the date string, nothing else."
             )
         )
+        from core.token_usage import record_response
+        record_response(response, "gemini-flash-lite-latest", "flight_date_parse")
         result = response.text.strip()
         if re.match(r"\d{4}-\d{2}-\d{2}", result):
             return result
@@ -177,6 +179,8 @@ def _parse_flights_with_gemini(
                 )
             ),
         )
+        from core.token_usage import record_response
+        record_response(response, "gemini-flash-latest", "flight_results_parse")
         text     = re.sub(r"```(?:json)?", "", response.text).strip().rstrip("`").strip()
         flights  = json.loads(text)
         return flights if isinstance(flights, list) else []

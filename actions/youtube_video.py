@@ -187,6 +187,8 @@ def _summarize_with_gemini(transcript: str, video_url: str) -> str:
             )
         )
     )
+    from core.token_usage import record_response
+    record_response(response, "gemini-flash-latest", "youtube_summary")
     return response.text.strip()
 
 

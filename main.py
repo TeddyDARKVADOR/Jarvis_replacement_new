@@ -103,6 +103,7 @@ from core.plugin_loader        import discover_plugins
 from core                      import undo as undo_stack
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
+from core                      import token_usage
 from core.action_loader        import discover_actions
 from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
@@ -344,6 +345,66 @@ TOOL_DECLARATIONS = [
     },
 ]
 
+
+_COMPACT_TOOL_DESCRIPTIONS = {
+    "set_presence": (
+        "Optionally set a matching avatar expression or gesture while speaking. "
+        "Use only when a neutral face would feel wrong; never announce the call. "
+        "Prefer intent; otherwise set expression/intensity or affect values."
+    ),
+    "file_processor": (
+        "Process the user's uploaded file. Choose an action for its type: image, PDF, "
+        "document, table, JSON/XML, code, audio, video, archive, or presentation. "
+        "Use for commands about an uploaded file; the tool saves long results and returns their path."
+    ),
+    "code_studio": (
+        "Local isolated project workspace. Use for creating/building programs or projects, "
+        "and for modifying, testing, previewing, restoring, or inspecting Studio projects. "
+        "Long jobs run in the background; report only the verdict the tool returns."
+    ),
+    "browser_control": "Control browser tabs and pages: navigate, search, click/type, read text, and capture screenshots.",
+    "computer_settings": (
+        "Control OS settings and windows: volume, brightness, Wi-Fi, keys, app/window actions, "
+        "tabs, zoom, screenshots, and power. Shutdown, restart, and Wi-Fi changes require HUD confirmation."
+    ),
+    "computer_control": "Control keyboard and mouse, click or find screen elements, capture screenshots, and read or paste clipboard text.",
+    "save_memory": "Save a durable fact, preference, project detail, relationship, or personal context the user asked Jarvis to remember.",
+    "screen_process": "Capture and analyze the screen or webcam when asked what is visible. Use one capture; choose primary, secondary, or all displays as requested. Camera live view stays open until close_camera is called.",
+    "game_updater": "Manage Steam or Epic games: list, install, update, check status, or schedule updates. Use only for Steam/Epic; never use browser or web search for these actions.",
+    "code_helper": "Explain, edit, fix, run, or optimize one existing code file; write edits to the requested path. Use code_studio for creating or building a project.",
+    "file_controller": "Manage files and folders: list, find, read, create, write, move, copy, rename, or delete.",
+    "web_search": "Search current facts, news, research, prices, or comparisons. Use the matching mode and keep findings concise with source links.",
+    "recall_memory": "Search stored personal facts not present in the prompt. Use before guessing personal context; leave query empty to list all.",
+    "undo": "Reverse Jarvis's latest reversible file or setting change, or list available changes when asked.",
+}
+
+
+def _compact_tool_declarations(declarations: list[dict], local_mode: bool) -> list[dict]:
+    """Keep every callable schema while removing long repeated routing prose."""
+    import copy
+    compact = []
+    for original in declarations:
+        if original.get("name") == "code_studio" and not local_mode:
+            continue  # its own action handler refuses remote/headless execution
+        tool = copy.deepcopy(original)
+        if tool.get("name") in _COMPACT_TOOL_DESCRIPTIONS:
+            tool["description"] = _COMPACT_TOOL_DESCRIPTIONS[tool["name"]]
+        properties = tool.get("parameters", {}).get("properties", {})
+        if tool.get("name") == "save_memory" and "category" in properties:
+            properties["category"]["description"] = (
+                "identity, preferences, projects, relationships, wishes, or notes"
+            )
+        if tool.get("name") == "file_processor" and "action" in properties:
+            properties["action"]["description"] = (
+                "Choose: image describe/ocr/resize/compress/convert; PDF summarize/extract_text/to_word; "
+                "doc/text summarize/extract_text/fix/reformat/translate; CSV/Excel analyze/stats/filter/sort/convert; "
+                "JSON/XML validate/format/analyze; code explain/review/fix/optimize/run/document/test; "
+                "audio transcribe/trim/convert; video trim/frame/compress/transcribe/extract_audio/info/convert; "
+                "archive list/extract; presentation summarize/extract_text."
+            )
+        compact.append(tool)
+    return compact
+
 class _ReconnectSignal(Exception):
     """Raised inside the session TaskGroup to force a clean, voluntary reconnect
     (e.g. the user picked a new voice — the voice is fixed at connect time, so
@@ -424,6 +485,7 @@ class JarvisLive:
         # desktop, `server.headless_ui.HeadlessUI` on Oracle. Both have the
         # same surface, which server/selftest.py checks against this file.
         self.ui             = ui
+        token_usage.start_session()
         self._asst_name     = "JARVI    S"   # updated each session from config
         self.session              = None
         self.audio_in_queue       = None
@@ -791,9 +853,12 @@ class JarvisLive:
             input_audio_transcription={},
             system_instruction="\n".join(parts),
             tools=[{"function_declarations": (
-                TOOL_DECLARATIONS
-                + self._action_registry.get_tool_declarations()
-                + self._plugin_registry.get_tool_declarations()
+                _compact_tool_declarations(
+                    TOOL_DECLARATIONS
+                    + self._action_registry.get_tool_declarations()
+                    + self._plugin_registry.get_tool_declarations(),
+                    local_mode=bool(getattr(self.ui, "local_mode", False)),
+                )
             )}],
             # Hand back the handle captured from the last session_resumption
             # update. `handle=None` is exactly the old behaviour (ask for
@@ -1069,10 +1134,14 @@ class JarvisLive:
     async def _receive_audio(self):
         print("[JARVIS] 👂 Recv started")
         out_buf, in_buf = [], []
+        pending_usage = None
 
         try:
             while True:
                 async for response in self.session.receive():
+                    usage = getattr(response, "usage_metadata", None)
+                    if usage is not None:
+                        pending_usage = usage
 
                     # ── The server is about to close this session ────────────
                     # Gemini Live announces a planned disconnect with `go_away`
@@ -1130,6 +1199,10 @@ class JarvisLive:
                                 self._last_user_speech = time.monotonic()
 
                         if sc.turn_complete:
+                            if pending_usage is not None:
+                                token_usage.record_usage(LIVE_MODEL, "live_voice", pending_usage)
+                                pending_usage = None
+                                self.ui.write_log(f"SYS: {token_usage.format_totals()}")
                             if self._turn_done_event:
                                 self._turn_done_event.set()
 
@@ -1442,7 +1515,7 @@ class JarvisLive:
         lang = (lang_entry.get("value", "") if isinstance(lang_entry, dict) else str(lang_entry)).strip()
         lang = lang or "English"
 
-        convo = "\n".join(log[-40:])   # cap at last 40 turns to stay within token budget
+        convo = "\n".join(log[-24:])[-18000:]  # retain recent context within a hard input budget
         prompt = (
             f"Summarize this conversation in 1-2 sentences in {lang}. "
             "Focus on what the user accomplished or discussed. "
@@ -1453,9 +1526,11 @@ class JarvisLive:
             client = _genai.Client(api_key=_get_api_key())
             resp   = await asyncio.to_thread(
                 client.models.generate_content,
-                model="gemini-flash-latest",
+                model="gemini-3.1-flash-lite",
                 contents=prompt,
+                config={"max_output_tokens": 180},
             )
+            token_usage.record_response(resp, "gemini-3.1-flash-lite", "session_summary")
             summary = (resp.text or "").strip()
             if summary:
                 save_session_summary(summary, lang)

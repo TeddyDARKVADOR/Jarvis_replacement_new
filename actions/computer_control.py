@@ -343,6 +343,8 @@ def _screen_find(description: str) -> tuple[int, int] | None:
                 prompt,
             ],
         )
+        from core.token_usage import record_response
+        record_response(response, "gemini-flash-lite-latest", "screen_element_lookup")
 
         text = (response.text or "").strip()
         if "NOT_FOUND" in text.upper():
