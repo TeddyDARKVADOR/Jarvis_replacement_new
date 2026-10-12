@@ -3,13 +3,14 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from config import api_key_path
 
 try:
     import pyautogui
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE    = 0.06
     _PYAUTOGUI = True
-except ImportError:
+except Exception:
     _PYAUTOGUI = False
 
 try:
@@ -26,7 +27,7 @@ def _base_dir() -> Path:
 def _get_os() -> str:
     try:
         cfg = json.loads(
-            (_base_dir() / "config" / "api_keys.json").read_text(encoding="utf-8")
+            api_key_path(_base_dir()).read_text(encoding="utf-8")
         )
         return cfg.get("os_system", "windows").lower()
     except Exception:

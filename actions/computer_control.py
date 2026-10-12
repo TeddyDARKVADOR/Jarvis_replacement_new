@@ -5,6 +5,7 @@ import platform
 import re
 import string
 import subprocess
+from config import api_key_path
 import sys
 
 if platform.system() == "Windows":
@@ -20,7 +21,7 @@ try:
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE    = 0.05
     _PYAUTOGUI = True
-except ImportError:
+except Exception:
     _PYAUTOGUI = False
 
 try:
@@ -36,7 +37,7 @@ def _base_dir() -> Path:
 
 
 _BASE         = _base_dir()
-_CONFIG_PATH  = _BASE / "config" / "api_keys.json"
+_CONFIG_PATH  = api_key_path(_BASE)
 _MEMORY_PATH  = _BASE / "memory" / "long_term.json"
 
 def _load_config() -> dict:

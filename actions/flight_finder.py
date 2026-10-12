@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from config import is_windows, is_mac, is_linux
+from config import api_key_path, is_windows, is_mac, is_linux
 
 def _get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -15,7 +15,7 @@ def _get_base_dir() -> Path:
 
 
 BASE_DIR        = _get_base_dir()
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+API_CONFIG_PATH = api_key_path(BASE_DIR)
 
 
 def _get_api_key() -> str:

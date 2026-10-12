@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
@@ -29,7 +30,12 @@ SETTINGS_FILE = "settings.json"
 
 
 def settings_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+    if sys.platform.startswith("linux"):
+        base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    elif sys.platform == "darwin":
+        base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / "Library" / "Application Support")
+    else:
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     return Path(base) / APP_DIR_NAME
 
 

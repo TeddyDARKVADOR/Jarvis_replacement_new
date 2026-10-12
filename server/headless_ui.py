@@ -42,6 +42,7 @@ import json
 import threading
 import time
 from pathlib import Path
+from config import api_key_path
 
 from core import confirm as confirm_gate
 
@@ -51,7 +52,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # How long to wait before letting main.py retry after it reported an invalid
 # API key. main.py parks on `while not self.ui._win._ready` and would otherwise
-# hammer the API; on a server the key can be fixed in config/api_keys.json
+# hammer the API; on a server the key can be fixed in config/api_key.json
 # while the process keeps running, so re-arming after a pause is what allows
 # that fix to take effect without a restart.
 _REARM_AFTER_BAD_KEY = 60.0
@@ -150,7 +151,8 @@ class HeadlessUI:
     @property
     def assistant_name(self) -> str:
         try:
-            cfg = json.loads((BASE_DIR / "config" / "api_keys.json")
+            from config import api_key_path
+            cfg = json.loads(api_key_path(BASE_DIR)
                              .read_text(encoding="utf-8"))
             return (cfg.get("assistant_name") or "JARVIS").strip()
         except Exception:
@@ -240,7 +242,7 @@ class HeadlessUI:
         if not key:
             raise SystemExit(
                 "No Gemini API key found.\n"
-                f"  Expected \"gemini_api_key\" in: {BASE_DIR / 'config' / 'api_keys.json'}\n"
+                f"  Expected \"gemini_api_key\" in: {api_key_path(BASE_DIR)}\n"
                 "  Copy the file from your desktop install, or create it with that one field."
             )
 
@@ -250,7 +252,7 @@ class HeadlessUI:
         self.state.set(State.ERROR)
         self.write_log(
             "ERR: Gemini rejected the API key. Fix \"gemini_api_key\" in "
-            f"{BASE_DIR / 'config' / 'api_keys.json'} — retrying in "
+            f"{api_key_path(BASE_DIR)} — retrying in "
             f"{int(_REARM_AFTER_BAD_KEY)}s."
         )
 

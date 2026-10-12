@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+from config import api_key_path
 
 def get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -9,7 +10,7 @@ def get_base_dir() -> Path:
 
 BASE_DIR    = get_base_dir()
 CONFIG_DIR  = BASE_DIR / "config"
-CONFIG_FILE = CONFIG_DIR / "api_keys.json"
+CONFIG_FILE = api_key_path(BASE_DIR)
 
 def ensure_config_dir() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -40,7 +41,7 @@ def load_api_keys() -> dict:
     try:
         return json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
     except Exception as e:
-        print(f"❌ Failed to load api_keys.json: {e}")
+        print(f"❌ Failed to load {CONFIG_FILE.name}: {e}")
         return {}
 
 def get_gemini_key() -> str | None:
@@ -145,7 +146,7 @@ def save_brief_enabled(enabled: bool) -> None:
 # so unplugging a headset degrades to the built-in speakers instead of crashing.
 
 def _patch_config(**fields) -> None:
-    """Read-modify-write one or more keys in api_keys.json.
+    """Read-modify-write one or more keys in the active credentials file.
 
     Every setter in this file open-coded this. Collapsing it here means a new
     setting is one line, and there is one place where a corrupt config file is

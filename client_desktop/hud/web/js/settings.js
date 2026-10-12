@@ -199,8 +199,8 @@ export function createSettings(ctx) {
     $('s-device').value = d.device_name || '';
     $('set-welcome').hidden = !!d.paired || !!d.local;
 
-    option($('s-input'), d.inputs || [], d.input_device, 'Micro par défaut de Windows');
-    option($('s-output'), d.outputs || [], d.output_device, 'Sortie par défaut de Windows');
+    option($('s-input'), d.inputs || [], d.input_device, 'Micro par défaut du système');
+    option($('s-output'), d.outputs || [], d.output_device, 'Sortie par défaut du système');
     $('s-wake').checked = !!d.wake_word_enabled;
     $('s-wake-install').hidden = !!d.wake_available;
     $('s-wake-note').textContent = d.wake_available

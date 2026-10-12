@@ -8,11 +8,12 @@ import tempfile
 import platform
 from pathlib import Path
 from datetime import datetime
+from config import api_key_path
 
 try:
     import pyautogui
     _PYAUTOGUI = True
-except ImportError:
+except Exception:
     _PYAUTOGUI = False
 
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
@@ -24,7 +25,7 @@ def _get_base_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 def _get_api_key() -> str:
-    path = _get_base_dir() / "config" / "api_keys.json"
+    path = api_key_path(_get_base_dir())
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)["gemini_api_key"]
     

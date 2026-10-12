@@ -5,6 +5,20 @@
 #   python main.py --local     the brain on this PC, with the same HUD
 if __name__ == "__main__":
     import sys as _boot_sys
+    if _boot_sys.platform.startswith("linux"):
+        # `python main.py` should work after `python setup.py` without making
+        # users remember to activate the project venv first. Keep both launch
+        # paths (Oracle HUD and local brain) on the same installed dependencies.
+        import os as _boot_os
+        from pathlib import Path as _BootPath
+        _repo = _BootPath(__file__).resolve().parent
+        _venv_python = _repo / ".venv" / "bin" / "python"
+        if (_venv_python.is_file()
+                and _BootPath(_boot_sys.prefix).resolve() != _venv_python.parent.parent.resolve()):
+            _boot_os.execv(
+                str(_venv_python),
+                [str(_venv_python), str(_BootPath(__file__).resolve()), *_boot_sys.argv[1:]],
+            )
     if "--local" in _boot_sys.argv[1:]:
         _boot_sys.argv.remove("--local")
         from local_hud import main as _local_main
@@ -104,7 +118,8 @@ def get_base_dir():
     return Path(__file__).resolve().parent
 
 BASE_DIR        = get_base_dir()
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+from config import api_key_path
+API_CONFIG_PATH = api_key_path(BASE_DIR)
 PROMPT_PATH     = BASE_DIR / "core" / "prompt.txt"
 LIVE_MODEL          = "models/gemini-3.1-flash-live-preview"
 CHANNELS            = 1
@@ -181,6 +196,9 @@ TOOL_DECLARATIONS = [
             "Captures the screen or webcam image and lets you analyze it. "
             "MUST be called when user asks what is on screen, what you see, "
             "look at camera, analyze my screen, etc. "
+            "For requests about the secondary/second monitor, set display='secondary'; "
+            "for all connected displays together, set display='all'. "
+            "On KDE Wayland, the capture may contain all monitors; focus on the display the user asked about. "
             "You have NO visual ability without this tool. "
             "After the image is captured it is sent directly to you — describe what you see and answer the user's question. "
             "When using camera: the live view stays open until user says close it or calls close_camera."
@@ -189,7 +207,8 @@ TOOL_DECLARATIONS = [
             "type": "OBJECT",
             "properties": {
                 "angle": {"type": "STRING", "description": "'screen' to capture display, 'camera' for webcam. Default: 'screen'"},
-                "text":  {"type": "STRING", "description": "The question or instruction about the captured image"}
+                "text":  {"type": "STRING", "description": "The question or instruction about the captured image"},
+                "display": {"type": "STRING", "enum": ["primary", "secondary", "all"], "description": "Which display to capture. Use secondary when the user asks about their second/other monitor. Defaults to primary."}
             },
             "required": ["text"]
         }
@@ -866,8 +885,9 @@ class JarvisLive:
                         print(f"[Vision] 📷 Camera: {len(img_b):,} bytes")
                         _stall = "camera"
                     else:
-                        img_b, mime_t = await loop.run_in_executor(None, _capture_screen)
-                        print(f"[Vision] 🖥️  Screen: {len(img_b):,} bytes")
+                        display = args.get("display", "primary")
+                        img_b, mime_t = await loop.run_in_executor(None, _capture_screen, display)
+                        print(f"[Vision] 🖥️  Screen ({display}): {len(img_b):,} bytes")
                         _stall = "screen"
                     self._pending_vision = (img_b, mime_t, user_text, angle)
                     result = (
