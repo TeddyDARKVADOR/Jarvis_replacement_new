@@ -41,11 +41,12 @@ from anywhere.
 from __future__ import annotations
 
 import sys
-import winreg
+import os
 from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "JarvisDesktop"
+LINUX_AUTOSTART = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "autostart" / "jarvis-desktop.desktop"
 
 
 def launcher_path() -> Path:
@@ -64,11 +65,33 @@ def pythonw() -> Path:
 
 
 def command() -> str:
+    if sys.platform.startswith("linux"):
+        if os.environ.get("JARVIS_LOCAL_MODE") == "1":
+            script = Path(__file__).resolve().parent.parent / "main.py"
+            return f'"{sys.executable}" "{script}" --local'
+        return f'"{sys.executable}" -m client_desktop'
     return f'"{pythonw()}" "{launcher_path()}"'
 
 
+def _windows_registry():
+    import winreg
+    return winreg
+
+
+def _linux_entry() -> str:
+    repo = Path(__file__).resolve().parent.parent
+    return "\n".join((
+        "[Desktop Entry]", "Type=Application", "Name=Jarvis Desktop",
+        "Comment=HUD JARVIS", f"Exec={command()}",
+        f"Path={repo}", "Terminal=false", "X-GNOME-Autostart-enabled=true", "",
+    ))
+
+
 def is_enabled() -> bool:
+    if sys.platform.startswith("linux"):
+        return LINUX_AUTOSTART.is_file()
     try:
+        winreg = _windows_registry()
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
             value, _ = winreg.QueryValueEx(key, VALUE_NAME)
             return bool(value)
@@ -85,7 +108,13 @@ def matches_current_install() -> bool:
     Run entry that fails silently at every login, and the symptom is "JARVIS
     stopped starting" with nothing anywhere to explain it.
     """
+    if sys.platform.startswith("linux"):
+        try:
+            return LINUX_AUTOSTART.read_text(encoding="utf-8") == _linux_entry()
+        except OSError:
+            return False
     try:
+        winreg = _windows_registry()
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
             value, _ = winreg.QueryValueEx(key, VALUE_NAME)
             return str(value) == command()
@@ -94,7 +123,15 @@ def matches_current_install() -> bool:
 
 
 def enable() -> tuple[bool, str]:
+    if sys.platform.startswith("linux"):
+        try:
+            LINUX_AUTOSTART.parent.mkdir(parents=True, exist_ok=True)
+            LINUX_AUTOSTART.write_text(_linux_entry(), encoding="utf-8")
+            return True, str(LINUX_AUTOSTART)
+        except OSError as exc:
+            return False, str(exc)
     try:
+        winreg = _windows_registry()
         with winreg.CreateKeyEx(
             winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE
         ) as key:
@@ -105,7 +142,14 @@ def enable() -> tuple[bool, str]:
 
 
 def disable() -> tuple[bool, str]:
+    if sys.platform.startswith("linux"):
+        try:
+            LINUX_AUTOSTART.unlink(missing_ok=True)
+            return True, "removed"
+        except OSError as exc:
+            return False, str(exc)
     try:
+        winreg = _windows_registry()
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE
         ) as key:

@@ -4,6 +4,7 @@ import json
 import re
 import time
 from pathlib import Path
+from config import api_key_path
 
 
 def get_base_dir():
@@ -13,7 +14,7 @@ def get_base_dir():
 
 
 BASE_DIR         = get_base_dir()
-API_CONFIG_PATH  = BASE_DIR / "config" / "api_keys.json"
+API_CONFIG_PATH  = api_key_path(BASE_DIR)
 PROJECTS_DIR     = Path.home() / "Desktop" / "JarvisProjects"
 MAX_FIX_ATTEMPTS = 5
 MODEL_PLANNER    = "gemini-flash-latest"

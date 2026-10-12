@@ -267,11 +267,18 @@ def run() -> bool:  # noqa: C901
 
     # -- 13. autostart, without writing anything -----------------------------
     command = autostart_mod.command()
+    if sys.platform.startswith("linux"):
+        startup_ok = ("-m client_desktop" in command
+                      and str(sys.executable) in command)
+        startup_name = "Linux start-up command uses the active Python and HUD module"
+    else:
+        startup_ok = (command.count('"') == 4
+                      and "launch.pyw" in command
+                      and autostart_mod.launcher_path().is_file())
+        startup_name = "Windows start-up command points at launch.pyw with pythonw"
     report.check(
-        "13 the startup command points at launch.pyw with pythonw",
-        command.count('"') == 4
-        and "launch.pyw" in command
-        and autostart_mod.launcher_path().is_file(),
+        "13 " + startup_name,
+        startup_ok,
         command,
     )
 

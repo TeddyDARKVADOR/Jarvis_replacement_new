@@ -2,7 +2,19 @@
 import json, os, platform
 from pathlib import Path
 
-_CONFIG_PATH = Path(__file__).parent / "api_keys.json"
+_CONFIG_DIR = Path(__file__).parent
+_CONFIG_PATH = _CONFIG_DIR / "api_keys.json"  # legacy spelling, kept for callers
+
+def api_key_path(base_dir: Path | None = None) -> Path:
+    """Return the active credentials file, preferring the singular current name.
+
+    Older installs use ``api_keys.json``. Keep reading those until the new
+    ``api_key.json`` exists, so upgrading does not disconnect existing users.
+    """
+    directory = (Path(base_dir) / "config") if base_dir is not None else _CONFIG_DIR
+    current = directory / "api_key.json"
+    legacy = directory / "api_keys.json"
+    return current if current.exists() or not legacy.exists() else legacy
 
 def _platform_os() -> str:
     """Auto-detect OS when config file is absent."""
@@ -12,7 +24,7 @@ def _platform_os() -> str:
 
 def get_config() -> dict:
     try:
-        with open(_CONFIG_PATH, "r", encoding="utf-8-sig") as f:
+        with open(api_key_path(), "r", encoding="utf-8-sig") as f:
             return json.load(f)
     except Exception:
         return {}

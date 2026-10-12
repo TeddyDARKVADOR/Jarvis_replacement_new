@@ -8,11 +8,12 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import quote_plus
+from config import api_key_path
 
 try:
     import pyautogui
     _PYAUTOGUI = True
-except ImportError:
+except Exception:
     _PYAUTOGUI = False
 
 try:
@@ -43,7 +44,7 @@ def _get_base_dir() -> Path:
 
 
 BASE_DIR        = _get_base_dir()
-API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
+API_CONFIG_PATH = api_key_path(BASE_DIR)
 
 HEADERS = {
     "User-Agent": (

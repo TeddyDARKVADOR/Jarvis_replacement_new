@@ -368,8 +368,9 @@ def _can_boot() -> str:
             __import__(mod)
         except Exception:
             return why
-    if not (BASE_DIR / "config" / "api_keys.json").exists():
-        return "config/api_keys.json"
+    from config import api_key_path
+    if not api_key_path(BASE_DIR).exists():
+        return str(api_key_path(BASE_DIR).relative_to(BASE_DIR))
     return ""
 
 

@@ -6,13 +6,14 @@ import time
 import subprocess
 import platform
 from pathlib import Path
+from config import api_key_path
 
 try:
     import pyautogui
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE    = 0.05
     _PYAUTOGUI = True
-except ImportError:
+except Exception:
     _PYAUTOGUI = False
 
 try:
@@ -38,7 +39,7 @@ def _get_base_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 def _get_api_key() -> str:
-    path = _get_base_dir() / "config" / "api_keys.json"
+    path = api_key_path(_get_base_dir())
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)["gemini_api_key"]
 

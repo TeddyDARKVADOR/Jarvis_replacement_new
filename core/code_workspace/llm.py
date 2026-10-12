@@ -6,7 +6,7 @@ sandbox, commands through the runner's policy) before anything is created, its
 file contents are written by the sandbox, and whether its fix worked is
 decided by running the tests — never by what it says.
 
-`StudioLLM` is the default (Gemini, with the key in config/api_keys.json, the
+`StudioLLM` is the default (Gemini, with the key in the active config credentials file, the
 same way actions/dev_agent.py calls it). Anything with the same `complete()`
 method can replace it — the selftest uses a scripted fake.
 """
@@ -71,7 +71,7 @@ class StudioLLM:
             from memory.config_manager import get_gemini_key
             key = get_gemini_key()
             if not key:
-                raise LLMError("Aucune clé Gemini dans config/api_keys.json.")
+                raise LLMError("Aucune clé Gemini dans config/api_key.json (ou ancien api_keys.json).")
             self._client = genai.Client(api_key=key)
         return self._client
 
@@ -138,7 +138,7 @@ class GroqLLM:
     def __init__(self, model: str | None = None, key: str | None = None, http=None) -> None:
         self.key = key or groq_key()
         if not self.key:
-            raise LLMError("Aucune clé Groq (groq_api_key) dans config/api_keys.json.")
+            raise LLMError("Aucune clé Groq (groq_api_key) dans le fichier de configuration des clés.")
         self.requested = (model or "").strip() or None
         self._model: str | None = None
         self._http = http

@@ -23,10 +23,11 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from config import api_key_path
 from datetime import datetime
 
 def _get_api_key() -> str:
-    config_path = Path(__file__).resolve().parent.parent / "config" / "api_keys.json"
+    config_path = api_key_path(Path(__file__).resolve().parent.parent)
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)["gemini_api_key"]
 

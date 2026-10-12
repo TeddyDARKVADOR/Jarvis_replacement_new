@@ -2,7 +2,7 @@
 JARVIS on this PC, with the same HUD as JARVIS on Oracle.
 
 ```
-python main.py --local          the brain here (Gemini key in config/api_keys.json)
+python main.py --local          the brain here (Gemini key in config/api_key.json or legacy api_keys.json)
 python main.py                  the brain on Oracle, this PC as its terminal
 python main.py --classic        the original window, unchanged
 ```
@@ -30,12 +30,14 @@ WHY LocalUI DERIVES FROM server.headless_ui.HeadlessUI
 from __future__ import annotations
 
 import re
+import os
 import sys
 import threading
 import time
 import hashlib
 import math
 from pathlib import Path
+from config import api_key_path
 
 BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
@@ -126,7 +128,7 @@ class LocalUI(HeadlessUI):
             self.store.set_link(LinkState.RECONNECTING)
         elif "api key invalid" in low or "rejected the api key" in low:
             self.store.set_link(LinkState.ERROR,
-                                "Clé Gemini refusée — corrigez config/api_keys.json")
+                                f"Clé Gemini refusée — corrigez {api_key_path(BASE_DIR).relative_to(BASE_DIR)}")
         elif low.startswith("sys: awake"):
             # The wake word was heard: replay a rising edge so the HUD shows
             # the same acknowledgement ring it shows online.
@@ -259,8 +261,9 @@ class LocalUI(HeadlessUI):
                 return
             if not told:
                 told = True
-                self.store.set_link(LinkState.ERROR, "Clé Gemini absente — ajoutez-la dans config/api_keys.json")
-                self.store.log(f"ERR: aucune clé Gemini dans {BASE_DIR / 'config' / 'api_keys.json'}")
+                key_path = api_key_path(BASE_DIR)
+                self.store.set_link(LinkState.ERROR, f"Clé Gemini absente — ajoutez-la dans {key_path.relative_to(BASE_DIR)}")
+                self.store.log(f"ERR: aucune clé Gemini dans {key_path}")
             time.sleep(2)
 
     def prompt_reconfig(self) -> None:
@@ -274,11 +277,11 @@ class LocalUI(HeadlessUI):
         self._win._ready = False
         self.store.set_link(
             LinkState.ERROR,
-            "Clé Gemini refusée — modifiez config/api_keys.json ; Jarvis attend.",
+            f"Clé Gemini refusée — modifiez {api_key_path(BASE_DIR).relative_to(BASE_DIR)} ; Jarvis attend.",
         )
         self.write_log(
             "ERR: Clé Gemini refusée. Modifiez gemini_api_key dans "
-            f"{BASE_DIR / 'config' / 'api_keys.json'} ; aucune nouvelle tentative avant modification."
+            f"{api_key_path(BASE_DIR)} ; aucune nouvelle tentative avant modification."
         )
 
         try:
@@ -374,6 +377,8 @@ class LocalBackend:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    # Let the shared startup setting preserve this brain choice at next login.
+    os.environ["JARVIS_LOCAL_MODE"] = "1"
 
     from PyQt6.QtCore import QObject, QTimer, pyqtSignal
     from PyQt6.QtWidgets import QApplication
