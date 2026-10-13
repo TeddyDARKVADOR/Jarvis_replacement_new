@@ -8,7 +8,7 @@
   "nodes": [
     {"id": "contrat", "label": "Contrat V2", "kind": "racine",
      "summary": "Test concret : supprimer les fichiers ajoutés et relancer JARVIS. S'il démarre et fonctionne exactement comme avant, la fonctionnalité respecte le contrat.",
-     "details": ["Point de retour : v1.0-jarvis-24-7 (commit 425be0a).", "git diff v1.0-jarvis-24-7 -- main.py mesure ce que la V2 a touché au cœur : il doit rester court."]},
+     "details": ["Point de retour : v1.0-jarvis-24-7 (commit 76030de depuis le nettoyage de l'historique du 2026-10-13).", "git diff v1.0-jarvis-24-7 -- main.py mesure ce que la V2 a touché au cœur : il doit rester court."]},
 
     {"id": "r.arbre", "label": "L'arbre de décision", "kind": "regle",
      "summary": "Le premier « oui » gagne : 1 capacité appelable par Gemini → plugins/ ; 2 affichage, capteur ou UX téléphone → client-android/ ; 3 service de fond permanent → nouveau paquet racine + hook d'une ligne ; 4 sinon, modification du cœur en dernier recours, justifiée par écrit."},
