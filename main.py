@@ -570,6 +570,16 @@ class JarvisLive:
         self.ui.on_wake_manual   = self._ui_wake_manual   # () -> toggle awake/asleep
         self.ui.on_wake_install  = self._ui_wake_install  # () -> (ok, msg)
 
+        # ── cognition/ (optionnel, mode local) ───────────────────────────────
+        # Mémoire avec provenance, journal d'événements, constitution. Absent,
+        # hors mode local ou en panne -> None, et chaque hook ci-dessous est un
+        # `if self._cognition:` : le comportement V1 reste identique.
+        try:
+            from cognition import attach as _attach_cognition
+            self._cognition = _attach_cognition(self)
+        except Exception:
+            self._cognition = None
+
     # ── Wake word: state machine ─────────────────────────────────────────────
 
     def _wake_state(self) -> dict:
@@ -845,6 +855,8 @@ class JarvisLive:
         parts = [time_ctx, identity_ctx]
         if mem_str:
             parts.append(mem_str)
+        if self._cognition:
+            parts.append(self._cognition.prompt_block())
         parts.append(sys_prompt)
 
         cfg = dict(
@@ -903,6 +915,8 @@ class JarvisLive:
             if key and value:
                 update_memory({category: {key: {"value": value}}})
                 print(f"[Memory] 💾 save_memory: {category}/{key} = {value}")
+                if self._cognition:
+                    self._cognition.on_save_memory(category, key, value)
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
             return types.FunctionResponse(
@@ -1036,6 +1050,8 @@ class JarvisLive:
             self.ui.set_state("LISTENING")
 
         print(f"[JARVIS] 📤 {name} → {str(result)[:80]}")
+        if self._cognition:
+            self._cognition.observe_tool(name, args, result)
         return types.FunctionResponse(
             id=fc.id, name=name,
             response={"result": result}
@@ -1218,6 +1234,8 @@ class JarvisLive:
                             if full_in:
                                 self.ui.write_log(f"You: {full_in}")
                                 self._session_log.append(f"User: {full_in}")
+                                if self._cognition:
+                                    self._cognition.observe_turn("user", full_in)
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "user",
@@ -1230,6 +1248,8 @@ class JarvisLive:
                             if full_out:
                                 self.ui.write_log(f"{self._asst_name}: {full_out}")
                                 self._session_log.append(f"{self._asst_name}: {full_out}")
+                                if self._cognition:
+                                    self._cognition.observe_turn("assistant", full_out)
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "jarvis",
@@ -1534,6 +1554,8 @@ class JarvisLive:
             summary = (resp.text or "").strip()
             if summary:
                 save_session_summary(summary, lang)
+                if self._cognition:
+                    self._cognition.archive_session(summary)
         except Exception as e:
             print(f"[Memory] ⚠️ Session summary failed: {e}")
 
