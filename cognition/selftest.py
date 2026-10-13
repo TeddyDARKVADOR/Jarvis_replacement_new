@@ -126,8 +126,11 @@ def _reverse_deps_and_guards():
                                  "plugins/cognition_self.py"], importers
     lines = (BASE_DIR / "main.py").read_text(encoding="utf-8").splitlines()
     uses = [i for i, l in enumerate(lines) if "self._cognition." in l]
-    assert len(uses) == 6, f"{len(uses)} usages de self._cognition.* (6 attendus)"
+    assert len(uses) == 8, f"{len(uses)} usages de self._cognition.* (8 attendus)"
     for i in uses:
+        # gardé sur la ligne même (« … if self._cognition else "" ») ou juste au-dessus
+        if "if self._cognition else" in lines[i] or "if self._cognition else" in lines[i + 1]:
+            continue
         j = i - 1
         while lines[j].strip().startswith("#"):
             j -= 1
@@ -168,16 +171,16 @@ def _removal():
 @check("4 schéma créé, versionné, FTS5 opérationnel")
 def _schema():
     s = Store(TMP / "schema.db")
-    assert s.schema_version == 6
+    assert s.schema_version == 7
     tables = {r["name"] for r in s.query("SELECT name FROM sqlite_master WHERE type='table'")}
     for t in ("events", "memories", "memories_fts", "memory_links", "constitution_versions",
               "affect_state", "affect_log", "meta", "goals", "goal_events",
               "tool_outcomes", "memory_reviews", "autonomy_runs", "autonomy_steps",
-              "memory_embeddings"):
+              "memory_embeddings", "sync_outbox", "sync_state", "sync_tombstones"):
         assert t in tables, t
     s.close()
     s = Store(TMP / "schema.db")                  # réouverture : pas de remigration
-    assert s.schema_version == 6
+    assert s.schema_version == 7
     s.close()
     # Une base v1 (celle du commit précédent) migre sans perte.
     import sqlite3
@@ -188,9 +191,9 @@ def _schema():
     con.execute("INSERT INTO events(ts, kind) VALUES ('2026-10-13', 'system')")
     con.commit(); con.close()
     s = Store(old)
-    assert s.schema_version == 6 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
+    assert s.schema_version == 7 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
     s.close()
-    return "user_version=6, 15 tables ; une base v1 migre en gardant ses données"
+    return "user_version=7, 18 tables ; une base v1 migre en gardant ses données"
 
 
 @check("5 conservation après redémarrage (fermeture puis réouverture)")
@@ -1061,6 +1064,52 @@ def _semantic():
     assert left == 0, "le vecteur a survécu à l'oubli"
     c.close()
     return "traduction acceptée par le sens, invention gardée non vérifiée, « infirmière » → nurse, vecteur oublié"
+
+
+@check("63 une seule mémoire sur deux PC : appris, rejeté, oublié, partout ; ce qui n'est pas vérifié reste hors du prompt")
+def _shared_memory():
+    import time as _t
+    from cognition.sync import MemorySync
+    folder = TMP / "shared"
+    a, b = _cog("pc_a"), _cog("pc_b")
+    sa = MemorySync(a.store, a.memory, folder, device="pc-a", log=lambda m: None)
+    sb = MemorySync(b.store, b.memory, folder, device="pc-b", log=lambda m: None)
+    sa.seed(), sb.seed()
+    a.memory.add("city: Lyon", kind="semantic", source="user_stated", slot="identity/city")
+    a.memory.add("hobby: escalade", kind="semantic", source="user_stated", slot="preferences/hobby")
+    a.memory.add("car: red Tesla", kind="semantic", source="model_inferred", slot="notes/car")
+    sa.sync_once()
+    sb.sync_once()
+    assert len(b.memory.by_slot("identity/city")) == 1, "B n'a rien reçu"
+    block = b.memory_prompt_block()
+    assert "Lyon" in block and "escalade" in block, block
+    assert "Tesla" not in block, "un fait non vérifié est entré dans le prompt"
+    assert b.store.query("SELECT count(*) n FROM sync_outbox")[0]["n"] == 0, "écho : B renverrait ce qu'il a reçu"
+    # B rejette un souvenir dans ESPRIT : A ne le met plus dans son prompt
+    hobby = b.memory.by_slot("preferences/hobby")[0]
+    _t.sleep(1.1)                                           # updated_at est à la seconde
+    b.store.execute("UPDATE memories SET status='retracted', updated_at=? WHERE id=?",
+                    (datetime.now(timezone.utc).isoformat(timespec="seconds"), hobby["id"]))
+    sb.sync_once()
+    sa.sync_once()
+    assert "escalade" not in a.memory_prompt_block(), "rejeté sur B, encore dans le prompt de A"
+    # B a appris seul quelque chose sur Ayşe ; A demande de l'oublier : parti partout
+    b.memory.add("sister: Ayse, nurse", kind="semantic", source="user_stated", slot="relationships/sister")
+    a.memory.add("sister age: Ayse is 31", kind="semantic", source="user_stated", slot="relationships/sister_age")
+    sa.sync_once()
+    a.memory.forget_about("Ayse")
+    sa.sync_once()
+    sb.sync_once()
+    sa.sync_once()
+    left = [r["content"] for r in b.memory.search("Ayse", limit=10, touch=False)]
+    assert not left, f"oublié sur A, encore sur B : {left}"
+    assert not a.memory.search("Ayse", limit=10, touch=False), "revenu sur A depuis B"
+    # une ligne à moitié copiée par OneDrive attend la prochaine fois
+    with sa.own_file.open("a", encoding="utf-8") as fh:
+        fh.write('{"v":1,"op":"upsert","row":{"id":"x"')
+    assert sb.import_() == 0
+    a.close(), b.close()
+    return "appris sur A → prompt de B ; rejeté sur B → hors du prompt de A ; oubli par sujet partout ; pas d'écho"
 
 
 @check("40 échéance dépassée -> expiré ; l'historique reste")

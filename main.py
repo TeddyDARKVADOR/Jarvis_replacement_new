@@ -885,7 +885,10 @@ class JarvisLive:
             _user_name = ""
 
         memory     = load_memory()
-        mem_str    = format_memory_for_prompt(memory)
+        # One memory: the cognitive store (verified facts only, synced across
+        # PCs) when it runs; long_term.json only as the V1 fallback.
+        mem_str    = ((self._cognition.memory_prompt_block() if self._cognition else "")
+                      or format_memory_for_prompt(memory))
         sys_prompt = _load_system_prompt()
 
         now      = datetime.now()
@@ -1003,7 +1006,9 @@ class JarvisLive:
                 # the executor deliberately — it is a dictionary scan over a few
                 # hundred short strings, and a thread hop would cost more than
                 # the work itself.
-                result = search_memory(args.get("query", ""), limit=8)
+                result = ((self._cognition.recall_facts(args.get("query", ""), limit=8)
+                           if self._cognition else "")
+                          or search_memory(args.get("query", ""), limit=8))
 
             elif name == "undo":
                 if str(args.get("action", "")).lower().strip() == "list":

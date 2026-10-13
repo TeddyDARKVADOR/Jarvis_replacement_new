@@ -196,6 +196,8 @@ class Cognition:
     def close(self) -> None:
         self._flush_saves()
         self.flush()
+        if getattr(self, "sync", None) is not None:
+            self.sync.stop()
         self._writer.stop()
         self._llm.stop()
         self.store.close()
@@ -485,6 +487,87 @@ class Cognition:
             out = out[:PROMPT_BUDGET].rsplit("\n", 1)[0]
         return out + "\n"
 
+    # ── La mémoire du prompt : une seule source ──────────────────────────────
+    #
+    # main.py mettait long_term.json (V1) dans le prompt. Deux défauts : un
+    # souvenir rejeté dans ESPRIT y restait, et un fait non vérifié y entrait
+    # par la V1. La cognition est maintenant la source ; long_term.json reste
+    # écrit (et réimporté) pour la compatibilité, mais n'est plus lu ici.
+
+    _PROMPT_STATUSES = ("active", "validated")
+    _CAT_LABELS = {"preferences": "Preferences", "projects": "Projects",
+                   "relationships": "Relationships", "wishes": "Wishes", "notes": "Notes"}
+
+    @_safe(default="")
+    def memory_prompt_block(self, core_chars: int = 900, index_chars: int = 420,
+                            per_category: int = 4) -> str:
+        rows = [dict(r) for r in self.store.query(
+            "SELECT slot, content, updated_at, created_at FROM memories WHERE kind='semantic' "
+            "AND slot IS NOT NULL AND status IN ('active','validated') "
+            "ORDER BY COALESCE(updated_at, created_at) DESC, rowid DESC")]
+        if not rows:
+            return ""
+
+        def value(r):
+            text = r["content"]
+            return text.split(":", 1)[1].strip() if ":" in text else text
+
+        def label(r):
+            return r["slot"].split("/", 1)[-1].replace("_", " ").title()
+
+        seen, core, shown, overflow, used = set(), [], {}, [], 0
+        for r in rows:
+            if r["slot"] in seen:
+                continue
+            seen.add(r["slot"])
+            cat = r["slot"].split("/", 1)[0]
+            if cat == "identity":
+                if r["slot"] == "identity/language":
+                    # comme la V1 : une observation, pas un ordre de langue
+                    core.append(f"Has spoken to you in: {value(r)[:40]} (an observation about the "
+                                "past — always answer in the language of their CURRENT message)")
+                else:
+                    core.append(f"{label(r)}: {value(r)[:200]}")
+                continue
+            line = f"  - {label(r)}: {value(r)}"
+            if len(shown.get(cat, [])) < per_category and used + len(line) + 1 <= core_chars:
+                shown.setdefault(cat, []).append(line)
+                used += len(line) + 1
+            else:
+                overflow.append(label(r))
+        out = ["[WHAT YOU KNOW ABOUT THIS PERSON — verified memories only; use naturally, "
+               "never recite like a list]", *core]
+        for cat, lab in self._CAT_LABELS.items():
+            if shown.get(cat):
+                out += ["", f"{lab}:", *shown[cat]]
+        for cat in sorted(set(shown) - set(self._CAT_LABELS)):
+            out += ["", f"{cat.title()}:", *shown[cat]]
+        if overflow:
+            names, budget = [], index_chars
+            for n in overflow:
+                if budget - len(n) - 2 < 0:
+                    break
+                names.append(n)
+                budget -= len(n) + 2
+            more = len(overflow) - len(names)
+            out += ["", "[ALSO REMEMBERED — values not shown here. Call recall_memory with a keyword "
+                        "to read any of these before saying you do not know]",
+                    ", ".join(names) + (f" (+{more} more)" if more else "")]
+        return "\n".join(out) + "\n"
+
+    @_safe(default="")
+    def recall_facts(self, query: str, limit: int = 8) -> str:
+        """recall_memory sur la mémoire cognitive : les faits, vérifiés d'abord."""
+        rows = [r for r in self.memory.search(query or "", limit=limit * 2, kinds=("semantic",),
+                                               embedder=self.embedder)][:limit]
+        if not rows:
+            return (f"Nothing stored about '{query}'." if query else "No stored facts yet.")
+        lines = []
+        for r in rows:
+            tag = "" if r["verified"] else f" [{r['status'].upper()} — not verified, say so]"
+            lines.append(f"- {r['content']}{tag}")
+        return "\n".join(lines)
+
     @_safe(default="Mémoire épisodique indisponible.")
     def recall(self, query: str, limit: int = 5) -> str:
         rows = self.memory.search(query or "", limit=limit, embedder=self.embedder)
@@ -714,4 +797,21 @@ def attach(jarvis, db_path: Path | str | None = None,
         if total:
             cog._log(f"{total} souvenir(s) vectorisé(s) pour le rappel par le sens")
     _active._llm.submit(_backfill)
+
+    # Une seule mémoire sur tous les PC (cognition/sync.py), OneDrive par défaut.
+    _active.sync = None
+    if db_path is None:                   # jamais dans le selftest
+        try:
+            import json as _json
+            from config import api_key_path
+            from .sync import MemorySync, default_folder
+            cfg = _json.loads(Path(api_key_path(Path(__file__).resolve().parent.parent))
+                              .read_text(encoding="utf-8-sig"))
+            folder = default_folder(cfg if isinstance(cfg, dict) else {})
+            if folder:
+                _active.sync = MemorySync(_active.store, _active.memory, folder, log=_log)
+                _active.sync.start(on_change=lambda n: _active._llm.submit(_active.index_embeddings))
+                _log(f"mémoire partagée avec vos autres PC : {folder} (ce PC : {_active.sync.device})")
+        except Exception as e:
+            _log(f"mémoire partagée indisponible : {type(e).__name__}: {e}")
     return _active

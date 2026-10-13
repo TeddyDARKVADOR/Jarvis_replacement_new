@@ -219,6 +219,17 @@ class Memory:
         rows = self.about(subject)
         for r in rows:
             self.forget(r["id"], session_id=session_id)
+        # Les autres PC appliquent aussi le SUJET (cognition/sync.py) : un fait
+        # qu'ils ont appris sans l'avoir encore partagé doit partir aussi.
+        try:
+            self.store.execute("INSERT OR REPLACE INTO sync_tombstones(key, kind, ts) VALUES (?,?,?)",
+                               ("subject:" + subject.strip()[:200], "subject", self._ts()[:19]))
+            applying = self.store.query("SELECT v FROM sync_state WHERE k='applying'")
+            if not (applying and applying[0]["v"] == "1"):
+                self.store.execute("INSERT INTO sync_outbox(memory_id, op, ts) VALUES (?,?,?)",
+                                   (subject.strip()[:200], "forget_subject", self._ts()))
+        except Exception:
+            pass                                   # base d'avant la v7
         return len(rows)
 
     # ── Lecture ──────────────────────────────────────────────────────────────
