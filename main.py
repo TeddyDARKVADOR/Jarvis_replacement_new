@@ -919,6 +919,7 @@ class JarvisLive:
             parts.append(self._cognition.prompt_block())
         parts.append(sys_prompt)
 
+        self._phone_barge_in = bool(_cfg_all.get("phone_barge_in", False))
         _trigger = _live_context_limit(_cfg_all, "live_context_trigger_tokens", 32000)
         _target = min(_live_context_limit(_cfg_all, "live_context_target_tokens", 16000),
                       _trigger - 4000)
@@ -1809,7 +1810,12 @@ class JarvisLive:
             self._phone_active = True   # phone is streaming — silence PC mic
             with self._speaking_lock:
                 speaking = self._is_speaking
-            if not speaking and not self.ui.muted:
+            # phone_barge_in (api_keys.json, off by default): keep listening
+            # while JARVIS speaks, so Gemini's own voice detection can cut him
+            # off. Off because the Android client records without echo
+            # cancellation: on the phone's loudspeaker he would interrupt
+            # himself. With a headset it is what makes "stop" work by voice.
+            if (not speaking or getattr(self, "_phone_barge_in", False)) and not self.ui.muted:
                 try:
                     self.out_queue.put_nowait(chunk)
                 except asyncio.QueueFull:
@@ -1883,6 +1889,8 @@ class JarvisLive:
             from dashboard.server import DashboardServer
             self._dashboard = DashboardServer()
             self._dashboard.set_connect_callback(self._on_phone_connected)
+            # POST /api/wake was inert: nothing registered a callback.
+            self._dashboard.set_wake_callback(lambda: self.wake("dashboard"))
             asyncio.create_task(self._dashboard.serve())
             # Runs for the whole lifetime, not just inside an active session
             asyncio.create_task(self._process_dashboard_commands())
