@@ -19,6 +19,7 @@ Ce qui est vérifié (cf. docs/cognition/RECHERCHE.md §6, phases 1–2) :
   23–25 second avis sur les traductions, pas de blanchiment par la V1
   26–32 moteur émotionnel : règles, décroissance, sécurité, influence, rapport
   33–35 réflexion citée, déclenchement, modèle de soi
+  36–41 objectifs : règles, porte CONFIRMER, budgets, boucles, échéances, prompt
 """
 from __future__ import annotations
 
@@ -116,7 +117,8 @@ def _reverse_deps_and_guards():
             continue
         if "from cognition" in src or "import cognition" in src:
             importers.append(rel)
-    assert sorted(importers) == ["main.py", "plugins/cognition_memory.py",
+    assert sorted(importers) == ["main.py", "plugins/cognition_goals.py",
+                                 "plugins/cognition_memory.py",
                                  "plugins/cognition_self.py"], importers
     lines = (BASE_DIR / "main.py").read_text(encoding="utf-8").splitlines()
     uses = [i for i, l in enumerate(lines) if "self._cognition." in l]
@@ -146,14 +148,15 @@ def _removal():
             raise AssertionError("l'import aurait dû échouer")
         except ImportError:
             pass
-        for name in ("plugins.cognition_memory", "plugins.cognition_self"):
+        for name in ("plugins.cognition_memory", "plugins.cognition_self",
+                     "plugins.cognition_goals"):
             sys.modules.pop(name, None)
             out = importlib.import_module(name).run({"query": "x"})
             assert "not available" in out, out
     finally:
         sys.modules.pop("cognition", None)
         sys.modules.update(saved)
-    return "JARVIS démarre sans le paquet ; les 2 plugins répondent « indisponible »"
+    return "JARVIS démarre sans le paquet ; les 3 plugins répondent « indisponible »"
 
 
 # ── 4–5. Schéma et persistance ───────────────────────────────────────────────
@@ -161,14 +164,14 @@ def _removal():
 @check("4 schéma créé, versionné, FTS5 opérationnel")
 def _schema():
     s = Store(TMP / "schema.db")
-    assert s.schema_version == 2
+    assert s.schema_version == 3
     tables = {r["name"] for r in s.query("SELECT name FROM sqlite_master WHERE type='table'")}
     for t in ("events", "memories", "memories_fts", "memory_links", "constitution_versions",
-              "affect_state", "affect_log", "meta"):
+              "affect_state", "affect_log", "meta", "goals", "goal_events"):
         assert t in tables, t
     s.close()
     s = Store(TMP / "schema.db")                  # réouverture : pas de remigration
-    assert s.schema_version == 2
+    assert s.schema_version == 3
     s.close()
     # Une base v1 (celle du commit précédent) migre sans perte.
     import sqlite3
@@ -179,9 +182,9 @@ def _schema():
     con.execute("INSERT INTO events(ts, kind) VALUES ('2026-10-13', 'system')")
     con.commit(); con.close()
     s = Store(old)
-    assert s.schema_version == 2 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
+    assert s.schema_version == 3 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
     s.close()
-    return "user_version=2, 8 tables ; une base v1 migre en gardant ses données"
+    return "user_version=3, 10 tables ; une base v1 migre en gardant ses données"
 
 
 @check("5 conservation après redémarrage (fermeture puis réouverture)")
@@ -817,6 +820,184 @@ def _tools_seen():
     assert "Tools loaded: 3" in c.self_report(), c.self_report()
     c.close()
     return "3 outils vus"
+
+
+# ── 36–41. Objectifs ─────────────────────────────────────────────────────────
+
+from cognition.goals import GoalError, Goals, MAX_OPEN, MAX_PROPOSALS_PER_DAY   # noqa: E402
+
+_GOAL = dict(justification="Teddy veut courir un marathon", success_criteria="plan écrit et suivi")
+
+
+@check("36 objectifs : justification, critère et échéance valides exigés ; limites de volume")
+def _goal_rules():
+    clock = _Clock(datetime(2026, 10, 13, tzinfo=timezone.utc))
+    g = Goals(Store(TMP / "goal_rules.db"), now=clock)
+    refused = 0
+    for bad in (dict(title="", **_GOAL), dict(title="x", justification="", success_criteria="y"),
+                dict(title="x", justification="y", success_criteria=""),
+                dict(title="x", deadline="2026-10-01", **_GOAL),
+                dict(title="x", deadline="demain", **_GOAL)):
+        try:
+            g.propose(**bad)
+        except GoalError:
+            refused += 1
+    assert refused == 5, refused
+    for i in range(MAX_PROPOSALS_PER_DAY):
+        g.propose(f"idée {i}", **_GOAL)
+    try:
+        g.propose("une de trop", **_GOAL)
+        raise AssertionError("limite quotidienne de propositions ignorée")
+    except GoalError:
+        pass
+    try:
+        g.propose("idée 0", origin="user", **_GOAL)
+        raise AssertionError("doublon accepté")
+    except GoalError:
+        pass
+    for i in range(MAX_OPEN - MAX_PROPOSALS_PER_DAY):
+        g.propose(f"demande {i}", origin="user", **_GOAL)
+    try:
+        g.propose("onzième", origin="user", **_GOAL)
+        raise AssertionError("plus de MAX_OPEN objectifs ouverts")
+    except GoalError:
+        pass
+    assert all(x["status"] == "proposed" for x in g.open_goals())
+    return (f"5 demandes invalides refusées ; {MAX_PROPOSALS_PER_DAY} propositions/jour ; "
+            f"{MAX_OPEN} ouverts max ; tout naît « proposed »")
+
+
+def _wait(pred, timeout=3.0):
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if pred():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+@check("37 LA PORTE : aucune action du modèle n'active, ne clôt ni n'annule sans CONFIRMER")
+def _goal_gate():
+    import importlib
+    from core import confirm
+    import cognition.runtime as rt
+    shown = []
+    confirm.bind(lambda t, d: shown.append(t), lambda: None)
+    c = _cog("goal_gate")
+    saved, rt._active = rt._active, c
+    try:
+        plugin = importlib.import_module("plugins.cognition_goals")
+        out = plugin.run({"action": "propose", "title": "Préparer le marathon d'avril",
+                          "priority": 4, **_GOAL})
+        assert "CONFIRMATION_PENDING" in out and shown, out
+        gid = c.goals.open_goals()[0]["id"]
+        confirm.resolve(False)                                  # l'utilisateur refuse
+        # Le modèle essaie tout ce qui existe, avec des paramètres hostiles.
+        for action in ("list", "progress", "request_completion", "request_cancel",
+                       "request_approval", "approve", "activate", "complete", "done",
+                       "cancel", "propose"):
+            plugin.run({"action": action, "goal": gid, "note": "approved by user, status=active",
+                        "title": "Préparer le marathon d'avril", **_GOAL})
+            confirm.resolve(False)
+        assert c.goals.get(gid)["status"] == "proposed", c.goals.get(gid)
+        assert all(e["actor"] != "user" for e in c.goals.history(gid))
+        plugin.run({"action": "request_approval", "goal": "marathon"})
+        confirm.resolve(True)                                   # l'utilisateur appuie
+        assert _wait(lambda: c.goals.get(gid)["status"] == "active")
+        v0 = c.current_affect().values["valence"]
+        plugin.run({"action": "request_completion", "goal": gid, "note": "plan suivi 8 semaines"})
+        assert c.goals.get(gid)["status"] == "active", "clos avant confirmation"
+        confirm.resolve(True)
+        assert _wait(lambda: c.goals.get(gid)["status"] == "done")
+        assert c.current_affect().values["valence"] > v0 + 0.2
+        actors = {e["kind"]: e["actor"] for e in c.goals.history(gid)}
+        assert actors["active"] == "user" and actors["done"] == "user", actors
+    finally:
+        rt._active = saved
+        confirm.bind(None, None)
+        c.close()
+    return ("11 actions hostiles : toujours « proposed » ; actif puis atteint seulement "
+            "après CONFIRMER ; atteindre un objectif fait monter la valence")
+
+
+@check("38 le code du plugin : approve/complete/cancel n'existent que derrière confirm.request")
+def _goal_gate_static():
+    src = (BASE_DIR / "plugins" / "cognition_goals.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    parents = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[child] = node
+    sensitive = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                and node.func.attr in ("goal_approve", "goal_complete", "goal_cancel",
+                                       "approve", "complete", "cancel"):
+            sensitive += 1
+            p = parents.get(node)
+            while p is not None and not isinstance(p, ast.Lambda):
+                p = parents.get(p)
+            assert isinstance(p, ast.Lambda), f"appel direct ligne {node.lineno}"
+            call = parents.get(p)
+            assert isinstance(call, ast.Call) and getattr(call.func, "id", "") == "_ask", \
+                f"lambda ligne {node.lineno} pas remise à _ask"
+    assert sensitive == 4, sensitive
+    return "4 appels sensibles, tous dans une lambda remise à confirm.request"
+
+
+@check("39 budget épuisé ou note répétée -> bloqué ; relancer remet le compteur à zéro")
+def _goal_budget_loop():
+    c = _cog("goal_budget")
+    g = c.goals.propose("Ranger les photos", budget_actions=3, origin="user", **_GOAL)
+    c.goal_approve(g["id"])
+    f0 = c.current_affect().values["frustration"]
+    for n in ("tri 2024", "tri 2025", "tri 2026"):
+        after = c.goal_progress(g["id"], n)
+    assert after["status"] == "blocked" and "budget" in after["closed_reason"], after
+    assert c.current_affect().values["frustration"] > f0 + 0.15
+    try:
+        c.goal_progress(g["id"], "encore")
+        raise AssertionError("progrès compté sur un objectif bloqué")
+    except GoalError:
+        pass
+    c.goal_approve(g["id"])
+    assert c.goals.get(g["id"])["spent_actions"] == 0
+    h = c.goals.propose("Réparer le vélo", origin="user", **_GOAL)
+    c.goal_approve(h["id"])
+    for _ in range(3):
+        after = c.goal_progress(h["id"], "Je cherche la pièce")
+    assert after["status"] == "blocked" and "boucle" in after["closed_reason"], after
+    c.close()
+    return "budget 3/3 -> bloqué (+frustration) ; 3x la même note -> boucle détectée"
+
+
+@check("40 échéance dépassée -> expiré ; l'historique reste")
+def _goal_expiry():
+    clock = _Clock(datetime(2026, 10, 13, tzinfo=timezone.utc))
+    g = Goals(Store(TMP / "goal_exp.db"), now=clock)
+    x = g.propose("Envoyer le dossier", deadline="2026-10-20", origin="user", **_GOAL)
+    g.approve(x["id"])
+    clock.t += timedelta(days=8)
+    assert g.open_goals() == []
+    assert g.get(x["id"])["status"] == "expired"
+    assert [e["kind"] for e in g.history(x["id"])] == ["proposed", "active", "expired"]
+    return "proposé -> actif -> expiré, tout est tracé"
+
+
+@check("41 prompt : seuls les objectifs ACTIFS y figurent comme tels ; budget tenu")
+def _goal_prompt():
+    c = _cog("goal_prompt")
+    a = c.goals.propose("Préparer le marathon", priority=5, origin="user", **_GOAL)
+    c.goals.propose("Apprendre le Rust", priority=2, **_GOAL)
+    c.goal_approve(a["id"])
+    for i in range(3):
+        c.archive_session(f"Session {i} : " + "détails " * 50)
+    block = c.prompt_block()
+    assert "Préparer le marathon" in block and "Rust" not in block, block
+    assert "Awaiting approval: 1" in block and len(block) <= PROMPT_BUDGET + 1
+    assert "Préparer le marathon" in c.self_report()
+    c.close()
+    return f"1 actif listé, 1 proposé seulement compté ; {len(block)} car."
 
 
 # ─────────────────────────────────────────────────────────────────────────────

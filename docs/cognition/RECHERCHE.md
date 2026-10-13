@@ -410,6 +410,11 @@ Le premier test réel de Teddy a révélé deux défauts, tous deux corrigés et
 
 Mesures réelles détaillées dans le README.
 
+**Phase 5 (objectifs persistants)** : 42/42 au selftest.
+- JARVIS propose ; activer, clore, annuler ou relancer passe par le bouton CONFIRMER existant (`core/confirm.py`).
+- Budgets d'actions, détection de boucle, échéances.
+- Vérifié contre 11 actions hostiles. Une faille injectée exprès (une action `approve` directe dans le plugin) est détectée par deux tests indépendants.
+
 Sonde réelle des générateurs (2026-10-13) :
 
 | Générateur | Résultat |

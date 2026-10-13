@@ -38,6 +38,7 @@ from pathlib import Path
 from . import affect as A
 from . import policy, reflection
 from .constitution import ConstitutionDrift, load as load_constitution, register
+from .goals import GoalError, Goals
 from .memory import Memory, slot_for
 from .store import DEFAULT_DB, Store
 
@@ -129,6 +130,7 @@ class Cognition:
         self._clock = clock
         self.store = Store(db_path)
         self.memory = Memory(self.store)
+        self.goals = Goals(self.store)
         self.constitution = (load_constitution(constitution_path) if constitution_path
                              else load_constitution())
         try:
@@ -384,6 +386,9 @@ class Cognition:
         """Ajouté au prompt système à chaque connexion, sous PROMPT_BUDGET.
         Les faits non vérifiés et les réflexions n'y entrent jamais."""
         parts = [self.constitution.prompt_core(), self._state_text()]
+        goal_lines = self.goals.prompt_lines()
+        if goal_lines:
+            parts.append("\n".join(goal_lines))
         episodes = self.memory.recent("episodic", limit=3)
         if episodes:
             lines = ["[EARLIER CONVERSATIONS — your own archive, summaries not transcripts]"]
@@ -430,9 +435,57 @@ class Cognition:
                 f"{r['var']} {r['before']:.2f}->{r['after']:.2f} after {r['rule']}" for r in causes)
                 or "none recorded"),
             f"Memory: {sum(sum(v.values()) for v in counts.values())} items, {unverified} unverified.",
+            "Goals: " + ("; ".join(self.goals.describe(g) for g in self.goals.open_goals())
+                         or "none open"),
             f"Constitution v{self.constitution.version}. Tools loaded: {len(tools)}.",
         ]
         return "\n".join(out)
+
+    # ── Objectifs (appelés par plugins/cognition_goals.py) ───────────────────
+    # Ce que le modèle peut faire seul : proposer, noter un progrès, retirer sa
+    # proposition. approve/complete/cancel ne sont appelés que par la fonction
+    # que core/confirm.py exécute quand l'utilisateur appuie sur CONFIRMER.
+
+    def goal_propose(self, title: str, justification: str, success_criteria: str,
+                     priority: int = 3, deadline: str | None = None,
+                     budget_actions: int | None = None) -> dict:
+        turns = self.memory.recent_user_turns(self.session_id, limit=6)
+        said = policy.lexical_verdict(title, turns)[0] == "supported"
+        g = self.goals.propose(title, justification=justification,
+                               success_criteria=success_criteria, priority=priority,
+                               deadline=deadline, budget_actions=budget_actions,
+                               origin="user" if said else "jarvis")
+        self._submit(self.memory.log_event, "system", session_id=self.session_id,
+                     actor="goals", summary=f"objectif proposé : {g['title']}")
+        return g
+
+    def goal_progress(self, ref: str, note: str) -> dict:
+        g = self.goal_find(ref)
+        after = self.goals.progress(g["id"], note)
+        if after["status"] == "blocked":
+            self._appraise(["goal_blocked"])
+        return after
+
+    def goal_withdraw(self, ref: str) -> dict:
+        return self.goals.withdraw(self.goal_find(ref)["id"])
+
+    def goal_approve(self, gid: str) -> str:
+        return self.goals.approve(gid)
+
+    def goal_complete(self, gid: str, evidence: str = "") -> str:
+        out = self.goals.complete(gid, evidence)
+        if out.startswith("Objectif atteint"):
+            self._appraise(["goal_done"])
+        return out
+
+    def goal_cancel(self, gid: str, reason: str = "") -> str:
+        return self.goals.cancel(gid, reason)
+
+    def goal_find(self, ref: str) -> dict:
+        g = self.goals.find(ref)
+        if not g:
+            raise GoalError(f"Aucun objectif ne correspond à « {ref} ».")
+        return g
 
     def generate(self, prompt: str, *, system: str = "", quality: bool = False,
                  max_tokens: int = 400, with_state: bool = True) -> str:
