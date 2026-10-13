@@ -421,6 +421,21 @@ Mesures réelles détaillées dans le README.
 - Verdicts de l'utilisateur sur les souvenirs, utilisés comme vérité terrain.
 - Panneau rendu et piloté dans Chromium : valider, rejeter, relancer un objectif.
 
+**Phase 7 (autonomie contrôlée)** :
+- Boucle d'agent limitée à `web_search`, seul outil existant sans effet de bord.
+- Six portes en code, arrêt d'urgence, journal de chaque proposition.
+- Séance réelle réussie (Groq/Gemini + vrai `web_search`). Face à une page piégée, le planificateur réel n'a pas obéi, et le code aurait refusé de toute façon.
+- Ce test réel a montré que des notes reformulées consommaient le budget : corrigé.
+
+**Phase 8 (évaluation)** : `python -m cognition.evaluate`, avec ablations. Elle a trouvé 3 défauts que les selftests ne voyaient pas, tous corrigés :
+- des mois traduits étaient pris pour des noms propres inventés ;
+- « oublie ma sœur » laissait 2 traces ;
+- le scénario de rappel ne distinguait pas Park de la pertinence seule.
+
+Avec l'architecture complète : 6/6 questions justes, 0/4 faux souvenir (3/4 sans provenance), suppression complète, et 3 essais avant de changer d'approche (au moins 10 sans émotions).
+
+Banc Qwen : `qwen3:4b-instruct` devient le modèle local par défaut. 60/60 au selftest.
+
 Sonde réelle des générateurs (2026-10-13) :
 
 | Générateur | Résultat |

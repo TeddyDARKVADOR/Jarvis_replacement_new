@@ -32,7 +32,7 @@ import unicodedata
 from datetime import date as _date, timedelta
 
 SOURCES = ("user_stated", "tool_observed", "legacy_import", "model_summary",
-           "model_inferred", "reflection")
+           "model_inferred", "reflection", "external")
 
 KINDS = ("episodic", "semantic", "autobiographical", "procedural",
          "reflective", "prospective")
@@ -54,11 +54,14 @@ _DEFAULTS = {
     "model_summary":  ("active",   0.60),
     "model_inferred": ("proposed", 0.50),
     "reflection":     ("proposed", 0.50),
+    # Contenu d'une page web lue par l'autonomie : on sait que l'outil l'a
+    # renvoyé, pas que c'est vrai. Rappelable, toujours étiqueté, jamais un fait.
+    "external":       ("active",   0.40),
 }
 
 # Plafond de confiance tant qu'aucune validation n'a eu lieu. Un modèle très
 # sûr de lui ne monte pas plus haut : son assurance n'est pas une preuve.
-_CEILING = {"model_inferred": 0.5, "reflection": 0.5, "model_summary": 0.6}
+_CEILING = {"model_inferred": 0.5, "reflection": 0.5, "model_summary": 0.6, "external": 0.4}
 
 # Part minimale des mots porteurs d'une valeur qu'on doit retrouver dans les
 # tours récents de l'utilisateur pour la considérer comme « dite par lui ».
@@ -83,7 +86,7 @@ def can_supersede(new_source: str, old_source: str) -> bool:
     `proposed`, avec un lien `contradicts`, et l'ancienne passe `contested`.
     """
     rank = {"tool_observed": 4, "user_stated": 4, "legacy_import": 3,
-            "model_summary": 2, "model_inferred": 1, "reflection": 1}
+            "model_summary": 2, "model_inferred": 1, "reflection": 1, "external": 0}
     return rank.get(new_source, 0) >= rank.get(old_source, 0)
 
 
@@ -105,9 +108,33 @@ def _fold(text: str) -> str:
     return "".join(c for c in t if not unicodedata.combining(c)).lower()
 
 
+# Mois et jours : ils se traduisent (« avril » / « April »), donc ce ne sont pas
+# des noms propres qu'un modèle aurait inventés. Ramenés à un jeton commun aux
+# deux langues (évaluation du 2026-10-13 : « Paris marathon in April » pour
+# « le marathon de Paris pour avril » était marqué non vérifié).
+_CANON = {}
+for _i, _names in enumerate((
+        ("january", "janvier", "jan"), ("february", "fevrier", "feb", "fev"), ("march", "mars", "mar"),
+        ("april", "avril", "apr", "avr"), ("mai",), ("june", "juin", "jun"),
+        ("july", "juillet", "jul", "juil"), ("august", "aout", "aug"),
+        ("september", "septembre", "sep", "sept"), ("october", "octobre", "oct"),
+        ("november", "novembre", "nov"), ("december", "decembre", "dec")), start=1):
+    for _n in _names:
+        _CANON[_n] = f"m{_i:02d}"
+for _i, _names in enumerate((("monday", "lundi"), ("tuesday", "mardi"), ("wednesday", "mercredi"),
+                             ("thursday", "jeudi"), ("friday", "vendredi"), ("saturday", "samedi"),
+                             ("sunday", "dimanche")), start=1):
+    for _n in _names:
+        _CANON[_n] = f"d{_i}"
+
+
+def _canon(word: str) -> str:
+    return _CANON.get(word, word)
+
+
 def content_words(text: str) -> list[str]:
     """Mots porteurs, sans accents ni casse : « Ayşe » == « ayse »."""
-    words = re.split(r"[^\w]+", _fold(text))
+    words = [_canon(w) for w in re.split(r"[^\w]+", _fold(text))]
     return [w for w in words if len(w) >= 3 and w not in _STOP and not w.isdigit()] \
         + [w for w in words if w.isdigit()]
 
@@ -122,7 +149,7 @@ def specific_words(text: str) -> list[str]:
         tokens = re.findall(r"\w+", sentence)
         for i, tok in enumerate(tokens):
             if tok.isdigit() or (i > 0 and tok[:1].isupper()):
-                out.append(_fold(tok))
+                out.append(_canon(_fold(tok)))
     return out
 
 

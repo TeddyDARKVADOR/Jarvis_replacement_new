@@ -194,6 +194,26 @@ class Memory:
                      f"{len(rows)} souvenir(s) supprimé(s)"))
             return len(rows)
 
+    def about(self, subject: str, limit: int = 100) -> list[dict]:
+        """Tous les souvenirs qui mentionnent le sujet, quels que soient leur type
+        et leur statut (y compris les épisodes et les réflexions)."""
+        q = _fts_query(subject)
+        if not q:
+            return []
+        return [dict(r) for r in self.store.query(
+            "SELECT m.* FROM memories_fts JOIN memories m ON m.rowid = memories_fts.rowid "
+            "WHERE memories_fts MATCH ? LIMIT ?", (q, limit))]
+
+    def forget_about(self, subject: str, session_id: str | None = None) -> int:
+        """« Oublie ce que je t'ai dit sur ma sœur » : la clé ne suffit pas. Le
+        résumé de session qui la cite, la déduction faite à son sujet, la
+        réflexion qui l'utilise doivent partir aussi (évaluation du 2026-10-13 :
+        2 traces restaient après la suppression de la seule clé)."""
+        rows = self.about(subject)
+        for r in rows:
+            self.forget(r["id"], session_id=session_id)
+        return len(rows)
+
     # ── Lecture ──────────────────────────────────────────────────────────────
 
     def get(self, memory_id: str) -> dict | None:
@@ -210,7 +230,7 @@ class Memory:
             "ORDER BY created_at DESC, rowid DESC LIMIT ?", (kind, limit))]
 
     def search(self, query: str, *, limit: int = 6, kinds: tuple[str, ...] | None = None,
-               touch: bool = True) -> list[dict]:
+               touch: bool = True, weights: tuple[float, float, float] = (1.0, 1.0, 1.0)) -> list[dict]:
         """Rappel : récence + importance + pertinence, chacune min-max (Park 2023).
 
         Une requête vide renvoie les plus récents. Les souvenirs `proposed` sont
@@ -252,7 +272,10 @@ class Memory:
         for k in ("recency", "importance", "relevance"):
             _norm(k)
         for c in cands:
-            c["score"] = c["recency_n"] + c["importance_n"] + c["relevance_n"]
+            # Poids (récence, importance, pertinence) : tous à 1 comme chez Park ;
+            # l'évaluation (evaluate.py) les fait varier pour ses ablations.
+            c["score"] = (weights[0] * c["recency_n"] + weights[1] * c["importance_n"]
+                          + weights[2] * c["relevance_n"])
         cands.sort(key=lambda c: c["score"], reverse=True)
 
         out = []

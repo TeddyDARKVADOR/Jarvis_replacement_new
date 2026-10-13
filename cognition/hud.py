@@ -6,6 +6,10 @@ cognition/hud.py — ce que le panneau ESPRIT du HUD peut lire et faire.
     cognition.memories   {query, view} souvenirs : all|unverified|contested|reflective|validated
     cognition.memory_review {id, verdict}      validate | reject | forget
     cognition.goal_action   {id, action}       approve | complete | cancel
+    cognition.autonomy      {enabled}          interrupteur global (false = arrêt d'urgence)
+    cognition.goal_autonomy {id, on}           autoriser l'autonomie sur un objectif
+    cognition.autonomy_run  {id}               lancer une séance maintenant (en fond)
+    cognition.forget_about  {subject}          effacer TOUT ce qui mentionne un sujet
 
 QUI PEUT APPELER ÇA
     Uniquement la page du HUD, par le pont Qt (local_hud.LocalBackend), donc un
@@ -19,8 +23,10 @@ Toutes les réponses sont des dicts JSON ; une erreur est {"error": "..."}.
 """
 from __future__ import annotations
 
+import threading
+
 from . import affect as A
-from . import selfmodel
+from . import autonomy, selfmodel
 
 _VIEWS = {
     "all":        "status IN ('proposed','active','validated','contested')",
@@ -70,6 +76,17 @@ def _overview(cog, _data: dict) -> dict:
         "tools": selfmodel.reliability(cog.store),
         "calibration": {"tools": selfmodel.tool_calibration(cog.store),
                         "memories": selfmodel.memory_calibration(cog.store)},
+        "autonomy": {
+            "enabled": cog.autonomy.enabled,
+            "runs_today": cog.autonomy.runs_today(),
+            "why_not": cog.autonomy.why_not(),
+            "goals": {g["id"]: cog.autonomy.why_not(g) for g in cog.goals.open_goals()},
+            "runs": cog.autonomy.recent_runs(),
+            "limits": {"steps_per_run": autonomy.MAX_STEPS_PER_RUN,
+                       "runs_per_day": autonomy.MAX_RUNS_PER_DAY,
+                       "interval_min": autonomy.MIN_INTERVAL_S // 60,
+                       "tools": sorted(autonomy.SAFE_TOOLS)},
+        },
         "limits": list(selfmodel.HARD_LIMITS),
         "limits_fr": list(selfmodel.HARD_LIMITS_FR),
         "providers": [{k: p[k] for k in ("name", "model", "available", "paused_s", "calls",
@@ -127,7 +144,55 @@ def _goal_action(cog, data: dict) -> dict:
     return {"ok": True, "detail": msg, "goal": cog.goals.get(gid)}
 
 
+def _autonomy(cog, data: dict) -> dict:
+    on = bool(data.get("enabled"))
+    cog.autonomy.set_enabled(on)
+    cog.memory.log_event("system", session_id=cog.session_id, actor="user",
+                         summary="autonomie activée" if on else "autonomie coupée (arrêt)")
+    return {"ok": True, "enabled": cog.autonomy.enabled}
+
+
+def _goal_autonomy(cog, data: dict) -> dict:
+    gid = str(data.get("id", ""))
+    g = cog.goals.get(gid)
+    if not g:
+        raise ValueError("objectif introuvable")
+    if data.get("on") and g["status"] != "active":
+        raise ValueError("seul un objectif actif peut être confié à l'autonomie")
+    cog.autonomy.set_goal(gid, bool(data.get("on")))
+    return {"ok": True, "goal": cog.goals.get(gid)}
+
+
+def _autonomy_run(cog, data: dict) -> dict:
+    gid = str(data.get("id", ""))
+    g = cog.goals.get(gid)
+    if not g:
+        raise ValueError("objectif introuvable")
+    reason = cog.autonomy.why_not(g)
+    # « Lancer maintenant » est un clic : il passe outre l'intervalle minimal,
+    # jamais les autres portes.
+    if reason and not reason.startswith("dernière séance"):
+        raise ValueError(f"impossible : {reason}")
+    threading.Thread(target=lambda: cog.autonomy._run_now(gid), name="cognition-autonomy-now",
+                     daemon=True).start()
+    return {"ok": True, "detail": "séance lancée"}
+
+
+def _forget_about(cog, data: dict) -> dict:
+    subject = str(data.get("subject", "")).strip()
+    if len(subject) < 2:
+        raise ValueError("sujet trop court")
+    if data.get("preview"):
+        rows = cog.forget_preview(subject)
+        return {"count": len(rows), "items": [r["content"][:120] for r in rows[:20]]}
+    return {"ok": True, "detail": cog.forget_about(subject)}
+
+
 _OPS = {
+    "cognition.forget_about": _forget_about,
+    "cognition.autonomy": _autonomy,
+    "cognition.goal_autonomy": _goal_autonomy,
+    "cognition.autonomy_run": _autonomy_run,
     "cognition.overview": _overview,
     "cognition.memories": _memories,
     "cognition.memory_review": _memory_review,

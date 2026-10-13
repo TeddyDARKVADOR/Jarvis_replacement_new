@@ -57,7 +57,7 @@ Disponible seulement en mode local ; en mode Oracle, le panneau dit pourquoi.
 | Onglet | Contenu |
 |---|---|
 | **ÉTAT** | Les 6 variables affectives avec leur ligne de base, les consignes actives (ce que l'état change dans son comportement) et la cause nommée de chaque changement récent. |
-| **OBJECTIFS** | Objectifs ouverts : **APPROUVER**, **RELANCER** (objectif bloqué), **ATTEINT**, **ANNULER** (double clic). JARVIS propose, vous disposez. |
+| **OBJECTIFS** | Objectifs ouverts : **APPROUVER**, **RELANCER** (objectif bloqué), **ATTEINT**, **ANNULER** (double clic). JARVIS propose, vous disposez.<br>**Autonomie** : interrupteur global, **ARRÊT D'URGENCE**, et sur chaque objectif actif **AUTONOMIE ON/OFF** et **LANCER**. Le journal montre chaque proposition, exécutée ou **refusée**, et les questions qu'il vous pose. |
 | **SOUVENIRS** | Recherche, et vues tous / non vérifiés / contestés / réflexions / épisodes / validés. ✓ valider, ✗ rejeter (plus jamais rappelé), 🗑 oublier (double clic, effacé pour de bon). |
 | **MODÈLE DE SOI** | Fiabilité mesurée de chaque outil, calibration (Brier, ECE) de ses attentes et de sa confiance dans les souvenirs face à vos verdicts, limites imposées par le code, générateurs de secours. |
 
