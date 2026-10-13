@@ -506,8 +506,6 @@ class JarvisForegroundService : Service() {
                     }
                 }
                 Protocol.EV_CONFIRM_HIDE -> JarvisState.clearConfirmation()
-                // Handed over raw; the face judges it (avatar/js/host.js).
-                Protocol.EV_AVATAR -> JarvisState.setAvatarEvent(json.toString())
                 Protocol.EV_NOTIFICATION -> {
                     // Handed straight over. Whether it is shown, is a duplicate
                     // from a reconnect replay, or is refused, is entirely the

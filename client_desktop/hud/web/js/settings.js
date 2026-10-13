@@ -6,7 +6,7 @@
  * (`requestSettings`), shows them, and sends the whole form back on
  * ENREGISTRER (`saveSettings`). Nothing is applied half-way.
  *
- * Interface choices (colour, sounds, face, performance) are the HUD's own
+ * Interface choices (colour, sounds, performance) are the HUD's own
  * preferences and apply the moment they are touched, like everywhere else in
  * the HUD — previewing a colour should not need a Save button.
  */
@@ -289,7 +289,6 @@ export function createSettings(ctx) {
   $('s-sound').onchange = () => ctx.setSound($('s-sound').checked, Number($('s-volume').value));
   $('s-volume').oninput = () => ctx.setSound($('s-sound').checked, Number($('s-volume').value));
   $('s-volume').onchange = () => ctx.sound.play('reply');
-  $('s-face').onchange = () => ctx.setFace($('s-face').checked);
   $('s-clipboard').onchange = () => ctx.setPrefs({ clipboard: $('s-clipboard').checked });
   const q = $('s-quality');
   [['auto', 'AUTO'], ...ctx.tiers.map((t, i) => [String(i), t.name])].forEach(([v, label]) => {
@@ -303,9 +302,7 @@ export function createSettings(ctx) {
     const p = ctx.getPrefs();
     $('s-sound').checked = !!p.sound;
     $('s-volume').value = p.volume ?? .35;
-    $('s-face').checked = !!p.face;
     $('s-clipboard').checked = p.clipboard !== false;
-    $('s-face-row').hidden = !ctx.faceAvailable();
     sw.querySelectorAll('button').forEach((b) => b.classList.toggle('sel', b.dataset.hex.toLowerCase() === String(p.accent).toLowerCase()));
     const g = ctx.gov();
     q.querySelectorAll('button').forEach((b) => {

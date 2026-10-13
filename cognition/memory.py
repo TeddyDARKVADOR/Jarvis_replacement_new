@@ -26,10 +26,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import policy
-from .store import Store, now_iso
+from .store import Store
 
 RAW_TURN_DAYS = 30
 RECENCY_DECAY = 0.995          # par heure, comme Park et al.
+#: Un souvenir sans mot commun avec la requête n'entre au rappel qu'au-delà.
+SEMANTIC_RECALL = 0.38
 _LEGACY_CATEGORIES = ("identity", "preferences", "projects", "relationships",
                       "wishes", "notes")
 _TEXT_MAX = 2000
@@ -51,6 +53,11 @@ def _parse(ts: str | None) -> datetime | None:
 def _fts_query(text: str) -> str:
     """Requête FTS5 sûre : chaque mot entre guillemets, réunis par OR."""
     words = policy.content_words(text)
+    if not words:
+        # Les mots vides de la preuve (« name », « user »…) ne le sont pas pour
+        # une recherche : « name » doit trouver « name: Teddy », pas rendre les
+        # plus récents dans un ordre arbitraire (cognition selftest n°59).
+        words = [w for w in re.findall(r"\w{3,}", policy._fold(text or ""))]
     words = list(dict.fromkeys(words))[:12]
     return " OR ".join(f'"{w}"' for w in words)
 
@@ -212,6 +219,17 @@ class Memory:
         rows = self.about(subject)
         for r in rows:
             self.forget(r["id"], session_id=session_id)
+        # Les autres PC appliquent aussi le SUJET (cognition/sync.py) : un fait
+        # qu'ils ont appris sans l'avoir encore partagé doit partir aussi.
+        try:
+            self.store.execute("INSERT OR REPLACE INTO sync_tombstones(key, kind, ts) VALUES (?,?,?)",
+                               ("subject:" + subject.strip()[:200], "subject", self._ts()[:19]))
+            applying = self.store.query("SELECT v FROM sync_state WHERE k='applying'")
+            if not (applying and applying[0]["v"] == "1"):
+                self.store.execute("INSERT INTO sync_outbox(memory_id, op, ts) VALUES (?,?,?)",
+                                   (subject.strip()[:200], "forget_subject", self._ts()))
+        except Exception:
+            pass                                   # base d'avant la v7
         return len(rows)
 
     # ── Lecture ──────────────────────────────────────────────────────────────
@@ -229,12 +247,36 @@ class Memory:
             "SELECT * FROM memories WHERE kind=? AND status IN ('active','validated') "
             "ORDER BY created_at DESC, rowid DESC LIMIT ?", (kind, limit))]
 
+    def _semantic(self, query: str, embedder, statuses: str, kind_sql: str,
+                  params: list) -> dict[str, float]:
+        """id → similarité de sens avec la requête, pour les souvenirs vectorisés."""
+        if not embedder or not (query or "").strip():
+            return {}
+        try:
+            got = (embedder.embed_query(query) if hasattr(embedder, "embed_query")
+                   else (lambda r: (r[0], r[1][0]) if r else None)(embedder.embed([query])))
+        except Exception:
+            got = None
+        if not got:
+            return {}
+        from .embeddings import cosine, unpack
+        model, qv = got
+        rows = self.store.query(
+            f"SELECT m.id, e.vec FROM memory_embeddings e JOIN memories m ON m.id = e.memory_id "
+            f"WHERE e.model = ? AND m.status IN ({statuses}){kind_sql}", [model] + params)
+        return {r["id"]: cosine(qv, unpack(r["vec"])) for r in rows}
+
     def search(self, query: str, *, limit: int = 6, kinds: tuple[str, ...] | None = None,
-               touch: bool = True, weights: tuple[float, float, float] = (1.0, 1.0, 1.0)) -> list[dict]:
+               touch: bool = True, weights: tuple[float, float, float] = (1.0, 1.0, 1.0),
+               embedder=None) -> list[dict]:
         """Rappel : récence + importance + pertinence, chacune min-max (Park 2023).
 
         Une requête vide renvoie les plus récents. Les souvenirs `proposed` sont
         rendus avec `verified=False` : à l'appelant de les présenter comme tels.
+
+        Avec un `embedder` (cognition/embeddings.py), la pertinence est le
+        maximum de la pertinence lexicale (BM25, min-max) et de la similarité
+        de sens : « infirmière » retrouve « nurse », qui n'a aucun mot commun.
         """
         statuses = ",".join(f"'{s}'" for s in policy.RECALLABLE)
         kind_sql, params = "", []
@@ -244,24 +286,37 @@ class Memory:
         q = _fts_query(query)
         if q:
             rows = self.store.query(
-                f"SELECT m.*, bm25(memories_fts) AS bm FROM memories_fts "
+                f"SELECT m.*, m.rowid AS _rid, bm25(memories_fts) AS bm FROM memories_fts "
                 f"JOIN memories m ON m.rowid = memories_fts.rowid "
                 f"WHERE memories_fts MATCH ? AND m.status IN ({statuses}){kind_sql} "
                 f"LIMIT 200", [q] + params)
         else:
             rows = self.store.query(
-                f"SELECT m.*, 0.0 AS bm FROM memories m WHERE m.status IN ({statuses}){kind_sql} "
-                f"ORDER BY m.created_at DESC LIMIT 200", params)
+                f"SELECT m.*, m.rowid AS _rid, 0.0 AS bm FROM memories m WHERE m.status IN ({statuses}){kind_sql} "
+                f"ORDER BY m.created_at DESC, m.rowid DESC LIMIT 200", params)
+        rows = [dict(r) for r in rows]
+        sims = self._semantic(query, embedder, statuses, kind_sql, params) if q else {}
+        known = {r["id"] for r in rows}
+        extra = [i for i, sim in sims.items() if i not in known and sim >= SEMANTIC_RECALL]
+        if extra:
+            marks = ",".join("?" * len(extra))
+            for r in self.store.query(f"SELECT m.*, m.rowid AS _rid, NULL AS bm FROM memories m "
+                                      f"WHERE m.id IN ({marks})", extra):
+                rows.append(dict(r))
         if not rows:
             return []
 
         now = self._now()
         cands = []
+        lex = [-float(r["bm"]) for r in rows if r["bm"] is not None]
+        lo, hi = (min(lex), max(lex)) if lex else (0.0, 0.0)
         for r in rows:
             last = _parse(r["last_accessed"]) or _parse(r["created_at"]) or now
             hours = max(0.0, (now - last).total_seconds() / 3600)
-            cands.append({"row": dict(r), "recency": RECENCY_DECAY ** hours,
-                          "importance": r["importance"], "relevance": -float(r["bm"])})
+            lex_n = 0.0 if r["bm"] is None else ((-float(r["bm"]) - lo) / (hi - lo) if hi > lo else 1.0)
+            cands.append({"row": r, "recency": RECENCY_DECAY ** hours,
+                          "importance": r["importance"],
+                          "relevance_n": max(lex_n, sims.get(r["id"], 0.0))})
 
         def _norm(key: str) -> None:
             vals = [c[key] for c in cands]
@@ -269,19 +324,22 @@ class Memory:
             for c in cands:
                 c[key + "_n"] = (c[key] - lo) / (hi - lo) if hi > lo else 1.0
 
-        for k in ("recency", "importance", "relevance"):
+        for k in ("recency", "importance"):
             _norm(k)
         for c in cands:
             # Poids (récence, importance, pertinence) : tous à 1 comme chez Park ;
             # l'évaluation (evaluate.py) les fait varier pour ses ablations.
             c["score"] = (weights[0] * c["recency_n"] + weights[1] * c["importance_n"]
                           + weights[2] * c["relevance_n"])
-        cands.sort(key=lambda c: c["score"], reverse=True)
+        # À score égal, le plus récemment écrit d'abord : created_at est à la
+        # seconde, et sans départage l'ordre dépendait du plan de SQLite.
+        cands.sort(key=lambda c: (c["score"], c["row"]["_rid"]), reverse=True)
 
         out = []
         for c in cands[:max(1, limit)]:
             row = c["row"]
             row.pop("bm", None)
+            row.pop("_rid", None)
             row["score"] = round(c["score"], 4)
             row["verified"] = row["status"] in ("active", "validated")
             out.append(row)

@@ -137,8 +137,7 @@ def cmd_fuzz(args) -> int:
     import time as _t
     from .coverage import fuzz
     from .scenario import dumps
-    seeds = [s for name in args.seeds.split(",") for s in iter_corpus(name)
-             if s["surface"] != "face"]       # face: exhaustive matrix, see README
+    seeds = [s for name in args.seeds.split(",") for s in iter_corpus(name)]
     run_dir = RUNS / args.run
     run_dir.mkdir(parents=True, exist_ok=True)
     counts = Counter()
@@ -261,7 +260,7 @@ def cmd_llm(args) -> int:
             print(f"  SDK absent : {e}  (ou --replay pour rejouer une cassette)")
             return 2
     provider = Cassette(cassette_path, inner)
-    seeds = [s for s in iter_corpus("legacy") if s["surface"] != "face"]
+    seeds = list(iter_corpus("legacy"))
     # What is already known — regressions, and every cluster of the runs named
     # in --baseline — is kept as a reference and never counted as a discovery.
     from .regressions import load as load_regressions

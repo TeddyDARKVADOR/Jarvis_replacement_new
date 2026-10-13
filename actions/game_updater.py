@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from datetime import datetime
 
-from config import get_os, is_windows, is_mac, is_linux
+from config import is_windows, is_mac, is_linux
 
 _CNW: dict = (
     {"creationflags": subprocess.CREATE_NO_WINDOW}
@@ -220,7 +220,7 @@ def _click_first_profile_by_screenshot() -> bool:
         colorful = (max_c > 60) & ((max_c - min_c) > 40)
 
         if not colorful.any():
-            print("[GameUpdater] ⚠️ Avatar colour not found — clicking by guess")
+            print("[GameUpdater] ⚠️ Profile picture colour not found — clicking by guess")
             pyautogui.click(wx + ww // 2 - ww // 6, wy + wh // 2)
             return True
 
@@ -229,13 +229,13 @@ def _click_first_profile_by_screenshot() -> bool:
         if not len(cols) or not len(rows):
             return False
 
-        avatar_w   = min(90, region.shape[1] // 4)
+        picture_w   = min(90, region.shape[1] // 4)
         first_col  = int(cols[0])
-        block_cols = cols[cols < first_col + avatar_w]
+        block_cols = cols[cols < first_col + picture_w]
 
         abs_x = wx + search_x1 + int(block_cols.mean())
         abs_y = wy + search_y1 + int(rows.mean())
-        print(f"[GameUpdater] 🎯 Profile avatar ({abs_x}, {abs_y}) — clicking")
+        print(f"[GameUpdater] 🎯 Profile picture ({abs_x}, {abs_y}) — clicking")
         pyautogui.click(abs_x, abs_y)
         return True
 

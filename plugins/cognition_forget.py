@@ -1,7 +1,7 @@
 """
 cognition_forget — « oublie ce que je t'ai dit sur … » : tout, et seulement après CONFIRMER.
 
-Plugin ordinaire (docs/V2_CONTRACT.md, cas 1). Effacer est irréversible : le
+Plugin ordinaire (graphe contrat, cas 1). Effacer est irréversible : le
 modèle peut DEMANDER l'oubli, il ne l'exécute pas. Le bandeau du HUD montre
 combien de souvenirs seront effacés ; core/confirm.py n'exécute l'effacement
 que si l'utilisateur appuie sur CONFIRMER.
@@ -10,11 +10,9 @@ que si l'utilisateur appuie sur CONFIRMER.
 PLUGIN = {
     "name": "forget_about",
     "description": (
-        "When the user asks you to forget something about a subject ('oublie ce que je "
-        "t'ai dit sur ma sœur', 'forget everything about my ex'), call this with the subject "
-        "keywords (names, and the word in both French and English if relevant). It shows a "
-        "confirmation on the HUD listing how many memories will be erased — conversation "
-        "summaries included. Never claim it is forgotten until the user confirmed."
+        "Forget everything about a subject the user names ('oublie ce que je t'ai dit "
+        "sur ma sœur'): pass its keywords (FR and EN). The user must confirm on the "
+        "HUD; never claim it is forgotten before."
     ),
     "parameters": {
         "type": "OBJECT",

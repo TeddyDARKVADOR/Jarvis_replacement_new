@@ -1,7 +1,7 @@
 """
 cognition_memory — l'archive de JARVIS : conversations passées et faits avec provenance.
 
-Plugin ordinaire (docs/V2_CONTRACT.md, cas 1). Il ne fait que lire
+Plugin ordinaire (graphe contrat, cas 1). Il ne fait que lire
 cognition.get_active() : hors mode local, ou si cognition/ est absent, il répond
 que l'archive est indisponible et JARVIS continue comme avant.
 """
@@ -9,11 +9,9 @@ que l'archive est indisponible et JARVIS continue comme avant.
 PLUGIN = {
     "name": "recall_episodes",
     "description": (
-        "Search YOUR OWN archive of past conversations and remembered facts, with "
-        "dates and provenance. Use for 'what did we talk about last week', "
-        "'do you remember when…', 'when did I tell you…'. For a quick fact about the "
-        "user (name, family, preferences) use recall_memory first. Results marked "
-        "UNVERIFIED or CONTESTED may be wrong: say so if you use them."
+        "Search your archive of past conversations and facts, with dates and provenance "
+        "('what did we talk about last week'). For a quick personal fact use "
+        "recall_memory first. Say so if a result is UNVERIFIED or CONTESTED."
     ),
     "parameters": {
         "type": "OBJECT",

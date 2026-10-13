@@ -169,11 +169,9 @@ class LocalUI(HeadlessUI):
     def show_content(self, title: str, text: str) -> None:
         self.store.add_message(Message(True, str(text)[:4000], time.time(), title=str(title)[:48]))
 
-    def emit_event(self, msg: dict) -> None:
-        # plugins/presence.py's `avatar` event: the expression JARVIS chose.
-        if isinstance(msg, dict) and msg.get("type") == "avatar" and isinstance(msg.get("directive"), dict):
-            age = max(0.0, time.time() - float(msg.get("ts") or time.time()))
-            self.store.set_avatar_intent(msg["directive"], age=age)
+    def show_graph(self, graph: str = "general", focus: str = "") -> None:
+        # plugins/capabilities.py: open the HUD's GRAPHE panel, on this PC.
+        self.store.request_graph(graph, focus)
 
     # ── the microphone ───────────────────────────────────────────────────────
 
@@ -448,8 +446,8 @@ def main(argv: list[str] | None = None) -> int:
     store.subscribe(lambda kind, payload: bridge.event.emit(kind, payload))
 
     def on_event(kind: str, payload: object) -> None:
-        if kind == "avatar" and isinstance(payload, dict):
-            hud.set_avatar_intent(payload)
+        if kind == "graph" and isinstance(payload, dict):
+            hud.show_graph(payload.get("graph", "general"), payload.get("focus", ""))
         elif kind == "confirm":
             hud.show()
             hud.raise_()

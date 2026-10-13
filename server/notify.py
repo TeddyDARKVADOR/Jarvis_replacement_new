@@ -11,7 +11,7 @@ WHAT WAS MISSING
 WHY NO NEW SOCKET AND NO NEW PROTOCOL
     `dashboard.broadcast()` already fans out typed JSON to every connected
     client, and the Android client already ignores a `type` it does not know
-    without closing the socket (PROTOCOL.md §4). So a notification is one more
+    without closing the socket (capabilities/graphs/android.json, pr.events). So a notification is one more
     event on /ws — not a channel, not a server, not a second authority.
 
 THE PROBLEM THIS MODULE ACTUALLY SOLVES: DUPLICATES

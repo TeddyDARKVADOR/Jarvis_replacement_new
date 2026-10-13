@@ -220,10 +220,6 @@ body {
 }
 #reactor canvas, #reactor iframe { position: absolute; inset: 0 0 54px 0; width: 100%; height: calc(100% - 54px); border: 0; }
 #r3d { z-index: 1; }
-#face { z-index: 2; background: transparent; pointer-events: none;
-  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 36%, transparent 58%);
-  opacity: 0; transition: opacity .8s; }
-#face.on { opacity: 1; }
 #rings { z-index: 3; pointer-events: none; }
 #state-word {
   position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); z-index: 4;
@@ -871,3 +867,76 @@ body.mini #camera, body.mini #clip { display: none !important; }
 .mr-step.d-refused span:first-child, .mr-step.d-refused code { color: var(--c-err); }
 .mr-step.d-executed span:first-child { color: var(--c-listen); }
 .mc-line.wait { color: var(--c-think); }
+
+/* ── panneau GRAPHE (js/graph.js, capabilities/) ───────────────────────── */
+.modal.graph { width: min(1400px, 97vw); height: min(900px, 94vh); padding: 0; display: flex;
+  flex-direction: column; user-select: text; }
+.graph-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.graph-tools input { width: 260px; background: var(--a06); border: 1px solid var(--a20); color: var(--text);
+  font: inherit; font-size: 12px; padding: 7px 10px; outline: none; }
+.graph-tools input:focus { border-color: var(--a60); }
+#graph-count { font-size: 11px; color: var(--muted); min-width: 64px; }
+.graph-trail { display: flex; align-items: center; gap: 8px; padding: 6px 26px; font-size: 10.5px;
+  letter-spacing: 2px; color: var(--muted); border-bottom: 1px solid var(--a12); min-height: 30px; }
+.graph-trail b { color: var(--accent); font-weight: 600; }
+.graph-trail button { background: none; border: 0; color: var(--muted); font: inherit; letter-spacing: 2px; cursor: pointer; padding: 0; }
+.graph-trail button:hover { color: var(--accent); }
+.graph-body { flex: 1; display: flex; min-height: 0; }
+.graph-stage { flex: 1; position: relative; min-width: 0; overflow: hidden;
+  background: radial-gradient(circle at 50% 50%, var(--a06), transparent 70%); }
+.graph-stage canvas { position: absolute; inset: 0; cursor: grab; }
+.graph-side { width: 360px; flex: none; overflow: auto; padding: 16px 20px; border-left: 1px solid var(--a12); font-size: 12.5px; }
+.gs-kind { font-size: 10px; letter-spacing: 3px; color: var(--c); }
+.gs-title { margin: 6px 0 8px; font-size: 17px; color: #E6EEF9; font-weight: 600; letter-spacing: .5px; }
+.gs-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.gs-badge { font-size: 9.5px; letter-spacing: 2px; padding: 3px 7px; border: 1px solid var(--c, var(--muted)); color: var(--c, var(--muted)); }
+.gs-badge.muted { --c: var(--muted); }
+.gs-badge.tool { --c: #F9A8D4; font-family: var(--mono); letter-spacing: 0; }
+.gs-summary { margin: 0 0 10px; line-height: 1.5; color: var(--text); }
+.gs-details { margin: 0 0 12px; padding-left: 16px; color: #B4C2D8; line-height: 1.45; }
+.gs-details li { margin-bottom: 5px; }
+.gs-open { margin: 4px 0 12px; }
+.gs-label { margin: 14px 0 6px; font-size: 10px; letter-spacing: 3px; color: var(--accent); }
+.gs-code, .gs-files code { display: block; font-family: var(--mono); font-size: 11px; color: #C9D6EA;
+  background: var(--a06); padding: 4px 7px; margin-bottom: 3px; word-break: break-all; }
+.gs-rels { display: flex; flex-direction: column; gap: 3px; }
+.gs-rel { text-align: left; background: none; border: 1px solid transparent; color: var(--text); font: inherit;
+  font-size: 12px; padding: 3px 6px; cursor: pointer; }
+.gs-rel:hover { border-color: var(--a35); color: var(--accent); }
+.gs-rel i { font-style: normal; color: var(--muted); font-size: 10.5px; margin-right: 4px; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 10px; letter-spacing: 1.5px; }
+.graph-legend i.ring { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--c);
+  margin-right: 5px; vertical-align: -1px; }
+.graph-legend i.ring.dashed { border: 1px dashed var(--accent); }
+#graph-meta { font-family: var(--mono); font-size: 10px; }
+.gs-verified { font-size: 11.5px; color: #B4C2D8; line-height: 1.45; border-left: 2px solid var(--a35); padding-left: 8px; }
+
+/* ── onglet USAGE (mind.js, cognition/usage.py) ──────────────────────── */
+.usage-range { display: flex; gap: 4px; justify-content: flex-end; margin-bottom: 12px; }
+.usage-range button { background: none; border: 1px solid var(--a20); color: var(--muted); font: inherit;
+  font-size: 10px; letter-spacing: 2px; padding: 5px 10px; cursor: pointer; }
+.usage-range button.sel { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.usage-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.ut { border: 1px solid var(--a20); padding: 12px 14px; background: var(--a06); }
+.ut-k { font-size: 10px; letter-spacing: 2.5px; color: var(--muted); }
+.ut-v { font-family: var(--mono); font-size: 20px; color: #E6EEF9; margin: 6px 0 4px; }
+.ut-s { font-size: 11px; color: var(--muted); line-height: 1.35; }
+.usage-chart { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 160px;
+  padding: 8px 0 0; border-bottom: 1px solid var(--a20); }
+.uc-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end;
+  align-items: center; cursor: default; outline: none; }
+.uc-bar { width: 100%; max-width: 46px; background: var(--accent); border-radius: 4px 4px 0 0; opacity: .85; }
+.uc-col:hover .uc-bar, .uc-col:focus .uc-bar { opacity: 1; }
+.uc-bar.empty { height: 0 !important; }
+.uc-day { font-size: 9.5px; color: var(--muted); margin-top: 4px; transform: translateY(18px); }
+.usage-chart { margin-bottom: 26px; }
+.uc-tip { position: absolute; top: -6px; transform: translate(-50%, -100%); background: #0B1320;
+  border: 1px solid var(--a35); color: var(--text); font-size: 11px; padding: 5px 8px; white-space: nowrap;
+  pointer-events: none; z-index: 2; }
+.ut-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ut-table th { text-align: left; font-size: 9.5px; letter-spacing: 2px; color: var(--muted); font-weight: 400;
+  padding: 4px 8px; border-bottom: 1px solid var(--a20); }
+.ut-table td { padding: 5px 8px; border-bottom: 1px solid var(--a06); }
+.ut-table td b { font-family: var(--mono); font-weight: 400; color: var(--accent); }
+.ut-table tr.weak td b, .ut-flag { color: var(--c-warn); }
+.ut-flag { font-size: 9.5px; letter-spacing: 1.5px; }

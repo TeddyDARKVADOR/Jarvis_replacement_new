@@ -3,8 +3,8 @@ eval_lab/scenario.py — one situation, in one shape, for every layer of JARVIS.
 
 WHY ONE FORMAT FOR SEVERAL LAYERS
     The layers under test do not share a vocabulary: context/ speaks in
-    Situation and Channel, server/targeting in DeviceInfo and Resolution,
-    avatar/ in intents and blendshapes. A scenario format per layer would make
+    Situation and Channel, server/targeting in DeviceInfo and Resolution.
+    A scenario format per layer would make
     every tool of the lab — generator, mutator, minimiser, clusterer — exist
     once per layer. So the envelope is shared and only two blocks vary:
 
@@ -40,7 +40,7 @@ from datetime import datetime
 
 SCHEMA = "jarvis.scenario/1"
 
-SURFACES = ("situation", "policy", "sequence", "routing", "face", "router")
+SURFACES = ("situation", "policy", "sequence", "routing", "router")
 # The tier a surface runs at. `router` needs a live loop and threads: FULL.
 SURFACE_TIER = {"router": "full"}
 SOURCES = ("legacy", "human", "generated", "mutated", "boundary", "adversarial", "llm", "regression")
@@ -54,8 +54,6 @@ CHANNELS = ("INTERRUPT", "VOICE", "NOTIFY", "NOTIFY_SILENT", "DEFER", "DROP")
 ACTIVITIES = ("STILL", "WALKING", "RUNNING", "CYCLING", "IN_VEHICLE", "UNKNOWN")
 RINGERS = ("NORMAL", "VIBRATE", "SILENT", "UNKNOWN")
 DEVICE_TYPES = ("pc", "android", "unknown")
-FACE_STATES = ("LISTENING", "THINKING", "SPEAKING", "CONFIRM")
-FACE_GAZES = (None, "user", "screen")
 
 # The operations a `sequence` may chain. Each is interpreted by
 # eval_lab/surfaces.py against the real context/ objects.
@@ -225,7 +223,7 @@ def validate(s: dict) -> dict:
 
     Structural: the envelope is well-formed. Semantic: the situation it
     describes could exist — an origin that names a device that is not there,
-    a phone that reported from the future, an intent the face does not know.
+    a phone that reported from the future.
     A scenario that fails here is the lab's problem, never JARVIS's.
     """
     errors: list[str] = []
@@ -288,14 +286,6 @@ def validate(s: dict) -> dict:
         _need(isinstance(stim.get("parameters", {}), dict), "stimulus.parameters doit etre un objet", errors)
         ago = (world.get("turn") or {}).get("ago_s", 0)
         _need(isinstance(ago, (int, float)) and ago >= 0, "world.turn.ago_s invalide", errors)
-    elif surface == "face":
-        from .vocab import face_intents
-        _need(stim.get("intent") in (None, *face_intents()),
-              f"stimulus.intent inconnu : {stim.get('intent')!r}", errors)
-        _need(stim.get("state") in FACE_STATES, "stimulus.state hors vocabulaire", errors)
-        _need(stim.get("gaze") in FACE_GAZES, "stimulus.gaze hors vocabulaire", errors)
-        for flag in ("speech", "urgent", "interrupted"):
-            _need(isinstance(stim.get(flag), bool), f"stimulus.{flag} doit etre booleen", errors)
 
     _need(s.get("id") == scenario_id(s), "id ne correspond pas au contenu (restamp oublie)", errors)
     if errors:

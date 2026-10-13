@@ -84,6 +84,62 @@ export function createMind(ctx) {
     for (const b of $('mind-tabs').querySelectorAll('button')) b.classList.toggle('sel', b.dataset.tab === t);
     for (const sec of $('mind-body').querySelectorAll('section')) sec.hidden = sec.dataset.pane !== t;
     if (t === 'memories') loadMemories();
+    if (t === 'usage') loadUsage();
+  }
+
+  // ── usage : ce que JARVIS a coûté et réussi (cognition/usage.py) ──
+  let usageDays = 7;
+  const kfmt = (n) => (n == null ? '—'
+    : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.', ',')} M`
+    : n >= 10000 ? `${(n / 1000).toFixed(1).replace('.', ',')} k` : n.toLocaleString('fr-FR'));
+  async function loadUsage() {
+    const r = await ctx.rpc('cognition.usage', { days: usageDays });
+    if (r.error) { status(r.error, 'err'); return; }
+    const t = r.totals;
+    const change = t.change == null ? 'pas de semaine précédente à comparer'
+      : `${t.change > 0 ? '+' : ''}${Math.round(t.change * 100)} % vs la période d'avant`;
+    const rem = r.reminders;
+    $('usage-tiles').innerHTML = [
+      ['CONTEXTE MOYEN / APPEL', `${kfmt(t.avg_input)} tokens`, change],
+      ['APPELS LIVE', kfmt(t.live_calls), `${t.sessions} session(s) depuis le ${esc(r.since.slice(8, 10))}/${esc(r.since.slice(5, 7))}`],
+      ['COÛT AU TARIF PAYANT', `≥ ${t.usd.toFixed(2)} $`, 'minimum : la part non ventilée est comptée au tarif texte'],
+      ['RAPPELS', `${rem.delivered} livré(s)`, `${rem.missed} manqué(s) · ${rem.upcoming} à venir`],
+    ].map(([k, v, sub]) => `<div class="ut"><div class="ut-k">${k}</div><div class="ut-v">${esc(v)}</div><div class="ut-s">${esc(sub)}</div></div>`).join('');
+
+    const max = Math.max(1, ...r.days.map((d) => d.avg_input || 0));
+    $('usage-chart').innerHTML = r.days.map((d) => {
+      const h = d.avg_input ? Math.max(2, (d.avg_input / max) * 100) : 0;
+      const label = d.avg_input
+        ? `${d.date} : ${kfmt(d.avg_input)} tokens en moyenne (max ${kfmt(d.max_input)}), ${d.calls} appel(s), ≥ ${d.usd.toFixed(3)} $`
+        : `${d.date} : aucun appel`;
+      return `<div class="uc-col" tabindex="0" aria-label="${esc(label)}" data-tip="${esc(label)}">
+        <div class="uc-bar${d.avg_input ? '' : ' empty'}" style="height:${h}%"></div>
+        <div class="uc-day">${esc(d.date.slice(8, 10))}/${esc(d.date.slice(5, 7))}</div></div>`;
+    }).join('') + '<div class="uc-tip" id="usage-tip" hidden></div>';
+    const tip = $('usage-tip');
+    for (const col of $('usage-chart').querySelectorAll('.uc-col')) {
+      const showTip = () => { tip.textContent = col.dataset.tip; tip.hidden = false;
+        tip.style.left = `${col.offsetLeft + col.offsetWidth / 2}px`; };
+      col.addEventListener('mouseenter', showTip); col.addEventListener('focus', showTip);
+      col.addEventListener('mouseleave', () => { tip.hidden = true; });
+      col.addEventListener('blur', () => { tip.hidden = true; });
+    }
+
+    $('usage-tools').innerHTML = r.tools.length ? `<table class="ut-table"><thead><tr>
+        <th>OUTIL</th><th>APPELS</th><th>RÉUSSIS</th><th>TAUX</th><th>DERNIER ÉCHEC</th></tr></thead><tbody>${
+      r.tools.map((x) => {
+        const bad = x.rate < 0.8 && x.calls >= 3;
+        return `<tr class="${bad ? 'weak' : ''}"><td class="mt-name">${esc(x.tool)}</td><td>${x.calls}</td><td>${x.ok}</td>
+          <td><b>${Math.round(x.rate * 100)} %</b>${bad ? ' <span class="ut-flag">⚠ À SURVEILLER</span>' : ''}</td>
+          <td>${x.last_fail ? `${esc(day(x.last_fail))} ${esc(hm(x.last_fail))}` : '—'}</td></tr>`;
+      }).join('')}</tbody></table>`
+      : '<div class="mind-empty">Aucun appel d’outil sur la période.</div>';
+
+    const total = r.sources.reduce((a, [, n]) => a + n, 0) || 1;
+    $('usage-sources').innerHTML = r.sources.length
+      ? r.sources.map(([name, n]) => `<div class="ml-row"><span class="mt-name">${esc(name)}</span>
+          <span>${kfmt(n)} tokens</span><span class="ml-why">${Math.round((n / total) * 100)} %</span></div>`).join('')
+      : '<div class="mind-empty">Rien d’enregistré sur la période.</div>';
   }
 
   // ── vue d'ensemble ──
@@ -293,6 +349,13 @@ export function createMind(ctx) {
     $('mind-tabs').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-tab]');
       if (b) { selectTab(b.dataset.tab); ctx.sound.play('click'); }
+    });
+    $('usage-range').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-days]');
+      if (!b) return;
+      usageDays = Number(b.dataset.days);
+      for (const x of $('usage-range').querySelectorAll('button')) x.classList.toggle('sel', x === b);
+      loadUsage();
     });
     $('mind-views').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-view]');

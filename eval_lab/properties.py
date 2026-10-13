@@ -406,15 +406,6 @@ def _explicit(s, t):
     return None
 
 
-# ── avatar/ ──────────────────────────────────────────────────────────────────
-
-@prop("FACE_INVARIANTS_I1_I7", ("face",), "hard",
-      "avatar/checks/scenario_matrix.mjs — les invariants I1 a I7, sur la sortie")
-def _face(s, t):
-    v = t.get("violations") or []
-    return "; ".join(f"{x['kind']} ({x['detail']})" for x in v) or None
-
-
 # ── entry point ──────────────────────────────────────────────────────────────
 
 def check_all(s: dict, trace: dict) -> list[dict]:

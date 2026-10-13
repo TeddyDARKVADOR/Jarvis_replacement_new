@@ -28,7 +28,7 @@ What it checks:
         running at the deadline no longer counts as a success
   26    a web page in a real headless browser: the JS bug is found and
         located, fixed, the criterion proven, the preview opens by itself
-  27-30 dev_agent / code_helper hand new programs to the Studio (not on the
+  27-30 code_helper hands new programs to the Studio (not on the
         server); the preview window lets only the project's local server
         through; Ruff is informative; the HUD options
   31    criteria left without a test: one pass writes the missing tests
@@ -794,7 +794,7 @@ def _():
         st.stop_previews()
 
 
-@check("27 dev_agent et code_helper confient la création au Studio sur ce PC, pas sur Oracle")
+@check("27 code_helper confie la création au Studio sur ce PC, pas sur Oracle")
 def _():
     import importlib
 
@@ -808,10 +808,7 @@ def _():
     saved = cw.get_studio
     cw.get_studio = lambda: Stub()
     try:
-        dev = importlib.import_module("actions.dev_agent")
         helper = importlib.import_module("actions.code_helper")
-        assert dev.dev_agent({"description": "un jeu de morpion", "language": "javascript"}).startswith("[STUDIO")
-        assert "javascript" in calls[-1]["request"] and calls[-1]["action"] == "create"
         assert helper.code_helper({"action": "build", "description": "un convertisseur"}).startswith("[STUDIO")
         assert helper.code_helper({"action": "write", "description": "un script"}).startswith("[STUDIO")
         n = len(calls)

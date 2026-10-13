@@ -17,13 +17,20 @@ Le cerveau (MARK LIII) tourne sur **Oracle**. Sur l'ordinateur, `main.py` ouvre 
 python main.py            le HUD plein écran, relié à JARVIS sur Oracle
 python main.py --mini     démarre en orbe dans le coin de l'écran
 python main.py --local    JARVIS entièrement sur ce PC (clé Gemini locale), même HUD
-python main.py --classic  l'ancienne fenêtre, inchangée
 ```
 
 Premier lancement : la page **Paramètres** (⚙, ou Ctrl+,) s'ouvre seule. Saisissez
 l'adresse Tailscale du serveur et le **jeton d'accès** (généré sur Oracle avec
 `python -m server.run_headless --pairing`), puis **Tester** et **Enregistrer**.
-Détails : [client_desktop/hud/README.md](client_desktop/hud/README.md).
+Détails : demandez à JARVIS « montre-moi ton graphe » (graphe `hud`).
+
+### 🗺️ Le graphe de ses fonctionnalités
+
+La documentation de JARVIS n'est plus en README : elle est dans
+[capabilities/graphs/](capabilities/graphs/), un graphe général et un sous-graphe par
+dossier, chacun daté. JARVIS les consulte lui-même (outil `capabilities`) pour savoir ce
+qu'il sait faire, et les affiche dans le HUD quand on le lui demande.
+`python -m capabilities.selftest` vérifie que le graphe correspond au code.
 
 ### 🛠️ Jarvis Code Studio — son atelier de développement
 
@@ -62,7 +69,7 @@ affiche son **code complet** (numéros de ligne, couleurs, recherche) ou ses dif
   « Activer ou désactiver des fonctionnalités Windows » → « Bac à sable Windows » →
   redémarrer (Windows Pro/Entreprise). Seuls la bibliothèque standard et `_deps/` du
   projet y sont disponibles ; pas de Node.js.
-- `dev_agent` et la création via `code_helper` passent désormais par le Studio sur ce PC.
+- La création via `code_helper` passe par le Studio sur ce PC.
 - Le code est écrit par **Groq** dès que `"groq_api_key"` est présent dans
   `config/api_keys.json` (meilleur modèle disponible pour la clé, `openai/gpt-oss-120b` en
   priorité ; `"groq_model"` dans `plugin_config.code_studio` pour en imposer un). Sans clé
@@ -329,7 +336,6 @@ python main.py
 ```
 Teddy-foundation/
 ├── main.py                   # Core loop — Gemini Live session, audio I/O, wake/sleep state, tool dispatch
-├── ui.py                     # PyQt6 HUD — reactive waveform, log panel, settings drawer, plugin manager, camera feed
 ├── setup.py                  # OS-aware installer (skips wrong-OS dependencies)
 ├── plugins/
 │   ├── _template.py          # Copy this to write a new plugin — one file, drop in, done
@@ -353,7 +359,6 @@ Teddy-foundation/
 │   ├── youtube_video.py      # YouTube playback control
 │   ├── game_updater.py       # Game update management (Steam / Epic)
 │   ├── code_helper.py        # Code review and generation
-│   ├── dev_agent.py          # Developer task agent
 │   └── desktop.py            # Desktop and taskbar control
 ├── memory/
 │   ├── memory_manager.py     # Load/save long_term.json — sessions, monitors, identity

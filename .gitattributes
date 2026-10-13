@@ -11,6 +11,12 @@
 jarvis-preprod/preprod  text eol=lf
 client-android/gradlew  text eol=lf
 
+# Les corpus du labo sont comparés OCTET POUR OCTET à un import frais (LF) :
+# réécrits en CRLF au checkout, ils « dérivaient » sans qu'une ligne change.
+eval_lab/corpus/**/*.jsonl  text eol=lf
+# Les graphes sont réécrits par capabilities.verify, toujours en LF.
+capabilities/**/*.json      text eol=lf
+
 # Les scripts Windows, eux, veulent des CRLF.
 *.bat           text eol=crlf
 *.cmd           text eol=crlf

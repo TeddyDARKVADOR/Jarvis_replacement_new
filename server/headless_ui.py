@@ -180,28 +180,17 @@ class HeadlessUI:
         self._emit({"type": "content",
                     "title": str(title)[:48], "text": str(text)[:4000]})
 
+    def show_graph(self, graph: str = "general", focus: str = "") -> None:
+        """Ask the HUD to open its GRAPHE panel (plugins/capabilities.py).
+
+        The graphs themselves are not sent: the HUD reads its own copy of
+        capabilities/graphs/. `ts` lets a client ignore the replay of this
+        event when it reconnects (/ws replays its last 50 messages)."""
+        self._emit({"type": "show_graph", "graph": str(graph or "general")[:40],
+                    "focus": str(focus or "")[:80], "ts": time.time()})
+
     def notify_phone_connected(self) -> None:
         self.state.note_phone_connected()
-
-    # ── one typed event, for a module that owns its own ──────────────────────
-
-    def emit_event(self, msg: dict) -> None:
-        """Broadcast a typed event this class knows nothing about.
-
-        Every method above answers a call main.py makes, and owns the shape of
-        what it sends. This one is the opposite: it exists so a module that owns
-        an event type of its own — `plugins/presence.py` and the `avatar`
-        event it defines — can reach the socket without either side learning
-        about the other.
-
-        The alternative was a `show_avatar()` here, which would have put the
-        directive's shape in two files and made this class grow a method per
-        feature. `_emit` was already the whole mechanism; this is its public
-        name, and it is the same guarantees: never raises, and silently does
-        nothing when no client is connected.
-        """
-        if isinstance(msg, dict) and msg.get("type"):
-            self._emit(msg)
 
     # ── confirmation gate ────────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@
 # files exist, so a re-run cannot overwrite your API key or un-pair your phone.
 #
 # It installs NO secrets. The Gemini key is yours to put in place; the device
-# credential is generated on first start. See deployment/ORACLE.md.
+# credential is generated on first start. See capabilities/graphs/deployment.json.
 
 set -euo pipefail
 

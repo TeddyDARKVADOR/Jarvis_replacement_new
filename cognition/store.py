@@ -191,7 +191,61 @@ CREATE TABLE autonomy_steps (
 );
 """
 
-_MIGRATIONS = [_V1, _V2, _V3, _V4, _V5]
+# v6 — vecteurs des souvenirs (cognition/embeddings.py). Le déclencheur garde
+# l'oubli RÉEL : effacer un souvenir efface son vecteur, quel que soit le chemin.
+_V6 = """
+CREATE TABLE memory_embeddings (
+  memory_id TEXT PRIMARY KEY,
+  model     TEXT NOT NULL,
+  dim       INTEGER NOT NULL,
+  vec       BLOB NOT NULL,
+  ts        TEXT NOT NULL
+);
+CREATE TRIGGER memory_embeddings_forget AFTER DELETE ON memories
+BEGIN
+  DELETE FROM memory_embeddings WHERE memory_id = old.id;
+END;
+"""
+
+# v7 — mémoire commune entre PC (cognition/sync.py). Chaque changement d'un
+# souvenir passe par sync_outbox, capturé ici par des déclencheurs : aucun
+# chemin d'écriture ne peut l'oublier. Pendant l'application de ce qu'un autre
+# PC a écrit (sync_state.applying = 1), rien n'est recapturé : pas d'écho.
+_V7 = """
+CREATE TABLE sync_outbox (
+  id        INTEGER PRIMARY KEY,
+  memory_id TEXT NOT NULL,             -- ou le sujet, pour forget_subject
+  op        TEXT NOT NULL,             -- upsert|delete|forget_subject
+  ts        TEXT NOT NULL
+);
+CREATE TABLE sync_state (k TEXT PRIMARY KEY, v TEXT);
+-- Ce qui a été oublié, pour qu'un autre PC ne le rende jamais : un id effacé,
+-- ou un sujet oublié (« Ayse ») avec sa date.
+CREATE TABLE sync_tombstones (key TEXT PRIMARY KEY, kind TEXT NOT NULL, ts TEXT NOT NULL);
+CREATE TRIGGER sync_memory_tombstone AFTER DELETE ON memories
+BEGIN
+  INSERT OR REPLACE INTO sync_tombstones(key, kind, ts)
+  VALUES ('id:' || old.id, 'id', strftime('%Y-%m-%dT%H:%M:%S', 'now'));
+END;
+CREATE TRIGGER sync_memory_insert AFTER INSERT ON memories
+WHEN NOT EXISTS (SELECT 1 FROM sync_state WHERE k = 'applying' AND v = '1')
+BEGIN
+  INSERT INTO sync_outbox(memory_id, op, ts) VALUES (new.id, 'upsert', strftime('%Y-%m-%dT%H:%M:%S', 'now'));
+END;
+CREATE TRIGGER sync_memory_update
+AFTER UPDATE OF content, kind, source, slot, confidence, importance, status, valid_from, valid_to, retention ON memories
+WHEN NOT EXISTS (SELECT 1 FROM sync_state WHERE k = 'applying' AND v = '1')
+BEGIN
+  INSERT INTO sync_outbox(memory_id, op, ts) VALUES (new.id, 'upsert', strftime('%Y-%m-%dT%H:%M:%S', 'now'));
+END;
+CREATE TRIGGER sync_memory_delete AFTER DELETE ON memories
+WHEN NOT EXISTS (SELECT 1 FROM sync_state WHERE k = 'applying' AND v = '1')
+BEGIN
+  INSERT INTO sync_outbox(memory_id, op, ts) VALUES (old.id, 'delete', strftime('%Y-%m-%dT%H:%M:%S', 'now'));
+END;
+"""
+
+_MIGRATIONS = [_V1, _V2, _V3, _V4, _V5, _V6, _V7]
 
 
 class Store:

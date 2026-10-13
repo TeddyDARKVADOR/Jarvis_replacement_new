@@ -148,7 +148,7 @@ def test_connection(host: str, port: int, use_tls: bool, token: str) -> dict:
         info = r.json() if r.ok else {}
     except Exception as exc:
         if host.endswith(".ts.net") and not _tailscale_app_running():
-            # The trap documented in client_desktop/README.md: the service runs
+            # The trap documented in capabilities/graphs/client_desktop.json (l.a_tester): the service runs
             # but sits in NoState until the tray app activates the profile.
             return {"ok": False, "step": "reach",
                     "detail": "Tailscale n'est pas lancé sur ce PC (tailscale-ipn.exe). "

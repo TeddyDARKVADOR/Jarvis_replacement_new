@@ -38,7 +38,7 @@ from .audio import Microphone
 from .config import Settings, load, save  # noqa: F401  (save: _on_settings_changed)
 from .device import CapabilityProbe, LocalExecutor
 from .net import NetworkWorker
-from .state import AssistantState, JarvisStore, LinkState, Snapshot
+from .state import JarvisStore, LinkState, Snapshot
 from .hud.backends import RemoteBackend
 from .hud.settings import RECONNECT_KEYS
 from .hud.window import HudWindow
@@ -337,13 +337,9 @@ class JarvisDesktop(QObject):
         if kind == "message" and getattr(payload, "from_jarvis", False):
             self._last_jarvis_at = time.monotonic()
 
-        # Also above the notifications setting, and for a stronger reason than
-        # bookkeeping: an expression is not a notification. It makes no sound,
-        # raises no toast and asks for nothing. Someone who turned notifications
-        # off wanted to stop being interrupted, not to give JARVIS a blank face.
-        if kind == "avatar":
-            if isinstance(payload, dict):
-                self.hud.set_avatar_intent(payload)
+        # Asked for by the user, through JARVIS: not a notification.
+        if kind == "graph" and isinstance(payload, dict):
+            self.hud.show_graph(payload.get("graph", "general"), payload.get("focus", ""))
             return
 
         if not self.settings.notifications:

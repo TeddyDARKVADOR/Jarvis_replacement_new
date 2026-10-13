@@ -69,8 +69,6 @@ def dims_of(s: dict) -> dict:
         d["origin"] = types.get(origin, "none")
         d["capability"] = st.get("capability") or "none"
         d["model_hint"] = bool(st.get("model_hint"))
-    elif surface == "face":
-        d.update({k: st.get(k) for k in ("intent", "state", "speech", "gaze", "urgent", "interrupted")})
     return d
 
 
@@ -99,9 +97,6 @@ def features(s: dict, rec: dict | None = None) -> set:
         f |= {("seq_channel", x.get("priority"), x.get("channel")) for x in steps if x.get("op") == "decide"}
         if any(x.get("lost") for x in steps):
             f.add(("event", "lost"))
-    elif s["surface"] == "face" and t:
-        f |= {("violation", v["kind"]) for v in t.get("violations") or []}
-        f.add(("cell", t.get("expression"), t.get("gesture_played")))
     if rec:
         f.add(("verdict", s["surface"], rec.get("verdict")))
         for p in rec.get("problems") or []:
@@ -161,13 +156,13 @@ def fuzz(seeds: list[dict], count: int, seed: int, sink, *, max_pool: int = 5000
     it). Parents' traces are kept so each child's relations can be checked.
     """
     from .mutate import check_relations, mutate
-    from .runner import run_one, _run_face, verdict_of
+    from .runner import run_one, verdict_of
 
     rng = random.Random(seed)
     cov = Coverage()
     pool: list[tuple[float, dict, dict]] = []      # (energy, scenario, trace)
     for s in seeds:
-        rec = _run_face([s])[0] if s["surface"] == "face" else run_one(s)
+        rec = run_one(s)
         nov = cov.add(s, rec)
         pool.append((0.1 + nov, s, rec.get("trace")))
     produced = 0
@@ -179,7 +174,7 @@ def fuzz(seeds: list[dict], count: int, seed: int, sink, *, max_pool: int = 5000
         pool[idx] = (max(0.05, energy * 0.9), parent, ptrace)   # a used seed cools down
         if child is None:
             continue
-        rec = _run_face([child])[0] if child["surface"] == "face" else run_one(child)
+        rec = run_one(child)
         rels = check_relations(ptrace, rec.get("trace"), child)
         if rels and rec["verdict"] in ("PASS", "FAIL"):
             rec["problems"] = (rec.get("problems") or []) + rels

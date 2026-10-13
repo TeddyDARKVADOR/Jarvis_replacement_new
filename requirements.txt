@@ -3,7 +3,7 @@
 
 # ── The HUD, audio, Gemini Live ──────────────────────────────────────────────
 PyQt6
-PyQt6-WebEngine          # the HUD and the 3D face are web pages in Qt
+PyQt6-WebEngine          # the HUD is a web page in Qt
 sounddevice
 numpy
 google-genai>=2.8.0
@@ -55,8 +55,7 @@ wmi;        sys_platform == "win32"
 # The local wake word ("Hey Jarvis") is opt-in: one click in the HUD's
 # Paramètres → Audio, or `pip install openwakeword`.
 #
-# The 3D face's model is installed separately (`python -m presence.install_model`);
-# three.js is vendored in avatar/vendor/, so no npm and no network are needed.
+# three.js is vendored in client_desktop/hud/web/vendor/, so no npm is needed.
 #
 # macOS / Linux OS actions (volume, brightness, reminders) shell out to native
 # tools (pactl / brightnessctl / osascript / systemd) — no extra packages.

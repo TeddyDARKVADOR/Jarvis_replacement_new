@@ -1,0 +1,37 @@
+{
+  "schema": "jarvis.graph/1",
+  "id": "deployment",
+  "title": "Déploiement — Oracle, Tailscale, redéploiement, retour arrière",
+  "updated": "2026-10-13",
+  "summary": "Installer MARK LIII sur une VM Oracle Always Free, la relier par Tailscale, la mettre à jour depuis n'importe quel PC qui a ce dépôt, et revenir en arrière.",
+  "replaces": ["deployment/ORACLE.md", "deployment/TAILSCALE.md", "deployment/PHASE7.md", "deployment/RECOVERY.md"],
+  "nodes": [
+    {"id": "deployment", "label": "deployment/", "kind": "racine", "summary": "install.sh (installation idempotente), jarvis.service (systemd), redeploy.sh (mise à jour complète), requirements-server.txt.", "files": ["deployment/install.sh", "deployment/jarvis.service", "deployment/redeploy.sh", "deployment/requirements-server.txt"]},
+    {"id": "d.vm", "label": "La VM Oracle", "kind": "donnee", "summary": "Always Free : Ampere A1 (ARM, 1 OCPU / 6 Go suffisent) ou E2.1.Micro ; 1 Go de RAM suffit, l'assistant ne garde aucun modèle. Ubuntu 22.04+ ou Oracle Linux 9, Python 3.11+, ~500 Mo de disque.", "details": ["Ne rien ouvrir dans la liste de sécurité : Tailscale se connecte en sortie.", "Nom sur le tailnet : jarvis-vps."]},
+    {"id": "p.installation", "label": "Installation initiale", "kind": "procedure", "summary": "1 créer la VM · 2 apt install python3 python3-venv python3-pip git rsync · 3 cloner le dépôt · 4 sudo bash deployment/install.sh · 5 poser la clé Gemini · 6 selftest · 7 lancer une fois à la main · 8 appairer · 9 Tailscale · 10 activer le service · 11 connecter Android · 12 vérifier la chaîne · 13 redémarrer.", "details": ["install.sh crée l'utilisateur jarvis, copie le code dans /opt/jarvis, construit le venv, installe requirements-server.txt et l'unité systemd ; il n'installe aucun secret et ne démarre pas le service.", "Clé : sudo -u jarvis tee /opt/jarvis/config/api_keys.json avec {\"gemini_api_key\": …}, puis chmod 600. Laisser wake_word_enabled à false sur un serveur.", "Selftest : sudo -u jarvis sh -c 'cd /opt/jarvis && exec .venv/bin/python -m server.selftest' — le cd doit être DANS le sudo, sinon on teste le clone.", "Au lancement, 15 actions actives et browser_control rejeté (pas de Playwright) : c'est correct.", "Service : sudo systemctl enable --now jarvis ; journalctl -u jarvis -f.", "Vérifier : /status avec le bearer — state, session_live, phone.audio_streams, phone_mic_streaming, counts.reconnects, audio_out.frames."], "files": ["deployment/install.sh", "deployment/jarvis.service"]},
+    {"id": "p.depannage", "label": "Dépannage", "kind": "procedure", "summary": "Pas de clé → étape 5 ; python-multipart manquant → l'app refuse de démarrer ; « cannot import get_os » → relancer install.sh ; téléphone en RECONNECTING → Tailscale ou APK release pointé hors .ts.net ; jeton refusé → ré-appairer.", "details": ["systemd-analyze verify doit tourner sous sudo, sinon il signale à tort un Permission denied."]},
+    {"id": "f.tailscale", "label": "Réseau privé Tailscale", "kind": "fonction", "status": "ok", "summary": "L'audio circule en PCM non chiffré : WireGuard chiffre tout entre le téléphone, le PC et la VM, et rien n'est exposé à Internet.", "details": ["Utiliser le nom MagicDNS (jarvis-vps.tailnet-XXXX.ts.net), pas l'IP : la release Android n'accepte le texte clair que vers *.ts.net.", "Désactiver l'expiration de la clé du nœud serveur (sinon il sort du tailnet au bout d'environ 6 mois), ou une clé d'auth taguée tag:server.", "Ports : 8000/tcp sur le tailnet seulement ; 8001 seulement si config/certs/ existe ; 41641/udp en sortie.", "ACL possible : seuls les membres atteignent tag:server:8000.", "Vérifier : curl http://jarvis-vps…ts.net:8000/health depuis un appareil du tailnet."], "graph": "android"},
+    {"id": "f.redeploy", "label": "Redéployer depuis n'importe quel PC", "kind": "fonction", "status": "ok", "summary": "bash deployment/redeploy.sh (--dry-run, --backup-only, --yes, --no-restart, --skip-tests) : dépôt → selftests → git bundle → sauvegarde Oracle → déploiement → redémarrage → selftest distant → vérification de la version.", "details": ["S'arrête sans rien écraser si l'arbre local a des fichiers suivis modifiés, si un selftest échoue, si la copie d'Oracle a des modifications ou un commit inconnu, si sudo demande un mot de passe ou s'il reste moins de 500 Mo.", "Le code voyage en git bundle (≈ 6 Mo) appliqué par merge --ff-only : rien n'est poussé ni tiré de GitHub.", "Variables : JARVIS_SSH (ubuntu@jarvis-vps), JARVIS_REMOTE_REPO, JARVIS_BACKUPS (/var/backups/jarvis), JARVIS_KEEP_BACKUPS (10).", "Chaque déploiement ajoute une ligne à ~/jarvis-deploys.log sur Oracle.", "Prérequis : ce dépôt, bash, Python 3.11+, Tailscale sur le même compte, ssh/scp (Tailscale SSH, sans clé)."], "files": ["deployment/redeploy.sh"]},
+    {"id": "p.retour", "label": "Revenir en arrière", "kind": "procedure", "summary": "Chaque déploiement sauvegarde /opt/jarvis (config, memory, uploads, sans .venv) et note le commit d'avant. Restaurer : arrêter le service, déplacer /opt/jarvis, détarer la sauvegarde, remettre le .venv, chown, git checkout --detach du commit noté, redémarrer, /health.", "details": ["Revenir sur main (git checkout main) avant le prochain redeploy.sh."]},
+    {"id": "d.secrets", "label": "Versionné, généré, secret", "kind": "donnee", "summary": "Aucun secret n'est dans Git. Secrets sur Oracle : config/device_credentials.json (nouveau jeton → ré-appairer), config/api_keys.json, config/certs/, config/whatsapp_web/. Donnée personnelle : memory/long_term.json.", "details": ["Sur ce PC : la clé debug Android (%USERPROFILE%\\.android\\debug.keystore) signe l'app du téléphone ; une autre machine ne peut pas la mettre à jour sans elle.", "Sauvegardes d'Oracle : /var/backups/jarvis (root, 600), sur la même VM : perdre la VM perd long_term.json.", "L'ancienne clé TLS auto-signée du tableau de bord a été retirée de tout l'historique le 2026-10-13 (git filter-repo, push forcé des 12 branches). Le dépôt ayant été public, elle reste à considérer compromise : ne jamais la réutiliser, générer une nouvelle paire si config/certs/ sert un jour."]},
+    {"id": "l.dependances", "label": "Ce qui dépend d'autre chose que ce PC", "kind": "limite", "status": "partiel", "summary": "Oracle lui-même (secrets et sauvegardes sur la même VM) ; le compte Tailscale (sinon IP publique et une clé SSH absente de ce PC) ; la clé de signature Android."},
+    {"id": "h.phase7", "label": "Historique : phase 7 (septembre 2026)", "kind": "procedure", "summary": "Le déploiement a d'abord été répété dans un conteneur Ubuntu 24.04 propre ; deux défauts corrigés (StartLimit* dans [Unit] de jarvis.service, install.sh qui mourait sans systemctl). Audit de l'historique Git : la clé Gemini n'a jamais été exposée."}
+  ],
+  "edges": [
+    ["deployment", "d.vm", "contient"],
+    ["deployment", "p.installation", "contient"],
+    ["deployment", "p.depannage", "contient"],
+    ["deployment", "f.tailscale", "contient"],
+    ["deployment", "f.redeploy", "contient"],
+    ["deployment", "p.retour", "contient"],
+    ["deployment", "d.secrets", "contient"],
+    ["deployment", "l.dependances", "contient"],
+    ["deployment", "h.phase7", "contient"],
+    ["p.installation", "d.vm", "deploie"],
+    ["f.redeploy", "d.vm", "deploie"],
+    ["f.redeploy", "p.retour", "utilise"],
+    ["f.tailscale", "d.vm", "protege"],
+    ["d.secrets", "d.vm", "contient"],
+    ["p.depannage", "p.installation", "utilise"]
+  ]
+}

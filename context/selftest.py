@@ -10,7 +10,7 @@ network. Same shape as server/selftest.py, deliberately: one convention for
 What it checks:
 
   1. The package imports nothing from the core. This is the V2 contract
-     (docs/V2_CONTRACT.md, section 4) enforced by the parser rather than by
+     (capabilities/graphs/contrat.json, r.hook) enforced by the parser rather than by
      anyone remembering it.
   2. Quiet hours wrap midnight.
   3. The situation precedence holds, including the two cases it exists for:

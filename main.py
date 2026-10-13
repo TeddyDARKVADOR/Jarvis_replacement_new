@@ -347,10 +347,15 @@ TOOL_DECLARATIONS = [
 
 
 _COMPACT_TOOL_DESCRIPTIONS = {
-    "set_presence": (
-        "Optionally set a matching avatar expression or gesture while speaking. "
-        "Use only when a neutral face would feel wrong; never announce the call. "
-        "Prefer intent; otherwise set expression/intensity or affect values."
+    "manage_monitor": (
+        "Add, remove or list topics JARVIS checks once a day for news ('monitor X', 'stop "
+        "monitoring X'). Never crypto, financial or trading topics."
+    ),
+    "system_status": "Real-time CPU, RAM, GPU, temperature, uptime and process count of this machine.",
+    "shutdown_jarvis": "Shut the assistant down when the user says goodbye or asks to stop it, in any language.",
+    "repository_review": (
+        "Inspect a local code repository: mode=overview first, then mode=inspect with a focused "
+        "question. Bounded excerpts, secrets excluded, findings cited by path:line."
     ),
     "file_processor": (
         "Process the user's uploaded file. Choose an action for its type: image, PDF, "
@@ -402,8 +407,61 @@ def _compact_tool_declarations(declarations: list[dict], local_mode: bool) -> li
                 "audio transcribe/trim/convert; video trim/frame/compress/transcribe/extract_audio/info/convert; "
                 "archive list/extract; presentation summarize/extract_text."
             )
+        # Every turn of a Live session re-bills the whole context, tool
+        # declarations included (~80 % of a fresh context on 2026-10-13). An
+        # argument's description is a hint to fill it; past one clause it costs
+        # more than it helps. Action and mode lists are routing, kept whole.
+        for key, prop in properties.items():
+            desc = prop.get("description") if isinstance(prop, dict) else None
+            if desc and key not in _FULL_PARAM_DESCRIPTIONS and len(desc) > _PARAM_DESC_MAX:
+                prop["description"] = _clip_description(desc, _PARAM_DESC_MAX)
         compact.append(tool)
     return compact
+
+
+def _headlines_only(news_text: str, limit: int = 4, width: int = 120) -> str:
+    """Numbered titles from a news list, without snippets, sources or URLs."""
+    import re
+    titles = []
+    for line in str(news_text).splitlines():
+        m = re.match(r"\s*\d+[.)]\s+(.*)", line)
+        if m:
+            title = re.sub(r"\s*\[[^\]]*\]\s*$", "", m.group(1)).strip()
+            if title:
+                titles.append(f"{len(titles) + 1}. {title[:width]}")
+        if len(titles) >= limit:
+            break
+    return "\n".join(titles) if titles else " ".join(str(news_text).split())[:limit * width]
+
+
+def _live_context_limit(cfg: dict, key: str, default: int) -> int:
+    """A Live context limit from api_keys.json, clamped to what the API accepts."""
+    try:
+        value = int(cfg.get(key, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(8000, min(120000, value))
+
+
+#: Argument descriptions longer than this are cut at a clause boundary.
+_PARAM_DESC_MAX = 70
+#: Arguments whose description IS the list of choices the model routes on.
+_FULL_PARAM_DESCRIPTIONS = {"action", "mode"}
+
+
+def _clip_description(text: str, limit: int) -> str:
+    """Keep the first sentence when that is enough; never cut a sentence."""
+    text = " ".join(str(text).split())
+    if len(text) <= limit:
+        return text
+    import re
+    for m in re.finditer(r"(?<!\be\.g)(?<!\bi\.e)(?<!\betc)[.;] ", text):
+        if m.start() > limit:
+            break
+        if m.start() > 0:
+            return text[:m.start()]
+    return text
+
 
 class _ReconnectSignal(Exception):
     """Raised inside the session TaskGroup to force a clean, voluntary reconnect
@@ -816,8 +874,10 @@ class JarvisLive:
         from datetime import datetime
 
         # Load customization from config
+        _cfg_all: dict = {}
         try:
             _cfg = json.loads(open(API_CONFIG_PATH, encoding="utf-8").read())
+            _cfg_all = _cfg if isinstance(_cfg, dict) else {}
             self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
             _user_name = (_cfg.get("user_name") or "").strip()
         except Exception:
@@ -825,7 +885,10 @@ class JarvisLive:
             _user_name = ""
 
         memory     = load_memory()
-        mem_str    = format_memory_for_prompt(memory)
+        # One memory: the cognitive store (verified facts only, synced across
+        # PCs) when it runs; long_term.json only as the V1 fallback.
+        mem_str    = ((self._cognition.memory_prompt_block() if self._cognition else "")
+                      or format_memory_for_prompt(memory))
         sys_prompt = _load_system_prompt()
 
         now      = datetime.now()
@@ -859,6 +922,11 @@ class JarvisLive:
             parts.append(self._cognition.prompt_block())
         parts.append(sys_prompt)
 
+        self._phone_barge_in = bool(_cfg_all.get("phone_barge_in", False))
+        _trigger = _live_context_limit(_cfg_all, "live_context_trigger_tokens", 32000)
+        _target = min(_live_context_limit(_cfg_all, "live_context_target_tokens", 16000),
+                      _trigger - 4000)
+
         cfg = dict(
             response_modalities=["AUDIO"],
             output_audio_transcription={},
@@ -880,8 +948,13 @@ class JarvisLive:
             ),
             # Sliding-window compression: session never dies from a full context
             # window — JARVIS can stay in one conversation for hours
+            # Every turn re-bills the WHOLE context, past audio included. With no
+            # trigger the window only slides at ~80 % of 128k, so a long session
+            # paid up to ~100k input tokens per turn. Capped here (configurable:
+            # live_context_trigger_tokens / live_context_target_tokens).
             context_window_compression=types.ContextWindowCompressionConfig(
-                sliding_window=types.SlidingWindow(),
+                trigger_tokens=_trigger,
+                sliding_window=types.SlidingWindow(target_tokens=_target),
             ),
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
@@ -933,7 +1006,9 @@ class JarvisLive:
                 # the executor deliberately — it is a dictionary scan over a few
                 # hundred short strings, and a thread hop would cost more than
                 # the work itself.
-                result = search_memory(args.get("query", ""), limit=8)
+                result = ((self._cognition.recall_facts(args.get("query", ""), limit=8)
+                           if self._cognition else "")
+                          or search_memory(args.get("query", ""), limit=8))
 
             elif name == "undo":
                 if str(args.get("action", "")).lower().strip() == "list":
@@ -1502,8 +1577,11 @@ class JarvisLive:
                     # Show on UI content panel immediately
                     self.ui.show_content("NEWS — top world news today", news_text)
 
+                    # The full list (snippets, URLs) is on screen. The model gets
+                    # titles only: whatever is sent here stays in the Live
+                    # context and is billed again on every turn of the session.
                     p2 = (
-                        f"[BRIEFING] Here are today's top news headlines:\n{news_text}\n\n"
+                        f"[BRIEFING] Here are today's top news headlines:\n{_headlines_only(news_text)}\n\n"
                         "Pick ONE headline, summarise it in one sentence, then say the full list "
                         f"is displayed on screen. Do not call any tools.{lang_str}"
                     )
@@ -1737,7 +1815,12 @@ class JarvisLive:
             self._phone_active = True   # phone is streaming — silence PC mic
             with self._speaking_lock:
                 speaking = self._is_speaking
-            if not speaking and not self.ui.muted:
+            # phone_barge_in (api_keys.json, off by default): keep listening
+            # while JARVIS speaks, so Gemini's own voice detection can cut him
+            # off. Off because the Android client records without echo
+            # cancellation: on the phone's loudspeaker he would interrupt
+            # himself. With a headset it is what makes "stop" work by voice.
+            if (not speaking or getattr(self, "_phone_barge_in", False)) and not self.ui.muted:
                 try:
                     self.out_queue.put_nowait(chunk)
                 except asyncio.QueueFull:
@@ -1811,12 +1894,22 @@ class JarvisLive:
             from dashboard.server import DashboardServer
             self._dashboard = DashboardServer()
             self._dashboard.set_connect_callback(self._on_phone_connected)
+            # POST /api/wake was inert: nothing registered a callback.
+            self._dashboard.set_wake_callback(lambda: self.wake("dashboard"))
             asyncio.create_task(self._dashboard.serve())
             # Runs for the whole lifetime, not just inside an active session
             asyncio.create_task(self._process_dashboard_commands())
         except Exception as e:
             print(f"[Dashboard] Disabled: {e}")
             self._dashboard = None
+
+        # Reminders delivered by JARVIS himself while he runs (reminders/):
+        # HUD card, phone notification, voice. Absent package → V1 behaviour.
+        try:
+            import reminders
+            reminders.attach(self)
+        except Exception as e:
+            print(f"[Reminders] Disabled: {e}")
 
         while True:
             try:

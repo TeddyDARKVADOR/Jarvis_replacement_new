@@ -1,6 +1,7 @@
 """
 cognition/hud.py — ce que le panneau ESPRIT du HUD peut lire et faire.
 
+    cognition.usage      {days}        tokens par jour, coût minimal, outils, rappels
     cognition.overview                 état, consignes, causes, objectifs,
                                        fiabilité des outils, calibration, limites
     cognition.memories   {query, view} souvenirs : all|unverified|contested|reflective|validated
@@ -49,6 +50,13 @@ def call(cog, op: str, data: dict | None) -> dict:
         return {"error": str(e)}
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}"}
+
+
+def _usage(cog, data: dict) -> dict:
+    """Onglet USAGE : tokens, coût minimal, fiabilité des outils, rappels."""
+    from . import usage
+    days = max(1, min(31, int((data or {}).get("days") or 7)))
+    return usage.report(cog.store, days=days)
 
 
 def _overview(cog, _data: dict) -> dict:
@@ -194,6 +202,7 @@ _OPS = {
     "cognition.goal_autonomy": _goal_autonomy,
     "cognition.autonomy_run": _autonomy_run,
     "cognition.overview": _overview,
+    "cognition.usage": _usage,
     "cognition.memories": _memories,
     "cognition.memory_review": _memory_review,
     "cognition.goal_action": _goal_action,

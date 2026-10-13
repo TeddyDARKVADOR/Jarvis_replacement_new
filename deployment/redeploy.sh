@@ -8,23 +8,21 @@
 #   bash deployment/redeploy.sh                  # deploiement complet (demande confirmation)
 #
 # Options : --yes (pas de confirmation), --no-restart, --skip-tests.
-# Procedure complete, et restauration : deployment/RECOVERY.md.
+# Procedure complete, et restauration : capabilities/graphs/deployment.json.
 #
 # CE QUE CE SCRIPT FAIT, DANS L'ORDRE
 #   1 repo        l'arbre suivi est propre ; on deploie EXACTEMENT HEAD
-#   2 verif       selftests locaux (serveur, routage, presence, contexte)
-#   3 package     un git bundle de HEAD (quelques Mo) ; le modele actif, seulement
-#                 si son SHA-256 correspond a son profil ET si sa licence permet
-#                 de le distribuer (la liste de server/avatar_api.py)
+#   2 verif       selftests locaux (serveur, routage, contexte)
+#   3 package     un git bundle de HEAD (quelques Mo)
 #   4 preflight   Oracle joignable, copie git propre, avance rapide possible
 #   5 sauvegarde  /opt/jarvis complet (config/, memory/, uploads/ compris) dans
 #                 /var/backups/jarvis sur Oracle, root seul — les secrets ne
 #                 quittent jamais le serveur
-#   6 deploiement git fetch du bundle + merge --ff-only, modele, install.sh
+#   6 deploiement git fetch du bundle + merge --ff-only, install.sh
 #   7 redemarrage systemctl restart jarvis, attente de /health
 #   8 selftest    server.selftest sur Oracle, sous l'utilisateur jarvis
 #   9 version     copie git == HEAD local ; /opt/jarvis identique au commit ;
-#                 /health ; le modele servi porte le bon SHA-256
+#                 /health
 #
 # CE QU'IL NE FAIT JAMAIS
 #   Pousser sur GitHub. Lire, copier ou afficher un secret. Toucher config/ ou
@@ -72,7 +70,7 @@ ok "HEAD $(git log -1 --format='%h %s' | cut -c1-80) ($(b=$(git branch --show-cu
 # ── 2. verification ──────────────────────────────────────────────────────────
 step 2 "verification locale"
 if [ "$TESTS" = 1 ]; then
-    for suite in server.selftest server.routing_selftest presence.selftest context.selftest; do
+    for suite in server.selftest server.routing_selftest context.selftest; do
         if python -m "$suite" > "$WORK/$suite.log" 2>&1; then
             ok "$suite  $(grep -aE 'passed|/[0-9]+' "$WORK/$suite.log" | tail -1 | tr -s ' ' | cut -c1-60)"
         else
@@ -88,39 +86,6 @@ fi
 step 3 "paquet"
 git bundle create "$WORK/jarvis.bundle" HEAD >/dev/null 2>&1 || die "git bundle a echoue"
 ok "bundle $(du -h "$WORK/jarvis.bundle" | cut -f1) — $(git rev-parse --short HEAD)"
-# Le modele actif : jamais dans git. On l'envoie seulement s'il est verifie et
-# si sa licence le permet — la meme regle que pour le telephone.
-python - "$WORK/model.txt" <<'PY'
-import sys
-from pathlib import Path
-from presence import models
-from server.avatar_api import licence_allows_phone
-out = Path(sys.argv[1])
-manifest = models.read_json(Path("avatar/manifest.json"))
-rel = ((manifest.get("model") or {}).get("file") or "").strip()
-if not rel:
-    out.write_text("NONE\taucun modele actif\n"); sys.exit(0)
-path = Path("avatar/models") / rel
-if not path.is_file():
-    out.write_text(f"NONE\tfichier absent sur ce PC : {path}\n"); sys.exit(0)
-profile = models.read_profile(path)
-ok, why = models.check_profile(path)
-if not ok:
-    out.write_text(f"NONE\tprofil invalide : {why}\n"); sys.exit(0)
-if not licence_allows_phone(profile.get("license")):
-    out.write_text(f"NONE\tlicence « {profile.get('license')} » : pas de distribution\n"); sys.exit(0)
-extra = [p for p in path.parent.iterdir() if p.is_file() and p.name.upper().startswith("LICENSE")]
-files = [path] + extra
-out.write_text("SHIP\t" + profile["sha256"] + "\t" + str(path.parent.as_posix()) + "\t"
-               + "\t".join(p.name for p in files) + "\n")
-PY
-IFS=$'\t' read -r MODEL_MODE MODEL_SHA MODEL_DIR MODEL_FILES_RAW < "$WORK/model.txt" || true
-if [ "$MODEL_MODE" = SHIP ]; then
-    read -r -a MODEL_FILES <<< "$(printf '%s' "$MODEL_FILES_RAW" | tr '\t' ' ')"
-    ok "modele $MODEL_DIR (${MODEL_FILES[*]}) sha256 ${MODEL_SHA:0:16}…"
-else
-    info "modele NON envoye : $MODEL_SHA"
-fi
 
 # ── 4. preflight ─────────────────────────────────────────────────────────────
 step 4 "Oracle (lecture seule)"
@@ -185,20 +150,6 @@ remote "set -e; cd '$REMOTE_REPO'
     rm -f /tmp/jarvis-$SHA.bundle
     test \"\$(git rev-parse HEAD)\" = '$SHA'" || die "mise a jour git impossible (sauvegarde : $BACKUP)"
 ok "copie git d'Oracle a ${SHA:0:7}"
-if [ "$MODEL_MODE" = SHIP ]; then
-    R_MODEL_SHA="$(remote "sha256sum '$REMOTE_REPO/$MODEL_DIR/${MODEL_FILES[0]}' 2>/dev/null | cut -d' ' -f1" || true)"
-    if [ "$R_MODEL_SHA" = "$MODEL_SHA" ]; then
-        ok "modele deja present et identique"
-    else
-        remote "mkdir -p '$REMOTE_REPO/$MODEL_DIR'"
-        for f in "${MODEL_FILES[@]}"; do
-            scp -q -o BatchMode=yes "$MODEL_DIR/$f" "$SSH_TARGET:$REMOTE_REPO/$MODEL_DIR/$f" 2>&1 | grep -v '^# ' || true
-        done
-        R_MODEL_SHA="$(remote "sha256sum '$REMOTE_REPO/$MODEL_DIR/${MODEL_FILES[0]}' | cut -d' ' -f1")"
-        [ "$R_MODEL_SHA" = "$MODEL_SHA" ] || die "le modele copie n'a pas le bon SHA-256"
-        ok "modele copie dans la copie git (pas dans /opt : install.sh l'y recopie)"
-    fi
-fi
 remote "cd '$REMOTE_REPO' && sudo bash deployment/install.sh" > "$WORK/install.log" \
     || { tail -20 "$WORK/install.log" >&2; die "install.sh a echoue (sauvegarde : $BACKUP)"; }
 # install.sh colore ses titres (\033[1m▶ ...) : compter les ▶, pas les debuts de ligne.
@@ -233,24 +184,14 @@ CHECK="$(remote "cd '$REMOTE_REPO'
         --exclude config/whatsapp_web/ --exclude memory/long_term.json --exclude client-android/ \
         ./ /opt/jarvis/ | grep -v '/\$' | wc -l)
     echo HEALTH=\$(curl -s -m 3 http://127.0.0.1:8000/health | grep -c '\"ok\":true')
-    TOKEN=\$(sudo python3 -c 'import json;print(json.load(open(\"/opt/jarvis/config/device_credentials.json\"))[\"device_token\"])')
-    B=\$(curl -s -X POST http://127.0.0.1:8000/api/device-login -H 'Content-Type: application/json' -d \"{\\\"device_token\\\":\\\"\$TOKEN\\\"}\" | python3 -c 'import sys,json;print(json.load(sys.stdin).get(\"token\",\"\"))')
-    echo SERVED=\$(curl -s http://127.0.0.1:8000/api/avatar/manifest -H \"Authorization: Bearer \$B\" | python3 -c 'import sys,json;m=json.load(sys.stdin).get(\"model\");print(m[\"sha256\"] if m else \"none\")')
     echo '$(date -Iseconds) $SHA $BACKUP' >> \$HOME/jarvis-deploys.log")"
 C_HEAD="$(printf '%s\n' "$CHECK" | sed -n 's/^HEAD=//p')"
 C_DRIFT="$(printf '%s\n' "$CHECK" | sed -n 's/^DRIFT=//p')"
 C_HEALTH="$(printf '%s\n' "$CHECK" | sed -n 's/^HEALTH=//p')"
-C_SERVED="$(printf '%s\n' "$CHECK" | sed -n 's/^SERVED=//p')"
 [ "$C_HEAD" = "$SHA" ] || die "la copie git d'Oracle est a ${C_HEAD:0:7}, pas ${SHA:0:7}"
 ok "copie git == ${SHA:0:7}"
 [ "${C_DRIFT:-1}" = 0 ] || die "/opt/jarvis differe du commit ($C_DRIFT fichier(s))"
 ok "/opt/jarvis identique au commit (secrets et donnees exclus)"
 [ "${C_HEALTH:-0}" = 1 ] || die "/health ne repond pas"
 ok "/health"
-if [ "$MODEL_MODE" = SHIP ]; then
-    [ "$C_SERVED" = "$MODEL_SHA" ] || die "le telephone recevrait ${C_SERVED:0:16}, pas ${MODEL_SHA:0:16}"
-    ok "modele servi aux telephones : sha256 ${C_SERVED:0:16}…"
-else
-    info "modele servi : $C_SERVED"
-fi
-step "-" "Oracle a ${SHA:0:7}. Retour arriere : deployment/RECOVERY.md, sauvegarde $BACKUP"
+step "-" "Oracle a ${SHA:0:7}. Retour arriere : capabilities/graphs/deployment.json (p.retour), sauvegarde $BACKUP"

@@ -274,7 +274,7 @@ export async function createReactor(canvas, V, Q) {
 
     shellU.uTime.value = t;
     shellU.uAmp.value = sm.amp * 1.2;
-    shellU.uGlow.value = sm.glow * (V.face ? .5 : 1);
+    shellU.uGlow.value = sm.glow;
     shellU.uColor.value.copy(color);
     shell.rotation.y = spinAcc * .35;
     shell.rotation.x = Math.sin(t * .2) * .15;
@@ -288,7 +288,7 @@ export async function createReactor(canvas, V, Q) {
     heartGlow.material.color.copy(color);
     heartGlow.scale.setScalar(1.3 + lvl * 2 + burst * 1.5);
     halo.material.color.copy(color);
-    halo.material.opacity = (.18 + sm.glow * .22) * (V.face ? .6 : 1);
+    halo.material.opacity = .18 + sm.glow * .22;
     halo.scale.setScalar(5 + lvl * 1.4 + burst * 2);
 
     orbitMat.color.copy(color);
@@ -299,9 +299,6 @@ export async function createReactor(canvas, V, Q) {
       o.sat.material.color.copy(color);
       o.g.rotation.y += dt * .05 * o.dir;
     }
-
-    // the face replaces the plasma, the frame of the reactor stays
-    plasma.visible = heart.visible = heartGlow.visible = lattice.visible = !V.face;
 
     // a gentle parallax toward the pointer
     root.rotation.x = damp(root.rotation.x, mouse.y * .18, 2, dt);

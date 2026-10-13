@@ -74,6 +74,13 @@ def _safe(default=None):
     return deco
 
 
+#: Combien de temps un objectif reste « en cours » après une note de progrès.
+GOAL_FOCUS_S = 600.0
+#: Ces outils ne servent pas un objectif : se regarder, se souvenir, répondre.
+GOAL_NEUTRAL_TOOLS = {"goals", "self_state", "capabilities", "recall_memory", "recall_episodes",
+                      "close_camera", "usage_report", "save_memory"}
+
+
 class _Lane:
     """Un fil de fond et sa file. Synchrone si `background=False` (tests)."""
 
@@ -124,7 +131,7 @@ class _Lane:
 class Cognition:
     def __init__(self, db_path: Path | str = DEFAULT_DB, *, logger=None,
                  legacy_path: Path | None = LEGACY_PATH, background: bool = True,
-                 constitution_path: Path | None = None, chain=None,
+                 constitution_path: Path | None = None, chain=None, embedder=None,
                  clock=time.time, debug: bool = False):
         self.debug = debug
         self._logger = logger or (lambda m: print(f"[Cognition] {m}"))
@@ -142,6 +149,9 @@ class Cognition:
             # Signalé, pas bloquant : le selftest, lui, échoue.
             self._log(f"⚠️ {e}")
         self._chain = chain          # None = construite à la demande ; False = aucune
+        # Même règle pour les vecteurs ; sans chaîne (tests, évaluations), aucun.
+        # Une chaîne injectée (tests, évaluations) n'emmène pas de vecteurs avec elle.
+        self._embedder = embedder if embedder is not None else (None if chain is None else False)
         self.tool_names = lambda: []
         self.session_id = self._new_session()
         self._turns_this_session = 0
@@ -149,6 +159,10 @@ class Cognition:
         # seulement à turn_complete : la preuve est évaluée au tour suivant.
         self._pending_saves: list[tuple[str, str, str]] = []
         self._pending_lock = threading.Lock()
+        # L'objectif en cours : celui dont le modèle vient de noter un progrès.
+        # Les outils réellement appelés dans la fenêtre comptent dans SON budget.
+        self._goal_focus: tuple[str, float] | None = None
+        self._auto_since_progress = 0
         self._affect_lock = threading.Lock()
         self.affect = self._load_affect()
         self._announced: set[str] = set(A.directives(self.affect))
@@ -182,6 +196,8 @@ class Cognition:
     def close(self) -> None:
         self._flush_saves()
         self.flush()
+        if getattr(self, "sync", None) is not None:
+            self.sync.stop()
         self._writer.stop()
         self._llm.stop()
         self.store.close()
@@ -192,6 +208,13 @@ class Cognition:
 
     def _meta_set(self, key: str, value: str) -> None:
         self.store.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?,?)", (key, value))
+
+    @property
+    def embedder(self):
+        if self._embedder is None:
+            from .embeddings import default
+            self._embedder = default()
+        return self._embedder or None
 
     @property
     def chain(self):
@@ -290,8 +313,13 @@ class Cognition:
         self._submit(self.memory.log_event, "tool_result", session_id=self.session_id,
                      actor=name, summary=text[:300], payload={"args": safe_args},
                      outcome="error" if failed else "ok")
-        if events:          # les outils neutres (avatar, self_state) ne comptent pas
+        if events:          # les outils neutres (close_camera, self_state) ne comptent pas
             self._submit(selfmodel.record_outcome, self.store, name, not failed)
+            if self._goal_focus:
+                # Synchrone, et seulement quand un objectif est en cours : la note
+                # de progrès qui suit doit voir ce compte, sinon l'action compte
+                # deux fois (l'autonomie note juste après chaque outil).
+                self._count_for_goal(name)
         fresh = self._appraise(events, tool=name)
         # Le prompt système est figé à la connexion. Le seul canal qui atteint
         # le modèle pendant la session sans déclencher de prise de parole est la
@@ -313,13 +341,54 @@ class Cognition:
     def _record_model_save(self, category: str, key: str, value: str, sid: str) -> None:
         turns = self.memory.recent_user_turns(sid, limit=8)
         verdict, ratio = policy.lexical_verdict(value, turns)
-        if verdict == "unclear" and self.chain:
+        if verdict == "unclear" and (self.embedder or self.chain):
             # Probablement une traduction (« pastries » pour « pâtisseries ») :
-            # on demande à un AUTRE modèle, hors du fil d'écriture.
-            self._llm.submit(self._judge_then_store, category, key, value, sid, turns, ratio)
+            # le sens d'abord (local), un AUTRE modèle seulement si le sens hésite.
+            self._llm.submit(self._weigh_unclear, category, key, value, sid, turns, ratio)
             return
         source = "user_stated" if verdict == "supported" else "model_inferred"
         self._store_fact(category, key, value, sid, source, ratio, f"lexical:{verdict}")
+
+    def _weigh_unclear(self, category, key, value, sid, turns, ratio) -> None:
+        """Les éléments précis ont été dits, pas les mots ordinaires. Le vecteur
+        tranche les cas nets sur ce PC ; seul l'entre-deux coûte un appel."""
+        from . import embeddings as E
+        sim = self.embedder.best_match(value, turns) if self.embedder else None
+        if sim is not None and sim >= E.SAME_MEANING:
+            self._submit(self._store_fact, category, key, value, sid, "user_stated", ratio,
+                         f"semantic:{sim:.2f}", policy.JUDGED_CONFIDENCE)
+        elif sim is not None and sim < E.UNRELATED:
+            self._submit(self._store_fact, category, key, value, sid, "model_inferred", ratio,
+                         f"semantic:{sim:.2f}")
+        elif self.chain:
+            self._judge_then_store(category, key, value, sid, turns, ratio)
+        else:
+            self._submit(self._store_fact, category, key, value, sid, "model_inferred", ratio,
+                         "lexical:unclear")
+
+    def index_embeddings(self, limit: int = 64) -> int:
+        """Vectorise les souvenirs rappelables qui n'en ont pas encore."""
+        emb = self.embedder
+        if not emb:
+            return 0
+        statuses = ",".join(f"'{s}'" for s in policy.RECALLABLE)
+        rows = self.store.query(
+            f"SELECT m.id, m.content FROM memories m LEFT JOIN memory_embeddings e ON e.memory_id = m.id "
+            f"WHERE e.memory_id IS NULL AND m.status IN ({statuses}) ORDER BY m.created_at DESC LIMIT ?",
+            (limit,))
+        if not rows:
+            return 0
+        got = emb.embed([r["content"] for r in rows])
+        if not got:
+            return 0
+        from .embeddings import pack
+        model, vecs = got
+        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with self.store.transaction() as c:
+            for r, v in zip(rows, vecs):
+                c.execute("INSERT OR REPLACE INTO memory_embeddings(memory_id, model, dim, vec, ts) "
+                          "VALUES (?,?,?,?,?)", (r["id"], model, len(v), pack(v), ts))
+        return len(rows)
 
     def _judge_then_store(self, category, key, value, sid, turns, ratio) -> None:
         method, ok = "judge:unavailable", None
@@ -348,6 +417,8 @@ class Cognition:
                         importance=0.8 if category == "identity" else 0.6, event_id=ev)
         if source == "model_inferred":
             self._log(f"souvenir non vérifié : {category}/{key} ({method})")
+        if self._embedder is not False:
+            self._llm.submit(self.index_embeddings)
 
     @_safe()
     def archive_session(self, summary: str) -> None:
@@ -416,9 +487,90 @@ class Cognition:
             out = out[:PROMPT_BUDGET].rsplit("\n", 1)[0]
         return out + "\n"
 
+    # ── La mémoire du prompt : une seule source ──────────────────────────────
+    #
+    # main.py mettait long_term.json (V1) dans le prompt. Deux défauts : un
+    # souvenir rejeté dans ESPRIT y restait, et un fait non vérifié y entrait
+    # par la V1. La cognition est maintenant la source ; long_term.json reste
+    # écrit (et réimporté) pour la compatibilité, mais n'est plus lu ici.
+
+    _PROMPT_STATUSES = ("active", "validated")
+    _CAT_LABELS = {"preferences": "Preferences", "projects": "Projects",
+                   "relationships": "Relationships", "wishes": "Wishes", "notes": "Notes"}
+
+    @_safe(default="")
+    def memory_prompt_block(self, core_chars: int = 900, index_chars: int = 420,
+                            per_category: int = 4) -> str:
+        rows = [dict(r) for r in self.store.query(
+            "SELECT slot, content, updated_at, created_at FROM memories WHERE kind='semantic' "
+            "AND slot IS NOT NULL AND status IN ('active','validated') "
+            "ORDER BY COALESCE(updated_at, created_at) DESC, rowid DESC")]
+        if not rows:
+            return ""
+
+        def value(r):
+            text = r["content"]
+            return text.split(":", 1)[1].strip() if ":" in text else text
+
+        def label(r):
+            return r["slot"].split("/", 1)[-1].replace("_", " ").title()
+
+        seen, core, shown, overflow, used = set(), [], {}, [], 0
+        for r in rows:
+            if r["slot"] in seen:
+                continue
+            seen.add(r["slot"])
+            cat = r["slot"].split("/", 1)[0]
+            if cat == "identity":
+                if r["slot"] == "identity/language":
+                    # comme la V1 : une observation, pas un ordre de langue
+                    core.append(f"Has spoken to you in: {value(r)[:40]} (an observation about the "
+                                "past — always answer in the language of their CURRENT message)")
+                else:
+                    core.append(f"{label(r)}: {value(r)[:200]}")
+                continue
+            line = f"  - {label(r)}: {value(r)}"
+            if len(shown.get(cat, [])) < per_category and used + len(line) + 1 <= core_chars:
+                shown.setdefault(cat, []).append(line)
+                used += len(line) + 1
+            else:
+                overflow.append(label(r))
+        out = ["[WHAT YOU KNOW ABOUT THIS PERSON — verified memories only; use naturally, "
+               "never recite like a list]", *core]
+        for cat, lab in self._CAT_LABELS.items():
+            if shown.get(cat):
+                out += ["", f"{lab}:", *shown[cat]]
+        for cat in sorted(set(shown) - set(self._CAT_LABELS)):
+            out += ["", f"{cat.title()}:", *shown[cat]]
+        if overflow:
+            names, budget = [], index_chars
+            for n in overflow:
+                if budget - len(n) - 2 < 0:
+                    break
+                names.append(n)
+                budget -= len(n) + 2
+            more = len(overflow) - len(names)
+            out += ["", "[ALSO REMEMBERED — values not shown here. Call recall_memory with a keyword "
+                        "to read any of these before saying you do not know]",
+                    ", ".join(names) + (f" (+{more} more)" if more else "")]
+        return "\n".join(out) + "\n"
+
+    @_safe(default="")
+    def recall_facts(self, query: str, limit: int = 8) -> str:
+        """recall_memory sur la mémoire cognitive : les faits, vérifiés d'abord."""
+        rows = [r for r in self.memory.search(query or "", limit=limit * 2, kinds=("semantic",),
+                                               embedder=self.embedder)][:limit]
+        if not rows:
+            return (f"Nothing stored about '{query}'." if query else "No stored facts yet.")
+        lines = []
+        for r in rows:
+            tag = "" if r["verified"] else f" [{r['status'].upper()} — not verified, say so]"
+            lines.append(f"- {r['content']}{tag}")
+        return "\n".join(lines)
+
     @_safe(default="Mémoire épisodique indisponible.")
     def recall(self, query: str, limit: int = 5) -> str:
-        rows = self.memory.search(query or "", limit=limit)
+        rows = self.memory.search(query or "", limit=limit, embedder=self.embedder)
         if not rows:
             return f"Aucun souvenir trouvé pour « {query} »." if query else "Aucun souvenir archivé."
         lines = []
@@ -507,10 +659,32 @@ class Cognition:
 
     def goal_progress(self, ref: str, note: str) -> dict:
         g = self.goal_find(ref)
-        after = self.goals.progress(g["id"], note)
+        # Déjà compté par les vrais appels d'outils ? La note ne recompte pas.
+        counted = bool(self._goal_focus and self._goal_focus[0] == g["id"] and self._auto_since_progress)
+        after = self.goals.progress(g["id"], note, count=not counted)
+        self._goal_focus = (g["id"], time.monotonic()) if after["status"] == "active" else None
+        self._auto_since_progress = 0
         if after["status"] == "blocked":
             self._appraise(["goal_blocked"])
         return after
+
+    def _count_for_goal(self, tool: str) -> None:
+        """Un vrai appel d'outil pendant qu'un objectif est en cours : il compte
+        dans son budget (limite de README : le budget ne comptait que ce que le
+        modèle déclarait)."""
+        if not self._goal_focus or tool in GOAL_NEUTRAL_TOOLS:
+            return
+        gid, since = self._goal_focus
+        if time.monotonic() - since > GOAL_FOCUS_S:
+            self._goal_focus, self._auto_since_progress = None, 0
+            return
+        after = self.goals.count_action(gid, tool)
+        if after is None or after["status"] != "active":
+            self._goal_focus, self._auto_since_progress = None, 0
+            if after is not None and after["status"] == "blocked":
+                self._appraise(["goal_blocked"])
+            return
+        self._auto_since_progress += 1
 
     def goal_withdraw(self, ref: str) -> dict:
         return self.goals.withdraw(self.goal_find(ref)["id"])
@@ -611,4 +785,33 @@ def attach(jarvis, db_path: Path | str | None = None,
 
     _active.autonomy.tool_runner = _run_tool
     _active.autonomy.start()
+
+    # Les souvenirs déjà en base reçoivent leur vecteur, en fond, par lots.
+    def _backfill(cog=_active) -> None:
+        total = 0
+        for _ in range(50):
+            n = cog.index_embeddings()
+            total += n
+            if not n:
+                break
+        if total:
+            cog._log(f"{total} souvenir(s) vectorisé(s) pour le rappel par le sens")
+    _active._llm.submit(_backfill)
+
+    # Une seule mémoire sur tous les PC (cognition/sync.py), OneDrive par défaut.
+    _active.sync = None
+    if db_path is None:                   # jamais dans le selftest
+        try:
+            import json as _json
+            from config import api_key_path
+            from .sync import MemorySync, default_folder
+            cfg = _json.loads(Path(api_key_path(Path(__file__).resolve().parent.parent))
+                              .read_text(encoding="utf-8-sig"))
+            folder = default_folder(cfg if isinstance(cfg, dict) else {})
+            if folder:
+                _active.sync = MemorySync(_active.store, _active.memory, folder, log=_log)
+                _active.sync.start(on_change=lambda n: _active._llm.submit(_active.index_embeddings))
+                _log(f"mémoire partagée avec vos autres PC : {folder} (ce PC : {_active.sync.device})")
+        except Exception as e:
+            _log(f"mémoire partagée indisponible : {type(e).__name__}: {e}")
     return _active

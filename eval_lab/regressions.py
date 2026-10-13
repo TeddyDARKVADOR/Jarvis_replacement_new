@@ -202,12 +202,12 @@ def set_status(reg_id: str, status: str, *, commit: str | None = None) -> int:
 
 def check() -> list[dict]:
     """Run every regression scenario and say what its status implies."""
-    from .runner import _run_face, run_one
+    from .runner import run_one
     from .triage import signature
     out = []
     for s in load():
         reg = s["lineage"]["regression"]
-        rec = _run_face([s])[0] if s["surface"] == "face" else run_one(s)
+        rec = run_one(s)
         same = rec["verdict"] != "PASS" and signature(rec) == reg["signature"]
         if reg["status"] == "open":
             if same:

@@ -19,7 +19,7 @@ are not phone-specific: `/ws/phone-audio` is "a microphone that is not the
 server's own", which is exactly what this workstation is.
 
 Source of truth, in order: `dashboard/server.py`, `server/api.py`, `main.py`,
-then `client-android/PROTOCOL.md`.
+then capabilities/graphs/android.json (the pr.* nodes).
 """
 
 from __future__ import annotations
@@ -77,22 +77,10 @@ EV_CONTENT = "content"              # {"title","text"}
 EV_CONFIRM = "confirm"              # {"id","title","detail","timeout_s"}
 EV_CONFIRM_HIDE = "confirm_hide"    # no payload - take the banner down
 EV_AUDIO_FORMAT = "audio_format"    # first frame of /ws/phone-out
-EV_AVATAR = "avatar"                # {"ts", "directive": {...}} - see below
+EV_SHOW_GRAPH = "show_graph"        # {"graph","focus","ts"} - open the GRAPHE panel
 
-#: How long an `avatar` directive is worth obeying, counted from the `ts` the
-#: server stamped on it.
-#:
-#: The guard is not optional. `/ws` replays the last 50 events to every client
-#: that connects, which is right for a transcript and wrong for a face: a laptop
-#: that reconnects at noon would otherwise put on the expression JARVIS chose at
-#: nine and wear it for twenty-five seconds, as a reaction to nothing.
-#:
-#: This is a deliberate copy of `plugins.presence.FRESH_S`, which is itself
-#: a copy of `presence.director.INTENT_TTL_S`. The client does not import from
-#: the server — it has to work against a host whose filesystem it has never seen
-#: — so the number is mirrored and a check in `selftest.py` fails if the copies
-#: ever drift apart.
-AVATAR_FRESH_SECONDS = 25.0
+#: A `show_graph` older than this is a replay from /ws's history, not a request.
+SHOW_GRAPH_FRESH_SECONDS = 30.0
 
 # ── Client -> server ─────────────────────────────────────────────────────────
 CMD_COMMAND = "command"
@@ -102,7 +90,7 @@ CMD_CONFIRMATION_RESPONSE = "confirmation_response"
 # ── /ws/device ───────────────────────────────────────────────────────────────
 #
 # Server -> client, and the answer back. Unknown types are ignored by both ends
-# (PROTOCOL.md section 4), so a client or server that predates these carries on
+# (capabilities/graphs/android.json, pr.events), so a client or server that predates these carries on
 # without noticing them.
 EV_DEVICE_COMMAND = "device_command"    # {"id","target_device_id","action","parameters"}
 CMD_DEVICE_RESULT = "device_result"     # {"id","result"}
@@ -135,7 +123,7 @@ class ServerEndpoint:
     port: int = 8000
     # MARK LIII serves TLS only when `config/certs/` is populated. Over
     # Tailscale the tunnel already encrypts everything; see the transport note
-    # in PROTOCOL.md section 6.
+    # in capabilities/graphs/android.json, pr.securite.
     use_tls: bool = False
 
     @property

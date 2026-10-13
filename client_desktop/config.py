@@ -86,8 +86,6 @@ class Settings:
     #: The user's colour. Everything decorative is drawn in it; the colours that
     #: say what JARVIS is doing (listening, thinking, error) stay fixed.
     accent: str = "#7DD3FC"
-    #: Draw JARVIS's 3D face (`avatar/`) inside the reactor instead of the core.
-    avatar_enabled: bool = False
     sound: bool = True
     sound_volume: float = 0.35
     #: Open maximised; otherwise at `window_geometry`, [x, y, w, h] logical px.
@@ -158,8 +156,8 @@ def load() -> Settings:
     if legacy.is_file():
         try:
             old = json.loads(legacy.read_text(encoding="utf-8"))
-            for new, key in (("accent", "accent"), ("avatar_enabled", "face"),
-                             ("sound", "sound"), ("sound_volume", "volume"),
+            for new, key in (("accent", "accent"), ("sound", "sound"),
+                             ("sound_volume", "volume"),
                              ("maximized", "maximized"), ("window_geometry", "geometry"),
                              ("quality", "quality"), ("quality_tier", "quality_tier")):
                 if key in old and new not in data:

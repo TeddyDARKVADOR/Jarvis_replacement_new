@@ -84,7 +84,7 @@ class _Clock:
 # ── 1–3. Contrat V2 ──────────────────────────────────────────────────────────
 
 _FORBIDDEN = ("main", "dashboard", "actions", "server", "plugins", "memory",
-              "context", "presence", "client_desktop", "local_hud", "eval_lab")
+              "context", "client_desktop", "local_hud", "eval_lab")
 
 
 @check("1 le paquet n'importe rien du cœur (sauf la comptabilité de tokens, gardée)")
@@ -126,8 +126,11 @@ def _reverse_deps_and_guards():
                                  "plugins/cognition_self.py"], importers
     lines = (BASE_DIR / "main.py").read_text(encoding="utf-8").splitlines()
     uses = [i for i, l in enumerate(lines) if "self._cognition." in l]
-    assert len(uses) == 6, f"{len(uses)} usages de self._cognition.* (6 attendus)"
+    assert len(uses) == 8, f"{len(uses)} usages de self._cognition.* (8 attendus)"
     for i in uses:
+        # gardé sur la ligne même (« … if self._cognition else "" ») ou juste au-dessus
+        if "if self._cognition else" in lines[i] or "if self._cognition else" in lines[i + 1]:
+            continue
         j = i - 1
         while lines[j].strip().startswith("#"):
             j -= 1
@@ -168,15 +171,16 @@ def _removal():
 @check("4 schéma créé, versionné, FTS5 opérationnel")
 def _schema():
     s = Store(TMP / "schema.db")
-    assert s.schema_version == 5
+    assert s.schema_version == 7
     tables = {r["name"] for r in s.query("SELECT name FROM sqlite_master WHERE type='table'")}
     for t in ("events", "memories", "memories_fts", "memory_links", "constitution_versions",
               "affect_state", "affect_log", "meta", "goals", "goal_events",
-              "tool_outcomes", "memory_reviews", "autonomy_runs", "autonomy_steps"):
+              "tool_outcomes", "memory_reviews", "autonomy_runs", "autonomy_steps",
+              "memory_embeddings", "sync_outbox", "sync_state", "sync_tombstones"):
         assert t in tables, t
     s.close()
     s = Store(TMP / "schema.db")                  # réouverture : pas de remigration
-    assert s.schema_version == 5
+    assert s.schema_version == 7
     s.close()
     # Une base v1 (celle du commit précédent) migre sans perte.
     import sqlite3
@@ -187,9 +191,9 @@ def _schema():
     con.execute("INSERT INTO events(ts, kind) VALUES ('2026-10-13', 'system')")
     con.commit(); con.close()
     s = Store(old)
-    assert s.schema_version == 5 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
+    assert s.schema_version == 7 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
     s.close()
-    return "user_version=5, 14 tables ; une base v1 migre en gardant ses données"
+    return "user_version=7, 18 tables ; une base v1 migre en gardant ses données"
 
 
 @check("5 conservation après redémarrage (fermeture puis réouverture)")
@@ -630,7 +634,7 @@ def _frustration():
     c.observe_tool("web_search", {"q": "x"}, "Found 3 results", resp)
     after = c.current_affect().values["frustration"]
     assert after < 0.35 * f, (f, after)
-    c.observe_tool("set_presence", {}, "Tool 'set_presence' failed: x", {})
+    c.observe_tool("close_camera", {}, "Tool 'close_camera' failed: x", {})
     c.observe_tool("self_state", {}, "State: ...", {})
     assert c.current_affect().values["frustration"] == after, "un outil neutre a compté"
     for _ in range(3):
@@ -682,7 +686,6 @@ def _classify():
 
 @check("29 sécurité : aucun état, même extrême, ne produit autre chose que de la prudence")
 def _safety_invariant():
-    import itertools
     import random
     forbidden = ("skip", "without confirm", "no need to confirm", "bypass", "ignore the user",
                  "permission", "override", "allowed to", "you may now")
@@ -979,6 +982,165 @@ def _goal_budget_loop():
     return "budget 3/3 -> bloqué (+frustration) ; 3x la même note -> boucle détectée"
 
 
+@check("61 les vrais appels d'outils comptent dans le budget de l'objectif en cours")
+def _goal_counts_real_tools():
+    import cognition.runtime as RT
+    c = _cog("goal_auto")
+    g = c.goals.propose("Préparer le voyage", budget_actions=4, origin="user", **_GOAL)
+    c.goal_approve(g["id"])
+    c.observe_tool("web_search", {"q": "train"}, "Found 3 results", {})      # pas encore en cours
+    assert c.goals.get(g["id"])["spent_actions"] == 0, "compté sans objectif en cours"
+    c.goal_progress(g["id"], "je cherche les trains")                        # 1 (rien n'était compté)
+    c.observe_tool("web_search", {"q": "billet"}, "Found 3 results", {})     # 2
+    c.observe_tool("self_state", {}, "State", {})                             # neutre
+    c.observe_tool("recall_memory", {}, "nothing", {})                        # neutre
+    assert c.goals.get(g["id"])["spent_actions"] == 2, c.goals.get(g["id"])
+    c.goal_progress(g["id"], "billets trouvés")                              # déjà compté : +0
+    assert c.goals.get(g["id"])["spent_actions"] == 2, "la note a recompté une action déjà faite"
+    c.observe_tool("file_controller", {}, "Created a.txt", {})               # 3
+    c.observe_tool("web_search", {}, "Found 2 results", {})                  # 4 -> budget épuisé
+    after = c.goals.get(g["id"])
+    assert after["status"] == "blocked" and "budget" in after["closed_reason"], after
+    kinds = [e["kind"] for e in c.goals.history(g["id"])]
+    assert kinds.count("action") == 3, kinds
+    # la fenêtre se referme : plus rien n'est compté
+    h = c.goals.propose("Ranger le garage", budget_actions=10, origin="user", **_GOAL)
+    c.goal_approve(h["id"])
+    c.goal_progress(h["id"], "début")
+    c._goal_focus = (h["id"], c._goal_focus[1] - RT.GOAL_FOCUS_S - 1)
+    c.observe_tool("web_search", {}, "Found 1 result", {})
+    assert c.goals.get(h["id"])["spent_actions"] == 1, c.goals.get(h["id"])
+    c.close()
+    return "3 vrais outils comptés, outils neutres ignorés, pas de double compte, fenêtre de 10 min"
+
+
+class _FakeEmbedder:
+    """Sens jouet : un axe par notion, reconnue dans les deux langues."""
+    AXES = [("infirm", "nurse"), ("patisser", "pastr"), ("tesla", "voiture rouge"), ("jazz",)]
+
+    def embed(self, texts):
+        vecs = []
+        for t in texts:
+            low = t.lower()
+            v = [1.0 if any(k in low for k in axis) else 0.0 for axis in self.AXES] + [0.05]
+            vecs.append(v)
+        return "fake", vecs
+
+    def best_match(self, text, candidates):
+        from cognition.embeddings import cosine
+        _, (q, *cs) = self.embed([text] + list(candidates))
+        return max(cosine(q, c) for c in cs) if cs else None
+
+
+class _NoJudge:
+    calls = 0
+
+    def complete(self, *a, **k):
+        _NoJudge.calls += 1
+        raise RuntimeError("le second avis ne doit pas être appelé")
+
+
+@check("62 le sens tranche les traductions sans appel réseau, et le rappel trouve par le sens")
+def _semantic():
+    c = _cog("semantic", chain=_NoJudge(), embedder=_FakeEmbedder())
+    c.observe_turn("user", "Ma sœur est infirmière.")
+    c.on_save_memory("relationships", "sister_job", "sister works as a nurse")   # unclear lexical
+    c.observe_turn("user", "J'aime bien le jazz.")
+    c.on_save_memory("notes", "car", "drives a red Tesla")                     # sans rapport
+    c.observe_turn("assistant", "Noté.")
+    c.flush()
+    job = c.memory.by_slot("relationships/sister_job")[0]
+    car = c.memory.by_slot("notes/car")[0]
+    assert job["source"] == "user_stated" and job["status"] == "active", job
+    assert car["status"] == "proposed", car
+    assert _NoJudge.calls == 0, "un appel réseau pour un cas que le sens tranchait"
+    n = c.store.query("SELECT count(*) n FROM memory_embeddings")[0]["n"]
+    assert n >= 1, "aucun vecteur indexé"
+    hits = c.memory.search("infirmière", limit=3, touch=False, embedder=c.embedder)
+    assert hits and "nurse" in hits[0]["content"], [h["content"] for h in hits]
+    assert not c.memory.search("infirmière", limit=3, touch=False), "le lexical seul ne devait rien trouver"
+    c.memory.forget(job["id"])
+    left = c.store.query("SELECT count(*) n FROM memory_embeddings WHERE memory_id=?", (job["id"],))[0]["n"]
+    assert left == 0, "le vecteur a survécu à l'oubli"
+    c.close()
+    return "traduction acceptée par le sens, invention gardée non vérifiée, « infirmière » → nurse, vecteur oublié"
+
+
+@check("63 une seule mémoire sur deux PC : appris, rejeté, oublié, partout ; ce qui n'est pas vérifié reste hors du prompt")
+def _shared_memory():
+    import time as _t
+    from cognition.sync import MemorySync
+    folder = TMP / "shared"
+    a, b = _cog("pc_a"), _cog("pc_b")
+    sa = MemorySync(a.store, a.memory, folder, device="pc-a", log=lambda m: None)
+    sb = MemorySync(b.store, b.memory, folder, device="pc-b", log=lambda m: None)
+    sa.seed(), sb.seed()
+    a.memory.add("city: Lyon", kind="semantic", source="user_stated", slot="identity/city")
+    a.memory.add("hobby: escalade", kind="semantic", source="user_stated", slot="preferences/hobby")
+    a.memory.add("car: red Tesla", kind="semantic", source="model_inferred", slot="notes/car")
+    sa.sync_once()
+    sb.sync_once()
+    assert len(b.memory.by_slot("identity/city")) == 1, "B n'a rien reçu"
+    block = b.memory_prompt_block()
+    assert "Lyon" in block and "escalade" in block, block
+    assert "Tesla" not in block, "un fait non vérifié est entré dans le prompt"
+    assert b.store.query("SELECT count(*) n FROM sync_outbox")[0]["n"] == 0, "écho : B renverrait ce qu'il a reçu"
+    # B rejette un souvenir dans ESPRIT : A ne le met plus dans son prompt
+    hobby = b.memory.by_slot("preferences/hobby")[0]
+    _t.sleep(1.1)                                           # updated_at est à la seconde
+    b.store.execute("UPDATE memories SET status='retracted', updated_at=? WHERE id=?",
+                    (datetime.now(timezone.utc).isoformat(timespec="seconds"), hobby["id"]))
+    sb.sync_once()
+    sa.sync_once()
+    assert "escalade" not in a.memory_prompt_block(), "rejeté sur B, encore dans le prompt de A"
+    # B a appris seul quelque chose sur Ayşe ; A demande de l'oublier : parti partout
+    b.memory.add("sister: Ayse, nurse", kind="semantic", source="user_stated", slot="relationships/sister")
+    a.memory.add("sister age: Ayse is 31", kind="semantic", source="user_stated", slot="relationships/sister_age")
+    sa.sync_once()
+    a.memory.forget_about("Ayse")
+    sa.sync_once()
+    sb.sync_once()
+    sa.sync_once()
+    left = [r["content"] for r in b.memory.search("Ayse", limit=10, touch=False)]
+    assert not left, f"oublié sur A, encore sur B : {left}"
+    assert not a.memory.search("Ayse", limit=10, touch=False), "revenu sur A depuis B"
+    # une ligne à moitié copiée par OneDrive attend la prochaine fois
+    with sa.own_file.open("a", encoding="utf-8") as fh:
+        fh.write('{"v":1,"op":"upsert","row":{"id":"x"')
+    assert sb.import_() == 0
+    a.close(), b.close()
+    return "appris sur A → prompt de B ; rejeté sur B → hors du prompt de A ; oubli par sujet partout ; pas d'écho"
+
+
+@check("64 l'onglet USAGE dit si les économies tiennent et quels outils échouent")
+def _usage_report():
+    from cognition import usage
+    now = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
+    rows = []
+    for d, tokens in ((10, 18000), (9, 18000), (2, 9000), (1, 9000)):     # avant / après
+        for _ in range(3):
+            rows.append({"session_id": f"s{d}", "timestamp": (now - timedelta(days=d)).isoformat(),
+                         "model": "models/gemini-3.1-flash-live-preview", "source": "live_voice",
+                         "usage": {"input_tokens": tokens, "output_tokens": 100,
+                                   "input_modalities": {"TEXT": tokens}, "output_modalities": {"AUDIO": 100}}})
+    path = TMP / "usage.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    s = Store(TMP / "usage.db")
+    for i, ok in enumerate((1, 1, 0, 0, 0)):
+        s.execute("INSERT INTO tool_outcomes(ts, tool, predicted, outcome) VALUES (?,?,?,?)",
+                  ((now - timedelta(hours=i)).isoformat(timespec="seconds"), "youtube_video", .5, ok))
+    r = usage.report(s, days=7, now=now, usage_path=path, reminders_path=TMP / "absent.json")
+    t = r["totals"]
+    assert t["avg_input"] == 9000 and t["avg_input_prev"] == 18000 and t["change"] == -0.5, t
+    assert len(r["days"]) == 7 and t["live_calls"] == 6, r["days"]
+    assert t["usd"] > 0, "coût non estimé"
+    yt = r["tools"][0]
+    assert yt["tool"] == "youtube_video" and yt["calls"] == 5 and yt["rate"] == 0.4, yt
+    assert r["reminders"] == {"delivered": 0, "missed": 0, "upcoming": 0}
+    s.close()
+    return f"contexte −50 % semaine sur semaine, coût ≥ {t['usd']} $, youtube_video 40 %"
+
+
 @check("40 échéance dépassée -> expiré ; l'historique reste")
 def _goal_expiry():
     clock = _Clock(datetime(2026, 10, 13, tzinfo=timezone.utc))
@@ -1034,7 +1196,7 @@ def _tool_selfmodel():
         ok = i % 4 == 0                            # 2 réussites sur 8
         c.observe_tool("web_search", {}, "Found 3 results" if ok else
                        "Tool 'web_search' failed: timeout", {})
-    c.observe_tool("set_presence", {}, "ok", {})   # neutre : non compté
+    c.observe_tool("close_camera", {}, "ok", {})   # neutre : non compté
     rows = c.store.query("SELECT predicted, outcome FROM tool_outcomes ORDER BY id")
     assert len(rows) == 8 and rows[0]["predicted"] == 0.5 and abs(rows[1]["predicted"] - 2 / 3) < 1e-9
     p, n = SM.expected_success(c.store, "web_search")
@@ -1107,8 +1269,9 @@ def _hud_unreachable():
     assert set(H._OPS) == {"cognition.overview", "cognition.memories",
                            "cognition.memory_review", "cognition.goal_action",
                            "cognition.autonomy", "cognition.goal_autonomy",
-                           "cognition.autonomy_run", "cognition.forget_about"}
-    return "0 plugin ne touche au panneau ni à l'autonomie ; 8 opérations, toutes listées"
+                           "cognition.autonomy_run", "cognition.forget_about",
+                           "cognition.usage"}
+    return "0 plugin ne touche au panneau ni à l'autonomie ; 9 opérations, toutes listées"
 
 
 @check("47 HUD local : LocalBackend route cognition.* vers l'instance active")

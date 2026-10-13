@@ -22,7 +22,7 @@ WHY THE SINGLETONS ARE HERE AND NOT IN THE CALLERS
 REMOVING THIS PACKAGE
     Delete the directory. Nothing in main.py, core/ or dashboard/ imports
     it except through guarded optional imports that fall back to V1 behaviour.
-    See docs/V2_CONTRACT.md, section 4.
+    See capabilities/graphs/contrat.json, r.hook.
 """
 from __future__ import annotations
 

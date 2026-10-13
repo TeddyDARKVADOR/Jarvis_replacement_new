@@ -1,0 +1,258 @@
+{
+ "date": "2026-10-13",
+ "probes": {
+  "file_controller": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "créer, lire, renommer, lister, supprimer dans un dossier temporaire (55 car.)",
+   "seconds": 0.24
+  },
+  "file_processor": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "word_count sur un fichier texte : 5 mots",
+   "seconds": 0.0
+  },
+  "code_helper": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "run d'un script temporaire",
+   "seconds": 0.08
+  },
+  "computer_control": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "random_data, screenshot (3760 Ko)",
+   "seconds": 0.49
+  },
+  "screen_process": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "capture de l'écran principal (203 Ko, image/jpeg) ; l'analyse passe par Gemini Live",
+   "seconds": 0.31
+  },
+  "system_status": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "métriques : cpu_percent, cpu_temp_c, gpu_percent, process_count, ram_percent, ram_total_gb",
+   "seconds": 0.25
+  },
+  "recall_memory": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "recherche locale (775 car.)",
+   "seconds": 0.0
+  },
+  "undo": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "une modification enregistrée puis annulée",
+   "seconds": 0.0
+  },
+  "manage_monitor": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "0 sujet(s) suivi(s), liste lue",
+   "seconds": 0.01
+  },
+  "game_updater": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "liste des jeux installés lue (327 car.)",
+   "seconds": 0.01
+  },
+  "browser_control": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "navigateurs détectés : No active browser sessions.",
+   "seconds": 0.09
+  },
+  "desktop_control": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "statistiques du bureau (110 car.)",
+   "seconds": 0.0
+  },
+  "web_search": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "recherche réelle (1157 car.)",
+   "seconds": 3.58
+  },
+  "youtube_video": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "recherche de vidéo pour play (le navigateur n'est pas ouvert) ; trending n'existe plus chez YouTube",
+   "seconds": 1.05
+  },
+  "repository_review": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "vue d'ensemble d'un dépôt temporaire (626 car.)",
+   "seconds": 12.77
+  },
+  "usage_report": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "Usage Gemini session : entrée 156 (dernier appel 156) · sortie 136 · audio 0 in ",
+   "seconds": 0.0
+  },
+  "capabilities": {
+   "kind": "reel",
+   "outcome": "ok",
+   "detail": "find répond depuis le graphe",
+   "seconds": 0.03
+  },
+  "local_health_check": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "diagnostic lu (67 car.)",
+   "seconds": 0.0
+  },
+  "open_itinerary": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "URL d'itinéraire construite (le navigateur n'est pas ouvert)",
+   "seconds": 0.0
+  },
+  "open_app": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "module et dépendances chargés ; non exécuté (effet réel sur le PC)",
+   "seconds": 0.0
+  },
+  "computer_settings": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "module et dépendances chargés ; non exécuté (effet réel sur le PC)",
+   "seconds": 0.0
+  },
+  "send_message": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "module et dépendances chargés ; non exécuté (effet réel sur le PC)",
+   "seconds": 0.0
+  },
+  "reminder": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "module et dépendances chargés ; non exécuté (effet réel sur le PC)",
+   "seconds": 0.0
+  },
+  "weather_report": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "module et dépendances chargés ; non exécuté (effet réel sur le PC)",
+   "seconds": 0.0
+  },
+  "flight_finder": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "module et dépendances chargés ; non exécuté (effet réel sur le PC)",
+   "seconds": 0.0
+  },
+  "save_memory": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "module et dépendances chargés ; non exécuté (effet réel sur le PC)",
+   "seconds": 0.0
+  },
+  "close_camera": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "module et dépendances chargés ; non exécuté (effet réel sur le PC)",
+   "seconds": 0.0
+  },
+  "shutdown_jarvis": {
+   "kind": "vide",
+   "outcome": "vide",
+   "detail": "module et dépendances chargés ; non exécuté (effet réel sur le PC)",
+   "seconds": 0.0
+  }
+ },
+ "suites": {
+  "capabilities.selftest": {
+   "outcome": "ok",
+   "passed": 11,
+   "total": 11,
+   "failures": [],
+   "seconds": 0.7
+  },
+  "context.selftest": {
+   "outcome": "ok",
+   "passed": 33,
+   "total": 33,
+   "failures": [],
+   "seconds": 0.1
+  },
+  "server.selftest": {
+   "outcome": "ok",
+   "passed": 35,
+   "total": 35,
+   "failures": [],
+   "seconds": 3.1
+  },
+  "server.routing_selftest": {
+   "outcome": "ok",
+   "passed": 35,
+   "total": 35,
+   "failures": [],
+   "seconds": 1.3
+  },
+  "client_desktop --selftest": {
+   "outcome": "ok",
+   "passed": 28,
+   "total": 28,
+   "failures": [],
+   "seconds": 1.3
+  },
+  "cognition.selftest": {
+   "outcome": "ok",
+   "passed": 62,
+   "total": 62,
+   "failures": [],
+   "seconds": 3.6
+  },
+  "eval_lab.selftest": {
+   "outcome": "ok",
+   "passed": 28,
+   "total": 28,
+   "failures": [
+    "[PASS] under an injected fault, old test and new runner fail together                          reunion IMPORTANT -> VOICE: 8 FAIL ; heures c",
+    "[PASS] impossible worlds are INVALID, never FAIL                                               5 mondes impossibles refuses",
+    "[PASS] the owner's decisions are wired: hard where decided, INCONCLUSIVE where not             4 -> FAIL sans sink ; 5 -> inversion de prior",
+    "[PASS] a hard relation catches a fault no single trace can see                                 trace isolee PASS, relation parent/enfant FAI",
+    "[PASS] FULL runs the real router on its threads, and its properties see a leak                 59 essais : local, distant et refus tous atte"
+   ],
+   "seconds": 8.3
+  },
+  "core.code_workspace.selftest": {
+   "outcome": "ok",
+   "passed": 34,
+   "total": 34,
+   "failures": [],
+   "seconds": 59.0
+  },
+  "core.token_usage_selftest": {
+   "outcome": "ok",
+   "passed": null,
+   "total": null,
+   "failures": [],
+   "seconds": 0.1
+  },
+  "actions.repository_review_selftest": {
+   "outcome": "ok",
+   "passed": null,
+   "total": null,
+   "failures": [],
+   "seconds": 0.2
+  },
+  "reminders.selftest": {
+   "outcome": "ok",
+   "passed": 4,
+   "total": 4,
+   "failures": [],
+   "seconds": 0.4
+  }
+ }
+}

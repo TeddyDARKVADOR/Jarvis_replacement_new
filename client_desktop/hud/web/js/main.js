@@ -2,7 +2,7 @@
  * main.js — the conductor.
  *
  * Python pushes:   HUD.init(static) · HUD.tick(snapshot) · HUD.metrics(machine)
- *                  HUD.intent(directive) · HUD.face(message) · HUD.setMini(bool)
+ *                  HUD.setMini(bool) · HUD.showGraph(graphs)
  * The page asks:   bridge.send / mic / interrupt / confirm / settings / ...
  *
  * `V` is the visual state every renderer reads once per frame. It is derived
@@ -17,6 +17,7 @@ import { TIERS, guessTier, createGovernor } from './perf.js';
 import { createSettings } from './settings.js';
 import { createStudio } from './studio.js';
 import { createMind } from './mind.js';
+import { createGraph } from './graph.js';
 
 const SW = [['#7DD3FC', 'STARK'], ['#38BDF8', 'ARC'], ['#A78BFA', 'VIBRANIUM'], ['#6EE7B7', 'EMERAUDE'],
   ['#FBBF24', 'MARK'], ['#FB923C', 'ULTRON'], ['#F43F5E', 'HOT ROD'], ['#E2E8F0', 'IVOIRE']];
@@ -29,12 +30,12 @@ const V = {
   state: 'CONNECTING', physics: STATES.CONNECTING,
   color: hexToRgb('#FBBF6B'), target: hexToRgb('#FBBF6B'), accent: hexToRgb('#7DD3FC'),
   level: 0, micShown: 0, voiceShown: 0, burst: 0, wakeAge: null,
-  confirm: null, mini: false, face: false, no3d: false,
+  confirm: null, mini: false, no3d: false,
 };
 let S = null;                 // last snapshot
 let accentHex = '#7DD3FC';
-let prefs = { accent: '#7DD3FC', face: false, sound: true, volume: .35, quality: 'auto', quality_tier: null, clipboard: true };
-let init = { server: {}, identity: {}, faceAvailable: false };
+let prefs = { accent: '#7DD3FC', sound: true, volume: .35, quality: 'auto', quality_tier: null, clipboard: true };
+let init = { server: {}, identity: {} };
 let bridge = null;
 let reactor = null;
 let animated = true;
@@ -394,8 +395,6 @@ function onInit(data) {
   setText($('hostname'), (id.hostname || 'TERMINAL').toUpperCase());
   setText($('sys-host'), id.os || '');
   setServer(data.server || {});
-  $('btn-face').hidden = !data.faceAvailable;
-  setFace(!!(prefs.face && data.faceAvailable), false);
   if (data.mini) setMini(true);
   if (typeof prefs.quality === 'number') gov.lock(prefs.quality);
   else if (typeof prefs.quality_tier === 'number') gov.force(prefs.quality_tier, 'mémorisé');
@@ -431,24 +430,6 @@ function applyAccent(hex, save = true) {
   document.querySelectorAll('.swatches button').forEach((b) => b.classList.toggle('sel', b.dataset.hex.toLowerCase() === hex.toLowerCase()));
   $('accent-input').value = hex;
   if (save) savePrefs();
-}
-
-// ── face ──────────────────────────────────────────────────────────────────
-function setFace(on, save = true) {
-  const frame = $('face');
-  V.face = on;
-  $('btn-face').classList.toggle('active', on);
-  if (on) {
-    if (!frame.src) {
-      frame.hidden = false;
-      frame.onload = () => { call('faceLoaded'); frame.classList.add('on'); };
-      frame.src = 'jarvis://avatar/index.html';
-    } else { frame.hidden = false; requestAnimationFrame(() => frame.classList.add('on')); }
-  } else {
-    frame.classList.remove('on');
-    setTimeout(() => { if (!V.face) frame.hidden = true; }, 800);
-  }
-  if (save) { prefs.face = on; savePrefs(); }
 }
 
 // ── mini ──────────────────────────────────────────────────────────────────
@@ -541,7 +522,6 @@ function wire() {
     prefs.sound = !prefs.sound; sound.set(prefs.sound, prefs.volume);
     $('btn-sound').classList.toggle('muted', !prefs.sound); savePrefs(); sound.play('click');
   };
-  $('btn-face').onclick = () => setFace(!V.face);
   $('btn-palette').onclick = (e) => { e.stopPropagation(); toggleOverlay('palette'); };
   $('cf-yes').onclick = () => answer(true);
   $('cf-no').onclick = () => answer(false);
@@ -592,6 +572,7 @@ function wire() {
       if (settings.isOpen) { settings.close(); return; }
       if (studio.isOpen) { studio.viewerOpen ? studio.closeViewer() : studio.close(); return; }
       if (mind.isOpen) { mind.close(); return; }
+      if (graph.isOpen) { graph.close(); return; }
       if (!$('help').hidden) { $('help').hidden = true; return; }
       if (!$('palette').hidden) { $('palette').hidden = true; return; }
       if (V.state === 'SPEAKING' || V.state === 'THINKING') { call('interrupt'); sound.play('close'); return; }
@@ -606,7 +587,7 @@ function wire() {
     if (e.ctrlKey && (e.key === 'm' || e.key === 'M')) { e.preventDefault(); call('setMini', !V.mini); return; }
     if (e.ctrlKey && e.key === ',') { e.preventDefault(); settings.isOpen ? settings.close() : settings.open('connexion'); return; }
     if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); cmd.focus(); return; }
-    if (!inInput && (!$('confirm').hidden || settings.isOpen || studio.isOpen || mind.isOpen)) return;
+    if (!inInput && (!$('confirm').hidden || settings.isOpen || studio.isOpen || mind.isOpen || graph.isOpen)) return;
     if (!inInput && e.key === '/') { e.preventDefault(); cmd.focus(); return; }
     // typing anywhere goes to the command line
     if (!inInput && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey && !V.mini) cmd.focus();
@@ -800,14 +781,6 @@ window.HUD = {
   init: onInit,
   tick: onTick,
   metrics: onMetrics,
-  intent(d) {
-    const e = (d && d.expression) || '';
-    V.burst = Math.max(V.burst, ['surprised', 'happy', 'amused', 'proud'].includes(e) ? .8 : .4);
-  },
-  face(msg) {
-    const f = $('face');
-    if (V.face && f.contentWindow) f.contentWindow.postMessage(msg, '*');
-  },
   setMini,
   setAnimated(on) {
     if (on && !animated) { last = performance.now(); if (reactor) reactor.resume(); }
@@ -829,8 +802,6 @@ const settings = createSettings({
     prefs.sound = on; prefs.volume = vol; sound.set(on, vol);
     $('btn-sound').classList.toggle('muted', !on); savePrefs();
   },
-  setFace: (on) => setFace(on),
-  faceAvailable: () => !!init.faceAvailable,
   setQuality: (v) => setQualityPref(v),
 });
 const studio = createStudio({
@@ -842,9 +813,11 @@ const mind = createMind({
   rpc, sound,
   caps: () => init.caps || {},
 });
+const graph = createGraph({ sound });
 Object.assign(window.HUD, {
   openStudio: () => studio.open(),
   openMind: () => mind.open(),
+  showGraph: (payload) => graph.show(payload),
   rpcResult(id, result) {
     const done = pending.get(id);
     if (done) { pending.delete(id); done(result || {}); }
