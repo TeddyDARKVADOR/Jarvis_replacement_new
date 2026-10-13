@@ -27,10 +27,8 @@ _TRAVEL_MODES = {
 PLUGIN = {
     "name": "open_itinerary",
     "description": (
-        "Open a Google Maps directions route on the local JARVIS desktop. "
-        "Use when the user asks how to get from a stated origin to a stated "
-        "destination. Ask for either place if missing. This opens a route link; "
-        "it does not know the user's current location or calculate live travel times."
+        "Open a Google Maps route from a stated origin to a stated destination on this "
+        "PC. Ask for a missing place. No live position or travel time."
     ),
     "parameters": {
         "type": "OBJECT",

@@ -11,16 +11,12 @@ Il n'existe aucune action de ce plugin qui active un objectif directement.
 PLUGIN = {
     "name": "goals",
     "description": (
-        "Persistent goals that survive restarts. YOU can only propose them; the user "
-        "approves on the HUD. Actions: 'list'; 'propose' (title, justification, "
-        "success_criteria, optional priority 1-5, deadline YYYY-MM-DD, budget_actions) — "
-        "use when the user states a lasting objective or when you have a well-grounded "
-        "suggestion; 'progress' (goal, note) after doing something that serves an ACTIVE "
-        "goal; 'request_completion' (goal, note = evidence) when the success criteria "
-        "seem met; 'request_cancel' (goal, note); 'request_approval' (goal) to show the "
-        "approval button again or resume a blocked goal; 'withdraw' (goal) to drop your "
-        "own unapproved proposal. Never claim a goal is approved, done or cancelled "
-        "until the user has confirmed on the HUD."
+        "Persistent goals. You only PROPOSE; the user approves on the HUD. Actions: "
+        "list; propose (title, justification, success_criteria, optional priority 1-5, "
+        "deadline, budget_actions) for a lasting objective; progress (goal, note) after "
+        "serving an ACTIVE goal; request_completion / request_cancel (goal, note); "
+        "request_approval (goal); withdraw (goal). Never say a goal is approved, done "
+        "or cancelled before the user confirms."
     ),
     "parameters": {
         "type": "OBJECT",

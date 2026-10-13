@@ -54,6 +54,7 @@ def _new_totals() -> dict:
         "sources": {},
         "paid_tier_usd_estimate": 0.0,
         "priced_requests": 0,
+        "last_input_tokens": 0,
     }
 
 
@@ -103,8 +104,16 @@ def _paid_estimate(model: str, input_modalities: dict, output_modalities: dict,
         input_modalities = {"TEXT": input_tokens}
     if not output_modalities and output_tokens:
         output_modalities = {"TEXT": output_tokens}
-    if sum(input_modalities.values()) != input_tokens or sum(output_modalities.values()) != output_tokens:
-        return None
+    # The Live API leaves part of the prompt (tool declarations, by the look of
+    # it) out of the modality breakdown. That remainder is priced as TEXT, the
+    # cheapest rate, so the figure is a floor rather than a guess upwards.
+    input_modalities, output_modalities = dict(input_modalities), dict(output_modalities)
+    for counted, total in ((input_modalities, input_tokens), (output_modalities, output_tokens)):
+        gap = total - sum(counted.values())
+        if gap < 0:
+            return None
+        if gap:
+            counted["TEXT"] = counted.get("TEXT", 0) + gap
     return (sum(count * in_rates.get(kind, in_rates.get("TEXT", 0.0))
                 for kind, count in input_modalities.items())
             + sum(count * out_rates.get(kind, out_rates.get("TEXT", 0.0))
@@ -152,6 +161,7 @@ def record_usage(model: str, source: str, usage, grounding_queries: int = 0) -> 
             _TOTALS = _new_totals()
         totals = _TOTALS
         totals["requests"] += 1
+        totals["last_input_tokens"] = input_tokens
         for key in ("input_tokens", "output_tokens", "cached_input_tokens", "thinking_tokens", "tool_tokens", "grounding_queries"):
             totals[key] += delta[key]
         _add_modalities(totals["input_modalities"], input_modalities)
@@ -200,7 +210,8 @@ def format_totals(summary_source: str = "session_summary") -> str:
     im = data["input_modalities"]
     om = data["output_modalities"]
     bits = [
-        f"entrée {data['input_tokens']:,}",
+        f"entrée {data['input_tokens']:,}"
+        + (f" (dernier appel {data['last_input_tokens']:,})" if data.get("last_input_tokens") else ""),
         f"sortie {data['output_tokens']:,}",
         f"audio {im.get('AUDIO', 0):,} in / {om.get('AUDIO', 0):,} out",
         f"images {im.get('IMAGE', 0) + im.get('VIDEO', 0):,} in / {om.get('IMAGE', 0) + om.get('VIDEO', 0):,} out",
@@ -221,7 +232,8 @@ def format_totals(summary_source: str = "session_summary") -> str:
     if costly_sources:
         bits.append("par source " + ", ".join(f"{name} {count:,}" for name, count in costly_sources))
     if data["priced_requests"]:
-        bits.append(f"≈ ${data['paid_tier_usd_estimate']:.6f} paid-tier, {data['priced_requests']}/{data['requests']} appels tarifés")
+        bits.append(f"≥ ${data['paid_tier_usd_estimate']:.4f} au tarif payant (minimum), "
+                    f"{data['priced_requests']}/{data['requests']} appels tarifés")
     else:
         bits.append("estimation USD indisponible pour ce modèle/offre")
     return "Usage Gemini session : " + " · ".join(bits)

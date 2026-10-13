@@ -20,23 +20,21 @@ import capabilities as cap
 PLUGIN = {
     "name": "capabilities",
     "description": (
-        "Your own verified map of what you can do (features, tools, limits, known bugs), "
-        "kept as graphs. action='find' with a query whenever the user asks whether you can "
-        "do something, how one of your features works, or what you can or cannot do — answer "
-        "from its result, including the status (ok / partial / untested / bug), never from "
-        "imagination. action='list' for an overview of your domains. action='show' ONLY when "
-        "the user asks to see or display your graph (optionally graph=<id> such as server, "
-        "hud, android, cognition, context, studio, deployment, eval_lab, preprod, contrat, "
-        "client_desktop, and focus=<words> to select a node)."
+        "Your verified map of what you can do, as graphs. show: when the user asks to SEE, "
+        "show or display your features, abilities or graph ('montre-moi', 'affiche') — "
+        "optional graph=<id> (server, hud, android, cognition, context, studio, deployment, "
+        "eval_lab, preprod, contrat, client_desktop) and focus=<words>. find (query): "
+        "whether you can do something or how a feature works; answer from its status. "
+        "list: a spoken overview only. issues: what is broken, partial or untested."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "action": {"type": "STRING", "enum": ["find", "list", "show"],
-                       "description": "find (default) | list | show"},
-            "query": {"type": "STRING", "description": "find: what to look for, in the user's words"},
-            "graph": {"type": "STRING", "description": "show: which graph (default: general)"},
-            "focus": {"type": "STRING", "description": "show: a feature to select in the graph"},
+            "action": {"type": "STRING", "enum": ["find", "list", "show", "issues"],
+                       "description": "find (default) | list | show | issues"},
+            "query": {"type": "STRING", "description": "find: what to look for"},
+            "graph": {"type": "STRING", "description": "show: which graph (default general)"},
+            "focus": {"type": "STRING", "description": "show: a feature to select"},
         },
         "required": [],
     },
@@ -54,21 +52,43 @@ def _line(n: dict) -> str:
 
 
 def _find(query: str) -> str:
-    hits = cap.find(query, limit=6)
+    hits = cap.find(query, limit=5)
     if not hits:
         return (f"Nothing in my capability graph matches '{query}'. "
                 "Say so plainly rather than guessing; it may not be something I can do.")
     rows = [_line(h) for h in hits]
-    for h in hits[:2]:
+    for h in hits[:1]:
         rows += [f"    · {d}" for d in h.get("details", [])[:3]]
     return f"From my capability graph ({len(hits)} matches):\n" + "\n".join(rows)
 
 
 def _list() -> str:
+    # Short on purpose: a tool result stays in the Live context and is billed
+    # again on every later turn of the session.
     g = cap.load(cap.GENERAL)
-    rows = [f"- {d['label']}: {d.get('summary', '')}" + (f" (graph {d['graph']})" if d.get("graph") else "")
-            for d in cap.domains()]
-    return f"My capability graph, updated {g.get('updated')}:\n" + "\n".join(rows)
+    names = "; ".join(d["label"] for d in cap.domains())
+    tools = sum(1 for n in g["nodes"] if n.get("kind") == "outil")
+    return (f"My capability graph (updated {g.get('updated')}), {tools} tools in these domains: "
+            f"{names}. Use find for details, show to display it.")
+
+
+_ISSUE_ORDER = {"bug": 0, "partiel": 1, "a_tester": 2}
+
+
+def _issues() -> str:
+    """What the graph itself says is broken, partial or untested."""
+    rows = []
+    for gid in cap.graph_ids():
+        for n in cap.load(gid)["nodes"]:
+            if n.get("status") in _ISSUE_ORDER:
+                rows.append((_ISSUE_ORDER[n["status"]], gid, n))
+    if not rows:
+        return "My graph reports no known bug, partial or untested feature."
+    rows.sort(key=lambda r: (r[0], r[1] != cap.GENERAL))
+    counts = {k: sum(1 for r in rows if r[2]["status"] == k) for k in _ISSUE_ORDER}
+    head = (f"{counts['bug']} known bugs, {counts['partiel']} partial, "
+            f"{counts['a_tester']} untested. Most important:")
+    return head + "\n" + "\n".join(_line({**n, "in_graph": gid}) for _, gid, n in rows[:8])
 
 
 def _show(graph: str, focus: str, player) -> str:
@@ -95,6 +115,8 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
         cap.reset()
         if action == "list":
             return _list()
+        if action == "issues":
+            return _issues()
         if action == "show":
             return _show(str(p.get("graph") or ""), str(p.get("focus") or ""), player)
         query = str(p.get("query") or p.get("focus") or "").strip()

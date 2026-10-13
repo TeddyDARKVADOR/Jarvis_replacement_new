@@ -5,10 +5,9 @@ from __future__ import annotations
 PLUGIN = {
     "name": "local_health_check",
     "description": (
-        "Run a read-only health check when the user asks whether local JARVIS, "
-        "Gemini, the selected audio devices, actions, plugins, or phone dashboard "
-        "are available. Use only in local desktop mode. Do not claim an audio "
-        "device is physically working; this reports configured selections only."
+        "Read-only health check of local JARVIS: Gemini, chosen audio devices, actions, "
+        "plugins, phone dashboard. Reports configuration, not whether a device "
+        "physically works."
     ),
     "parameters": {"type": "OBJECT", "properties": {}, "required": []},
 }

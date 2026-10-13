@@ -7,7 +7,7 @@ file contents are written by the sandbox, and whether its fix worked is
 decided by running the tests — never by what it says.
 
 `StudioLLM` is the default (Gemini, with the key in the active config credentials file, the
-same way actions/dev_agent.py calls it). Anything with the same `complete()`
+same way the other actions call it). Anything with the same `complete()`
 method can replace it — the selftest uses a scripted fake.
 """
 

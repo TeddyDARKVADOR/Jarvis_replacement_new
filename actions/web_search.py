@@ -19,20 +19,50 @@ def _get_api_key() -> str:
         return json.load(f)["gemini_api_key"]
 
 
+#: monotonic time before which Gemini search is not tried again (quota exhausted).
+_GEMINI_PAUSED_UNTIL = 0.0
+_DEFAULT_QUOTA_PAUSE_S = 900.0
+
+
+class GeminiPaused(RuntimeError):
+    """Gemini search is resting after a 429; the caller goes straight to DDG."""
+
+
+def _note_quota_error(exc: Exception) -> None:
+    """After a 429, stop asking until the delay Google gave (or 15 min)."""
+    global _GEMINI_PAUSED_UNTIL
+    import re
+    import time
+    text = str(exc)
+    if "429" not in text and "RESOURCE_EXHAUSTED" not in text:
+        return
+    m = re.search(r"retry(?:Delay| in)['\": ]*'?(\d+(?:\.\d+)?)s", text, re.IGNORECASE)
+    delay = float(m.group(1)) if m else _DEFAULT_QUOTA_PAUSE_S
+    _GEMINI_PAUSED_UNTIL = time.monotonic() + max(30.0, min(delay, 6 * 3600.0))
+    print(f"[WebSearch] Gemini quota exhausted — DuckDuckGo only for {int(delay)} s")
+
+
 def _gemini_search(query: str, max_words: int = 160) -> str:
+    import time
     from google import genai
 
+    if time.monotonic() < _GEMINI_PAUSED_UNTIL:
+        raise GeminiPaused("Gemini search paused (quota)")
     client   = genai.Client(api_key=_get_api_key())
     prompt = (
         f"Answer in the language of the question using at most {max_words} words. "
         "Give key findings first, include direct source URLs for main claims, and skip preamble.\n\n"
         f"Question: {query}"
     )
-    response = client.models.generate_content(
-        model="gemini-3.1-flash-lite",
-        contents=prompt,
-        config={"tools": [{"google_search": {}}], "max_output_tokens": max(360, max_words * 3)},
-    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite",
+            contents=prompt,
+            config={"tools": [{"google_search": {}}], "max_output_tokens": max(360, max_words * 3)},
+        )
+    except Exception as exc:
+        _note_quota_error(exc)
+        raise
     from core.token_usage import record_response
     record_response(response, "gemini-3.1-flash-lite", "web_search")
 
@@ -94,7 +124,7 @@ def _ddg_news(query: str, max_results: int = 5) -> list[dict]:
                     "source":  r.get("source", ""),
                 })
     except Exception as e:
-        print(f"[WebSearch] ⚠️ DDG news() failed ({e}) — falling back to text search")
+        print(f"[WebSearch] ⚠️ DDG news() failed ({str(e)[:90]}) — falling back to text search")
         results = _ddg_search(query, max_results=max_results)
     return results
 
@@ -179,7 +209,7 @@ def _search(query: str) -> str:
     try:
         return _gemini_search(query)
     except Exception as e:
-        print(f"[WebSearch] ⚠️ Gemini failed ({e}) — trying DDG...")
+        print(f"[WebSearch] ⚠️ Gemini failed ({str(e)[:90]}) — trying DDG...")
         results = _ddg_search(query)
         return _format_ddg(query, results)
 
@@ -215,7 +245,7 @@ def _news(query: str) -> str:
         try:
             _store(_gemini_search(gemini_query))
         except Exception as e:
-            print(f"[WebSearch] ⚠️ Gemini news failed ({e})")
+            print(f"[WebSearch] ⚠️ Gemini news failed ({str(e)[:90]})")
             _store("")
 
     def _try_ddg():
@@ -223,7 +253,7 @@ def _news(query: str) -> str:
             results = _ddg_news(ddg_query, max_results=5)
             _store(_format_news(ddg_query, results))
         except Exception as e:
-            print(f"[WebSearch] ⚠️ DDG news failed ({e})")
+            print(f"[WebSearch] ⚠️ DDG news failed ({str(e)[:90]})")
             _store("")
 
     threading.Thread(target=_try_gemini, daemon=True).start()
@@ -245,7 +275,7 @@ def _research(query: str) -> str:
     try:
         return _gemini_search(research_query, max_words=420)
     except Exception as e:
-        print(f"[WebSearch] ⚠️ Research Gemini failed ({e}) — DDG fallback...")
+        print(f"[WebSearch] ⚠️ Research Gemini failed ({str(e)[:90]}) — DDG fallback...")
         results = _ddg_search(query, max_results=5)
         return _format_ddg(query, results)
 
@@ -256,7 +286,7 @@ def _price(query: str) -> str:
     try:
         return _gemini_search(price_query)
     except Exception as e:
-        print(f"[WebSearch] ⚠️ Price Gemini failed ({e}) — DDG fallback...")
+        print(f"[WebSearch] ⚠️ Price Gemini failed ({str(e)[:90]}) — DDG fallback...")
         results = _ddg_search(f"{query} price buy", max_results=6)
         return _format_ddg(query, results)
 

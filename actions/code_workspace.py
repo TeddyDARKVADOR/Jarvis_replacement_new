@@ -24,8 +24,8 @@ def _available(player) -> str | None:
 
 def route_create(description: str, language: str = "", project: str = "", player=None) -> str | None:
     """A NEW program built on this PC goes through the Studio — sandbox, real
-    tests, verdict, HUD panel — whichever tool the model picked (dev_agent,
-    code_helper build/write). None when the Studio is not available here (the
+    tests, verdict, HUD panel — whichever tool the model picked (code_helper
+    build/write). None when the Studio is not available here (the
     Oracle server), so the caller keeps its own path."""
     if not (description or "").strip() or _available(player):
         return None

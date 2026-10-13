@@ -69,7 +69,7 @@ affiche son **code complet** (numéros de ligne, couleurs, recherche) ou ses dif
   « Activer ou désactiver des fonctionnalités Windows » → « Bac à sable Windows » →
   redémarrer (Windows Pro/Entreprise). Seuls la bibliothèque standard et `_deps/` du
   projet y sont disponibles ; pas de Node.js.
-- `dev_agent` et la création via `code_helper` passent désormais par le Studio sur ce PC.
+- La création via `code_helper` passe par le Studio sur ce PC.
 - Le code est écrit par **Groq** dès que `"groq_api_key"` est présent dans
   `config/api_keys.json` (meilleur modèle disponible pour la clé, `openai/gpt-oss-120b` en
   priorité ; `"groq_model"` dans `plugin_config.code_studio` pour en imposer un). Sans clé
@@ -359,7 +359,6 @@ Teddy-foundation/
 │   ├── youtube_video.py      # YouTube playback control
 │   ├── game_updater.py       # Game update management (Steam / Epic)
 │   ├── code_helper.py        # Code review and generation
-│   ├── dev_agent.py          # Developer task agent
 │   └── desktop.py            # Desktop and taskbar control
 ├── memory/
 │   ├── memory_manager.py     # Load/save long_term.json — sessions, monitors, identity
