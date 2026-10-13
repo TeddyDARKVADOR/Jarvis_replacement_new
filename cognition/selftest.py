@@ -1112,6 +1112,35 @@ def _shared_memory():
     return "appris sur A → prompt de B ; rejeté sur B → hors du prompt de A ; oubli par sujet partout ; pas d'écho"
 
 
+@check("64 l'onglet USAGE dit si les économies tiennent et quels outils échouent")
+def _usage_report():
+    from cognition import usage
+    now = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
+    rows = []
+    for d, tokens in ((10, 18000), (9, 18000), (2, 9000), (1, 9000)):     # avant / après
+        for _ in range(3):
+            rows.append({"session_id": f"s{d}", "timestamp": (now - timedelta(days=d)).isoformat(),
+                         "model": "models/gemini-3.1-flash-live-preview", "source": "live_voice",
+                         "usage": {"input_tokens": tokens, "output_tokens": 100,
+                                   "input_modalities": {"TEXT": tokens}, "output_modalities": {"AUDIO": 100}}})
+    path = TMP / "usage.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    s = Store(TMP / "usage.db")
+    for i, ok in enumerate((1, 1, 0, 0, 0)):
+        s.execute("INSERT INTO tool_outcomes(ts, tool, predicted, outcome) VALUES (?,?,?,?)",
+                  ((now - timedelta(hours=i)).isoformat(timespec="seconds"), "youtube_video", .5, ok))
+    r = usage.report(s, days=7, now=now, usage_path=path, reminders_path=TMP / "absent.json")
+    t = r["totals"]
+    assert t["avg_input"] == 9000 and t["avg_input_prev"] == 18000 and t["change"] == -0.5, t
+    assert len(r["days"]) == 7 and t["live_calls"] == 6, r["days"]
+    assert t["usd"] > 0, "coût non estimé"
+    yt = r["tools"][0]
+    assert yt["tool"] == "youtube_video" and yt["calls"] == 5 and yt["rate"] == 0.4, yt
+    assert r["reminders"] == {"delivered": 0, "missed": 0, "upcoming": 0}
+    s.close()
+    return f"contexte −50 % semaine sur semaine, coût ≥ {t['usd']} $, youtube_video 40 %"
+
+
 @check("40 échéance dépassée -> expiré ; l'historique reste")
 def _goal_expiry():
     clock = _Clock(datetime(2026, 10, 13, tzinfo=timezone.utc))
@@ -1240,8 +1269,9 @@ def _hud_unreachable():
     assert set(H._OPS) == {"cognition.overview", "cognition.memories",
                            "cognition.memory_review", "cognition.goal_action",
                            "cognition.autonomy", "cognition.goal_autonomy",
-                           "cognition.autonomy_run", "cognition.forget_about"}
-    return "0 plugin ne touche au panneau ni à l'autonomie ; 8 opérations, toutes listées"
+                           "cognition.autonomy_run", "cognition.forget_about",
+                           "cognition.usage"}
+    return "0 plugin ne touche au panneau ni à l'autonomie ; 9 opérations, toutes listées"
 
 
 @check("47 HUD local : LocalBackend route cognition.* vers l'instance active")

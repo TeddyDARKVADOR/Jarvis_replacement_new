@@ -372,6 +372,7 @@
         <button data-tab="goals">OBJECTIFS <span id="mind-goal-badge" class="mind-badge" hidden></span></button>
         <button data-tab="memories">SOUVENIRS <span id="mind-mem-badge" class="mind-badge" hidden></span></button>
         <button data-tab="self">MODÈLE DE SOI</button>
+        <button data-tab="usage">USAGE</button>
       </nav>
       <button class="ico" id="mind-close" title="Fermer (Échap)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </header>
@@ -419,6 +420,18 @@
         <ul id="mind-limits" class="mind-limits"></ul>
         <h4>GÉNÉRATEURS DE SECOURS</h4>
         <div id="mind-providers" class="mind-log"></div>
+      </section>
+      <section data-pane="usage" hidden>
+        <div class="usage-range" id="usage-range">
+          <button data-days="7" class="sel">7 JOURS</button><button data-days="30">30 JOURS</button>
+        </div>
+        <div id="usage-tiles" class="usage-tiles"></div>
+        <h4>CONTEXTE MOYEN PAR APPEL LIVE <small>ce que chaque tour refacture : prompt, outils, historique — plus bas = moins cher</small></h4>
+        <div id="usage-chart" class="usage-chart"></div>
+        <h4>FIABILITÉ RÉELLE DES OUTILS <small>appels de la période, réussis ou non</small></h4>
+        <div id="usage-tools" class="usage-tools"></div>
+        <h4>OÙ PARTENT LES TOKENS</h4>
+        <div id="usage-sources" class="mind-log"></div>
       </section>
     </div>
     <footer class="mind-foot"><span id="mind-status"></span><span id="mind-meta"></span></footer>

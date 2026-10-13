@@ -910,3 +910,33 @@ body.mini #camera, body.mini #clip { display: none !important; }
 .graph-legend i.ring.dashed { border: 1px dashed var(--accent); }
 #graph-meta { font-family: var(--mono); font-size: 10px; }
 .gs-verified { font-size: 11.5px; color: #B4C2D8; line-height: 1.45; border-left: 2px solid var(--a35); padding-left: 8px; }
+
+/* ── onglet USAGE (mind.js, cognition/usage.py) ──────────────────────── */
+.usage-range { display: flex; gap: 4px; justify-content: flex-end; margin-bottom: 12px; }
+.usage-range button { background: none; border: 1px solid var(--a20); color: var(--muted); font: inherit;
+  font-size: 10px; letter-spacing: 2px; padding: 5px 10px; cursor: pointer; }
+.usage-range button.sel { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.usage-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.ut { border: 1px solid var(--a20); padding: 12px 14px; background: var(--a06); }
+.ut-k { font-size: 10px; letter-spacing: 2.5px; color: var(--muted); }
+.ut-v { font-family: var(--mono); font-size: 20px; color: #E6EEF9; margin: 6px 0 4px; }
+.ut-s { font-size: 11px; color: var(--muted); line-height: 1.35; }
+.usage-chart { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 160px;
+  padding: 8px 0 0; border-bottom: 1px solid var(--a20); }
+.uc-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end;
+  align-items: center; cursor: default; outline: none; }
+.uc-bar { width: 100%; max-width: 46px; background: var(--accent); border-radius: 4px 4px 0 0; opacity: .85; }
+.uc-col:hover .uc-bar, .uc-col:focus .uc-bar { opacity: 1; }
+.uc-bar.empty { height: 0 !important; }
+.uc-day { font-size: 9.5px; color: var(--muted); margin-top: 4px; transform: translateY(18px); }
+.usage-chart { margin-bottom: 26px; }
+.uc-tip { position: absolute; top: -6px; transform: translate(-50%, -100%); background: #0B1320;
+  border: 1px solid var(--a35); color: var(--text); font-size: 11px; padding: 5px 8px; white-space: nowrap;
+  pointer-events: none; z-index: 2; }
+.ut-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ut-table th { text-align: left; font-size: 9.5px; letter-spacing: 2px; color: var(--muted); font-weight: 400;
+  padding: 4px 8px; border-bottom: 1px solid var(--a20); }
+.ut-table td { padding: 5px 8px; border-bottom: 1px solid var(--a06); }
+.ut-table td b { font-family: var(--mono); font-weight: 400; color: var(--accent); }
+.ut-table tr.weak td b, .ut-flag { color: var(--c-warn); }
+.ut-flag { font-size: 9.5px; letter-spacing: 1.5px; }

@@ -50,6 +50,11 @@ export function createSim(HUD) {
     quit() {}, hideToTray() {}, minimize() {}, toggleMaximize() {}, fullscreen() {},
     startMove() {}, startResize() {}, setMini(m) { HUD.setMini(m); },
     savePrefs() {}, setPushRate() {}, installWakeWord() {},
+    rpc(id, op, json) {
+      const f = window.__simRpc;
+      Promise.resolve(f ? f(op, JSON.parse(json || '{}')) : { error: 'simulation : pas de cerveau' })
+        .then((r) => HUD.rpcResult(id, r));
+    },
     requestSettings() {
       setTimeout(() => HUD.settingsData({
         host: 'jarvis-vps.tailnet.ts.net', port: 8000, use_tls: false, device_token: 'demo-token',
@@ -97,6 +102,10 @@ export function createSim(HUD) {
     identity: { hostname: 'SIMULATION', os: 'Navigateur' },
     server: { host: 'jarvis-vps.tailnet.ts.net', port: 8000, tls: false, device: 'Poste de démo', paired: true },
     mini: false,
+    // window.__simRpc (op, data) => result : un faux cerveau pour régler les
+    // panneaux ESPRIT / STUDIO hors de Qt (test visuel, réglage du rendu).
+    caps: window.__simRpc ? { cognition: true, local: true } : {},
+    local: !!window.__simRpc,
   }), 50);
 
   return bridge;
