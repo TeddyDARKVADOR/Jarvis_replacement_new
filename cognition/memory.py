@@ -51,6 +51,11 @@ def _parse(ts: str | None) -> datetime | None:
 def _fts_query(text: str) -> str:
     """Requête FTS5 sûre : chaque mot entre guillemets, réunis par OR."""
     words = policy.content_words(text)
+    if not words:
+        # Les mots vides de la preuve (« name », « user »…) ne le sont pas pour
+        # une recherche : « name » doit trouver « name: Teddy », pas rendre les
+        # plus récents dans un ordre arbitraire (cognition selftest n°59).
+        words = [w for w in re.findall(r"\w{3,}", policy._fold(text or ""))]
     words = list(dict.fromkeys(words))[:12]
     return " OR ".join(f'"{w}"' for w in words)
 
@@ -244,14 +249,14 @@ class Memory:
         q = _fts_query(query)
         if q:
             rows = self.store.query(
-                f"SELECT m.*, bm25(memories_fts) AS bm FROM memories_fts "
+                f"SELECT m.*, m.rowid AS _rid, bm25(memories_fts) AS bm FROM memories_fts "
                 f"JOIN memories m ON m.rowid = memories_fts.rowid "
                 f"WHERE memories_fts MATCH ? AND m.status IN ({statuses}){kind_sql} "
                 f"LIMIT 200", [q] + params)
         else:
             rows = self.store.query(
-                f"SELECT m.*, 0.0 AS bm FROM memories m WHERE m.status IN ({statuses}){kind_sql} "
-                f"ORDER BY m.created_at DESC LIMIT 200", params)
+                f"SELECT m.*, m.rowid AS _rid, 0.0 AS bm FROM memories m WHERE m.status IN ({statuses}){kind_sql} "
+                f"ORDER BY m.created_at DESC, m.rowid DESC LIMIT 200", params)
         if not rows:
             return []
 
@@ -276,12 +281,15 @@ class Memory:
             # l'évaluation (evaluate.py) les fait varier pour ses ablations.
             c["score"] = (weights[0] * c["recency_n"] + weights[1] * c["importance_n"]
                           + weights[2] * c["relevance_n"])
-        cands.sort(key=lambda c: c["score"], reverse=True)
+        # À score égal, le plus récemment écrit d'abord : created_at est à la
+        # seconde, et sans départage l'ordre dépendait du plan de SQLite.
+        cands.sort(key=lambda c: (c["score"], c["row"]["_rid"]), reverse=True)
 
         out = []
         for c in cands[:max(1, limit)]:
             row = c["row"]
             row.pop("bm", None)
+            row.pop("_rid", None)
             row["score"] = round(c["score"], 4)
             row["verified"] = row["status"] in ("active", "validated")
             out.append(row)
