@@ -1,0 +1,247 @@
+/**
+ * mind.js — le panneau ESPRIT : ce que l'architecture cognitive enregistre.
+ *
+ * Tout vient de cognition/hud.py par `rpc('cognition.*')` : l'état affectif
+ * calculé et ses causes, les objectifs, les souvenirs avec leur provenance, la
+ * fiabilité mesurée des outils et la calibration. La page n'invente rien et
+ * n'arrondit qu'à l'affichage.
+ *
+ * Les boutons sont des DÉCISIONS de l'utilisateur : valider un souvenir en
+ * fait une vérité (et une mesure de calibration), approuver un objectif
+ * l'active. Aucun outil du modèle ne passe par ici (selftest cognition #46).
+ */
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const day = (ts) => (ts ? String(ts).slice(0, 10) : '');
+const hm = (ts) => (ts ? new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '');
+const pct = (x) => (x == null ? '—' : `${Math.round(x * 100)} %`);
+const num = (x, d = 2) => (x == null ? '—' : Number(x).toFixed(d));
+
+const VAR_FR = {
+  valence: 'VALENCE', arousal: 'ACTIVATION', assurance: 'ASSURANCE',
+  frustration: 'FRUSTRATION', curiosity: 'CURIOSITÉ', warmth: 'CHALEUR',
+};
+const RULE_FR = {
+  tool_ok: 'outil réussi', tool_recovered: 'outil enfin réussi', tool_error: 'outil en échec',
+  tool_error_again: 'même outil, encore en échec', recall_empty: 'souvenir introuvable',
+  user_thanks: 'vous l’avez remercié', user_correction: 'vous l’avez corrigé',
+  session_start: 'début de conversation', goal_done: 'objectif atteint', goal_blocked: 'objectif bloqué',
+};
+const DIRECTIVE_FR = {
+  change_strategy: ['CHANGER D’APPROCHE', 'Échecs répétés : il ne réessaie pas pareil, il change de méthode ou vous demande.'],
+  caution: ['PRUDENCE', 'Réussite récente faible : il annonce son incertitude et confirme avant tout ce qui est difficile à défaire.'],
+  brief: ['BRIÈVETÉ', 'Beaucoup d’événements à la fois : réponses courtes.'],
+  follow_up: ['QUESTION DE SUIVI', 'Quelque chose est resté introuvable : il peut vous poser une question.'],
+  warm: ['TON PLUS CHALEUREUX', 'Bonne relation : un ton un peu plus chaleureux, toujours professionnel.'],
+};
+const GOAL_FR = { proposed: 'PROPOSÉ', active: 'ACTIF', blocked: 'BLOQUÉ', done: 'ATTEINT', cancelled: 'ANNULÉ', expired: 'EXPIRÉ', withdrawn: 'RETIRÉ' };
+const SOURCE_FR = {
+  user_stated: 'dit par vous', tool_observed: 'observé par un outil', legacy_import: 'ancienne mémoire',
+  model_summary: 'résumé de session', model_inferred: 'déduit par le modèle', reflection: 'réflexion',
+};
+const STATUS_FR = { proposed: 'NON VÉRIFIÉ', active: 'ACTIF', validated: 'VALIDÉ', contested: 'CONTESTÉ' };
+const KIND_FR = { episodic: 'ÉPISODE', semantic: 'FAIT', reflective: 'RÉFLEXION', autobiographical: 'HISTOIRE', procedural: 'MÉTHODE', prospective: 'INTENTION' };
+const VIEWS = [
+  ['all', 'TOUS'], ['unverified', 'NON VÉRIFIÉS'], ['contested', 'CONTESTÉS'],
+  ['reflective', 'RÉFLEXIONS'], ['episodes', 'ÉPISODES'], ['validated', 'VALIDÉS'],
+];
+
+export function createMind(ctx) {
+  const box = $('mind');
+  let open = false, tab = 'state', view = 'all', last = null, timer = null, busy = false;
+  let qTimer = null;
+  const available = () => !!(ctx.caps().cognition);
+
+  function status(text, kind = '') {
+    const el = $('mind-status');
+    el.textContent = text || '';
+    el.className = kind;
+  }
+
+  // ── ouverture ──
+  function show() {
+    box.hidden = false; open = true;
+    const ok = available();
+    $('mind-unavailable').hidden = ok;
+    $('mind-body').hidden = !ok;
+    $('mind-tabs').hidden = !ok;
+    ctx.sound.play('open');
+    if (!ok) return;
+    selectTab(tab);
+    refresh();
+    clearInterval(timer);
+    timer = setInterval(refresh, 2000);
+  }
+  function hide() {
+    box.hidden = true; open = false;
+    clearInterval(timer); timer = null;
+    ctx.sound.play('close');
+  }
+  function selectTab(t) {
+    tab = t;
+    for (const b of $('mind-tabs').querySelectorAll('button')) b.classList.toggle('sel', b.dataset.tab === t);
+    for (const sec of $('mind-body').querySelectorAll('section')) sec.hidden = sec.dataset.pane !== t;
+    if (t === 'memories') loadMemories();
+  }
+
+  // ── vue d'ensemble ──
+  async function refresh() {
+    if (busy || !open) return;
+    busy = true;
+    const r = await ctx.rpc('cognition.overview');
+    busy = false;
+    if (r.error) { status(r.error, 'err'); return; }
+    last = r;
+    renderState(r); renderGoals(r); renderSelf(r);
+    const pending = r.goals.filter((g) => g.status === 'proposed' || g.status === 'blocked').length;
+    badge('mind-goal-badge', pending);
+    badge('mind-mem-badge', (r.memory.by_status.proposed || 0) + (r.memory.by_status.contested || 0));
+    $('mind-meta').textContent = `constitution v${r.constitution} · session ${r.session}`;
+  }
+  function badge(id, n) { const b = $(id); b.hidden = !n; b.textContent = n || ''; }
+
+  function renderState(r) {
+    $('mind-affect').innerHTML = r.affect.map((a) => {
+      const span = a.hi - a.lo;
+      const pos = (v) => ((v - a.lo) / span) * 100;
+      const zero = a.lo < 0 ? pos(0) : 0;
+      const left = Math.min(zero, pos(a.value)), width = Math.abs(pos(a.value) - zero);
+      return `<div class="mind-var" title="${esc(a.meaning)}">
+        <div class="mv-head"><span>${VAR_FR[a.name] || a.name}</span><b>${num(a.value)}</b></div>
+        <div class="mv-bar"><i style="left:${left}%;width:${Math.max(width, .8)}%"></i>
+          <u style="left:${pos(a.baseline)}%" title="ligne de base ${a.baseline}"></u></div>
+        <div class="mv-meaning">${esc(a.meaning)}</div></div>`;
+    }).join('');
+    $('mind-directives').innerHTML = r.directives.length
+      ? r.directives.map((d) => `<div class="mind-dir"><b>${DIRECTIVE_FR[d.key]?.[0] || d.key}</b> ${esc(DIRECTIVE_FR[d.key]?.[1] || d.text)}</div>`).join('')
+      : '<div class="mind-empty">Aucune : son état est dans les marges habituelles.</div>';
+    $('mind-causes').innerHTML = r.causes.length
+      ? r.causes.map((c) => {
+        const up = c.after > c.before;
+        return `<div class="ml-row"><span class="ml-t">${esc(day(c.ts))} ${esc(hm(c.ts))}</span>
+          <span>${VAR_FR[c.var] || c.var}</span>
+          <span class="${up ? 'up' : 'down'}">${num(c.before)} → ${num(c.after)}</span>
+          <span class="ml-why">${esc(RULE_FR[c.rule] || c.rule)}</span></div>`;
+      }).join('')
+      : '<div class="mind-empty">Rien encore : l’état bouge quand un outil réussit ou échoue, quand vous le remerciez ou le corrigez.</div>';
+  }
+
+  function renderGoals(r) {
+    $('mind-goals').innerHTML = r.goals.length ? r.goals.map((g) => {
+      const actions = [];
+      if (g.status === 'proposed') actions.push(['approve', 'APPROUVER', 'primary']);
+      if (g.status === 'blocked') actions.push(['approve', 'RELANCER', 'primary']);
+      if (g.status === 'active') actions.push(['complete', 'ATTEINT', '']);
+      actions.push(['cancel', 'ANNULER', 'danger']);
+      const budget = g.budget_actions ? Math.min(100, (g.spent_actions / g.budget_actions) * 100) : 0;
+      return `<div class="mind-card st-${g.status}">
+        <div class="mc-head"><span class="mc-status">${GOAL_FR[g.status] || g.status}</span>
+          <b>${esc(g.title)}</b><span class="mc-p">P${g.priority}</span></div>
+        <div class="mc-line"><span>Pourquoi</span>${esc(g.justification)}</div>
+        <div class="mc-line"><span>Réussi quand</span>${esc(g.success_criteria)}</div>
+        ${g.closed_reason ? `<div class="mc-line warn"><span>Bloqué</span>${esc(g.closed_reason)}</div>` : ''}
+        <div class="mc-foot">
+          <div class="mc-budget" title="${g.spent_actions}/${g.budget_actions} actions"><i style="width:${budget}%"></i></div>
+          <span>${g.spent_actions}/${g.budget_actions} actions${g.deadline ? ` · échéance ${esc(g.deadline)}` : ''} · ${g.origin === 'user' ? 'demandé par vous' : 'proposé par JARVIS'}</span>
+          <span class="mc-actions">${actions.map(([a, label, cls]) => `<button class="mini-btn ${cls}" data-goal="${esc(g.id)}" data-act="${a}">${label}</button>`).join('')}</span>
+        </div></div>`;
+    }).join('') : '<div class="mind-empty">Aucun objectif ouvert. Dites par exemple : « mon objectif, c’est de… ».</div>';
+    $('mind-closed').innerHTML = r.closed_goals.map((g) => `<div class="ml-row"><span class="ml-t">${esc(day(g.updated_at))}</span>
+      <span>${GOAL_FR[g.status] || g.status}</span><span>${esc(g.title)}</span><span class="ml-why">${esc(g.closed_reason || '')}</span></div>`).join('')
+      || '<div class="mind-empty">—</div>';
+  }
+
+  function renderSelf(r) {
+    $('mind-tools').innerHTML = r.tools.length ? r.tools.map((t) => `<div class="mt-row${t.weak ? ' weak' : ''}">
+        <span class="mt-name">${esc(t.tool)}</span>
+        <div class="mv-bar"><i style="left:0;width:${t.expected * 100}%"></i></div>
+        <b>${pct(t.expected)}</b><span class="mt-n">${t.n} essai${t.n > 1 ? 's' : ''}${t.weak ? ' · PEU FIABLE' : ''}</span></div>`).join('')
+      : '<div class="mind-empty">Aucun essai enregistré pour l’instant.</div>';
+    const tc = r.calibration.tools, mc = r.calibration.memories;
+    const srcRows = Object.entries(mc.by_source || {}).map(([s, d]) =>
+      `<tr><td>${esc(SOURCE_FR[s] || s)}</td><td>${d.n}</td><td>${pct(d.mean_confidence)}</td><td>${pct(d.validated_rate)}</td></tr>`).join('');
+    $('mind-calib').innerHTML = `
+      <div class="mc-cell"><span>OUTILS</span><b>Brier ${num(tc.brier, 3)}</b><b>ECE ${num(tc.ece, 3)}</b><small>${tc.n} appel${tc.n > 1 ? 's' : ''}</small></div>
+      <div class="mc-cell"><span>SOUVENIRS × VOS VERDICTS</span><b>Brier ${num(mc.brier, 3)}</b><b>ECE ${num(mc.ece, 3)}</b><small>${mc.n} verdict${mc.n > 1 ? 's' : ''}</small></div>
+      ${tc.bins.length ? `<table class="mind-table"><tr><th>confiance</th><th>appels</th><th>attendu</th><th>observé</th></tr>
+        ${tc.bins.map((b) => `<tr><td>${b.range}</td><td>${b.n}</td><td>${pct(b.confidence)}</td><td>${pct(b.observed)}</td></tr>`).join('')}</table>` : ''}
+      ${srcRows ? `<table class="mind-table"><tr><th>provenance</th><th>verdicts</th><th>confiance</th><th>validés</th></tr>${srcRows}</table>`
+        : '<div class="mind-empty">Validez ou rejetez des souvenirs (onglet SOUVENIRS) : vos verdicts mesurent si sa confiance est juste.</div>'}`;
+    $('mind-limits').innerHTML = (r.limits_fr || r.limits).map((l) => `<li>${esc(l)}</li>`).join('');
+    $('mind-providers').innerHTML = r.providers.length ? r.providers.map((p) => `<div class="ml-row">
+        <span class="ml-t">${esc(p.name)}</span><span>${esc(p.model)}</span>
+        <span class="${p.available ? 'up' : 'down'}">${p.available ? 'disponible' : `en pause ${p.paused_s} s`}</span>
+        <span class="ml-why">${p.calls} appels, ${p.failures} échecs${p.latency_s != null ? `, ${p.latency_s} s` : ''}</span></div>`).join('')
+      : '<div class="mind-empty">Aucun générateur configuré.</div>';
+  }
+
+  // ── souvenirs ──
+  async function loadMemories() {
+    const r = await ctx.rpc('cognition.memories', { view, query: $('mind-q').value.trim() });
+    if (r.error) { status(r.error, 'err'); return; }
+    $('mind-views').innerHTML = VIEWS.map(([v, label]) =>
+      `<button class="mini-btn${v === view ? ' sel' : ''}" data-view="${v}">${label} <small>${r.totals[v] ?? 0}</small></button>`).join('');
+    $('mind-mem').innerHTML = r.items.length ? r.items.map((m) => `<div class="mem-row mind-mem st-${m.status}">
+        <span class="cat">${KIND_FR[m.kind] || m.kind}<br><em>${STATUS_FR[m.status] || m.status}</em></span>
+        <span class="kv">${esc(m.content)}<small>${esc(SOURCE_FR[m.source] || m.source)} · confiance ${pct(m.confidence)}${m.cites.length ? ` · cite ${m.cites.length} souvenir(s)` : ''}</small></span>
+        <span class="date">${esc(day(m.updated_at))}</span>
+        <span class="mm-actions">
+          ${m.status !== 'validated' ? `<button title="Valider : c'est vrai" data-mem="${esc(m.id)}" data-v="validate">✓</button>` : ''}
+          <button title="Rejeter : c'est faux" data-mem="${esc(m.id)}" data-v="reject">✗</button>
+          <button title="Oublier : effacer pour de bon" data-mem="${esc(m.id)}" data-v="forget">🗑</button>
+        </span></div>`).join('')
+      : '<div class="mind-empty">Rien dans cette vue.</div>';
+  }
+
+  // ── actions de l'utilisateur ──
+  async function review(btn) {
+    const verdict = btn.dataset.v;
+    if (verdict === 'forget' && !btn.classList.contains('arm')) {
+      btn.classList.add('arm'); btn.textContent = 'SÛR ?';
+      setTimeout(() => { btn.classList.remove('arm'); btn.textContent = '🗑'; }, 3000);
+      return;
+    }
+    const r = await ctx.rpc('cognition.memory_review', { id: btn.dataset.mem, verdict });
+    if (r.error) { status(r.error, 'err'); ctx.sound.play('error'); return; }
+    status({ validate: 'Souvenir validé.', reject: 'Souvenir rejeté : il ne sera plus rappelé.', forget: 'Souvenir effacé.' }[verdict], 'ok');
+    ctx.sound.play('click');
+    loadMemories(); refresh();
+  }
+  async function goalAction(btn) {
+    const act = btn.dataset.act;
+    if (act === 'cancel' && !btn.classList.contains('arm')) {
+      btn.classList.add('arm'); btn.textContent = 'SÛR ?';
+      setTimeout(() => { btn.classList.remove('arm'); btn.textContent = 'ANNULER'; }, 3000);
+      return;
+    }
+    const r = await ctx.rpc('cognition.goal_action', { id: btn.dataset.goal, action: act });
+    if (r.error) { status(r.error, 'err'); ctx.sound.play('error'); return; }
+    status(r.detail || 'Fait.', 'ok');
+    ctx.sound.play('click');
+    refresh();
+  }
+
+  function wire() {
+    $('btn-mind').addEventListener('click', () => (open ? hide() : show()));
+    $('mind-close').addEventListener('click', hide);
+    box.addEventListener('mousedown', (e) => { if (e.target === box) hide(); });
+    $('mind-tabs').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-tab]');
+      if (b) { selectTab(b.dataset.tab); ctx.sound.play('click'); }
+    });
+    $('mind-views').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-view]');
+      if (b) { view = b.dataset.view; loadMemories(); }
+    });
+    $('mind-q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(loadMemories, 250); });
+    $('mind-mem').addEventListener('click', (e) => { const b = e.target.closest('button[data-mem]'); if (b) review(b); });
+    $('mind-goals').addEventListener('click', (e) => { const b = e.target.closest('button[data-goal]'); if (b) goalAction(b); });
+  }
+
+  wire();
+  return {
+    open: show,
+    close: hide,
+    get isOpen() { return open; },
+  };
+}

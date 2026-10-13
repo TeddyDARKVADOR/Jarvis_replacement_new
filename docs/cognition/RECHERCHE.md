@@ -415,6 +415,12 @@ Mesures réelles détaillées dans le README.
 - Budgets d'actions, détection de boucle, échéances.
 - Vérifié contre 11 actions hostiles. Une faille injectée exprès (une action `approve` directe dans le plugin) est détectée par deux tests indépendants.
 
+**Phase 6 (modèle de soi, calibration) et panneau HUD ESPRIT** : 48/48 au selftest.
+- Attente de réussite par outil enregistrée avant le résultat.
+- Brier et ECE, vérifiés sur un cas calculé à la main.
+- Verdicts de l'utilisateur sur les souvenirs, utilisés comme vérité terrain.
+- Panneau rendu et piloté dans Chromium : valider, rejeter, relancer un objectif.
+
 Sonde réelle des générateurs (2026-10-13) :
 
 | Générateur | Résultat |

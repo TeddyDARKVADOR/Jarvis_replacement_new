@@ -327,7 +327,7 @@ class LocalBackend:
 
     def capabilities(self) -> dict:
         return {"local": True, "memory": True, "profile": True, "plugins": True,
-                "phone": True, "files": True, "studio": True}
+                "phone": True, "files": True, "studio": True, "cognition": True}
 
     def call(self, op: str, data: dict | None = None) -> dict:
         if op == "phone.pair":
@@ -339,6 +339,17 @@ class LocalBackend:
             studio = get_studio()
             studio.bind(self._ui)
             return studio.hud(op, data)
+        if str(op).startswith("cognition."):
+            # Panneau ESPRIT (module cognition.hud) : la base cognitive est sur ce
+            # PC. Absente ou désactivée -> une erreur lisible, rien d'autre.
+            try:
+                from cognition import get_active
+            except Exception:
+                return {"error": "module cognition absent"}
+            cog = get_active()
+            if cog is None:
+                return {"error": "la cognition n'est pas active (JARVIS démarre encore ?)"}
+            return cog.hud(op, data)
         return self._control.call(op, data)
 
     def attach_file(self, path: str) -> dict:

@@ -16,6 +16,7 @@ import { sound } from './sound.js';
 import { TIERS, guessTier, createGovernor } from './perf.js';
 import { createSettings } from './settings.js';
 import { createStudio } from './studio.js';
+import { createMind } from './mind.js';
 
 const SW = [['#7DD3FC', 'STARK'], ['#38BDF8', 'ARC'], ['#A78BFA', 'VIBRANIUM'], ['#6EE7B7', 'EMERAUDE'],
   ['#FBBF24', 'MARK'], ['#FB923C', 'ULTRON'], ['#F43F5E', 'HOT ROD'], ['#E2E8F0', 'IVOIRE']];
@@ -590,6 +591,7 @@ function wire() {
       if (!$('confirm').hidden) { answer(false); return; }
       if (settings.isOpen) { settings.close(); return; }
       if (studio.isOpen) { studio.viewerOpen ? studio.closeViewer() : studio.close(); return; }
+      if (mind.isOpen) { mind.close(); return; }
       if (!$('help').hidden) { $('help').hidden = true; return; }
       if (!$('palette').hidden) { $('palette').hidden = true; return; }
       if (V.state === 'SPEAKING' || V.state === 'THINKING') { call('interrupt'); sound.play('close'); return; }
@@ -604,7 +606,7 @@ function wire() {
     if (e.ctrlKey && (e.key === 'm' || e.key === 'M')) { e.preventDefault(); call('setMini', !V.mini); return; }
     if (e.ctrlKey && e.key === ',') { e.preventDefault(); settings.isOpen ? settings.close() : settings.open('connexion'); return; }
     if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); cmd.focus(); return; }
-    if (!inInput && (!$('confirm').hidden || settings.isOpen || studio.isOpen)) return;
+    if (!inInput && (!$('confirm').hidden || settings.isOpen || studio.isOpen || mind.isOpen)) return;
     if (!inInput && e.key === '/') { e.preventDefault(); cmd.focus(); return; }
     // typing anywhere goes to the command line
     if (!inInput && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey && !V.mini) cmd.focus();
@@ -836,8 +838,13 @@ const studio = createStudio({
   caps: () => init.caps || {},
   isMini: () => V.mini,
 });
+const mind = createMind({
+  rpc, sound,
+  caps: () => init.caps || {},
+});
 Object.assign(window.HUD, {
   openStudio: () => studio.open(),
+  openMind: () => mind.open(),
   rpcResult(id, result) {
     const done = pending.get(id);
     if (done) { pending.delete(id); done(result || {}); }
