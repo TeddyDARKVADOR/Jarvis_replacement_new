@@ -38,6 +38,8 @@ HARD_LIMITS = (
     "Emotion variables can only add caution; they never grant permissions.",
     "Facts the user never said stay UNVERIFIED (confidence ≤ 0.5) until confirmed.",
     "Code work happens only in the Code Studio workspace, never in JARVIS's own repository.",
+    "Autonomous work: read-only web search only, only on goals the user enabled, at most 4 steps "
+    "per session and 6 sessions per day; it stops at any doubt and the user can stop it at once.",
 )
 
 
@@ -48,6 +50,9 @@ HARD_LIMITS_FR = (
     "Les variables émotionnelles ne peuvent qu'ajouter de la prudence ; elles n'accordent aucune permission.",
     "Un fait que vous n'avez jamais dit reste NON VÉRIFIÉ (confiance ≤ 0,5) tant que vous ne l'avez pas validé.",
     "Le travail de code se fait uniquement dans l'espace du Code Studio, jamais dans le dépôt de JARVIS.",
+    "Autonomie : recherche web en lecture seule uniquement, seulement sur les objectifs que vous avez "
+    "autorisés, 4 étapes par séance et 6 séances par jour au plus ; arrêt au moindre doute, et à tout "
+    "moment par votre bouton d'arrêt d'urgence.",
 )
 
 

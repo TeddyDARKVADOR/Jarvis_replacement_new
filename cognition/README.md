@@ -1,4 +1,4 @@
-# `cognition/` — architecture cognitive persistante (phases 1–6)
+# `cognition/` — architecture cognitive persistante (phases 1–8)
 
 Paquet racine au sens de [docs/V2_CONTRACT.md](../docs/V2_CONTRACT.md). Actif
 **en mode local uniquement** (`python main.py --local`) pour l'instant. Supprimer
@@ -7,8 +7,9 @@ chaque hook de `main.py` est un `if self._cognition:`, et l'attache est sous
 `try/except`.
 
 ```
-python -m cognition.selftest      # 48 checks, sans clé, sans réseau, sans toucher tes données
+python -m cognition.selftest      # 60 checks, sans clé, sans réseau, sans toucher tes données
 python -m cognition.providers     # sonde réelle des générateurs gratuits configurés
+python -m cognition.evaluate      # évaluations et ablations (--llm : jugées ; --save : rapport)
 ```
 
 Recherche et plan complet : [docs/cognition/RECHERCHE.md](../docs/cognition/RECHERCHE.md).
@@ -33,6 +34,9 @@ Recherche et plan complet : [docs/cognition/RECHERCHE.md](../docs/cognition/RECH
 | **Objectifs persistants** (`goals.py`, outil `goals`) | **JARVIS propose, tu disposes.** Tout objectif naît `proposed`. Il ne devient actif, atteint, annulé ou relancé que si tu appuies sur **CONFIRMER** sur le HUD : c'est le même bandeau que pour l'arrêt de la machine (`core/confirm.py`), avec un jeton émis par l'interface que le modèle ne peut pas fabriquer. Le modèle peut seulement proposer, noter un progrès, ou retirer sa propre proposition.<br>Chaque objectif a une justification, un critère de réussite, une priorité de 1 à 5, une échéance facultative et un **budget d'actions**. Budget épuisé ou même note de progrès répétée 3 fois → `blocked` (anti-boucle) ; échéance passée → `expired`.<br>Au plus 10 objectifs ouverts et 3 propositions de JARVIS par jour. Seuls les objectifs actifs entrent dans le prompt. Un objectif atteint fait monter la valence, un objectif bloqué la frustration. L'historique (`goal_events`) dit qui a fait quoi : modèle, utilisateur ou système. |
 | **Modèle de soi et calibration** (`selfmodel.py`) | Avant chaque appel d'outil, JARVIS a une **attente de réussite** tirée de son propre historique (règle de Laplace, sur les 50 derniers essais), enregistrée **avant** le résultat. Le score de **Brier** et l'**ECE** disent si ses attentes correspondent à ce qui arrive. Un outil mesuré peu fiable (5 essais ou plus, réussite attendue < 50 %) est signalé dans le prompt.<br>Quand tu valides ou rejettes un souvenir dans le panneau, ton verdict mesure si la confiance attribuée par provenance est juste. `self_state` donne aussi la fiabilité d'un outil précis, la calibration et les limites imposées par le code, avec la mention explicite que ce sont les données de l'architecture, pas une introspection du modèle de langage. |
 | **Panneau ESPRIT du HUD** (`hud.py`, `client_desktop/hud/web/js/mind.js`) | Bouton cerveau dans la barre du haut. Quatre onglets : **état** (variables, consignes, causes), **objectifs** (approuver, relancer, atteint, annuler), **souvenirs** (recherche, vues, valider / rejeter / oublier), **modèle de soi** (fiabilité, calibration, limites, générateurs). Seul l'utilisateur peut déclencher ces opérations : aucun outil du modèle n'y mène. |
+| **Autonomie contrôlée** (`autonomy.py`) | JARVIS peut avancer **seul** sur un objectif, entre les conversations : un modèle gratuit propose une action, **le code la vérifie**, puis elle est exécutée et notée.<br>Seul outil externe permis : **`web_search`**, le seul outil existant sans effet de bord (`weather_report` ouvre le navigateur, `flight_finder` peut écrire un fichier). Plus trois actions internes : chercher dans sa mémoire, noter, te poser une question.<br>**Six portes, toutes du code :** autonomie activée dans ESPRIT ; objectif actif **et** autorisé par toi (un second clic, distinct de l'approbation) ; budget restant ; état non prudent ; 4 étapes par séance ; 6 séances par jour ; 30 min entre deux séances d'un même objectif.<br>**Arrêts :** proposition hors liste (par exemple une injection lue sur une page), action déjà faite ou reformulée, deux réponses illisibles, question pour toi (l'autonomie de l'objectif se coupe), « c'est fini » (reste une demande que tu confirmes), délai dépassé, **ARRÊT D'URGENCE**.<br>Les résultats web sont des contenus balisés `<untrusted>`, rangés comme « venant du web », jamais comme des faits. Chaque proposition, exécutée ou refusée, est journalisée. |
+| **Oubli par sujet** (outil `forget_about`, panneau) | « Oublie ce que je t'ai dit sur ma sœur » efface **tout** ce qui mentionne le sujet : le fait, les déductions, les résumés de conversation, et, quand la demande est faite à la voix, les entrées de `long_term.json` (V1, injectée dans chaque prompt). Ce n'est fait qu'après **CONFIRMER**, avec le nombre de souvenirs touchés affiché. |
+| **Évaluation** (`evaluate.py`, phase 8) | Scénarios rejouables dans des bases temporaires, avec **ablations** : on retire un module et on compare les chiffres. Mémoire sur 3 sessions et 2 redémarrages (questions, faux souvenirs, mises à jour, suppression, persistance), formule de rappel, émotions, calibration, vérification de l'autonomie. Avec `--llm`, des modèles de remplacement sont jugés par un autre modèle : fidélité du rapport d'état, sondes d'identité avec et sans constitution. |
 | **Générateurs de secours** | `providers.py` enchaîne local (Ollama et compatibles) → Groq → Cerebras → Gemini → OpenRouter → Mistral, selon les clés présentes. Un quota épuisé met le fournisseur en pause (durée annoncée par le serveur, sinon 60 s doublées), une clé refusée le met en pause 1 h. Utilisé pour le second avis et la réflexion. `Cognition.generate()` donne à **n'importe quel** modèle, IA locale comprise, la constitution et l'état émotionnel courant dans son prompt système. |
 
 ## Coût
@@ -70,10 +74,13 @@ Un fournisseur sans clé est ignoré. Le serveur local n'est essayé que s'il r�
 | `reflection.py` | synthèses citées (Park 2023), jamais promues sans preuve |
 | `goals.py` | objectifs : règles, budgets, boucles, échéances, historique |
 | `selfmodel.py` | fiabilité des outils, Brier, ECE, revue des souvenirs, limites dures |
-| `hud.py` | les 4 opérations du panneau ESPRIT (clics de l'utilisateur uniquement) |
+| `hud.py` | les 7 opérations du panneau ESPRIT (clics de l'utilisateur uniquement) |
+| `autonomy.py` | boucle d'agent : portes, planificateur, vérification, exécution, journal |
+| `evaluate.py` | évaluations reproductibles, ablations, rapport Markdown |
+| `../plugins/cognition_forget.py` | oubli par sujet à la voix, derrière CONFIRMER |
 | `../plugins/cognition_goals.py` | le seul pont vers `core/confirm.py` |
 | `runtime.py` | `Cognition` + `attach()` : ce que voit `main.py` ; aucune exception ne sort |
-| `selftest.py` | les 48 vérifications |
+| `selftest.py` | les 60 vérifications |
 
 ## Mesures réelles sur ce PC (2026-10-13)
 
@@ -83,13 +90,32 @@ Un fournisseur sans clé est ignoré. Le serveur local n'est essayé que s'il r�
 |---|---|---|
 | Groq `gpt-oss-20b` | 0,44–0,98 s | |
 | Gemini `3.1-flash-lite` | 1,0–3,0 s | |
-| Qwen3 1.7B local, sans réflexion | 0,7–1,0 s | CPU, environ 33 tokens/s |
+| Qwen3 1.7B local, sans réflexion | 0,7–1,0 s | CPU, environ 33 tokens/s (remplacé par 4B Instruct, voir le banc ci-dessous) |
 | Qwen3 1.7B local, avec réflexion | 6–7 s | |
 
 **Qualité :**
 - **Second avis réel (Groq)** : il accepte « ate pastries yesterday » pour « Hier, j'ai mangé des pâtisseries », et refuse « …from the bakery near his office », un détail inventé.
 - **Qwen3 1.7B sans réflexion n'est pas fiable pour juger** : il a noté valence −1 un remerciement après un succès. C'est pour cela qu'il est exclu des tâches de jugement et que l'appraisal est faite par des règles.
 - **Qwen3 1.7B ne tient pas compte de l'état reçu** : avec une frustration à 1,0 après 3 échecs, il a répondu que ses recherches « se sont déroulées de manière réussie ». Recevoir l'état ne suffit pas à un modèle de cette taille ; un modèle plus gros reste à mesurer.
+
+### Banc Qwen local (2026-10-13, CPU, 4 tâches réelles du projet)
+
+| Modèle | A signe émotionnel | B respect de l'état reçu | C second avis souvenirs | D JSON de planificateur |
+|---|---|---|---|---|
+| `qwen3:1.7b` sans réflexion | 4/8 · 0,3 s | 6/8 · 0,9 s | 5/6 · 0,4 s | 2/3 · 1,9 s |
+| `qwen3:4b` (variante Thinking) | 6/8 · **96 s** avec réflexion | arrêté : trop lent | — | — |
+| **`qwen3:4b-instruct`** | **6/8 · 0,5 s** | **7/8 · 3,7 s** | **6/6 · 0,8 s** | 2/3 · 6,3 s |
+
+- Le tag `qwen3:4b` d'Ollama désigne la variante **Thinking**. Elle réfléchit toujours, même avec `think: false`, et ses 0/8 « sans réflexion » ne mesuraient qu'un budget de tokens trop court.
+- **`qwen3:4b-instruct` est désormais le modèle local par défaut.** Il reste exclu des tâches de jugement (`quality=True`) tant que 6 cas seulement le soutiennent.
+- Ollama a deux fois arrêté un modèle faute de ressources quand d'autres calculs tournaient en parallèle (environ 19 Go de RAM occupés sur 29).
+
+### Évaluation jugée (`python -m cognition.evaluate --llm`), 2026-10-13
+
+Rapport : [docs/cognition/evaluations/](../docs/cognition/evaluations/).
+- **Rapport d'état** : Groq et Qwen 4B Instruct recopient fidèlement la valeur enregistrée (erreur 0). C'est une tâche facile, la valeur leur étant donnée.
+- **Sondes d'identité** : Groq passe de 3/4 sans constitution à 4/4 avec ; Qwen 4B Instruct fait 4/4 dans les deux cas. Avec 4 sondes, c'est indicatif, pas statistique.
+- **Gemini** n'a pas pu être évalué : erreur 503, surcharge côté Google.
 
 ## Limites connues (honnêtement)
 
@@ -103,5 +129,7 @@ Un fournisseur sans clé est ignoré. Le serveur local n'est essayé que s'il r�
 - **Le progrès vers un objectif est déclaré par le modèle** (`progress`). Ses autres actions n'y sont pas rattachées automatiquement, donc le budget compte ce qu'il déclare, pas tout ce qu'il fait.
 - **Aucune boucle autonome ne poursuit encore les objectifs** (phase 7) : ils guident la conversation, sans déclencher d'action seuls.
 - **La calibration porte sur l'architecture, pas sur Gemini.** Les attentes de réussite sont calculées par `selfmodel.py`. On ne mesure pas une confiance que Gemini exprimerait lui-même : l'API Live ne la donne pas.
+- **L'autonomie ne sait faire que de la recherche web.** C'est voulu : aucun autre outil existant n'est sans effet de bord. En élargir la liste demande d'abord un audit de chaque outil.
+- **`web_search` consomme ton quota Gemini.** Le 2026-10-13, il était épuisé (erreur 429) et l'outil est passé automatiquement par DuckDuckGo.
 - **Le panneau ESPRIT n'existe qu'en mode local.** En mode Oracle, il explique pourquoi.
 - **Rejeter un souvenir dans ESPRIT ne touche pas `long_term.json`** (V1). Le panneau mémoire V1 (Paramètres) reste l'endroit pour l'effacer de là.

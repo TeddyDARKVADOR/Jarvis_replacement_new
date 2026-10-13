@@ -41,7 +41,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # (nom, type, url de base, clé de config, modèle par défaut)
 _CATALOG = {
-    "local":      ("openai", "http://127.0.0.1:11434/v1", None, "qwen3:1.7b"),
+    "local":      ("openai", "http://127.0.0.1:11434/v1", None, "qwen3:4b-instruct"),
     "groq":       ("openai", "https://api.groq.com/openai/v1", "groq_api_key", "openai/gpt-oss-20b"),
     "cerebras":   ("openai", "https://api.cerebras.ai/v1", "cerebras_api_key", "llama3.1-8b"),
     "gemini":     ("gemini", None, "gemini_api_key", "gemini-3.1-flash-lite"),

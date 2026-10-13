@@ -41,6 +41,8 @@ const SOURCE_FR = {
 };
 const STATUS_FR = { proposed: 'NON VÉRIFIÉ', active: 'ACTIF', validated: 'VALIDÉ', contested: 'CONTESTÉ' };
 const KIND_FR = { episodic: 'ÉPISODE', semantic: 'FAIT', reflective: 'RÉFLEXION', autobiographical: 'HISTOIRE', procedural: 'MÉTHODE', prospective: 'INTENTION' };
+const RUN_FR = { running: 'EN COURS', done: 'TERMINÉE', stopped: 'ARRÊTÉE', refused: 'REFUSÉE', needs_user: 'QUESTION POUR VOUS', killed: 'ARRÊT D’URGENCE', error: 'ERREUR' };
+const DECISION_FR = { executed: 'exécuté', refused: 'REFUSÉ', internal: '·' };
 const VIEWS = [
   ['all', 'TOUS'], ['unverified', 'NON VÉRIFIÉS'], ['contested', 'CONTESTÉS'],
   ['reflective', 'RÉFLEXIONS'], ['episodes', 'ÉPISODES'], ['validated', 'VALIDÉS'],
@@ -92,7 +94,7 @@ export function createMind(ctx) {
     busy = false;
     if (r.error) { status(r.error, 'err'); return; }
     last = r;
-    renderState(r); renderGoals(r); renderSelf(r);
+    renderState(r); renderGoals(r); renderAutonomy(r); renderSelf(r);
     const pending = r.goals.filter((g) => g.status === 'proposed' || g.status === 'blocked').length;
     badge('mind-goal-badge', pending);
     badge('mind-mem-badge', (r.memory.by_status.proposed || 0) + (r.memory.by_status.contested || 0));
@@ -133,6 +135,12 @@ export function createMind(ctx) {
       if (g.status === 'blocked') actions.push(['approve', 'RELANCER', 'primary']);
       if (g.status === 'active') actions.push(['complete', 'ATTEINT', '']);
       actions.push(['cancel', 'ANNULER', 'danger']);
+      const auto = (r.autonomy || {});
+      const blocker = (auto.goals || {})[g.id];
+      const autoBtn = g.status === 'active'
+        ? `<button class="mini-btn ${g.autonomy ? 'on' : ''}" data-goal="${esc(g.id)}" data-act="autonomy" data-on="${g.autonomy ? 0 : 1}" title="${g.autonomy ? 'Retirer l’autonomie' : 'Autoriser JARVIS à avancer seul (recherche web uniquement)'}">AUTONOMIE ${g.autonomy ? 'ON' : 'OFF'}</button>`
+          + (g.autonomy ? `<button class="mini-btn" data-goal="${esc(g.id)}" data-act="run" title="${esc(blocker || 'Lancer une séance maintenant')}" ${blocker && !blocker.startsWith('dernière séance') ? 'disabled' : ''}>LANCER</button>` : '')
+        : '';
       const budget = g.budget_actions ? Math.min(100, (g.spent_actions / g.budget_actions) * 100) : 0;
       return `<div class="mind-card st-${g.status}">
         <div class="mc-head"><span class="mc-status">${GOAL_FR[g.status] || g.status}</span>
@@ -140,15 +148,39 @@ export function createMind(ctx) {
         <div class="mc-line"><span>Pourquoi</span>${esc(g.justification)}</div>
         <div class="mc-line"><span>Réussi quand</span>${esc(g.success_criteria)}</div>
         ${g.closed_reason ? `<div class="mc-line warn"><span>Bloqué</span>${esc(g.closed_reason)}</div>` : ''}
+        ${g.status === 'active' && g.autonomy && blocker ? `<div class="mc-line wait"><span>Autonomie</span>en attente : ${esc(blocker)}</div>` : ''}
         <div class="mc-foot">
           <div class="mc-budget" title="${g.spent_actions}/${g.budget_actions} actions"><i style="width:${budget}%"></i></div>
           <span>${g.spent_actions}/${g.budget_actions} actions${g.deadline ? ` · échéance ${esc(g.deadline)}` : ''} · ${g.origin === 'user' ? 'demandé par vous' : 'proposé par JARVIS'}</span>
-          <span class="mc-actions">${actions.map(([a, label, cls]) => `<button class="mini-btn ${cls}" data-goal="${esc(g.id)}" data-act="${a}">${label}</button>`).join('')}</span>
+          <span class="mc-actions">${autoBtn}${actions.map(([a, label, cls]) => `<button class="mini-btn ${cls}" data-goal="${esc(g.id)}" data-act="${a}">${label}</button>`).join('')}</span>
         </div></div>`;
     }).join('') : '<div class="mind-empty">Aucun objectif ouvert. Dites par exemple : « mon objectif, c’est de… ».</div>';
     $('mind-closed').innerHTML = r.closed_goals.map((g) => `<div class="ml-row"><span class="ml-t">${esc(day(g.updated_at))}</span>
       <span>${GOAL_FR[g.status] || g.status}</span><span>${esc(g.title)}</span><span class="ml-why">${esc(g.closed_reason || '')}</span></div>`).join('')
       || '<div class="mind-empty">—</div>';
+  }
+
+  function renderAutonomy(r) {
+    const a = r.autonomy || {};
+    const st = $('mind-auto-state');
+    st.textContent = a.enabled ? `ACTIVÉE · ${a.runs_today}/${a.limits?.runs_per_day ?? '?'} séances aujourd’hui` : 'COUPÉE';
+    st.className = a.enabled ? 'on' : 'off';
+    $('mind-auto-limits').textContent = a.limits
+      ? `outils : ${a.limits.tools.join(', ')} · ${a.limits.steps_per_run} étapes par séance · une séance par objectif toutes les ${a.limits.interval_min} min au plus`
+      : '';
+    const t = $('mind-auto-toggle');
+    t.textContent = a.enabled ? 'COUPER' : 'ACTIVER';
+    t.classList.toggle('primary', !a.enabled);
+    $('mind-auto-kill').disabled = !a.enabled;
+    $('mind-runs').innerHTML = (a.runs || []).length ? a.runs.map((run) => `<div class="mind-run st-${run.status}">
+        <div class="mr-head"><span class="ml-t">${esc(day(run.started_at))} ${esc(hm(run.started_at))}</span>
+          <b>${esc(run.title || '?')}</b><span class="mr-status">${RUN_FR[run.status] || run.status}</span>
+          <span class="ml-why">${run.steps} étape(s) · ${esc(run.stop_reason || '')}</span></div>
+        ${run.question ? `<div class="mr-question">❓ ${esc(run.question)}</div>` : ''}
+        ${run.steps_detail.map((s) => `<div class="mr-step d-${s.decision}"><span>${DECISION_FR[s.decision] || s.decision}</span>
+          <code>${esc(s.action || '?')} ${esc(s.args || '')}</code><span class="ml-why">${esc(s.decision === 'refused' ? s.reason : (s.result || s.reason || ''))}</span></div>`).join('')}
+      </div>`).join('')
+      : '<div class="mind-empty">Aucune séance. Activez l’autonomie, puis autorisez-la sur un objectif actif (bouton AUTONOMIE).</div>';
   }
 
   function renderSelf(r) {
@@ -177,7 +209,11 @@ export function createMind(ctx) {
 
   // ── souvenirs ──
   async function loadMemories() {
-    const r = await ctx.rpc('cognition.memories', { view, query: $('mind-q').value.trim() });
+    const q = $('mind-q').value.trim();
+    const fb = $('mind-forget');
+    fb.hidden = q.length < 2;
+    if (!fb.classList.contains('arm')) fb.textContent = 'OUBLIER CE SUJET';
+    const r = await ctx.rpc('cognition.memories', { view, query: q });
     if (r.error) { status(r.error, 'err'); return; }
     $('mind-views').innerHTML = VIEWS.map(([v, label]) =>
       `<button class="mini-btn${v === view ? ' sel' : ''}" data-view="${v}">${label} <small>${r.totals[v] ?? 0}</small></button>`).join('');
@@ -207,8 +243,37 @@ export function createMind(ctx) {
     ctx.sound.play('click');
     loadMemories(); refresh();
   }
+  async function forgetSubject() {
+    const fb = $('mind-forget');
+    const subject = $('mind-q').value.trim();
+    if (!fb.classList.contains('arm')) {
+      const p = await ctx.rpc('cognition.forget_about', { subject, preview: true });
+      if (p.error) { status(p.error, 'err'); return; }
+      if (!p.count) { status(`Rien ne mentionne « ${subject} ».`, ''); return; }
+      fb.classList.add('arm');
+      fb.textContent = `EFFACER ${p.count} SOUVENIR${p.count > 1 ? 'S' : ''} ?`;
+      status(`Effacement définitif de ${p.count} souvenir(s), résumés compris. Cliquez à nouveau pour confirmer.`, 'err');
+      setTimeout(() => { fb.classList.remove('arm'); fb.textContent = 'OUBLIER CE SUJET'; }, 5000);
+      return;
+    }
+    fb.classList.remove('arm');
+    const r = await ctx.rpc('cognition.forget_about', { subject });
+    if (r.error) { status(r.error, 'err'); ctx.sound.play('error'); return; }
+    status(r.detail + ' (la mémoire V1 se gère dans Paramètres → Mémoire).', 'ok');
+    ctx.sound.play('click');
+    loadMemories(); refresh();
+  }
+
   async function goalAction(btn) {
     const act = btn.dataset.act;
+    if (act === 'autonomy' || act === 'run') {
+      const r = act === 'run'
+        ? await ctx.rpc('cognition.autonomy_run', { id: btn.dataset.goal })
+        : await ctx.rpc('cognition.goal_autonomy', { id: btn.dataset.goal, on: btn.dataset.on === '1' });
+      if (r.error) { status(r.error, 'err'); ctx.sound.play('error'); return; }
+      status(act === 'run' ? 'Séance lancée : le journal se remplit en direct.' : (btn.dataset.on === '1' ? 'Autonomie autorisée sur cet objectif.' : 'Autonomie retirée.'), 'ok');
+      ctx.sound.play('click'); refresh(); return;
+    }
     if (act === 'cancel' && !btn.classList.contains('arm')) {
       btn.classList.add('arm'); btn.textContent = 'SÛR ?';
       setTimeout(() => { btn.classList.remove('arm'); btn.textContent = 'ANNULER'; }, 3000);
@@ -234,8 +299,22 @@ export function createMind(ctx) {
       if (b) { view = b.dataset.view; loadMemories(); }
     });
     $('mind-q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(loadMemories, 250); });
+    $('mind-forget').addEventListener('click', forgetSubject);
     $('mind-mem').addEventListener('click', (e) => { const b = e.target.closest('button[data-mem]'); if (b) review(b); });
     $('mind-goals').addEventListener('click', (e) => { const b = e.target.closest('button[data-goal]'); if (b) goalAction(b); });
+    $('mind-auto-toggle').addEventListener('click', async () => {
+      const on = !(last && last.autonomy && last.autonomy.enabled);
+      const r = await ctx.rpc('cognition.autonomy', { enabled: on });
+      if (r.error) { status(r.error, 'err'); return; }
+      status(on ? 'Autonomie activée : elle n’agit que sur les objectifs que vous autorisez.' : 'Autonomie coupée.', 'ok');
+      ctx.sound.play('click'); refresh();
+    });
+    $('mind-auto-kill').addEventListener('click', async () => {
+      const r = await ctx.rpc('cognition.autonomy', { enabled: false });
+      if (r.error) { status(r.error, 'err'); return; }
+      status('ARRÊT D’URGENCE : autonomie coupée, la séance en cours s’arrête avant son étape suivante.', 'ok');
+      ctx.sound.play('close'); refresh();
+    });
   }
 
   wire();

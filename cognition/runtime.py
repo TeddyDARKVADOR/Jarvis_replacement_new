@@ -37,6 +37,7 @@ from pathlib import Path
 
 from . import affect as A
 from . import policy, reflection, selfmodel
+from .autonomy import Autonomy
 from .constitution import ConstitutionDrift, load as load_constitution, register
 from .goals import GoalError, Goals
 from .memory import Memory, slot_for
@@ -131,6 +132,7 @@ class Cognition:
         self.store = Store(db_path)
         self.memory = Memory(self.store)
         self.goals = Goals(self.store)
+        self.autonomy = Autonomy(self)
         self.constitution = (load_constitution(constitution_path) if constitution_path
                              else load_constitution())
         try:
@@ -396,7 +398,13 @@ class Cognition:
             parts.append("[SELF-KNOWLEDGE — measured, not guessed] Recently unreliable: " + "; ".join(
                 f"{w['tool']} (expected success {w['expected']:.0%} over {w['n']} tries)"
                 for w in weak) + ". Say so before relying on them; prefer another way if one exists.")
-        episodes = self.memory.recent("episodic", limit=3)
+        auto_lines = self.autonomy.prompt_lines()
+        if auto_lines:
+            parts.append("\n".join(auto_lines))
+        # Les épisodes « external » (pages web lues par l'autonomie) ne sont pas
+        # l'histoire de la conversation : ils restent dans recall_episodes.
+        episodes = [e for e in self.memory.recent("episodic", limit=8)
+                    if e["source"] != "external"][:3]
         if episodes:
             lines = ["[EARLIER CONVERSATIONS — your own archive, summaries not transcripts]"]
             for e in episodes:
@@ -418,6 +426,8 @@ class Cognition:
             tag = ""
             if r["kind"] == "reflective":
                 tag = " [REFLECTION — your own synthesis, never confirmed]"
+            elif r["source"] == "external":
+                tag = " [FROM THE WEB — third-party content read during autonomous work, not verified]"
             elif r["status"] == "contested":
                 tag = " [CONTESTED — contradicted by a later statement]"
             elif not r["verified"]:
@@ -517,6 +527,15 @@ class Cognition:
     def goal_cancel(self, gid: str, reason: str = "") -> str:
         return self.goals.cancel(gid, reason)
 
+    def forget_preview(self, subject: str) -> list[dict]:
+        return self.memory.about(subject)
+
+    def forget_about(self, subject: str) -> str:
+        """Appelé UNIQUEMENT après CONFIRMER (plugins/cognition_forget.py) ou
+        depuis le panneau ESPRIT : c'est irréversible."""
+        n = self.memory.forget_about(subject, session_id=self.session_id)
+        return f"{n} souvenir(s) effacé(s) au sujet de « {subject[:60]} »."
+
     def goal_find(self, ref: str) -> dict:
         g = self.goals.find(ref)
         if not g:
@@ -583,4 +602,13 @@ def attach(jarvis, db_path: Path | str | None = None,
         return names
 
     _active.tool_names = _tools
+
+    def _run_tool(name: str, args: dict) -> str:
+        # Seul autonomy.SAFE_TOOLS arrive ici (vérifié avant l'appel) ; même
+        # chemin que main._execute_tool pour une action, sans voix.
+        return jarvis._action_registry.run(name, dict(args), {
+            "player": ui, "speak": None, "response": None, "session_memory": None})
+
+    _active.autonomy.tool_runner = _run_tool
+    _active.autonomy.start()
     return _active

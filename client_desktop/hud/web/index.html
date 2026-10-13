@@ -391,13 +391,22 @@
       </section>
       <section data-pane="goals" hidden>
         <div class="set-note">JARVIS <b>propose</b>, vous <b>disposez</b> : un objectif ne devient actif, atteint ou annulé que par vous.</div>
+        <div class="mind-auto-bar">
+          <div class="mab-text"><b>AUTONOMIE</b> <span id="mind-auto-state">—</span>
+            <small id="mind-auto-limits"></small></div>
+          <button class="mini-btn" id="mind-auto-toggle">ACTIVER</button>
+          <button class="act danger mind-kill" id="mind-auto-kill" title="Coupe l'autonomie immédiatement, séance en cours comprise">■ ARRÊT D'URGENCE</button>
+        </div>
         <div id="mind-goals" class="mind-cards"></div>
+        <h4>JOURNAL D'AUTONOMIE <small>chaque proposition du planificateur, exécutée ou refusée</small></h4>
+        <div id="mind-runs" class="mind-runs"></div>
         <h4>CLOS RÉCEMMENT</h4>
         <div id="mind-closed" class="mind-log"></div>
       </section>
       <section data-pane="memories" hidden>
         <div class="mem-tools">
           <input id="mind-q" type="text" placeholder="Rechercher dans ses souvenirs…" autocomplete="off">
+          <button class="mini-btn danger" id="mind-forget" hidden title="Efface tout ce qui mentionne ce sujet, résumés de conversation compris">OUBLIER CE SUJET</button>
         </div>
         <div id="mind-views" class="mind-views"></div>
         <div class="set-note">✓ <b>Valider</b> : c'est vrai (il s'en servira comme d'un fait). ✗ <b>Rejeter</b> : c'est faux (gardé dans l'historique, plus jamais rappelé). 🗑 <b>Oublier</b> : effacé pour de bon.</div>

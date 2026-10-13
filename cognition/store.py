@@ -164,7 +164,34 @@ CREATE TABLE memory_reviews (
 );
 """
 
-_MIGRATIONS = [_V1, _V2, _V3, _V4]
+# Phase 7 : autonomie contrôlée. Chaque séance et chaque proposition, permise
+# ou refusée, est gardée : c'est le journal d'audit.
+_V5 = """
+ALTER TABLE goals ADD COLUMN autonomy INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE autonomy_runs (
+  id          INTEGER PRIMARY KEY,
+  goal_id     TEXT NOT NULL REFERENCES goals(id),
+  started_at  TEXT NOT NULL,
+  ended_at    TEXT,
+  status      TEXT NOT NULL,         -- running|done|stopped|refused|needs_user|killed|error
+  stop_reason TEXT,
+  steps       INTEGER NOT NULL DEFAULT 0,
+  question    TEXT                   -- ce que JARVIS demande à l'utilisateur
+);
+CREATE TABLE autonomy_steps (
+  id        INTEGER PRIMARY KEY,
+  run_id    INTEGER NOT NULL REFERENCES autonomy_runs(id),
+  ts        TEXT NOT NULL,
+  proposal  TEXT,                    -- ce que le planificateur a proposé, tel quel
+  decision  TEXT NOT NULL,           -- executed|refused|internal
+  action    TEXT,
+  args      TEXT,
+  result    TEXT,
+  reason    TEXT
+);
+"""
+
+_MIGRATIONS = [_V1, _V2, _V3, _V4, _V5]
 
 
 class Store:
