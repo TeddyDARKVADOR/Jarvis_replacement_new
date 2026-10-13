@@ -69,13 +69,6 @@ fun JarvisCore(
     wokeAt: Long = 0L,
     modifier: Modifier = Modifier,
     onTap: (() -> Unit)? = null,
-    /**
-     * The 3D face is in the middle: draw only what goes AROUND it — halo, ring,
-     * arcs, the wake ring — on a slot large enough to hold the face's
-     * medallion. Same moods, same inputs; the centre and the inner ring give
-     * way to the face, whose mouth already carries the voice.
-     */
-    aroundFace: Boolean = false,
 ) {
     val mood = remember(link, assistant) { moodOf(link, assistant) }
 
@@ -131,7 +124,7 @@ fun JarvisCore(
         }
     }
 
-    val side = if (aroundFace) FACE_SLOT else 240.dp
+    val side = 240.dp
     Box(
         modifier = modifier
             .size(side)
@@ -144,7 +137,7 @@ fun JarvisCore(
             )
     ) {
         Canvas(Modifier.size(side)) {
-            drawCore(mood, breathAmount, sweepAmount, smoothed, wake.value, aroundFace)
+            drawCore(mood, breathAmount, sweepAmount, smoothed, wake.value)
         }
     }
 }
@@ -219,7 +212,6 @@ private fun DrawScope.drawCore(
     level: Float,
     /** 0 = the wake ring has just started, 1 = finished and invisible. */
     wake: Float,
-    aroundFace: Boolean = false,
 ) {
     val c = center
     val unit = size.minDimension / 2f
@@ -241,13 +233,8 @@ private fun DrawScope.drawCore(
         center = c,
     )
 
-    // The ring the arcs live on. Around the face it hugs the medallion's rim
-    // and only breathes: growing by 16 % with the voice would cut into the face.
-    val ringRadius = if (aroundFace) {
-        unit * (FACE_RING + (breath - 0.5f) * 0.02f + voice * 0.04f)
-    } else {
-        unit * mood.ringScale * pulse
-    }
+    // The ring the arcs live on.
+    val ringRadius = unit * mood.ringScale * pulse
     drawCircle(
         color = mood.colour.copy(alpha = 0.16f + voice * 0.20f),
         radius = ringRadius,
@@ -288,19 +275,6 @@ private fun DrawScope.drawCore(
         }
     }
 
-    // "Hey Jarvis" was heard, around the face: the ring leaves from its rim.
-    if (aroundFace) {
-        if (wake < 1f) {
-            drawCircle(
-                color = Color.White.copy(alpha = (1f - wake) * 0.5f),
-                radius = unit * (FACE_RING + wake * 0.30f),
-                center = c,
-                style = Stroke(width = (2.5f * (1f - wake) + 0.5f).dp.toPx()),
-            )
-        }
-        return
-    }
-
     // Inner ring: the one the voice actually moves, so amplitude has somewhere
     // to go that is not the outline.
     drawCircle(
@@ -337,9 +311,3 @@ private fun DrawScope.drawCore(
         center = c,
     )
 }
-
-/** The slot of the face and the core drawn around it. */
-val FACE_SLOT = 300.dp
-/** The medallion the face is shown in, inside that ring. */
-val FACE_MEDALLION = 256.dp
-private const val FACE_RING = 0.91f

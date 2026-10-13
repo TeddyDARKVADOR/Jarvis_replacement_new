@@ -7,9 +7,6 @@ CE QUE C'EST, ET CE QUE CE N'EST PAS
     sur ce que JARVIS fait. Ce sont des variables CALCULÉES. Rien ici n'est, ni
     ne prouve, un ressenti (docs/cognition/RECHERCHE.md, §1.3–1.5).
 
-    Séparé de presence/affect.py, qui pilote le VISAGE de l'avatar : celui-là
-    exprime, celui-ci décide.
-
 POURQUOI DES RÈGLES ET PAS UN MODÈLE
     Chain-of-Emotion (Croissant et al. 2024) fait générer l'émotion par un LLM.
     C'est nuancé mais ni déterministe ni testable. Et au banc d'essai sur ce PC
@@ -90,10 +87,10 @@ def decayed(state: AffectState, now: float) -> AffectState:
 
 # ── Appraisal : événement -> changements ─────────────────────────────────────
 
-# Outils sans enjeu : animer l'avatar n'est ni un succès ni un échec, et
+# Outils sans enjeu : fermer la caméra n'est ni un succès ni un échec, et
 # consulter son propre état non plus (sinon demander « comment tu vas ? »
 # apaiserait la frustration qu'on est en train de mesurer).
-COSMETIC_TOOLS = {"set_presence", "close_camera", "self_state"}
+COSMETIC_TOOLS = {"close_camera", "self_state"}
 RECALL_TOOLS = {"recall_memory", "recall_episodes"}
 
 _THANKS = re.compile(r"\b(merci|thanks?|thank you|parfait|genial|super|bravo|bien joue|nickel|"

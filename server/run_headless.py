@@ -161,13 +161,6 @@ def build(echo: bool = True, allow_firewall: bool = False):
         # same app — `/ws` and `/api/device-login` are left exactly as they are,
         # which is what keeps the current Android build working untouched.
         device_api.attach(dash, device_hub, log=lambda m: print(m, flush=True))
-        # The face's files for the phone (server/avatar_api.py). Two NEW routes;
-        # a failure here costs the phone its 3D face, never the server.
-        try:
-            from server import avatar_api
-            avatar_api.attach(dash, log=lambda m: print(m, flush=True))
-        except Exception as exc:
-            print(f"[Avatar] routes non montees : {exc}", flush=True)
         # What the HUD's settings page changes about the assistant itself —
         # memory, name, voice, plugins (server/assistant_control.py). The same
         # object the local HUD calls in-process; here it is behind a bearer.

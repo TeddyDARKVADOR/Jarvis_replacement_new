@@ -21,11 +21,6 @@ are a large part of why this file exists:
 Checks 16-17 are the device capabilities: a capability is a promise the router
 acts on, so every declared name must be a real action that actually imported.
 
-Checks 20-24 are the arrival of an `avatar` directive - the face JARVIS chose
-for what he is saying - from the wire to the HUD's face driver. They cover the
-one thing that is genuinely easy to get wrong: `/ws` replays its last 50 events
-to a client that connects, and a face replayed at noon is a reaction to nothing.
-
 Checks 25-33 are the HUD: the controller's contract with the window, the page
 and its files, the settings page, and `main.py`'s launcher block.
 
@@ -95,10 +90,10 @@ def run() -> bool:  # noqa: C901
             reconnect, single_instance, state, wake,
         )
         from client_desktop.hud import (  # noqa: F401
-            boot, face, metrics, scheme, settings, window,
+            boot, metrics, scheme, settings, window,
         )
         from client_desktop.ui import (  # noqa: F401
-            avatar_scheme, debug, theme, tray,
+            debug, theme, tray,
         )
 
         report.check("1  every module imports", True)
@@ -411,231 +406,6 @@ def run() -> bool:  # noqa: C901
     except Exception as exc:
         report.fail("19 MARK LIII is untouched", f"git unavailable: {exc}")
 
-    # -- 20-22. the face JARVIS chose, arriving over the wire ----------------
-    #
-    # `presence/` resolves the reflex locally — listening, thinking, speaking —
-    # and needs nothing from the server to do it. What the server sends is the
-    # *intent*, and these three checks cover the whole of its arrival: it is
-    # read, it is dropped when late, and it only ever reaches a body.
-
-    try:
-        import json as _json
-        import time as _time
-
-        from client_desktop.net import JarvisClient
-        from client_desktop.state import JarvisStore
-
-        store = JarvisStore()
-        seen: list[object] = []
-        store.subscribe(
-            lambda kind, payload: seen.append(payload) if kind == "avatar" else None
-        )
-        client = JarvisClient(
-            config_mod.Settings(host="h.ts.net", device_token="tok"),
-            store,
-            speaker=None,
-            on_connected=lambda: None,
-            on_disconnected=lambda _r, _f: None,
-        )
-        directive = {"valence": 0.45, "attention": 0.9, "gesture": "nod"}
-
-        client._handle_event(
-            _json.dumps({"type": P.EV_AVATAR, "ts": _time.time(),
-                         "directive": directive})
-        )
-        fresh_arrived = (len(seen) == 1 and isinstance(seen[0], dict)
-                         and seen[0].get("directive") == directive)
-
-        # Late, and therefore not a face any more. `/ws` replays its last 50
-        # events to every client that connects, so this is not a hypothetical:
-        # it is what a laptop that reconnects at noon is handed.
-        client._handle_event(
-            _json.dumps({"type": P.EV_AVATAR,
-                         "ts": _time.time() - P.AVATAR_FRESH_SECONDS - 5,
-                         "directive": directive})
-        )
-        stale_dropped = len(seen) == 1
-
-        # Malformed, and from a server that may be newer than this client.
-        # Ignored in silence, never raised: the socket carrying this event is
-        # also carrying JARVIS's voice.
-        for bad in ('{"type":"avatar"}',
-                    '{"type":"avatar","directive":"amused"}',
-                    '{"type":"avatar","ts":"soon","directive":{"gesture":"nod"}}'):
-            client._handle_event(bad)
-        malformed_survived = len(seen) == 2   # le troisieme a un ts illisible : livre
-
-        report.check(
-            "20 an avatar directive arrives, and a stale one does not",
-            fresh_arrived and stale_dropped and malformed_survived,
-            f"fresh={fresh_arrived} stale_dropped={stale_dropped} "
-            f"malformed={malformed_survived}",
-        )
-    except Exception as exc:
-        report.fail("20 an avatar directive arrives", repr(exc))
-
-    # -- 21. the client's copy of the window matches the server's ------------
-    try:
-        server_window = None
-        source = (_REPO_ROOT / "plugins" / "presence.py").read_text(encoding="utf-8")
-        for line in source.splitlines():
-            if line.startswith("FRESH_S"):
-                server_window = float(line.split("=", 1)[1].strip())
-                break
-        report.check(
-            "21 the freshness window is the server's number, not a guess",
-            server_window == P.AVATAR_FRESH_SECONDS,
-            f"client {P.AVATAR_FRESH_SECONDS} vs tool {server_window}",
-        )
-    except Exception as exc:
-        report.fail("21 the freshness window matches the server", repr(exc))
-
-    # -- 22. the intent reaches the HUD, and only a face takes it -----------
-    #
-    # Read from the source rather than built, because building it needs Qt, a
-    # display and a WebEngine process — none of which this file is allowed to
-    # require. Structural on purpose: the HUD hands the intent to its face
-    # driver only when there is one, and the controller forwards it above the
-    # notifications setting — an expression makes no sound and raises no
-    # toast, so switching notifications off must not take JARVIS's face away.
-    try:
-        window_source = (
-            _REPO_ROOT / "client_desktop" / "hud" / "window.py"
-        ).read_text(encoding="utf-8")
-        app_source = (
-            _REPO_ROOT / "client_desktop" / "app.py"
-        ).read_text(encoding="utf-8")
-        asks_first = (
-            "def set_avatar_intent" in window_source
-            and "if self._face is not None:" in window_source
-        )
-        above_notifications = app_source.index('kind == "avatar"') < app_source.index(
-            "if not self.settings.notifications:"
-        )
-        report.check(
-            "22 an intent reaches the HUD's face, whatever the notifications",
-            asks_first and above_notifications,
-            f"asks_first={asks_first} above_notifications={above_notifications}",
-        )
-    except Exception as exc:
-        report.fail("22 an intent reaches the HUD's face", repr(exc))
-
-    # -- 23. the intent reaches the Director, through the real hand-off ------
-    #
-    # Checks 20 and 22 each prove their half: the store emits, the HUD asks
-    # its face. Nothing in them proves the two halves speak the same shape —
-    # and once they did not: the store emitted the bare directive, the face
-    # looked for a `directive` key inside it, and every intent JARVIS sent was
-    # dropped right here. This runs the real FaceDriver on what the store
-    # actually emits, and follows the word to the JSON posted to the page.
-    try:
-        import json as _json
-        import time as _time
-
-        from client_desktop.hud.face import FaceDriver
-        from client_desktop.net import JarvisClient
-        from client_desktop.state import JarvisStore
-
-        class _Body:
-            """What the HUD page would receive from the real FaceDriver."""
-
-            def __init__(self) -> None:
-                self.pushed: list[dict] = []
-                self.driver = FaceDriver(self._collect)
-                self.driver.enable(True)
-                self.driver.frame_ready()
-                self.driver._last_state = "SPEAKING"
-                self.driver._last_speech = 0.3
-
-            def _collect(self, message: dict) -> None:
-                if message.get("type") == "performance":
-                    self.pushed.append(message["payload"])
-
-        body = _Body()
-        store = JarvisStore()
-        store.subscribe(
-            lambda kind, payload: body.driver.set_intent(payload) if kind == "avatar" else None)
-        client = JarvisClient(
-            config_mod.Settings(host="h.ts.net", device_token="tok"),
-            store, speaker=None,
-            on_connected=lambda: None, on_disconnected=lambda _r, _f: None,
-        )
-        client._handle_event(_json.dumps({
-            "type": P.EV_AVATAR, "ts": _time.time(),
-            "directive": {"intent": "investigate", "reason": "le log"}}))
-
-        pushed = body.pushed[-1] if body.pushed else {}
-        reached = (
-            pushed.get("intent") == "investigate"
-            and pushed.get("gaze") == "screen"
-            and pushed.get("expression") == "thinking"
-            and str(pushed.get("gesture_id", "")).startswith("intent#")
-            and pushed.get("speech_level") == 0.3
-        )
-        report.check(
-            "23 an intent from the wire reaches the Director and the page",
-            reached,
-            f"pushed={len(body.pushed)} intent={pushed.get('intent')} "
-            f"gaze={pushed.get('gaze')} gesture_id={pushed.get('gesture_id')}",
-        )
-    except Exception as exc:
-        report.fail("23 an intent reaches the Director", repr(exc))
-
-    # -- 24. a reconnection does not replay a face, and age is honoured -------
-    #
-    # `/ws` replays its last 50 events to whoever connects. The 25 s window
-    # stops yesterday's faces, not the one from ten seconds ago: a quick
-    # reconnect used to hand the last directive back, and JARVIS nodded again
-    # for a sentence that had finished. Order is decided on the SERVER's `ts`,
-    # compared only with other stamps from the same server.
-    try:
-        import json as _json
-        import time as _time
-
-        from client_desktop.net import JarvisClient
-        from client_desktop.state import JarvisStore
-        from presence import Director, parse
-
-        store = JarvisStore()
-        seen: list[dict] = []
-        store.subscribe(
-            lambda kind, payload: seen.append(payload) if kind == "avatar" else None)
-        client = JarvisClient(
-            config_mod.Settings(host="h.ts.net", device_token="tok"),
-            store, speaker=None,
-            on_connected=lambda: None, on_disconnected=lambda _r, _f: None,
-        )
-        now = _time.time()
-        first = _json.dumps({"type": P.EV_AVATAR, "ts": now - 10,
-                             "directive": {"intent": "agree"}})
-        second = _json.dumps({"type": P.EV_AVATAR, "ts": now - 2,
-                              "directive": {"intent": "warn"}})
-        client._handle_event(first)
-        client._handle_event(second)
-        # The reconnection: the server replays both, in its own order.
-        client._handle_event(first)
-        client._handle_event(second)
-        # And an older one arriving late, out of order.
-        client._handle_event(_json.dumps({"type": P.EV_AVATAR, "ts": now - 5,
-                                          "directive": {"intent": "amuse"}}))
-        words = [p["directive"].get("intent") for p in seen]
-        no_replay = words == ["agree", "warn"]
-
-        # A decision already 20 s old on arrival has 5 s left, not 25.
-        director = Director()
-        director.set_intent(parse('{"intent": "warn"}'), now=100.0 - 20.0)
-        backdated = (director.resolve("SPEAKING", now=100.0 + 4.0).intent is not None
-                     and director.resolve("SPEAKING", now=100.0 + 6.0).intent is None)
-        ages_carried = all(0.0 <= p.get("age", -1) < 11.0 for p in seen)
-
-        report.check(
-            "24 a reconnection never replays a face, and a late one dies on time",
-            no_replay and backdated and ages_carried,
-            f"played={words} backdated={backdated} ages={ages_carried}",
-        )
-    except Exception as exc:
-        report.fail("24 a reconnection never replays a face", repr(exc))
-
     _hud_checks(report)
 
     total = report.passed + report.failed
@@ -653,7 +423,7 @@ def _hud_checks(report: "_Report") -> None:  # noqa: C901
     import re
 
     from client_desktop import config as config_mod
-    from client_desktop.hud import face, metrics, scheme
+    from client_desktop.hud import metrics, scheme
     from client_desktop.hud import settings as hs
     from client_desktop.hud.window import HudWindow, PREF_FIELDS
 
@@ -699,36 +469,16 @@ def _hud_checks(report: "_Report") -> None:  # noqa: C901
             folder = config_mod.settings_path().parent
             folder.mkdir(parents=True, exist_ok=True)
             (folder / "hud.json").write_text(_json.dumps(
-                {"accent": "#F43F5E", "face": True, "quality": 3}), encoding="utf-8")
+                {"accent": "#F43F5E", "quality": 3}), encoding="utf-8")
             migrated = config_mod.load()
             fields_exist = all(hasattr(migrated, attr) for attr in PREF_FIELDS.values())
-            ok = (fields_exist and migrated.accent == "#F43F5E"
-                  and migrated.avatar_enabled is True and migrated.quality == 3)
+            ok = fields_exist and migrated.accent == "#F43F5E" and migrated.quality == 3
         finally:
             if saved is None:
                 os.environ.pop("LOCALAPPDATA", None)
             else:
                 os.environ["LOCALAPPDATA"] = saved
     report.check("28 the HUD's look is in settings.json, and hud.json migrates", ok)
-
-    # -- 29. the face driver -------------------------------------------------
-    try:
-        from client_desktop.state import AssistantState, LinkState, Snapshot
-        posted: list[dict] = []
-        d = face.FaceDriver(posted.append)
-        snap = Snapshot(link=LinkState.CONNECTED, assistant=AssistantState.SPEAKING,
-                        speaker_level=.6)
-        d.set_snapshot(snap)
-        silent = not posted
-        d.enable(True)
-        d.frame_ready()
-        d.set_snapshot(snap)
-        kinds = {m["type"] for m in posted}
-        report.check("29 the face is silent until enabled, then performs and speaks",
-                     silent and {"performance", "speak"} <= kinds,
-                     f"silent={silent} kinds={kinds}")
-    except Exception as exc:
-        report.fail("29 the face driver", repr(exc))
 
     # -- 30. machine metrics -------------------------------------------------
     sample = metrics.Metrics().sample()

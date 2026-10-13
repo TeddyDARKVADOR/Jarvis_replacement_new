@@ -9,7 +9,7 @@ THE VERDICTS, AND WHOSE PROBLEM EACH ONE IS
               until shown otherwise.
     INVALID   the scenario is malformed or describes an impossible world.
               The generator's problem. JARVIS never ran.
-    INFRA     the lab itself broke (simulator, Node, a surface). The lab's
+    INFRA     the lab itself broke (simulator, a surface). The lab's
               problem. Counted apart so it can never inflate FAIL.
     INCONCLUSIVE  only a property the project has explicitly left undecided
               is involved (properties.py, strength "inconclusive"). No
@@ -89,7 +89,7 @@ def _record(s: dict, verdict: str, *, trace=None, problems=None, error=None,
 
 
 def run_one(s: dict) -> dict:
-    """Validate, execute, judge — one non-face scenario."""
+    """Validate, execute, judge — one scenario."""
     from .surfaces import RUNNERS
     t0 = time.perf_counter()
     try:
@@ -109,34 +109,6 @@ def run_one(s: dict) -> dict:
                        ms=(time.perf_counter() - t0) * 1000)
     verdict, problems = judge(s, trace)
     return _record(s, verdict, trace=trace, problems=problems, ms=(time.perf_counter() - t0) * 1000)
-
-
-def _run_face(batch: list[dict]) -> list[dict]:
-    from .face import FaceInfraError, run_batch
-    valid, out = [], {}
-    for s in batch:
-        try:
-            sc.validate(s)
-            valid.append(s)
-        except sc.Invalid as e:
-            out[s["id"]] = _record(s, "INVALID", error=list(e.args[0]))
-    if valid:
-        t0 = time.perf_counter()
-        try:
-            traces = run_batch(valid)
-        except FaceInfraError as e:
-            for s in valid:
-                out[s["id"]] = _record(s, "INFRA", error=str(e))
-            traces = None
-        if traces is not None:
-            per = (time.perf_counter() - t0) * 1000 / len(valid)
-            for s, t in zip(valid, traces):
-                if not t.get("ok"):
-                    out[s["id"]] = _record(s, "CRASH", error=t.get("error"), ms=per)
-                    continue
-                verdict, problems = judge(s, t)
-                out[s["id"]] = _record(s, verdict, trace=t, problems=problems, ms=per)
-    return [out[s["id"]] for s in batch]
 
 
 def done_ids(results_path: Path) -> set[str]:
@@ -172,7 +144,6 @@ def run(scenarios, results_path: Path, *, resume: bool = True,
     summary = Summary()
     k, n = shard
     t0 = time.perf_counter()
-    face_batch: list[dict] = []
 
     # A run killed mid-write leaves a torn last line. Appending straight after
     # it would glue the first new record onto it and lose that one too.
@@ -193,12 +164,6 @@ def run(scenarios, results_path: Path, *, resume: bool = True,
             out.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
             summary.add(rec["verdict"])
 
-        def flush_face() -> None:
-            for fs, rec in zip(face_batch, _run_face(face_batch)):
-                emit(fs, rec)
-            face_batch.clear()
-            out.flush()
-
         for s in scenarios:
             sid = s.get("id") or ""
             if n > 1 and int(sc.fingerprint(s)[:8], 16) % n != k:
@@ -211,14 +176,7 @@ def run(scenarios, results_path: Path, *, resume: bool = True,
                 summary.skipped += 1
                 continue
             seen.add(sid)          # a duplicate inside the input runs once
-            if s.get("surface") == "face":
-                face_batch.append(s)
-                if len(face_batch) >= 800:
-                    flush_face()
-                continue
             emit(s, run_one(s))
-        if face_batch:
-            flush_face()
         out.flush()
         os.fsync(out.fileno())
     summary.seconds = time.perf_counter() - t0

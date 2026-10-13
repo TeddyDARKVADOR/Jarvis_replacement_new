@@ -49,7 +49,7 @@ export function createSim(HUD) {
     settings() { log('(réglages : disponibles dans l\'application)'); },
     quit() {}, hideToTray() {}, minimize() {}, toggleMaximize() {}, fullscreen() {},
     startMove() {}, startResize() {}, setMini(m) { HUD.setMini(m); },
-    savePrefs() {}, faceLoaded() {}, setPushRate() {}, installWakeWord() {},
+    savePrefs() {}, setPushRate() {}, installWakeWord() {},
     requestSettings() {
       setTimeout(() => HUD.settingsData({
         host: 'jarvis-vps.tailnet.ts.net', port: 8000, use_tls: false, device_token: 'demo-token',
@@ -93,10 +93,10 @@ export function createSim(HUD) {
   }, 1000);
 
   setTimeout(() => HUD.init({
-    prefs: { accent: '#7DD3FC', face: false, sound: false, volume: .35 },
+    prefs: { accent: '#7DD3FC', sound: false, volume: .35 },
     identity: { hostname: 'SIMULATION', os: 'Navigateur' },
     server: { host: 'jarvis-vps.tailnet.ts.net', port: 8000, tls: false, device: 'Poste de démo', paired: true },
-    faceAvailable: false, mini: false,
+    mini: false,
   }), 50);
 
   return bridge;

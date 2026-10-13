@@ -2,7 +2,7 @@
  * main.js — the conductor.
  *
  * Python pushes:   HUD.init(static) · HUD.tick(snapshot) · HUD.metrics(machine)
- *                  HUD.intent(directive) · HUD.face(message) · HUD.setMini(bool)
+ *                  HUD.setMini(bool)
  * The page asks:   bridge.send / mic / interrupt / confirm / settings / ...
  *
  * `V` is the visual state every renderer reads once per frame. It is derived
@@ -29,12 +29,12 @@ const V = {
   state: 'CONNECTING', physics: STATES.CONNECTING,
   color: hexToRgb('#FBBF6B'), target: hexToRgb('#FBBF6B'), accent: hexToRgb('#7DD3FC'),
   level: 0, micShown: 0, voiceShown: 0, burst: 0, wakeAge: null,
-  confirm: null, mini: false, face: false, no3d: false,
+  confirm: null, mini: false, no3d: false,
 };
 let S = null;                 // last snapshot
 let accentHex = '#7DD3FC';
-let prefs = { accent: '#7DD3FC', face: false, sound: true, volume: .35, quality: 'auto', quality_tier: null, clipboard: true };
-let init = { server: {}, identity: {}, faceAvailable: false };
+let prefs = { accent: '#7DD3FC', sound: true, volume: .35, quality: 'auto', quality_tier: null, clipboard: true };
+let init = { server: {}, identity: {} };
 let bridge = null;
 let reactor = null;
 let animated = true;
@@ -394,8 +394,6 @@ function onInit(data) {
   setText($('hostname'), (id.hostname || 'TERMINAL').toUpperCase());
   setText($('sys-host'), id.os || '');
   setServer(data.server || {});
-  $('btn-face').hidden = !data.faceAvailable;
-  setFace(!!(prefs.face && data.faceAvailable), false);
   if (data.mini) setMini(true);
   if (typeof prefs.quality === 'number') gov.lock(prefs.quality);
   else if (typeof prefs.quality_tier === 'number') gov.force(prefs.quality_tier, 'mémorisé');
@@ -431,24 +429,6 @@ function applyAccent(hex, save = true) {
   document.querySelectorAll('.swatches button').forEach((b) => b.classList.toggle('sel', b.dataset.hex.toLowerCase() === hex.toLowerCase()));
   $('accent-input').value = hex;
   if (save) savePrefs();
-}
-
-// ── face ──────────────────────────────────────────────────────────────────
-function setFace(on, save = true) {
-  const frame = $('face');
-  V.face = on;
-  $('btn-face').classList.toggle('active', on);
-  if (on) {
-    if (!frame.src) {
-      frame.hidden = false;
-      frame.onload = () => { call('faceLoaded'); frame.classList.add('on'); };
-      frame.src = 'jarvis://avatar/index.html';
-    } else { frame.hidden = false; requestAnimationFrame(() => frame.classList.add('on')); }
-  } else {
-    frame.classList.remove('on');
-    setTimeout(() => { if (!V.face) frame.hidden = true; }, 800);
-  }
-  if (save) { prefs.face = on; savePrefs(); }
 }
 
 // ── mini ──────────────────────────────────────────────────────────────────
@@ -541,7 +521,6 @@ function wire() {
     prefs.sound = !prefs.sound; sound.set(prefs.sound, prefs.volume);
     $('btn-sound').classList.toggle('muted', !prefs.sound); savePrefs(); sound.play('click');
   };
-  $('btn-face').onclick = () => setFace(!V.face);
   $('btn-palette').onclick = (e) => { e.stopPropagation(); toggleOverlay('palette'); };
   $('cf-yes').onclick = () => answer(true);
   $('cf-no').onclick = () => answer(false);
@@ -800,14 +779,6 @@ window.HUD = {
   init: onInit,
   tick: onTick,
   metrics: onMetrics,
-  intent(d) {
-    const e = (d && d.expression) || '';
-    V.burst = Math.max(V.burst, ['surprised', 'happy', 'amused', 'proud'].includes(e) ? .8 : .4);
-  },
-  face(msg) {
-    const f = $('face');
-    if (V.face && f.contentWindow) f.contentWindow.postMessage(msg, '*');
-  },
   setMini,
   setAnimated(on) {
     if (on && !animated) { last = performance.now(); if (reactor) reactor.resume(); }
@@ -829,8 +800,6 @@ const settings = createSettings({
     prefs.sound = on; prefs.volume = vol; sound.set(on, vol);
     $('btn-sound').classList.toggle('muted', !on); savePrefs();
   },
-  setFace: (on) => setFace(on),
-  faceAvailable: () => !!init.faceAvailable,
   setQuality: (v) => setQualityPref(v),
 });
 const studio = createStudio({

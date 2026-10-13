@@ -6,9 +6,6 @@ THE EXIT CONDITION
     eval_lab/selftest.py, which runs both.
 
 WHAT IS IMPORTED, AND HOW
-    face     avatar/checks/scenario_matrix.mjs — the 1 632 situations. The
-             dimensions are read FROM THE NODE MODULE (its MATRIX export), not
-             copied, and the judge is the module's own `violations()`.
     context  context/selftest.py — every assertion whose oracle is a value,
              transcribed one scenario per assertion. `legacy_ref` names the
              check each one came from.
@@ -34,8 +31,6 @@ WHAT IS NOT, AND WHY — documented, not forgotten
 """
 from __future__ import annotations
 
-import json
-import subprocess
 from pathlib import Path
 
 from .scenario import make
@@ -286,42 +281,9 @@ def routing_scenarios() -> list[dict]:
     return r
 
 
-# ── avatar/checks/scenario_matrix.mjs ────────────────────────────────────────
-
-def face_matrix() -> dict:
-    """The matrix's own dimensions, read from the Node module."""
-    code = ("import('./avatar/checks/scenario_matrix.mjs')"
-            ".then(m => process.stdout.write(JSON.stringify(m.MATRIX)))")
-    proc = subprocess.run(["node", "-e", code], cwd=REPO, capture_output=True,
-                          text=True, encoding="utf-8", timeout=60)
-    if proc.returncode != 0:
-        raise RuntimeError(f"lecture de MATRIX impossible : {proc.stderr[-300:]}")
-    return json.loads(proc.stdout)
-
-
-def face_scenarios() -> list[dict]:
-    m = face_matrix()
-    out = []
-    for intent in m["intents"]:
-        for state in m["states"]:
-            for speech in m["speeches"]:
-                for gaze in m["gazes"]:
-                    for urgent in m["urgencies"]:
-                        for interrupted in m["interruptions"]:
-                            out.append(make(
-                                "face", source="legacy",
-                                family=f"face.{intent or 'none'}",
-                                stimulus={"intent": intent, "state": state, "speech": speech,
-                                          "gaze": gaze, "urgent": urgent, "interrupted": interrupted},
-                                expected={"violations": {"$len": 0}},
-                                lineage={"legacy_ref": "avatar/checks/scenario_matrix.mjs"}))
-    return out
-
-
 SOURCES = {
     "context": context_scenarios,
     "routing": routing_scenarios,
-    "face": face_scenarios,
 }
 
 

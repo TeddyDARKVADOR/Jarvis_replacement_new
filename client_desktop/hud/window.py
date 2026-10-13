@@ -46,7 +46,6 @@ from PyQt6.QtWidgets import QApplication, QFileDialog, QVBoxLayout, QWidget
 
 from ..config import Settings, save as save_settings
 from ..state import LinkState, Snapshot
-from ..ui import avatar_scheme
 from . import metrics as metrics_mod
 from . import scheme
 from . import settings as settings_mod
@@ -65,7 +64,6 @@ MINI_SIZE = (260, 300)
 #: `config.Settings` — the one settings file, shared by both modes.
 PREF_FIELDS = {
     "accent": "accent",
-    "face": "avatar_enabled",
     "sound": "sound",
     "volume": "sound_volume",
     "maximized": "maximized",
@@ -80,15 +78,6 @@ _EDGES = {
     "t": Qt.Edge.TopEdge,
     "b": Qt.Edge.BottomEdge,
 }
-
-
-def _face_available() -> bool:
-    """The 3D face needs the `jarvis://` scheme and the `presence` package."""
-    try:
-        import presence  # noqa: F401
-    except Exception:
-        return False
-    return bool(avatar_scheme.AVAILABLE)
 
 
 def _app_icon() -> QIcon:
@@ -221,11 +210,6 @@ class HudBridge(QObject):
     def setPushRate(self, hz: int) -> None:  # noqa: N802
         self._w._set_push_rate(hz)
 
-    @pyqtSlot()
-    def faceLoaded(self) -> None:  # noqa: N802
-        if self._w._face is not None:
-            self._w._face.frame_ready()
-
     @pyqtSlot(str)
     def copy(self, text: str) -> None:
         self._w._own_copy = text or ""
@@ -324,8 +308,6 @@ class HudWindow(QWidget):
         self._last_log: tuple | None = None
         self._first_show = True
         self._metrics = metrics_mod.Metrics()
-        self._face = None
-        self._face_available = _face_available()
         #: True when the brain runs on this PC (`python main.py --local`). The
         #: HUD is the same; only what it says about "the server" changes.
         self.local_mode = False
@@ -359,12 +341,6 @@ class HudWindow(QWidget):
 
         if not scheme.install(page.profile()):
             raise RuntimeError("schema jarvis-hud:// non enregistre avant QApplication")
-        # The face lives on jarvis://avatar/ — same profile, its own handler.
-        if self._face_available and avatar_scheme.install(page.profile()):
-            from .face import FaceDriver
-            self._face = FaceDriver(self._post_face)
-        else:
-            self._face_available = False
 
         self._channel = QWebChannel(page)
         self._bridge = HudBridge(self)
@@ -442,26 +418,6 @@ class HudWindow(QWidget):
             channel.setRunsOnSubFrames(False)
             scripts.insert(channel)
 
-        if self._face_available:
-            # The face reads its manifest from a global, never from fetch —
-            # `ui/avatar_scheme.py` explains why. Here it is in a
-            # sub-frame, so the script must run on sub-frames.
-            try:
-                raw = (avatar_scheme.ROOT / "manifest.json").read_text(encoding="utf-8")
-                manifest = json.dumps(json.loads(raw), separators=(",", ":"))
-                m = QWebEngineScript()
-                m.setName("jarvis-manifest")
-                from .face import DEBUG as face_debug
-                # In diagnostic mode the face also records its session.
-                record = "window.JARVIS_RECORD = true;" if face_debug else ""
-                m.setSourceCode(f"window.JARVIS_MANIFEST = {manifest};{record}")
-                m.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
-                m.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
-                m.setRunsOnSubFrames(True)
-                scripts.insert(m)
-            except Exception:
-                pass
-
     def _on_loaded(self, ok: bool) -> None:
         self._loaded = bool(ok)
 
@@ -482,13 +438,10 @@ class HudWindow(QWidget):
                 "local": self.local_mode,
             },
             "local": self.local_mode,
-            "faceAvailable": self._face_available,
             "caps": self.backend.capabilities() if self.backend is not None else {},
             "mini": self._mini,
         }
         self._run(f"window.HUD&&HUD.init({json.dumps(init)})")
-        if self._face is not None:
-            self._face.enable(bool(self.prefs.get("face")) and self._face_available)
         self._push(self._snapshot, full=True)
         tab = getattr(self, "_pending_settings_tab", None)
         if tab:
@@ -500,14 +453,6 @@ class HudWindow(QWidget):
     def attach_store(self, store) -> None:  # noqa: ANN001
         """Let the HUD pull snapshots at its own rate (the controller pushes at 10 Hz)."""
         self._store = store
-
-    def set_avatar_intent(self, event: dict) -> None:
-        if self._face is not None:
-            self._face.set_intent(event)
-        # The HUD's reactor also reacts to the expression JARVIS chose.
-        directive = event.get("directive") if isinstance(event, dict) else None
-        if isinstance(directive, dict):
-            self._run(f"window.HUD&&HUD.intent({json.dumps(directive)})")
 
     def show(self) -> None:  # noqa: D401 - Qt override
         if self._first_show:
@@ -697,14 +642,10 @@ class HudWindow(QWidget):
         self._run(f"window.HUD&&HUD.setMini({'true' if mini else 'false'})")
 
     def _update_prefs(self, data: dict) -> None:
-        face_before = bool(self.settings.avatar_enabled)
         for key, value in data.items():
             if key in PREF_FIELDS:
                 setattr(self.settings, PREF_FIELDS[key], value)
         save_settings(self.settings)
-        face_now = bool(self.prefs.get("face")) and self._face_available
-        if self._face is not None and face_now != face_before:
-            self._face.enable(face_now)
 
     def _save_geometry(self) -> None:
         if self._mini or self.isMaximized() or self.isFullScreen() or self.isMinimized():
@@ -746,8 +687,6 @@ class HudWindow(QWidget):
         if full:
             self._last_slow = now
         self._push(self._snapshot, full=full)
-        if self._face is not None:
-            self._face.set_snapshot(self._snapshot)
         if now - self._last_metrics >= METRICS_S:
             self._last_metrics = now
             self._run(f"window.HUD&&HUD.metrics({json.dumps(self._metrics.sample())})")
@@ -799,9 +738,6 @@ class HudWindow(QWidget):
                 self._last_log = s.log
                 data["log"] = list(s.log[-LOG_LINES:])
         self._run(f"window.HUD&&HUD.tick({json.dumps(data, ensure_ascii=False)})")
-
-    def _post_face(self, message: dict) -> None:
-        self._run(f"window.HUD&&HUD.face({json.dumps(message, separators=(',', ':'))})")
 
     def _run(self, script: str) -> None:
         try:

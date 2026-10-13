@@ -13,7 +13,7 @@ running the same code. The only difference is the class that renders the
 snapshot — `HudWindow` instead of `JarvisPanel` — and it is a drop-in: same
 signals, same methods, so the controller cannot tell them apart.
 
-The visual is a web page (`web/`) hosted in one `QWebEngineView`, for the same
-reason the 3D face is: three.js, shaders and CSS animation are a far richer
-palette than QPainter, and the vendored three.js already lives in `avatar/`.
+The visual is a web page (`web/`) hosted in one `QWebEngineView`: three.js,
+shaders and CSS animation are a far richer palette than QPainter. three.js is
+vendored in `web/vendor/`.
 """

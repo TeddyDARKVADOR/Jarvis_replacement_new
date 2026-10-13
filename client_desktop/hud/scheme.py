@@ -1,21 +1,17 @@
 """
-`jarvis-hud://hud/` — the HUD's own origin, for the same reasons as the face's.
+`jarvis-hud://hud/` — the HUD's own origin.
 
-`ui/avatar_scheme.py` documents the trap at length: a page loaded from `file://`
-gets an opaque origin and every ES module import fails silently. The HUD is ES
-modules too, so it gets a scheme of its own rather than a second host on
-`jarvis://` — that handler belongs to the face and is not edited here.
+A page loaded from `file://` gets an opaque origin and every ES module import
+fails silently. The HUD is ES modules, so it gets a scheme of its own.
 
-Two roots are served, and nothing else:
+One root is served, and nothing else:
 
     jarvis-hud://hud/<path>          client_desktop/hud/web/<path>
-    jarvis-hud://hud/vendor/<path>   avatar/vendor/<path>   (three.js, read-only)
 
-Reusing the vendored three.js rather than copying it keeps one copy of a 600 KB
-library in the repository and one version of it on the screen.
+three.js is vendored in `web/vendor/`, so no network is needed.
 
-Like `register()` in `avatar_scheme`, `register()` here must run before the
-`QApplication` exists. `hud/__main__.py` calls both on the line above it.
+`register()` must run before the `QApplication` exists. `hud/__main__.py`
+calls it first.
 """
 
 from __future__ import annotations
@@ -37,7 +33,6 @@ except Exception:  # pragma: no cover - depends on the local install
 SCHEME = b"jarvis-hud"
 HOST = "hud"
 WEB_ROOT = Path(__file__).resolve().parent / "web"
-VENDOR_ROOT = Path(__file__).resolve().parent.parent.parent / "avatar" / "vendor"
 
 INDEX_URL = f"{SCHEME.decode()}://{HOST}/index.html"
 
@@ -64,10 +59,7 @@ def resolve(path: str) -> Path | None:
     Pure, so the selftest can throw traversal attempts at it without a browser.
     """
     relative = path.lstrip("/") or "index.html"
-    if relative.startswith("vendor/"):
-        root, relative = VENDOR_ROOT, relative[len("vendor/"):]
-    else:
-        root = WEB_ROOT
+    root = WEB_ROOT
     try:
         target = (root / relative).resolve()
         target.relative_to(root.resolve())

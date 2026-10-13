@@ -50,7 +50,6 @@
     </div>
     <nav class="tools">
       <button id="btn-sound" class="ico" title="Sons de l'interface"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="on" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/><path class="off" d="M16 9l5 6M21 9l-5 6"/></svg></button>
-      <button id="btn-face" class="ico" title="Visage 3D / Réacteur"><svg viewBox="0 0 24 24"><circle cx="12" cy="10" r="6"/><path d="M5 21c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg></button>
       <button id="btn-palette" class="ico" title="Couleur du HUD"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
       <button id="btn-studio" class="ico" title="Jarvis Code Studio : son atelier de développement"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/></svg></button>
       <button id="btn-mind" class="ico" title="Esprit : état interne, objectifs, souvenirs, modèle de soi"><svg viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 3 3h1V4z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-3 3h-1V4z"/><path d="M10 9H8M14 9h2M10 15H8M14 15h2"/></svg></button>
@@ -111,7 +110,6 @@
   <section id="center">
     <div id="reactor" title="Cliquer : parler / interrompre">
       <canvas id="r3d"></canvas>
-      <iframe id="face" title="Visage de JARVIS" hidden></iframe>
       <canvas id="rings"></canvas>
       <div id="state-word"><span id="state-label">INITIALISATION</span><span id="state-hint"></span></div>
     </div>
@@ -317,7 +315,6 @@
         <label class="toggle"><input id="s-sound" type="checkbox"><i></i><span>Sons de l'interface</span></label>
         <label class="field"><span>Volume des sons</span><input id="s-volume" type="range" min="0" max="1" step="0.05"></label>
         <label class="toggle"><input id="s-clipboard" type="checkbox"><i></i><span>Presse-papiers intelligent<small>Quand vous copiez du texte : traduire, résumer, expliquer ou corriger en un clic.</small></span></label>
-        <label class="toggle" id="s-face-row"><input id="s-face" type="checkbox"><i></i><span>Visage 3D au centre<small>À la place du noyau d'énergie.</small></span></label>
         <div class="field"><span>Performances</span><div id="s-quality" class="quality-grid"></div>
           <small id="s-quality-note"></small></div>
       </section>

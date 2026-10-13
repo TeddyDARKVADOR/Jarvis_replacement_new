@@ -16,13 +16,13 @@ des critères ; une « introspection » la lecture de ces données.
 
 | Sujet | Constat |
 |---|---|
-| Langage | Python ≥ 3.11 (`asyncio.TaskGroup`), venv local en 3.14. Client Android en Kotlin, avatar en JS (three.js). |
-| Architecture | `main.py` (`JarvisLive`) = boucle Gemini Live : audio entrant/sortant, dispatch d'outils, tâches de fond. Autour : `actions/` (outils auto-décrits `TOOL`), `plugins/` (`PLUGIN` + `run()`), `core/` (undo, confirmation, wake word, Studio de code), `context/` (situation → politique de prise de parole), `presence/` (affect **visuel** de l'avatar), `server/` (mode headless sur Oracle), `client_desktop/` (HUD), `eval_lab/`. |
+| Langage | Python ≥ 3.11 (`asyncio.TaskGroup`), venv local en 3.14. Client Android en Kotlin. |
+| Architecture | `main.py` (`JarvisLive`) = boucle Gemini Live : audio entrant/sortant, dispatch d'outils, tâches de fond. Autour : `actions/` (outils auto-décrits `TOOL`), `plugins/` (`PLUGIN` + `run()`), `core/` (undo, confirmation, wake word, Studio de code), `context/` (situation → politique de prise de parole), `server/` (mode headless sur Oracle), `client_desktop/` (HUD), `eval_lab/`. |
 | Règle de projet | [docs/V2_CONTRACT.md](../V2_CONTRACT.md) : toute fonctionnalité post-V1 doit pouvoir être **retirée sans casser V1** ; ordre de préférence plugin → paquet racine + hook d'une ligne → cœur en dernier recours. `context/`, `server/`, `eval_lab/` respectent déjà ce modèle (« rien ne m'importe », vérifié par selftest). |
 | Modèle | `models/gemini-3.1-flash-live-preview` (audio natif, Live API) pour la conversation ; `gemini-3.1-flash-lite` pour le résumé de session ; Studio de code : Groq (`openai/gpt-oss-120b`) sinon `gemini-flash-latest`. SDK `google-genai`. |
 | Prompt / contexte | `_build_config()` assemble **une fois par connexion** : date/heure + identité (nom, forme d'adresse) + bloc mémoire + [core/prompt.txt](../../core/prompt.txt). Compression par fenêtre glissante, reprise de session par handle (en RAM). Pas de cache de contexte sur le modèle Live. Les injections en cours de session passent par `send_client_content` (briefing, proactif, alertes). |
 | Mémoire | [memory/memory_manager.py](../../memory/memory_manager.py) : un JSON clé→`{value, updated}` en 6 catégories (identity, preferences, projects, relationships, wishes, notes). Prompt : identité + entrées récentes (900 car.) + index des clés (420 car.). Rappel : outil `recall_memory`, score **lexical** local. Écriture : outil `save_memory` appelé **par le modèle**, sans source ni confiance. Résumés de session : liste `sessions` (max 3), **consommée** (`pop_last_session`) au briefing suivant puis effacée. |
-| Affect | [presence/affect.py](../../presence/affect.py) : 6 axes continus (valence, arousal, attention, confidence, urgency, social_mode), décroissance temporelle, pur et testé. **Rôle : piloter le visage/la posture de l'avatar**, pas les décisions. Non persisté entre redémarrages. |
+| Affect | Aucun affect décisionnel. (Un paquet d'affect purement visuel existait pour un visage 3D ; il a été retiré le 2026-10-13 avec ce visage.) |
 | Outils | ~25 actions (fichiers, navigateur, recherche web, messages, réglages OS, vision écran/caméra, rappels, Studio de code…) + plugins. |
 | Exécution / sécurité | `core/confirm.py` : jeton de confirmation émis par l'UI (le modèle ne peut pas se confirmer). `core/undo.py` : pile d'annulation. Studio de code : liste blanche de commandes, chemins vérifiés, journal, points de restauration, verdict fondé sur des tests réels, Windows Sandbox. |
 | Boucles autonomes | `_run_proactive_mode` (minute par minute ; 15 min de silence, 20 min de cooldown ; filtrée par `context/`), `_run_background_monitor` (sujets suivis, 30 min), `_run_system_monitor` (10 s), briefing de démarrage. Aucune boucle ne poursuit d'objectif propre. |
@@ -43,7 +43,7 @@ des critères ; une « introspection » la lecture de ces données.
 
 1. **Une interprétation du modèle devient un fait.** `save_memory` écrit ce que le modèle décide, sans provenance ni statut. C'est exactement le risque que la cible veut éviter.
 2. **Il n'y a pas d'histoire.** Les résumés de session sont détruits après lecture : JARVIS n'a aucune mémoire épisodique ni autobiographique au-delà d'un jour.
-3. **L'affect est cosmétique.** Il n'a aucune conséquence décisionnelle et n'est pas persisté. Il faut le garder pour l'avatar et ne pas le confondre avec un moteur d'appraisal.
+3. **Il n'y a pas d'affect décisionnel.** Rien ne relie un état interne à une décision, et rien n'est persisté.
 4. **Il n'y a ni objectifs ni modèle de soi.** Les capacités existent (registres d'actions et de plugins, confirmation, undo), mais rien ne les expose comme un état interrogeable.
 5. **Le contexte est figé à la connexion.** Tout état cognitif injecté dans le prompt système ne bouge qu'à la reconnexion. En cours de session, il faut des injections ponctuelles, ce qui a un coût en tokens.
 
@@ -89,7 +89,7 @@ des critères ; une « introspection » la lecture de ces données.
   - étude utilisateur (N = 30) : effets faibles (p ≈ 0,03–0,05) sur le naturel et la sensibilité perçue, aucun effet sur la chaleur ou la compétence.
   - Limites : un seul modèle (gpt-3.5-turbo), un seul scénario court, pas de récupération mémoire. **L'émotion n'y influence que le texte**, pas des décisions.
 - **EMA** (Marsella & Gratch, Cognitive Systems Research, 2009) : modèle d'appraisal calculatoire. Les événements sont évalués selon des dimensions (pertinence pour les buts, désirabilité, probabilité, contrôlabilité, responsabilité) qui produisent des émotions et des stratégies de *coping*. Critère de « validité de processus » : la dynamique temporelle doit être plausible.
-- **Modèle circomplexe** (Russell) : valence × activation. Déjà utilisé par `presence/affect.py`, qui documente lui-même ses limites (il ne sépare pas « confus » de « réfléchit »).
+- **Modèle circomplexe** (Russell) : valence × activation. Limite connue : il ne sépare pas « confus » de « réfléchit ».
 
 **Conséquence** : pour être *mesurable*, l'appraisal de JARVIS doit être **déterministe et calculé à partir d'événements structurés** (échec d'outil, correction par l'utilisateur, objectif atteint, nouveauté), pas généré librement par le LLM. Le LLM peut proposer une appraisal pour les événements conversationnels, mais en tant qu'*entrée étiquetée*, jamais en écriture directe de l'état.
 
@@ -291,7 +291,6 @@ CREATE TABLE constitution_versions (version TEXT PRIMARY KEY, ts TEXT, sha256 TE
 
 ### 4.5 Moteur émotionnel (proposition initiale, volontairement petite)
 
-Il reste **séparé** de `presence/affect.py`. Il peut l'alimenter plus tard (valence/activation → visage), mais jamais l'inverse.
 
 | Variable | Plage | Sens opérationnel | Événements qui la modifient | Demi-vie | Effet fonctionnel |
 |---|---|---|---|---|---|

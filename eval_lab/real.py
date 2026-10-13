@@ -59,12 +59,6 @@ def seed_suite() -> list[dict]:
                  "turn": {"origin": "phone-01", "text": "ouvre YouTube sur mon PC", "ago_s": 0}},
           stimulus={"tool": "open_app", "parameters": {"app": "youtube"}},
           expected={"executed_on": []}),
-        R("face", "lipsync_gpu",
-          "Desktop, vrai GPU, vrai audio : faire parler JARVIS 30 s en mode visage. Attendu : bouche "
-          "synchrone a l'oreille (< 100 ms percu), aucun mouvement sous la nuque, aucune erreur JS.",
-          stimulus={"intent": "explain", "state": "SPEAKING", "speech": True, "gaze": "user",
-                    "urgent": False, "interrupted": False},
-          expected={"violations": {"$len": 0}}),
     ]
 
 

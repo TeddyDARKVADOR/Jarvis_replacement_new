@@ -11,7 +11,6 @@ from quietly agreeing with whatever it simulates.
     policy      derive + ProactivityPolicy.decide  priority -> Channel
     sequence    policy + DeferralQueue + server.alerts over simulated time
     routing     server.targeting.resolve           which device runs this
-    face        avatar/ engine under Node          see face.py
 """
 from __future__ import annotations
 

@@ -220,10 +220,6 @@ body {
 }
 #reactor canvas, #reactor iframe { position: absolute; inset: 0 0 54px 0; width: 100%; height: calc(100% - 54px); border: 0; }
 #r3d { z-index: 1; }
-#face { z-index: 2; background: transparent; pointer-events: none;
-  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 36%, transparent 58%);
-  opacity: 0; transition: opacity .8s; }
-#face.on { opacity: 1; }
 #rings { z-index: 3; pointer-events: none; }
 #state-word {
   position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); z-index: 4;

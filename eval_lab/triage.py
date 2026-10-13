@@ -23,7 +23,7 @@ CLASSIFICATION — whose problem is it
                         project owner has overruled (corpus/decisions.json):
                         expected to fail until JARVIS and the old test change.
     inconclusive        only an explicitly undecided property is involved.
-    lab                 INFRA — the simulator, a surface, Node.
+    lab                 INFRA — the simulator, a surface.
     generator           INVALID — a scenario that should not exist.
     unstable            the representative does not reproduce identically.
     known               the signature is already in the regression corpus.
@@ -160,8 +160,8 @@ def cluster(results, scenarios: dict[str, dict], known: set[str]) -> list[dict]:
 # ── minimisation ─────────────────────────────────────────────────────────────
 
 def _run(s: dict) -> dict:
-    from .runner import _run_face, run_one
-    return _run_face([s])[0] if s["surface"] == "face" else run_one(s)
+    from .runner import run_one
+    return run_one(s)
 
 
 def _candidates(s: dict):

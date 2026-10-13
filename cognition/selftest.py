@@ -84,7 +84,7 @@ class _Clock:
 # ── 1–3. Contrat V2 ──────────────────────────────────────────────────────────
 
 _FORBIDDEN = ("main", "dashboard", "actions", "server", "plugins", "memory",
-              "context", "presence", "client_desktop", "local_hud", "eval_lab")
+              "context", "client_desktop", "local_hud", "eval_lab")
 
 
 @check("1 le paquet n'importe rien du cœur (sauf la comptabilité de tokens, gardée)")
@@ -630,7 +630,7 @@ def _frustration():
     c.observe_tool("web_search", {"q": "x"}, "Found 3 results", resp)
     after = c.current_affect().values["frustration"]
     assert after < 0.35 * f, (f, after)
-    c.observe_tool("set_presence", {}, "Tool 'set_presence' failed: x", {})
+    c.observe_tool("close_camera", {}, "Tool 'close_camera' failed: x", {})
     c.observe_tool("self_state", {}, "State: ...", {})
     assert c.current_affect().values["frustration"] == after, "un outil neutre a compté"
     for _ in range(3):
@@ -1034,7 +1034,7 @@ def _tool_selfmodel():
         ok = i % 4 == 0                            # 2 réussites sur 8
         c.observe_tool("web_search", {}, "Found 3 results" if ok else
                        "Tool 'web_search' failed: timeout", {})
-    c.observe_tool("set_presence", {}, "ok", {})   # neutre : non compté
+    c.observe_tool("close_camera", {}, "ok", {})   # neutre : non compté
     rows = c.store.query("SELECT predicted, outcome FROM tool_outcomes ORDER BY id")
     assert len(rows) == 8 and rows[0]["predicted"] == 0.5 and abs(rows[1]["predicted"] - 2 / 3) < 1e-9
     p, n = SM.expected_success(c.store, "web_search")

@@ -212,13 +212,6 @@ def mutate(s: dict, rng: random.Random) -> dict | None:
     elif surface == "router":
         options = [("world", m) for m in _router_world_mutations(s, rng)]
         options += [("stimulus", m) for m in _router_stim_mutations(s, rng)]
-    elif surface == "face":
-        stim = s["stimulus"]
-        key = rng.choice(["state", "speech", "gaze", "urgent", "interrupted"])
-        values = {"state": ["LISTENING", "THINKING", "SPEAKING", "CONFIRM"], "gaze": [None, "user", "screen"]}
-        new = _choice_other(rng, values.get(key, [True, False]), stim[key])
-        options = [("stimulus", (f"stimulus.{key}", stim[key], new,
-                                 lambda st, key=key, new=new: st.__setitem__(key, new)))]
     if not options:
         return None
     target, (path, old, new, apply) = rng.choice(options)

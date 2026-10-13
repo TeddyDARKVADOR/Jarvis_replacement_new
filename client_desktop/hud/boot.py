@@ -44,10 +44,8 @@ def prepare() -> bool:
     # view unless shared OpenGL contexts were enabled before the app existed.
     from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: F401
 
-    from ..ui import avatar_scheme
     from . import scheme
 
-    avatar_scheme.register()          # jarvis://     — the 3D face
     if not scheme.register():         # jarvis-hud:// — the HUD page
         return False
     gpu_flags()

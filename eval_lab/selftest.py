@@ -89,7 +89,7 @@ def _nobody_imports_us():
 @check("the core is untouched (main.py, core/, actions/, dashboard/, memory/, plugins/)")
 def _core_untouched():
     paths = ["main.py", "core", "actions", "dashboard", "memory", "plugins",
-             "context", "server", "presence", "requirements.txt"]
+             "context", "server", "requirements.txt"]
     out = subprocess.run(["git", "status", "--porcelain", "--", *paths], cwd=BASE_DIR,
                          capture_output=True, text=True).stdout.strip()
     assert not out, f"modifie : {out}"
@@ -126,8 +126,6 @@ def _legacy_pass():
     items = list(_legacy())
     ids = [s["id"] for s in items]
     assert len(ids) == len(set(ids)), "doublons dans le corpus legacy"
-    face = sum(1 for s in items if s["surface"] == "face")
-    assert face == 1632, f"{face} situations visage, attendu 1632"
     from eval_lab.triage import superseded
     sup = superseded()
     recs = []
@@ -256,20 +254,13 @@ def _invalid():
         sc.make("routing", world={"devices": [{"id": "a", "type": "pc"}], "turn": {"origin": "ghost"}},
                 stimulus={"text": "x"}, expected={"kind": "clarify"}),
         sc.make("situation", world={"phone": {"age_s": -5}}, expected={"situation": "UNKNOWN"}),
-        sc.make("face", stimulus={"intent": "dance", "state": "LISTENING", "speech": False,
-                                  "gaze": None, "urgent": False, "interrupted": False},
-                expected={"violations": {"$len": 0}}),
         # The world edited without restamp. (Editing only `expected` keeps the
         # id on purpose: the id names the situation, not the opinion about it.)
         {**_SEQ, "world": {"phone": {"age_s": 0, "screen_on": False}}},
         sc.make("policy", world={}, stimulus={"priority": "URGENTISSIME"}, expected={"channel": "DROP"}),
     ]
-    verdicts = [run_one(s)["verdict"] if s["surface"] != "face"
-                else run([s], Path(tempfile.mkdtemp()) / "r.jsonl", resume=False).counts
-                for s in bad]
-    face_counts = verdicts.pop(3)
+    verdicts = [run_one(s)["verdict"] for s in bad]
     assert all(v == "INVALID" for v in verdicts), verdicts
-    assert face_counts["INVALID"] == 1, face_counts
     return f"{len(bad)} mondes impossibles refuses"
 
 
@@ -338,7 +329,7 @@ def _operators():
 
 @check("an interrupted run resumes without redoing or duplicating")
 def _resume():
-    items = [s for s in _legacy() if s["surface"] != "face"]
+    items = list(_legacy())
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "r.jsonl"
         run(items[:30], out, resume=False)
@@ -355,7 +346,7 @@ def _resume():
 
 @check("shards partition the corpus, and a duplicate input runs once")
 def _shards():
-    items = [s for s in _legacy() if s["surface"] != "face"]
+    items = list(_legacy())
     seen = []
     with tempfile.TemporaryDirectory() as tmp:
         for k in range(3):
@@ -411,7 +402,7 @@ def _mutation():
     from eval_lab.mutate import mutate
     rng = random.Random(3)
     parents = list(STRATEGIES["pairwise"](40, 1)) + list(STRATEGIES["pairwise-routing"](40, 1)) \
-        + list(STRATEGIES["sequence"](40, 1)) + [s for s in _legacy("face")][:40]
+        + list(STRATEGIES["sequence"](40, 1))
     n = 0
     for p in parents:
         c = mutate(p, rng)
@@ -576,7 +567,7 @@ class _Fake:
 def _llm_pipeline():
     from eval_lab.llm import Cassette, campaign
     from eval_lab.triage import cluster
-    seeds = [s for s in _legacy() if s["surface"] != "face"]
+    seeds = list(_legacy())
     import context.policy as cp
     from context.model import Channel, Priority, Situation
     got = []
@@ -607,7 +598,7 @@ def _llm_pipeline():
 def _llm_limits():
     import eval_lab.llm as L
     from eval_lab.llm import campaign
-    seeds = [s for s in _legacy() if s["surface"] != "face"][:10]
+    seeds = list(_legacy())[:10]
     usage, _ = campaign(_Fake(), mode="generate", batches=10, per_batch=5, seed_corpus=seeds, known=set(),
                         max_usd=1.0, sink=lambda s, r: None, log=lambda *_: None)
     assert usage.calls == 1 and usage.usd <= 1.0, \

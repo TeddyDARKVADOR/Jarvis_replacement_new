@@ -347,11 +347,6 @@ TOOL_DECLARATIONS = [
 
 
 _COMPACT_TOOL_DESCRIPTIONS = {
-    "set_presence": (
-        "Optionally set a matching avatar expression or gesture while speaking. "
-        "Use only when a neutral face would feel wrong; never announce the call. "
-        "Prefer intent; otherwise set expression/intensity or affect values."
-    ),
     "file_processor": (
         "Process the user's uploaded file. Choose an action for its type: image, PDF, "
         "document, table, JSON/XML, code, audio, video, archive, or presentation. "

@@ -290,7 +290,7 @@ class Cognition:
         self._submit(self.memory.log_event, "tool_result", session_id=self.session_id,
                      actor=name, summary=text[:300], payload={"args": safe_args},
                      outcome="error" if failed else "ok")
-        if events:          # les outils neutres (avatar, self_state) ne comptent pas
+        if events:          # les outils neutres (close_camera, self_state) ne comptent pas
             self._submit(selfmodel.record_outcome, self.store, name, not failed)
         fresh = self._appraise(events, tool=name)
         # Le prompt système est figé à la connexion. Le seul canal qui atteint
