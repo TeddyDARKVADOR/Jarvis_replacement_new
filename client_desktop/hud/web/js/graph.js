@@ -304,6 +304,7 @@ export function createGraph(ctx) {
       <p class="gs-summary">${esc(n.summary || '')}</p>
       ${(n.details || []).length ? `<ul class="gs-details">${n.details.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
       ${n.graph && data.graphs[n.graph] ? `<button class="mini-btn gs-open" data-g="${esc(n.graph)}">OUVRIR LE GRAPHE « ${esc((data.graphs[n.graph].title || n.graph).split(' — ')[0])} »</button>` : ''}
+      ${n.verified ? `<div class="gs-label">VÉRIFIÉ</div><div class="gs-verified">${esc(n.verified)}</div>` : ''}
       ${n.test ? `<div class="gs-label">TEST</div><code class="gs-code">${esc(n.test)}</code>` : ''}
       ${(n.files || []).length ? `<div class="gs-label">FICHIERS</div><div class="gs-files">${n.files.map((f) => `<code>${esc(f)}</code>`).join('')}</div>` : ''}
       ${rels ? `<div class="gs-label">LIENS</div><div class="gs-rels">${rels}</div>` : ''}`;

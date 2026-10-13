@@ -20,6 +20,7 @@ Sans clé, sans réseau, sans fenêtre. Ce qui est vérifié :
   8  la recherche trouve ce qu'on attend, et l'outil répond sans HUD comme avec
   9  le chemin jusqu'au HUD existe des deux côtés (Oracle et ce PC)
  10  CLAUDE.md porte la règle de mise à jour
+ 11  chaque outil a une sonde de vérification ou une suite qui le prouve
 """
 from __future__ import annotations
 
@@ -274,6 +275,20 @@ def _hud_path():
     assert 'id="graph"' in src["client_desktop/hud/web/index.html"], "panneau"
     assert 'id="btn-graph"' not in src["client_desktop/hud/web/index.html"], "le panneau ne doit pas avoir de bouton"
     return "Oracle → /ws → HUD, et ce PC → store → HUD"
+
+
+# ── 11. chaque outil a sa vérification ───────────────────────────────────────
+
+@check("11 chaque outil a une sonde (capabilities.verify) ou une suite qui le prouve")
+def _probes():
+    from capabilities import verify
+    covered = set(verify.PROBES) | {t for tools in verify.SUITES.values() for t in tools}
+    missing = sorted(set(declared_tools()) - covered)
+    ghost = sorted(covered - set(declared_tools()))
+    assert not missing, f"outils sans vérification : {missing} — ajouter une sonde dans verify.PROBES"
+    assert not ghost, f"sondes d'outils qui n'existent plus : {ghost}"
+    real = sum(1 for kind, _ in verify.PROBES.values() if kind == "reel")
+    return f"{len(covered)} outils couverts, dont {real} par une sonde réelle"
 
 
 # ── 10. la règle ─────────────────────────────────────────────────────────────

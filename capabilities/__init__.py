@@ -96,6 +96,35 @@ def load(graph_id: str = GENERAL) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def dumps(graph: dict) -> str:
+    """The on-disk form: one key per line, one node per line, one edge per line.
+
+    Hand edits stay easy and an automatic update (capabilities.verify) shows
+    up in a diff as the few nodes it changed, not as a reformatted file."""
+    head = [k for k in graph if k not in ("nodes", "edges")]
+    out = ["{"]
+    for k in head:
+        out.append(f"  {json.dumps(k)}: {json.dumps(graph[k], ensure_ascii=False)},")
+    nodes = graph.get("nodes", [])
+    out.append('  "nodes": [')
+    out += [f"    {json.dumps(n, ensure_ascii=False)}{',' if i < len(nodes) - 1 else ''}"
+            for i, n in enumerate(nodes)]
+    out.append("  ],")
+    edges = graph.get("edges", [])
+    out.append('  "edges": [')
+    out += [f"    {json.dumps(e, ensure_ascii=False)}{',' if i < len(edges) - 1 else ''}"
+            for i, e in enumerate(edges)]
+    out.append("  ]")
+    out.append("}")
+    return "\n".join(out) + "\n"
+
+
+def save(graph: dict) -> None:
+    """Write a graph back to graphs/<id>.json, in the on-disk form."""
+    _path(graph["id"]).write_text(dumps(graph), encoding="utf-8", newline="\n")
+    reset()
+
+
 def load_all() -> dict[str, dict]:
     return {gid: load(gid) for gid in graph_ids()}
 
