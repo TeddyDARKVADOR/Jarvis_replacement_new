@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from pathlib import Path
 
 CLASS_TITLE = {
     "jarvis-crash": "JARVIS a leve une exception",

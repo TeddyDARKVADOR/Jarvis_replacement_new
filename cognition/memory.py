@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import policy
-from .store import Store, now_iso
+from .store import Store
 
 RAW_TURN_DAYS = 30
 RECENCY_DECAY = 0.995          # par heure, comme Park et al.

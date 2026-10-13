@@ -45,7 +45,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import QApplication, QFileDialog, QVBoxLayout, QWidget
 
 from ..config import Settings, save as save_settings
-from ..state import LinkState, Snapshot
+from ..state import Snapshot
 from . import metrics as metrics_mod
 from . import scheme
 from . import settings as settings_mod

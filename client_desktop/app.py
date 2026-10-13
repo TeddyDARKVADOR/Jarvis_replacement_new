@@ -38,7 +38,7 @@ from .audio import Microphone
 from .config import Settings, load, save  # noqa: F401  (save: _on_settings_changed)
 from .device import CapabilityProbe, LocalExecutor
 from .net import NetworkWorker
-from .state import AssistantState, JarvisStore, LinkState, Snapshot
+from .state import JarvisStore, LinkState, Snapshot
 from .hud.backends import RemoteBackend
 from .hud.settings import RECONNECT_KEYS
 from .hud.window import HudWindow

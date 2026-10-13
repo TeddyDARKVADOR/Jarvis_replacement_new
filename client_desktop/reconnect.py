@@ -38,7 +38,7 @@ import asyncio
 import random
 import socket
 import time
-from typing import Awaitable, Callable, Protocol
+from typing import Callable, Protocol
 
 from .protocol import AuthRejected
 from .state import LinkState

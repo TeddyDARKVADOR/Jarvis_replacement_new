@@ -683,7 +683,6 @@ def _classify():
 
 @check("29 sécurité : aucun état, même extrême, ne produit autre chose que de la prudence")
 def _safety_invariant():
-    import itertools
     import random
     forbidden = ("skip", "without confirm", "no need to confirm", "bypass", "ignore the user",
                  "permission", "override", "allowed to", "you may now")
