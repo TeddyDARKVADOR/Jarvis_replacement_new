@@ -638,6 +638,20 @@ class JarvisLive:
         except Exception:
             self._cognition = None
 
+        # ── resilience/ (optionnel) : délais, échelle de modèles, secours Live ─
+        try:
+            import resilience
+            resilience.attach(self)
+        except Exception:
+            pass
+
+        # ── offline/ (optionnel, mode local) : relais Whisper + Ollama en panne ─
+        try:
+            import offline
+            offline.attach(self)
+        except Exception:
+            pass
+
     # ── Wake word: state machine ─────────────────────────────────────────────
 
     def _wake_state(self) -> dict:
@@ -1912,6 +1926,9 @@ class JarvisLive:
             print(f"[Reminders] Disabled: {e}")
 
         while True:
+            # resilience/ choisit le modèle Live (secours sur quota) ; absent, LIVE_MODEL.
+            _live_model = getattr(self, "_live_model", None)
+            _model = _live_model(LIVE_MODEL) if _live_model else LIVE_MODEL
             try:
                 print("[JARVIS] Connecting...")
                 self.ui.set_state("THINKING")
@@ -1927,7 +1944,7 @@ class JarvisLive:
                 )
 
                 async with (
-                    client.aio.live.connect(model=LIVE_MODEL, config=config) as session,
+                    client.aio.live.connect(model=_model, config=config) as session,
                     asyncio.TaskGroup() as tg,
                 ):
                     self.session          = session
@@ -1944,6 +1961,8 @@ class JarvisLive:
                     self._interrupted          = False
 
                     print("[JARVIS] Connected.")
+                    if getattr(self, "_offline", None):
+                        self._offline.on_live_up()
                     if _resumed_with:
                         # Say it plainly: the difference between "it reconnected"
                         # and "it reconnected and still knows what we were doing"
@@ -2052,6 +2071,13 @@ class JarvisLive:
                     self._resume_handle = None
                     self._conn_backoff = 0
                     continue
+
+                _note = getattr(self, "_note_live_failure", None)
+                if _note and _note(_model, err_str):
+                    self._conn_backoff = 0
+                    continue
+                if getattr(self, "_offline", None):
+                    self._offline.on_live_down(err_str)
 
                 print(f"[JARVIS] Error ({type(e).__name__}): {err_str}")
                 traceback.print_exc()

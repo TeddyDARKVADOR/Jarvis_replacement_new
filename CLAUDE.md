@@ -17,6 +17,8 @@ affiche dans le HUD quand on le lui demande.
 - Restent en `.md` pour l'instant : ce fichier, `readme.md` (page du dépôt),
   `docs/cognition/RECHERCHE.md` (bibliographie), les rapports datés de
   `docs/cognition/evaluations/` et `cognition/constitution/CHANGELOG.md`.
+  Les `skills/*/SKILL.md` ne sont pas de la documentation : ce sont des
+  instructions que JARVIS lit (outil `skills`, format Agent Skills).
 
 ## À chaque fin de session : mettre le graphe à jour
 
