@@ -113,7 +113,37 @@ CREATE INDEX affect_log_ts ON affect_log(ts);
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
-_MIGRATIONS = [_V1, _V2]
+# Phase 5 : objectifs persistants et leur historique.
+_V3 = """
+CREATE TABLE goals (
+  id                TEXT PRIMARY KEY,
+  title             TEXT NOT NULL,
+  kind              TEXT NOT NULL,      -- user|reliability|learning|mastery|continuity
+  origin            TEXT NOT NULL,      -- jarvis|user
+  justification     TEXT NOT NULL,
+  priority          INTEGER NOT NULL CHECK (priority BETWEEN 1 AND 5),
+  status            TEXT NOT NULL,      -- proposed|active|blocked|done|cancelled|expired|withdrawn
+  success_criteria  TEXT NOT NULL,
+  deadline          TEXT,
+  budget_actions    INTEGER NOT NULL,
+  spent_actions     INTEGER NOT NULL DEFAULT 0,
+  closed_reason     TEXT,
+  created_at        TEXT NOT NULL,
+  updated_at        TEXT NOT NULL,
+  approved_at       TEXT
+);
+CREATE INDEX goals_status ON goals(status);
+CREATE TABLE goal_events (
+  id       INTEGER PRIMARY KEY,
+  goal_id  TEXT NOT NULL REFERENCES goals(id),
+  ts       TEXT NOT NULL,
+  kind     TEXT NOT NULL,               -- proposed|progress|active|blocked|done|...
+  note     TEXT,
+  actor    TEXT NOT NULL                -- model|user|system
+);
+"""
+
+_MIGRATIONS = [_V1, _V2, _V3]
 
 
 class Store:

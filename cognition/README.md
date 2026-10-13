@@ -1,13 +1,13 @@
-# `cognition/` — architecture cognitive persistante (phases 1–4)
+# `cognition/` — architecture cognitive persistante (phases 1–5)
 
 Paquet racine au sens de [docs/V2_CONTRACT.md](../docs/V2_CONTRACT.md). Actif
 **en mode local uniquement** (`python main.py --local`) pour l'instant. Supprimer
-ce dossier et `plugins/cognition_memory.py` rend JARVIS identique à avant :
+ce dossier et `plugins/cognition_*.py` rend JARVIS identique à avant :
 chaque hook de `main.py` est un `if self._cognition:`, et l'attache est sous
 `try/except`.
 
 ```
-python -m cognition.selftest      # 36 checks, sans clé, sans réseau, sans toucher tes données
+python -m cognition.selftest      # 42 checks, sans clé, sans réseau, sans toucher tes données
 python -m cognition.providers     # sonde réelle des générateurs gratuits configurés
 ```
 
@@ -30,11 +30,12 @@ Recherche et plan complet : [docs/cognition/RECHERCHE.md](../docs/cognition/RECH
 | **Conséquences des émotions** | Au-delà d'un seuil, une consigne : changer d'approche après des échecs répétés, prudence quand l'assurance est basse, réponses brèves, question de suivi, ton plus chaleureux. Elle entre dans le prompt à la connexion, et **en cours de session dans la réponse d'outil** au moment où le seuil est franchi (une seule fois). **Invariant testé** : les consignes viennent d'une liste fermée qui ne contient que de la prudence ou du ton ; aucune n'élargit une permission ni ne lève une confirmation. |
 | **`self_state`** | Nouvel outil. « Comment tu te sens ? » obtient une réponse lue dans les données (valeurs, causes récentes, consignes actives), présentée comme des variables calculées, pas comme un ressenti. Le selftest vérifie que le rapport est identique aux données, avec un témoin. |
 | **Réflexion** (`reflection.py`) | Après environ 1,5 d'importance cumulée (au plus toutes les 12 h), un modèle gratuit propose jusqu'à 3 synthèses, **chacune citant ses souvenirs sources**. Une citation inventée invalide la synthèse. Les synthèses restent `proposed` et n'entrent jamais dans le prompt ; le rappel les marque REFLECTION. |
+| **Objectifs persistants** (`goals.py`, outil `goals`) | **JARVIS propose, tu disposes.** Tout objectif naît `proposed`. Il ne devient actif, atteint, annulé ou relancé que si tu appuies sur **CONFIRMER** sur le HUD : c'est le même bandeau que pour l'arrêt de la machine (`core/confirm.py`), avec un jeton émis par l'interface que le modèle ne peut pas fabriquer. Le modèle peut seulement proposer, noter un progrès, ou retirer sa propre proposition.<br>Chaque objectif a une justification, un critère de réussite, une priorité de 1 à 5, une échéance facultative et un **budget d'actions**. Budget épuisé ou même note de progrès répétée 3 fois → `blocked` (anti-boucle) ; échéance passée → `expired`.<br>Au plus 10 objectifs ouverts et 3 propositions de JARVIS par jour. Seuls les objectifs actifs entrent dans le prompt. Un objectif atteint fait monter la valence, un objectif bloqué la frustration. L'historique (`goal_events`) dit qui a fait quoi : modèle, utilisateur ou système. |
 | **Générateurs de secours** | `providers.py` enchaîne local (Ollama et compatibles) → Groq → Cerebras → Gemini → OpenRouter → Mistral, selon les clés présentes. Un quota épuisé met le fournisseur en pause (durée annoncée par le serveur, sinon 60 s doublées), une clé refusée le met en pause 1 h. Utilisé pour le second avis et la réflexion. `Cognition.generate()` donne à **n'importe quel** modèle, IA locale comprise, la constitution et l'état émotionnel courant dans son prompt système. |
 
 ## Coût
 
-- **Tokens Gemini Live** : +522 caractères de prompt système par connexion (constitution et état), et jusqu'à environ 1 000 avec 3 épisodes (budget dur de 1 100). Plus 2 outils déclarés (`recall_episodes`, `self_state`).
+- **Tokens Gemini Live** : +522 caractères de prompt système par connexion (constitution et état), et jusqu'à environ 1 000 avec 3 épisodes (budget dur de 1 100). Plus 3 outils déclarés (`recall_episodes`, `self_state`, `goals`). Les objectifs actifs ajoutent environ 120 caractères chacun (3 au plus).
 - **API gratuites** : un second avis par fait traduit, une réflexion au plus toutes les 12 h.
 
 ## Configuration (optionnelle, `config/api_keys.json`)
@@ -65,8 +66,10 @@ Un fournisseur sans clé est ignoré. Le serveur local n'est essayé que s'il r�
 | `providers.py` | chaîne de générateurs gratuits avec pauses |
 | `affect.py` | moteur émotionnel pur : variables, règles, décroissance, consignes |
 | `reflection.py` | synthèses citées (Park 2023), jamais promues sans preuve |
+| `goals.py` | objectifs : règles, budgets, boucles, échéances, historique |
+| `../plugins/cognition_goals.py` | le seul pont vers `core/confirm.py` |
 | `runtime.py` | `Cognition` + `attach()` : ce que voit `main.py` ; aucune exception ne sort |
-| `selftest.py` | les 36 vérifications |
+| `selftest.py` | les 42 vérifications |
 
 ## Mesures réelles sur ce PC (2026-10-13)
 
@@ -92,4 +95,7 @@ Un fournisseur sans clé est ignoré. Le serveur local n'est essayé que s'il r�
 - **Les indices de parole sont lexicaux** (FR et EN) : « merci », « tu te trompes ». L'ironie ou une correction implicite ne sont pas détectées.
 - **Les seuils et demi-vies sont des choix de départ, pas des valeurs calibrées.** Ils sont à ajuster sur l'usage réel, à partir de `affect_log`.
 - **La consigne en cours de session n'est portée que par une réponse d'outil.** Une conversation sans aucun outil ne la verra qu'à la reconnexion suivante.
-- **Pas encore d'objectifs persistants** (phase 5), et le modèle de soi est partiel : `self_state` ne couvre que l'état, la mémoire, la constitution et les outils.
+- **Un seul bandeau de confirmation à la fois** (contrainte de `core/confirm.py`). Si une confirmation attend déjà, une nouvelle proposition est enregistrée, mais son bouton devra être redemandé (`request_approval`).
+- **Le progrès vers un objectif est déclaré par le modèle** (`progress`). Ses autres actions n'y sont pas rattachées automatiquement, donc le budget compte ce qu'il déclare, pas tout ce qu'il fait.
+- **Aucune boucle autonome ne poursuit encore les objectifs** (phase 7) : ils guident la conversation, sans déclencher d'action seuls.
+- **Le modèle de soi est partiel** : `self_state` couvre l'état, la mémoire, les objectifs, la constitution et le nombre d'outils.

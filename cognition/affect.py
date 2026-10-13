@@ -145,6 +145,9 @@ RULES: dict[str, list[tuple[str, float]]] = {
     "user_correction": [("valence", -0.20), ("assurance", -0.12), ("frustration", +0.15),
                         ("arousal", +0.10)],
     "session_start":   [("arousal", +0.10), ("warmth", +0.01)],
+    "goal_done":       [("valence", +0.30), ("assurance", +0.06), ("warmth", +0.02),
+                        ("frustration*", 0.5)],
+    "goal_blocked":    [("valence", -0.10), ("frustration", +0.20), ("assurance", -0.05)],
 }
 
 
