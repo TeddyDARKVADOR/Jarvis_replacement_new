@@ -1,0 +1,497 @@
+"""
+cognition/runtime.py — ce que main.py voit de la cognition. Rien de plus.
+
+    attach(jarvis) -> Cognition | None
+
+Entrées (hooks d'une ligne dans main.py) :
+    observe_turn, observe_tool, on_save_memory, archive_session
+Sorties :
+    prompt_block()      à chaque connexion
+    response["internal_state"]   quand l'état franchit un seuil pendant la session
+Pour les plugins :
+    recall(), self_report()
+Pour les générateurs de secours (IA locales comprises) :
+    generate()          le prompt système reçoit la constitution ET l'état affectif
+
+Une seule règle traverse tout le fichier :
+
+    UNE PANNE ICI NE DOIT JAMAIS ATTEINDRE LA CONVERSATION.
+
+  - les écritures passent par une file et un fil de fond (« writer ») ; les
+    appels aux modèles par un second fil (« llm »), pour qu'une réponse lente
+    de Groq ne retarde pas le journal ;
+  - chaque méthode publique est enveloppée dans _safe : une exception devient
+    une ligne de journal et une valeur neutre ;
+  - attach() renvoie None hors mode local, ou si l'ouverture échoue.
+"""
+from __future__ import annotations
+
+import functools
+import queue
+import threading
+import time
+import traceback
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+from . import affect as A
+from . import policy, reflection
+from .constitution import ConstitutionDrift, load as load_constitution, register
+from .memory import Memory, slot_for
+from .store import DEFAULT_DB, Store
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+LEGACY_PATH = BASE_DIR / "memory" / "long_term.json"
+
+# Budget du bloc ajouté au prompt système à chaque connexion (mesuré par le
+# selftest). Le projet surveille ses coûts de tokens : on n'ajoute que ce qui
+# change le comportement.
+PROMPT_BUDGET = 1100
+
+_active: "Cognition | None" = None
+
+
+def get_active() -> "Cognition | None":
+    """Pour les plugins : l'instance attachée au JARVIS local, ou None."""
+    return _active
+
+
+def _safe(default=None):
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapper(self, *a, **kw):
+            try:
+                return fn(self, *a, **kw)
+            except Exception as e:
+                self._log(f"{fn.__name__} a échoué ({type(e).__name__}: {e})")
+                if self.debug:
+                    traceback.print_exc()
+                return default() if callable(default) else default
+        return wrapper
+    return deco
+
+
+class _Lane:
+    """Un fil de fond et sa file. Synchrone si `background=False` (tests)."""
+
+    def __init__(self, name: str, background: bool, log):
+        self._log = log
+        self._q: queue.Queue = queue.Queue(maxsize=5000)
+        self._t = None
+        if background:
+            self._t = threading.Thread(target=self._drain, name=name, daemon=True)
+            self._t.start()
+
+    def submit(self, fn, *a, **kw) -> None:
+        if self._t is None:
+            try:
+                fn(*a, **kw)
+            except Exception as e:
+                self._log(f"tâche échouée : {type(e).__name__}: {e}")
+            return
+        try:
+            self._q.put_nowait((fn, a, kw))
+        except queue.Full:
+            self._log("file pleine — tâche abandonnée")
+
+    def _drain(self) -> None:
+        while True:
+            item = self._q.get()
+            if item is None:
+                return
+            fn, a, kw = item
+            try:
+                fn(*a, **kw)
+            except Exception as e:
+                self._log(f"tâche échouée : {type(e).__name__}: {e}")
+
+    def flush(self, timeout: float) -> None:
+        if self._t is None:
+            return
+        done = threading.Event()
+        self.submit(done.set)
+        done.wait(timeout)
+
+    def stop(self) -> None:
+        if self._t is not None:
+            self._q.put(None)
+            self._t.join(timeout=2)
+
+
+class Cognition:
+    def __init__(self, db_path: Path | str = DEFAULT_DB, *, logger=None,
+                 legacy_path: Path | None = LEGACY_PATH, background: bool = True,
+                 constitution_path: Path | None = None, chain=None,
+                 clock=time.time, debug: bool = False):
+        self.debug = debug
+        self._logger = logger or (lambda m: print(f"[Cognition] {m}"))
+        self._clock = clock
+        self.store = Store(db_path)
+        self.memory = Memory(self.store)
+        self.constitution = (load_constitution(constitution_path) if constitution_path
+                             else load_constitution())
+        try:
+            if register(self.store, self.constitution, rationale="chargée au démarrage"):
+                self._log(f"constitution v{self.constitution.version} enregistrée")
+        except ConstitutionDrift as e:
+            # Signalé, pas bloquant : le selftest, lui, échoue.
+            self._log(f"⚠️ {e}")
+        self._chain = chain          # None = construite à la demande ; False = aucune
+        self.tool_names = lambda: []
+        self.session_id = self._new_session()
+        self._turns_this_session = 0
+        # save_memory arrive PENDANT le tour, la transcription de l'utilisateur
+        # seulement à turn_complete : la preuve est évaluée au tour suivant.
+        self._pending_saves: list[tuple[str, str, str]] = []
+        self._pending_lock = threading.Lock()
+        self._affect_lock = threading.Lock()
+        self.affect = self._load_affect()
+        self._announced: set[str] = set(A.directives(self.affect))
+        self._writer = _Lane("cognition-writer", background, self._log)
+        self._llm = _Lane("cognition-llm", background, self._log)
+        if legacy_path:
+            self._writer.submit(self._import_legacy, legacy_path)
+        self._writer.submit(self.memory.purge_raw_turns)
+
+    # ── Plomberie ────────────────────────────────────────────────────────────
+
+    def _log(self, msg: str) -> None:
+        try:
+            self._logger(msg)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _new_session() -> str:
+        return datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
+
+    def _submit(self, fn, *a, **kw) -> None:
+        self._writer.submit(fn, *a, **kw)
+
+    def flush(self, timeout: float = 10.0) -> None:
+        """Attend que les deux files soient vides (tests, arrêt propre)."""
+        self._writer.flush(timeout)
+        self._llm.flush(timeout)
+        self._writer.flush(timeout)
+
+    def close(self) -> None:
+        self._flush_saves()
+        self.flush()
+        self._writer.stop()
+        self._llm.stop()
+        self.store.close()
+
+    def _meta_get(self, key: str) -> str | None:
+        rows = self.store.query("SELECT value FROM meta WHERE key=?", (key,))
+        return rows[0]["value"] if rows else None
+
+    def _meta_set(self, key: str, value: str) -> None:
+        self.store.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?,?)", (key, value))
+
+    @property
+    def chain(self):
+        if self._chain is None:
+            from .providers import ProviderChain
+            self._chain = ProviderChain.from_config()
+        return self._chain or None
+
+    def _import_legacy(self, path: Path) -> None:
+        n = self.memory.import_legacy(path)
+        if n:
+            self._log(f"{n} fait(s) importé(s) de long_term.json (lecture seule)")
+
+    # ── Affect ───────────────────────────────────────────────────────────────
+
+    def _load_affect(self) -> A.AffectState:
+        """Relu au démarrage et décru du temps écoulé : un redémarrage n'efface
+        pas l'état, il le laisse retomber comme l'aurait fait le temps."""
+        st = A.AffectState(at=self._clock())
+        rows = self.store.query("SELECT var, value, updated_at FROM affect_state")
+        if rows:
+            st.at = min(r["updated_at"] for r in rows)
+            for r in rows:
+                if r["var"] in A.VARS:
+                    st.values[r["var"]] = A.clamp(r["var"], r["value"])
+        return A.decayed(st, self._clock())
+
+    def _appraise(self, events: list[str], tool: str | None = None) -> list[str]:
+        """Applique les règles ; renvoie les directives NOUVELLEMENT actives."""
+        if not events:
+            return []
+        with self._affect_lock:
+            self.affect, log = A.apply(self.affect, events, self._clock(), tool)
+            snapshot = self.affect.copy()
+            active = set(A.directives(snapshot))
+            fresh = sorted(active - self._announced, key=list(A.THRESHOLDS).index)
+            self._announced = active
+        if log:
+            self._submit(self._persist_affect, snapshot, log)
+        return fresh
+
+    def _persist_affect(self, st: A.AffectState, log) -> None:
+        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with self.store.transaction() as c:
+            c.executemany("INSERT OR REPLACE INTO affect_state(var, value, updated_at) "
+                          "VALUES (?,?,?)", [(k, v, st.at) for k, v in st.values.items()])
+            c.executemany("INSERT INTO affect_log(ts, var, before, after, rule) VALUES (?,?,?,?,?)",
+                          [(ts, var, b, a, rule) for var, b, a, rule in log])
+
+    def current_affect(self) -> A.AffectState:
+        with self._affect_lock:
+            self.affect = A.decayed(self.affect, self._clock())
+            return self.affect.copy()
+
+    def _state_text(self, st: A.AffectState | None = None) -> str:
+        st = st or self.current_affect()
+        lines = ["[INTERNAL STATE — computed variables, not feelings. If asked how you "
+                 "feel, call self_state and report these values honestly.]",
+                 A.describe(st)]
+        for key in A.directives(st):
+            lines.append("Guidance: " + A.ALLOWED_DIRECTIVES[key])
+        return "\n".join(lines)
+
+    # ── Entrées (hooks main.py) ──────────────────────────────────────────────
+
+    @_safe()
+    def observe_turn(self, role: str, text: str) -> None:
+        text = (text or "").strip()
+        if not text:
+            return
+        kind = "user_turn" if role == "user" else "assistant_turn"
+        self._submit(self.memory.log_event, kind, session_id=self.session_id,
+                     actor=role, summary=text)
+        if role == "user":
+            events = A.classify_user_turn(text)
+            if self._turns_this_session == 0:
+                events.insert(0, "session_start")
+            self._turns_this_session += 1
+            self._appraise(events)
+        self._flush_saves()
+
+    def _flush_saves(self) -> None:
+        with self._pending_lock:
+            pending, self._pending_saves = self._pending_saves, []
+        for cat, key, value in pending:
+            self._submit(self._record_model_save, cat, key, value, self.session_id)
+
+    @_safe()
+    def observe_tool(self, name: str, args: dict, result, response: dict | None = None) -> None:
+        text = str(result or "")
+        events = A.events_for_tool(name, text, self.affect)
+        failed = "tool_error" in events
+        # Arguments tronqués, jamais le contenu des fichiers : le journal dit ce
+        # qui a été fait, pas ce qui a été lu.
+        safe_args = {k: (str(v)[:120]) for k, v in (args or {}).items()}
+        self._submit(self.memory.log_event, "tool_result", session_id=self.session_id,
+                     actor=name, summary=text[:300], payload={"args": safe_args},
+                     outcome="error" if failed else "ok")
+        fresh = self._appraise(events, tool=name)
+        # Le prompt système est figé à la connexion. Le seul canal qui atteint
+        # le modèle pendant la session sans déclencher de prise de parole est la
+        # réponse d'outil : on n'y ajoute l'état QUE quand un seuil vient d'être
+        # franchi, pour ne pas payer des tokens à chaque appel.
+        if fresh and isinstance(response, dict):
+            response["internal_state"] = " ".join(A.ALLOWED_DIRECTIVES[k] for k in fresh)
+
+    @_safe()
+    def on_save_memory(self, category: str, key: str, value: str) -> None:
+        """Le modèle a appelé save_memory. La V1 a déjà écrit long_term.json ;
+        ici le même fait est enregistré AVEC sa provenance, vérifiée contre ce
+        que l'utilisateur a réellement dit."""
+        if not key or not value:
+            return
+        with self._pending_lock:
+            self._pending_saves.append((category or "notes", str(key), str(value)))
+
+    def _record_model_save(self, category: str, key: str, value: str, sid: str) -> None:
+        turns = self.memory.recent_user_turns(sid, limit=8)
+        verdict, ratio = policy.lexical_verdict(value, turns)
+        if verdict == "unclear" and self.chain:
+            # Probablement une traduction (« pastries » pour « pâtisseries ») :
+            # on demande à un AUTRE modèle, hors du fil d'écriture.
+            self._llm.submit(self._judge_then_store, category, key, value, sid, turns, ratio)
+            return
+        source = "user_stated" if verdict == "supported" else "model_inferred"
+        self._store_fact(category, key, value, sid, source, ratio, f"lexical:{verdict}")
+
+    def _judge_then_store(self, category, key, value, sid, turns, ratio) -> None:
+        method, ok = "judge:unavailable", None
+        try:
+            prompt = policy.JUDGE_PROMPT.format(
+                today=datetime.now().strftime("%Y-%m-%d"),
+                said="\n".join(f"- {t}" for t in turns) or "(nothing)",
+                fact=f"{key.replace('_', ' ')}: {value}")
+            text, used = self.chain.complete(prompt, max_tokens=300, temperature=0,
+                                             exclude=("local",))
+            ok = policy.parse_judgement(text)
+            method = f"judge:{used}"
+        except Exception as e:
+            self._log(f"second avis indisponible ({type(e).__name__})")
+        source = "user_stated" if ok else "model_inferred"
+        conf = policy.JUDGED_CONFIDENCE if ok else None
+        self._submit(self._store_fact, category, key, value, sid, source, ratio, method, conf)
+
+    def _store_fact(self, category, key, value, sid, source, ratio, method, conf=None) -> None:
+        ev = self.memory.log_event("memory_write", session_id=sid, actor="model",
+                                   summary=f"{category}/{key}",
+                                   payload={"source": source, "evidence": round(ratio, 2),
+                                            "method": method})
+        self.memory.add(f"{key.replace('_', ' ')}: {value}", kind="semantic", source=source,
+                        slot=slot_for(category, key), confidence=conf,
+                        importance=0.8 if category == "identity" else 0.6, event_id=ev)
+        if source == "model_inferred":
+            self._log(f"souvenir non vérifié : {category}/{key} ({method})")
+
+    @_safe()
+    def archive_session(self, summary: str) -> None:
+        """Le résumé V1 est consommé au briefing suivant puis effacé. Ici il est
+        gardé : la première brique de l'autobiographie."""
+        summary = (summary or "").strip()
+        self._flush_saves()
+        if not summary:
+            return
+        sid = self.session_id
+        self._submit(self._archive, sid, summary)
+        self.session_id = self._new_session()
+        self._turns_this_session = 0
+
+    def _archive(self, sid: str, summary: str) -> None:
+        n_turns = self.store.query(
+            "SELECT count(*) n FROM events WHERE session_id=? AND kind IN ('user_turn','assistant_turn')",
+            (sid,))[0]["n"]
+        ev = self.memory.log_event("system", session_id=sid, actor="cognition",
+                                   summary="session archivée", payload={"turns": n_turns})
+        st = self.current_affect()
+        day = datetime.now().strftime("%Y-%m-%d")
+        self.memory.add(f"[{day}] {summary}", kind="episodic", source="model_summary",
+                        importance=min(1.0, 0.3 + n_turns / 40), event_id=ev,
+                        valence=st.values["valence"], arousal=st.values["arousal"])
+        if self.chain and reflection.due(self.memory, self._meta_get):
+            self._llm.submit(self._reflect)
+
+    def _reflect(self) -> None:
+        def gen(prompt: str) -> str:
+            return self.generate(prompt, quality=True, max_tokens=700, with_state=False)
+
+        report = reflection.run(self.memory, gen, lambda k, v: self._submit(self._meta_set, k, v))
+        self._log(f"réflexion : {report}")
+
+    # ── Sorties ──────────────────────────────────────────────────────────────
+
+    @_safe(default="")
+    def prompt_block(self) -> str:
+        """Ajouté au prompt système à chaque connexion, sous PROMPT_BUDGET.
+        Les faits non vérifiés et les réflexions n'y entrent jamais."""
+        parts = [self.constitution.prompt_core(), self._state_text()]
+        episodes = self.memory.recent("episodic", limit=3)
+        if episodes:
+            lines = ["[EARLIER CONVERSATIONS — your own archive, summaries not transcripts]"]
+            for e in episodes:
+                lines.append("- " + e["content"][:200])
+            lines.append("Older ones: call recall_episodes.")
+            parts.append("\n".join(lines))
+        out = "\n\n".join(parts).strip()
+        if len(out) > PROMPT_BUDGET:
+            out = out[:PROMPT_BUDGET].rsplit("\n", 1)[0]
+        return out + "\n"
+
+    @_safe(default="Mémoire épisodique indisponible.")
+    def recall(self, query: str, limit: int = 5) -> str:
+        rows = self.memory.search(query or "", limit=limit)
+        if not rows:
+            return f"Aucun souvenir trouvé pour « {query} »." if query else "Aucun souvenir archivé."
+        lines = []
+        for r in rows:
+            tag = ""
+            if r["kind"] == "reflective":
+                tag = " [REFLECTION — your own synthesis, never confirmed]"
+            elif r["status"] == "contested":
+                tag = " [CONTESTED — contradicted by a later statement]"
+            elif not r["verified"]:
+                tag = " [UNVERIFIED — inferred, never confirmed by the user]"
+            lines.append(f"- ({r['kind']}, {r['created_at'][:10]}) {r['content'][:240]}{tag}")
+        return "Memories found:\n" + "\n".join(lines)
+
+    @_safe(default="Self-state unavailable.")
+    def self_report(self) -> str:
+        """Ce que JARVIS peut dire de lui-même, lu dans les données, pas imaginé."""
+        st = self.current_affect()
+        causes = self.store.query(
+            "SELECT ts, var, before, after, rule FROM affect_log ORDER BY id DESC LIMIT 6")
+        counts = self.memory.counts()
+        unverified = sum(v.get("proposed", 0) for v in counts.values())
+        tools = sorted(self.tool_names() or [])
+        out = [
+            "These are recorded variables computed by rules from events — not felt emotions.",
+            "State: " + "; ".join(f"{n} {st.values[n]:.2f} ({A._word(n, st.values[n])})" for n in A.VARS),
+            "Active guidance: " + (", ".join(A.directives(st)) or "none"),
+            "Recent causes: " + ("; ".join(
+                f"{r['var']} {r['before']:.2f}->{r['after']:.2f} after {r['rule']}" for r in causes)
+                or "none recorded"),
+            f"Memory: {sum(sum(v.values()) for v in counts.values())} items, {unverified} unverified.",
+            f"Constitution v{self.constitution.version}. Tools loaded: {len(tools)}.",
+        ]
+        return "\n".join(out)
+
+    def generate(self, prompt: str, *, system: str = "", quality: bool = False,
+                 max_tokens: int = 400, with_state: bool = True) -> str:
+        """Générateurs de secours, IA locale comprise. Le prompt système reçoit
+        la constitution et, par défaut, l'état affectif courant : le même JARVIS,
+        quel que soit le modèle qui répond. `quality=True` écarte le petit
+        modèle local (fiabilité mesurée insuffisante pour juger)."""
+        if not self.chain:
+            raise RuntimeError("aucun générateur configuré")
+        sys_parts = [self.constitution.prompt_core()]
+        if with_state:
+            sys_parts.append(self._state_text())
+        if system:
+            sys_parts.append(system)
+        text, _ = self.chain.complete(prompt, system="\n\n".join(sys_parts),
+                                      max_tokens=max_tokens,
+                                      exclude=("local",) if quality else ())
+        return text
+
+    @_safe(default=dict)
+    def stats(self) -> dict:
+        ev = self.store.query("SELECT kind, count(*) n FROM events GROUP BY kind")
+        return {"session": self.session_id, "constitution": self.constitution.version,
+                "events": {r["kind"]: r["n"] for r in ev}, "memories": self.memory.counts(),
+                "affect": {k: round(v, 3) for k, v in self.current_affect().values.items()}}
+
+
+def attach(jarvis, db_path: Path | str | None = None,
+           legacy_path: Path | None = None, chain=None) -> Cognition | None:
+    """Appelé une fois par JarvisLive.__init__. Mode local uniquement (pour l'instant).
+    Les paramètres ne servent qu'au selftest, qui ne touche jamais la vraie base."""
+    global _active
+    ui = getattr(jarvis, "ui", None)
+    if not getattr(ui, "local_mode", False):
+        return None
+
+    def _log(msg: str) -> None:
+        print(f"[Cognition] {msg}")
+        try:
+            ui.write_log(f"SYS: {msg}")
+        except Exception:
+            pass
+
+    try:
+        _active = Cognition(db_path or DEFAULT_DB, logger=_log,
+                            legacy_path=legacy_path or LEGACY_PATH, chain=chain)
+    except Exception as e:
+        _log(f"désactivée : {type(e).__name__}: {e}")
+        _active = None
+        return None
+
+    def _tools() -> list[str]:
+        names = []
+        for reg in ("_action_registry", "_plugin_registry"):
+            try:
+                names += [d["name"] for d in getattr(jarvis, reg).get_tool_declarations()]
+            except Exception:
+                pass
+        return names
+
+    _active.tool_names = _tools
+    return _active

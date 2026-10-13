@@ -1,0 +1,15 @@
+"""
+cognition/ — architecture cognitive persistante de JARVIS (phases 1–2).
+
+Paquet racine au sens de docs/V2_CONTRACT.md : il n'importe rien de main.py,
+dashboard/, actions/, server/ ou plugins/ ; main.py l'appelle par des hooks
+d'une ligne, gardés. Supprimer ce dossier rend JARVIS identique à avant.
+
+    python -m cognition.selftest      # sans clé, sans réseau, sans micro
+    python -m cognition.providers     # sonde réelle des générateurs configurés
+
+Voir README.md et docs/cognition/RECHERCHE.md.
+"""
+from .runtime import Cognition, attach, get_active
+
+__all__ = ["Cognition", "attach", "get_active"]

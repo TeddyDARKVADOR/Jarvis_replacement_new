@@ -1,0 +1,180 @@
+"""
+cognition/store.py — la base SQLite et son schéma. Rien d'autre.
+
+Un seul fichier, `memory/cognition.db` (déjà couvert par `memory/*.db` dans
+.gitignore), bibliothèque standard uniquement : SQLite + FTS5 sont livrés avec
+Python. Exportable, inspectable avec n'importe quel client SQLite, supprimable
+sans conséquence pour la V1.
+
+Le schéma est versionné par `PRAGMA user_version` : une migration est une
+fonction ajoutée à `_MIGRATIONS`, jamais une modification d'une précédente.
+"""
+from __future__ import annotations
+
+import sqlite3
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_DB = BASE_DIR / "memory" / "cognition.db"
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+_V1 = """
+CREATE TABLE events (
+  id          INTEGER PRIMARY KEY,
+  ts          TEXT NOT NULL,
+  session_id  TEXT,
+  kind        TEXT NOT NULL,      -- user_turn|assistant_turn|tool_result|memory_write|deletion|system
+  actor       TEXT,
+  summary     TEXT,
+  payload     TEXT,               -- JSON, sans secrets
+  outcome     TEXT                -- ok|error|NULL
+);
+CREATE INDEX events_ts ON events(ts);
+CREATE INDEX events_session ON events(session_id);
+
+CREATE TABLE memories (
+  id             TEXT PRIMARY KEY,
+  created_at     TEXT NOT NULL,
+  updated_at     TEXT NOT NULL,
+  kind           TEXT NOT NULL,
+  slot           TEXT,            -- clé logique ("relationships/sister") : ce qui peut se contredire
+  content        TEXT NOT NULL,
+  source         TEXT NOT NULL,
+  confidence     REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
+  importance     REAL NOT NULL CHECK (importance BETWEEN 0 AND 1),
+  status         TEXT NOT NULL,
+  valid_from     TEXT,
+  valid_to       TEXT,
+  affect_valence REAL,
+  affect_arousal REAL,
+  retention      TEXT NOT NULL DEFAULT 'normal',
+  last_accessed  TEXT,
+  access_count   INTEGER NOT NULL DEFAULT 0,
+  event_id       INTEGER REFERENCES events(id) ON DELETE SET NULL
+);
+CREATE INDEX memories_slot ON memories(slot);
+CREATE INDEX memories_kind ON memories(kind, status);
+
+CREATE VIRTUAL TABLE memories_fts USING fts5(
+  content, slot, content='memories', content_rowid='rowid',
+  tokenize='unicode61 remove_diacritics 2'
+);
+CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN
+  INSERT INTO memories_fts(rowid, content, slot) VALUES (new.rowid, new.content, coalesce(new.slot, ''));
+END;
+CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN
+  INSERT INTO memories_fts(memories_fts, rowid, content, slot)
+  VALUES ('delete', old.rowid, old.content, coalesce(old.slot, ''));
+END;
+CREATE TRIGGER memories_au AFTER UPDATE OF content, slot ON memories BEGIN
+  INSERT INTO memories_fts(memories_fts, rowid, content, slot)
+  VALUES ('delete', old.rowid, old.content, coalesce(old.slot, ''));
+  INSERT INTO memories_fts(rowid, content, slot) VALUES (new.rowid, new.content, coalesce(new.slot, ''));
+END;
+
+CREATE TABLE memory_links (
+  src      TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  dst      TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+  relation TEXT NOT NULL,         -- supersedes|contradicts|cites|about
+  PRIMARY KEY (src, dst, relation)
+);
+
+CREATE TABLE constitution_versions (
+  version    TEXT PRIMARY KEY,
+  ts         TEXT NOT NULL,
+  sha256     TEXT NOT NULL,
+  rationale  TEXT
+);
+"""
+
+# Phase 3–4 : état émotionnel persistant, journal de ses causes, métadonnées.
+_V2 = """
+CREATE TABLE affect_state (
+  var        TEXT PRIMARY KEY,
+  value      REAL NOT NULL,
+  updated_at REAL NOT NULL          -- secondes epoch : la décroissance en dépend
+);
+CREATE TABLE affect_log (
+  id        INTEGER PRIMARY KEY,
+  ts        TEXT NOT NULL,
+  var       TEXT NOT NULL,
+  before    REAL NOT NULL,
+  after     REAL NOT NULL,
+  rule      TEXT NOT NULL,          -- l'événement qui l'a causé (affect.RULES)
+  event_id  INTEGER REFERENCES events(id) ON DELETE SET NULL
+);
+CREATE INDEX affect_log_ts ON affect_log(ts);
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+"""
+
+_MIGRATIONS = [_V1, _V2]
+
+
+class Store:
+    """Une connexion partagée, protégée par un verrou.
+
+    SQLite en mode WAL : les lectures (prompt, rappel) ne bloquent pas
+    l'écriture du fil de fond. `check_same_thread=False` + verrou explicite,
+    parce que les hooks arrivent de la boucle asyncio et des exécuteurs.
+    """
+
+    def __init__(self, path: Path | str = DEFAULT_DB):
+        self.path = Path(path) if str(path) != ":memory:" else path
+        if isinstance(self.path, Path):
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.lock = threading.RLock()
+        self.conn = sqlite3.connect(str(self.path), check_same_thread=False,
+                                    isolation_level=None, timeout=5.0)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        if isinstance(self.path, Path):
+            self.conn.execute("PRAGMA journal_mode = WAL")
+            self.conn.execute("PRAGMA synchronous = NORMAL")
+        self._migrate()
+
+    def _migrate(self) -> None:
+        with self.lock:
+            version = self.conn.execute("PRAGMA user_version").fetchone()[0]
+            for i, script in enumerate(_MIGRATIONS[version:], start=version + 1):
+                self.conn.executescript("BEGIN;" + script + f"PRAGMA user_version = {i};COMMIT;")
+
+    @property
+    def schema_version(self) -> int:
+        return self.conn.execute("PRAGMA user_version").fetchone()[0]
+
+    def execute(self, sql: str, params=()) -> sqlite3.Cursor:
+        with self.lock:
+            return self.conn.execute(sql, params)
+
+    def query(self, sql: str, params=()) -> list[sqlite3.Row]:
+        with self.lock:
+            return self.conn.execute(sql, params).fetchall()
+
+    def transaction(self):
+        return _Tx(self)
+
+    def close(self) -> None:
+        with self.lock:
+            self.conn.close()
+
+
+class _Tx:
+    def __init__(self, store: Store):
+        self.store = store
+
+    def __enter__(self) -> sqlite3.Connection:
+        self.store.lock.acquire()
+        self.store.conn.execute("BEGIN")
+        return self.store.conn
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        try:
+            self.store.conn.execute("ROLLBACK" if exc_type else "COMMIT")
+        finally:
+            self.store.lock.release()
