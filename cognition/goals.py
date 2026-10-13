@@ -136,8 +136,28 @@ class Goals:
             self._event(c, gid, "proposed", justification)
         return self.get(gid)
 
-    def progress(self, gid: str, note: str) -> dict:
-        """Une action au service d'un objectif actif. Compte dans le budget."""
+    def count_action(self, gid: str, tool: str) -> dict | None:
+        """Un vrai appel d'outil fait pendant que cet objectif est en cours.
+
+        Le budget comptait seulement ce que le modèle DÉCLARAIT (progress) ; il
+        compte maintenant aussi ce qu'il FAIT. Pas de détection de boucle ici :
+        répéter le même outil n'est pas répéter la même note. None si l'objectif
+        n'est plus actif."""
+        g = self.get(gid)
+        if not g or g["status"] != "active":
+            return None
+        with self.store.transaction() as c:
+            spent = g["spent_actions"] + 1
+            c.execute("UPDATE goals SET spent_actions=?, updated_at=? WHERE id=?",
+                      (spent, self._ts(), gid))
+            self._event(c, gid, "action", f"outil {tool}"[:300], by="system")
+            if spent >= g["budget_actions"]:
+                self._block(c, gid, f"budget de {g['budget_actions']} actions épuisé")
+        return self.get(gid)
+
+    def progress(self, gid: str, note: str, *, count: bool = True) -> dict:
+        """Une action au service d'un objectif actif. Compte dans le budget,
+        sauf si les outils réellement appelés pour lui l'ont déjà compté."""
         g = self.get(gid)
         if not g:
             raise GoalError("Objectif introuvable.")
@@ -145,7 +165,7 @@ class Goals:
             raise GoalError(f"Cet objectif est « {g['status']} », pas actif : rien n'est compté.")
         note = (note or "").strip()[:300]
         with self.store.transaction() as c:
-            spent = g["spent_actions"] + 1
+            spent = g["spent_actions"] + (1 if count else 0)
             last = [r[0] for r in c.execute(
                 "SELECT note FROM goal_events WHERE goal_id=? AND kind='progress' "
                 "ORDER BY id DESC LIMIT ?", (gid, REPEAT_LIMIT - 1)).fetchall()]

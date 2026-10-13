@@ -979,6 +979,38 @@ def _goal_budget_loop():
     return "budget 3/3 -> bloqué (+frustration) ; 3x la même note -> boucle détectée"
 
 
+@check("61 les vrais appels d'outils comptent dans le budget de l'objectif en cours")
+def _goal_counts_real_tools():
+    import cognition.runtime as RT
+    c = _cog("goal_auto")
+    g = c.goals.propose("Préparer le voyage", budget_actions=4, origin="user", **_GOAL)
+    c.goal_approve(g["id"])
+    c.observe_tool("web_search", {"q": "train"}, "Found 3 results", {})      # pas encore en cours
+    assert c.goals.get(g["id"])["spent_actions"] == 0, "compté sans objectif en cours"
+    c.goal_progress(g["id"], "je cherche les trains")                        # 1 (rien n'était compté)
+    c.observe_tool("web_search", {"q": "billet"}, "Found 3 results", {})     # 2
+    c.observe_tool("self_state", {}, "State", {})                             # neutre
+    c.observe_tool("recall_memory", {}, "nothing", {})                        # neutre
+    assert c.goals.get(g["id"])["spent_actions"] == 2, c.goals.get(g["id"])
+    c.goal_progress(g["id"], "billets trouvés")                              # déjà compté : +0
+    assert c.goals.get(g["id"])["spent_actions"] == 2, "la note a recompté une action déjà faite"
+    c.observe_tool("file_controller", {}, "Created a.txt", {})               # 3
+    c.observe_tool("web_search", {}, "Found 2 results", {})                  # 4 -> budget épuisé
+    after = c.goals.get(g["id"])
+    assert after["status"] == "blocked" and "budget" in after["closed_reason"], after
+    kinds = [e["kind"] for e in c.goals.history(g["id"])]
+    assert kinds.count("action") == 3, kinds
+    # la fenêtre se referme : plus rien n'est compté
+    h = c.goals.propose("Ranger le garage", budget_actions=10, origin="user", **_GOAL)
+    c.goal_approve(h["id"])
+    c.goal_progress(h["id"], "début")
+    c._goal_focus = (h["id"], c._goal_focus[1] - RT.GOAL_FOCUS_S - 1)
+    c.observe_tool("web_search", {}, "Found 1 result", {})
+    assert c.goals.get(h["id"])["spent_actions"] == 1, c.goals.get(h["id"])
+    c.close()
+    return "3 vrais outils comptés, outils neutres ignorés, pas de double compte, fenêtre de 10 min"
+
+
 @check("40 échéance dépassée -> expiré ; l'historique reste")
 def _goal_expiry():
     clock = _Clock(datetime(2026, 10, 13, tzinfo=timezone.utc))

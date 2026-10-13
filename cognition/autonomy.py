@@ -358,7 +358,11 @@ class Autonomy:
             except Exception as e:
                 result = f"Tool '{action}' failed: {e}"
         self.cog.observe_tool(action, args, result)
-        self.cog.goal_progress(goal["id"], f"[auto] {action}: {args.get('query', '')}"[:200])
+        # L'outil a pu épuiser le budget en étant compté : la note n'a alors
+        # plus d'objectif actif où s'inscrire, et ce n'est pas une erreur.
+        current = self.cog.goals.get(goal["id"])
+        if current and current["status"] == "active":
+            self.cog.goal_progress(goal["id"], f"[auto] {action}: {args.get('query', '')}"[:200])
         return result
 
     def _step(self, run_id, proposal, decision, action, args, result, reason) -> None:

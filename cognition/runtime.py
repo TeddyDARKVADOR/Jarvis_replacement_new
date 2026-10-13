@@ -74,6 +74,13 @@ def _safe(default=None):
     return deco
 
 
+#: Combien de temps un objectif reste « en cours » après une note de progrès.
+GOAL_FOCUS_S = 600.0
+#: Ces outils ne servent pas un objectif : se regarder, se souvenir, répondre.
+GOAL_NEUTRAL_TOOLS = {"goals", "self_state", "capabilities", "recall_memory", "recall_episodes",
+                      "close_camera", "usage_report", "save_memory"}
+
+
 class _Lane:
     """Un fil de fond et sa file. Synchrone si `background=False` (tests)."""
 
@@ -149,6 +156,10 @@ class Cognition:
         # seulement à turn_complete : la preuve est évaluée au tour suivant.
         self._pending_saves: list[tuple[str, str, str]] = []
         self._pending_lock = threading.Lock()
+        # L'objectif en cours : celui dont le modèle vient de noter un progrès.
+        # Les outils réellement appelés dans la fenêtre comptent dans SON budget.
+        self._goal_focus: tuple[str, float] | None = None
+        self._auto_since_progress = 0
         self._affect_lock = threading.Lock()
         self.affect = self._load_affect()
         self._announced: set[str] = set(A.directives(self.affect))
@@ -292,6 +303,11 @@ class Cognition:
                      outcome="error" if failed else "ok")
         if events:          # les outils neutres (close_camera, self_state) ne comptent pas
             self._submit(selfmodel.record_outcome, self.store, name, not failed)
+            if self._goal_focus:
+                # Synchrone, et seulement quand un objectif est en cours : la note
+                # de progrès qui suit doit voir ce compte, sinon l'action compte
+                # deux fois (l'autonomie note juste après chaque outil).
+                self._count_for_goal(name)
         fresh = self._appraise(events, tool=name)
         # Le prompt système est figé à la connexion. Le seul canal qui atteint
         # le modèle pendant la session sans déclencher de prise de parole est la
@@ -507,10 +523,32 @@ class Cognition:
 
     def goal_progress(self, ref: str, note: str) -> dict:
         g = self.goal_find(ref)
-        after = self.goals.progress(g["id"], note)
+        # Déjà compté par les vrais appels d'outils ? La note ne recompte pas.
+        counted = bool(self._goal_focus and self._goal_focus[0] == g["id"] and self._auto_since_progress)
+        after = self.goals.progress(g["id"], note, count=not counted)
+        self._goal_focus = (g["id"], time.monotonic()) if after["status"] == "active" else None
+        self._auto_since_progress = 0
         if after["status"] == "blocked":
             self._appraise(["goal_blocked"])
         return after
+
+    def _count_for_goal(self, tool: str) -> None:
+        """Un vrai appel d'outil pendant qu'un objectif est en cours : il compte
+        dans son budget (limite de README : le budget ne comptait que ce que le
+        modèle déclarait)."""
+        if not self._goal_focus or tool in GOAL_NEUTRAL_TOOLS:
+            return
+        gid, since = self._goal_focus
+        if time.monotonic() - since > GOAL_FOCUS_S:
+            self._goal_focus, self._auto_since_progress = None, 0
+            return
+        after = self.goals.count_action(gid, tool)
+        if after is None or after["status"] != "active":
+            self._goal_focus, self._auto_since_progress = None, 0
+            if after is not None and after["status"] == "blocked":
+                self._appraise(["goal_blocked"])
+            return
+        self._auto_since_progress += 1
 
     def goal_withdraw(self, ref: str) -> dict:
         return self.goals.withdraw(self.goal_find(ref)["id"])
