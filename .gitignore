@@ -83,3 +83,4 @@ jarvis-preprod/reports/
 eval_lab/runs/
 # Rejouable a l'identique depuis sa graine (`generate --seed`), donc pas versionne.
 eval_lab/corpus/generated/
+memory/reminders.json

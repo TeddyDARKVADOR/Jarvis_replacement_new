@@ -1898,6 +1898,14 @@ class JarvisLive:
             print(f"[Dashboard] Disabled: {e}")
             self._dashboard = None
 
+        # Reminders delivered by JARVIS himself while he runs (reminders/):
+        # HUD card, phone notification, voice. Absent package → V1 behaviour.
+        try:
+            import reminders
+            reminders.attach(self)
+        except Exception as e:
+            print(f"[Reminders] Disabled: {e}")
+
         while True:
             try:
                 print("[JARVIS] Connecting...")

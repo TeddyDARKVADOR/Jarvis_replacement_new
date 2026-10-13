@@ -50,6 +50,8 @@ python -m client_desktop --selftest
 python -m cognition.selftest
 python -m eval_lab.selftest
 python -m core.code_workspace.selftest
+python -m reminders.selftest
+python -m capabilities.verify --quick   # sondes réelles des outils
 ```
 
 Les selftests `server`, `client_desktop` et `eval_lab` échouent tant qu'une

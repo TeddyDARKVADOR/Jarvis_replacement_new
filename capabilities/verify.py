@@ -262,6 +262,7 @@ SUITES = {
     "core.code_workspace.selftest": ["code_studio"],
     "core.token_usage_selftest": [],
     "actions.repository_review_selftest": [],
+    "reminders.selftest": [],
 }
 
 
