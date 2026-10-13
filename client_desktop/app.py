@@ -112,6 +112,17 @@ class JarvisDesktop(QObject):
         # background thread — see `device.CapabilityProbe`.
         self._probe = CapabilityProbe(logger=self.store.log)
 
+        # offline/ (optionnel) : Oracle injoignable 20 s → Whisper + Ollama sur ce PC.
+        self._offline = None
+        try:
+            import offline
+            self._offline = offline.Supervisor(
+                lambda: offline.OfflineVoice(self.store.log, self.settings.input_device,
+                                             self.settings.output_device),
+                self.store.log)
+        except Exception:
+            pass
+
         self._bridge = _Bridge()
         self._bridge.event.connect(self._on_store_event)
         self.store.subscribe(lambda kind, payload: self._bridge.event.emit(kind, payload))
@@ -336,6 +347,11 @@ class JarvisDesktop(QObject):
         # command went unanswered.
         if kind == "message" and getattr(payload, "from_jarvis", False):
             self._last_jarvis_at = time.monotonic()
+        if kind == "link" and self._offline is not None and self.settings.is_configured:
+            if payload is LinkState.CONNECTED:
+                self._offline.on_up()
+            elif payload in (LinkState.DISCONNECTED, LinkState.RECONNECTING, LinkState.ERROR):
+                self._offline.on_down()
 
         # Asked for by the user, through JARVIS: not a notification.
         if kind == "graph" and isinstance(payload, dict):
@@ -404,6 +420,8 @@ class JarvisDesktop(QObject):
 
     def shutdown(self) -> None:
         self._timer.stop()
+        if self._offline is not None:
+            self._offline.on_up()        # coupe la voix hors-ligne si elle tourne
         self.gate.close()
         self.wake.stop()
         self.microphone.stop()

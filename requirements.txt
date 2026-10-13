@@ -42,6 +42,14 @@ cryptography
 python-multipart
 qrcode[pil]
 
+# ── Offline relay (offline/) and Agent Skills (extensions/) ─────────────────
+faster-whisper           # local speech-to-text when Gemini or Oracle is down
+pyyaml                   # SKILL.md front matter
+# Offline voice: SAPI on Windows (pywin32 below), `sudo apt install espeak-ng`
+# on Linux, `say` on macOS. The brain is Ollama (https://ollama.com) with any
+# tool-capable model, e.g. `ollama pull qwen3:4b-instruct`. Optional, better
+# speech detection: `pip install webrtcvad-wheels`.
+
 # ── Windows-only (pip skips these automatically on macOS / Linux) ────────────
 comtypes;   sys_platform == "win32"
 pycaw;      sys_platform == "win32"

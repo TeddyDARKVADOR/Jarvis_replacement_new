@@ -192,6 +192,19 @@ def _capabilities(tmp: Path) -> str:
     return "find répond depuis le graphe"
 
 
+def _mcp(tmp: Path) -> str:
+    out = importlib.import_module("plugins.mcp_bridge").run({"action": "list"})
+    assert out and ("Aucun serveur MCP" in out or "outil(s)" in out or "indisponible" in out), out[:200]
+    return "list répond (" + ("aucun serveur configuré" if "Aucun serveur" in out else "serveurs listés") + ")"
+
+
+def _skills(tmp: Path) -> str:
+    mod = importlib.import_module("plugins.skills")
+    _expect(mod.run({"action": "list"}), "preparer-un-voyage")
+    _expect(mod.run({"action": "use", "name": "fin-de-journee"}), "recall_episodes")
+    return "index et lecture d'un skill livré"
+
+
 def _health(tmp: Path) -> str:
     out = importlib.import_module("plugins.health_diagnostic").run({})
     return f"diagnostic lu ({len(out)} car.)"
@@ -237,6 +250,8 @@ PROBES = {
     "repository_review": ("reel", _repository_review),
     "usage_report": ("reel", _usage_report),
     "capabilities": ("reel", _capabilities),
+    "mcp": ("reel", _mcp),
+    "skills": ("reel", _skills),
     "local_health_check": ("vide", _health),
     "open_itinerary": ("vide", _itinerary),
     "open_app": ("vide", _dry("actions.open_app")),
