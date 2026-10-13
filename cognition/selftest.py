@@ -20,6 +20,7 @@ Ce qui est vérifié (cf. docs/cognition/RECHERCHE.md §6, phases 1–2) :
   26–32 moteur émotionnel : règles, décroissance, sécurité, influence, rapport
   33–35 réflexion citée, déclenchement, modèle de soi
   36–41 objectifs : règles, porte CONFIRMER, budgets, boucles, échéances, prompt
+  42–47 modèle de soi : calibration outils et souvenirs, points faibles, panneau HUD
 """
 from __future__ import annotations
 
@@ -117,7 +118,7 @@ def _reverse_deps_and_guards():
             continue
         if "from cognition" in src or "import cognition" in src:
             importers.append(rel)
-    assert sorted(importers) == ["main.py", "plugins/cognition_goals.py",
+    assert sorted(importers) == ["local_hud.py", "main.py", "plugins/cognition_goals.py",
                                  "plugins/cognition_memory.py",
                                  "plugins/cognition_self.py"], importers
     lines = (BASE_DIR / "main.py").read_text(encoding="utf-8").splitlines()
@@ -164,14 +165,15 @@ def _removal():
 @check("4 schéma créé, versionné, FTS5 opérationnel")
 def _schema():
     s = Store(TMP / "schema.db")
-    assert s.schema_version == 3
+    assert s.schema_version == 4
     tables = {r["name"] for r in s.query("SELECT name FROM sqlite_master WHERE type='table'")}
     for t in ("events", "memories", "memories_fts", "memory_links", "constitution_versions",
-              "affect_state", "affect_log", "meta", "goals", "goal_events"):
+              "affect_state", "affect_log", "meta", "goals", "goal_events",
+              "tool_outcomes", "memory_reviews"):
         assert t in tables, t
     s.close()
     s = Store(TMP / "schema.db")                  # réouverture : pas de remigration
-    assert s.schema_version == 3
+    assert s.schema_version == 4
     s.close()
     # Une base v1 (celle du commit précédent) migre sans perte.
     import sqlite3
@@ -182,9 +184,9 @@ def _schema():
     con.execute("INSERT INTO events(ts, kind) VALUES ('2026-10-13', 'system')")
     con.commit(); con.close()
     s = Store(old)
-    assert s.schema_version == 3 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
+    assert s.schema_version == 4 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
     s.close()
-    return "user_version=3, 10 tables ; une base v1 migre en gardant ses données"
+    return "user_version=4, 12 tables ; une base v1 migre en gardant ses données"
 
 
 @check("5 conservation après redémarrage (fermeture puis réouverture)")
@@ -998,6 +1000,127 @@ def _goal_prompt():
     assert "Préparer le marathon" in c.self_report()
     c.close()
     return f"1 actif listé, 1 proposé seulement compté ; {len(block)} car."
+
+
+# ── 42–47. Modèle de soi, calibration, panneau HUD ───────────────────────────
+
+from cognition import selfmodel as SM     # noqa: E402
+
+
+@check("42 calibration : Brier et ECE exacts sur un cas calculé à la main")
+def _calib_math():
+    pairs = [(0.8, 1), (0.8, 1), (0.8, 0), (0.2, 0)]
+    assert abs(SM.brier(pairs) - 0.19) < 1e-9, SM.brier(pairs)
+    assert abs(SM.ece(pairs) - 0.15) < 1e-9, SM.ece(pairs)
+    assert SM.brier([]) is None and SM.ece([]) is None
+    perfect = [(1.0, 1)] * 5 + [(0.0, 0)] * 5
+    assert SM.brier(perfect) == 0 and SM.ece(perfect) == 0
+    return "Brier 0.19 et ECE 0.15 retrouvés ; parfait = 0 ; vide = indéfini"
+
+
+@check("43 attente AVANT le résultat (Laplace) ; outil défaillant mesuré -> signalé au modèle")
+def _tool_selfmodel():
+    c = _cog("selfmodel")
+    p0, n0 = SM.expected_success(c.store, "web_search")
+    assert (p0, n0) == (0.5, 0)
+    assert "SELF-KNOWLEDGE" not in c.prompt_block()
+    for i in range(8):
+        ok = i % 4 == 0                            # 2 réussites sur 8
+        c.observe_tool("web_search", {}, "Found 3 results" if ok else
+                       "Tool 'web_search' failed: timeout", {})
+    c.observe_tool("set_presence", {}, "ok", {})   # neutre : non compté
+    rows = c.store.query("SELECT predicted, outcome FROM tool_outcomes ORDER BY id")
+    assert len(rows) == 8 and rows[0]["predicted"] == 0.5 and abs(rows[1]["predicted"] - 2 / 3) < 1e-9
+    p, n = SM.expected_success(c.store, "web_search")
+    assert n == 8 and abs(p - 3 / 10) < 1e-9, (p, n)
+    block = c.prompt_block()
+    assert "SELF-KNOWLEDGE" in block and "web_search (expected success 30%" in block, block
+    rep = c.self_report("web_search")
+    assert "Tool web_search: expected success 30% over 8" in rep and "Brier" in rep
+    assert "not evidence of what the language model itself experiences" in rep
+    c.close()
+    return "1re attente 50 %, puis 2/3 après un succès ; 2/8 -> 30 % -> signalé dans le prompt"
+
+
+@check("44 revue des souvenirs par l'utilisateur : valider, rejeter, oublier ; calibration par source")
+def _memory_review():
+    c = _cog("review")
+    a = c.memory.add("sister: Ayse", kind="semantic", source="user_stated", slot="r/sister")
+    b = c.memory.add("city: Paris", kind="semantic", source="model_inferred", slot="r/city")
+    d = c.memory.add("job: nurse", kind="semantic", source="model_inferred", slot="r/job")
+    e = c.memory.add("secret: 4471", kind="semantic", source="user_stated", slot="r/secret")
+    assert c.hud("cognition.memory_review", {"id": a, "verdict": "validate"})["ok"]
+    assert c.hud("cognition.memory_review", {"id": b, "verdict": "reject"})["ok"]
+    assert c.hud("cognition.memory_review", {"id": d, "verdict": "validate"})["ok"]
+    assert c.hud("cognition.memory_review", {"id": e, "verdict": "forget"})["ok"]
+    assert c.memory.get(a)["status"] == "validated" and c.memory.get(a)["confidence"] >= 0.95
+    assert c.memory.get(b)["status"] == "retracted" and "Paris" not in c.recall("city")
+    assert c.memory.get(e) is None and not c.memory.search("4471")
+    cal = SM.memory_calibration(c.store)
+    assert cal["n"] == 3 and cal["by_source"]["model_inferred"]["validated_rate"] == 0.5
+    assert "error" in c.hud("cognition.memory_review", {"id": a, "verdict": "trust_me"})
+    assert "error" in c.hud("cognition.memory_review", {"id": "nope", "verdict": "validate"})
+    assert c.store.query("SELECT count(*) n FROM events WHERE actor='user'")[0]["n"] >= 4
+    c.close()
+    return "validé 0.95, rejeté jamais rappelé, oublié effacé ; model_inferred validé 1 fois sur 2"
+
+
+@check("45 panneau : vue d'ensemble complète, vues de souvenirs, objectifs pilotables au clic")
+def _hud_overview():
+    c = _cog("hudov")
+    g = c.goals.propose("Préparer le marathon", origin="user", **_GOAL)
+    c.memory.add("Teddy aime courir", kind="reflective", source="reflection")
+    c.memory.add("Teddy habite à Lyon", kind="semantic", source="model_inferred", slot="i/city")
+    ov = c.hud("cognition.overview")
+    for k in ("affect", "directives", "causes", "goals", "memory", "tools", "calibration",
+              "limits", "providers", "constitution"):
+        assert k in ov, k
+    assert len(ov["affect"]) == 6 and ov["goals"][0]["status"] == "proposed"
+    mem = c.hud("cognition.memories", {"view": "unverified"})
+    assert [m["content"] for m in mem["items"]] == ["Teddy habite à Lyon"], mem
+    assert mem["totals"]["reflective"] == 1
+    assert c.hud("cognition.memories", {"view": "reflective", "query": "courir"})["items"]
+    assert "error" in c.hud("cognition.memories", {"view": "DROP TABLE"})
+    r = c.hud("cognition.goal_action", {"id": g["id"], "action": "approve"})
+    assert r["ok"] and r["goal"]["status"] == "active"
+    assert "error" in c.hud("cognition.unknown")
+    import json as _j
+    _j.dumps(ov)                                  # tout est sérialisable pour la page
+    c.close()
+    return "10 sections ; vue « non vérifiés » exacte ; vue inconnue refusée ; objectif approuvé au clic"
+
+
+@check("46 aucun outil du modèle ne mène au panneau (revue, approbation au clic)")
+def _hud_unreachable():
+    for f in (BASE_DIR / "plugins").glob("*.py"):
+        src = f.read_text(encoding="utf-8")
+        for needle in ("cognition.hud", ".hud(", "review_memory", "memory_review", "goal_action"):
+            assert needle not in src, f"{f.name} contient {needle}"
+    import cognition.hud as H
+    assert set(H._OPS) == {"cognition.overview", "cognition.memories",
+                           "cognition.memory_review", "cognition.goal_action"}
+    return "0 plugin ne touche au panneau ; 4 opérations, toutes listées"
+
+
+@check("47 HUD local : LocalBackend route cognition.* vers l'instance active")
+def _local_backend():
+    import cognition.runtime as rt
+    from local_hud import LocalBackend
+
+    class _UI:
+        local_mode = True
+
+    lb = LocalBackend(_UI(), {})
+    assert lb.capabilities().get("cognition") is True
+    saved, rt._active = rt._active, None
+    try:
+        assert "error" in lb.call("cognition.overview")
+        rt._active = _cog("backend")
+        assert "affect" in lb.call("cognition.overview")
+        rt._active.close()
+    finally:
+        rt._active = saved
+    return "absente -> erreur lisible ; active -> vue d'ensemble"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

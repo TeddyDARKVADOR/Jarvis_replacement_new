@@ -53,6 +53,7 @@
       <button id="btn-face" class="ico" title="Visage 3D / Réacteur"><svg viewBox="0 0 24 24"><circle cx="12" cy="10" r="6"/><path d="M5 21c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg></button>
       <button id="btn-palette" class="ico" title="Couleur du HUD"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
       <button id="btn-studio" class="ico" title="Jarvis Code Studio : son atelier de développement"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/></svg></button>
+      <button id="btn-mind" class="ico" title="Esprit : état interne, objectifs, souvenirs, modèle de soi"><svg viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 3 3h1V4z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-3 3h-1V4z"/><path d="M10 9H8M14 9h2M10 15H8M14 15h2"/></svg></button>
       <button id="btn-help" class="ico" title="Aide et raccourcis (F1)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5V14M12 17.5v.01"/></svg></button>
       <button id="btn-settings" class="ico" title="Paramètres : connexion, jeton, audio… (Ctrl+,)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
       <span class="sep"></span>
@@ -354,6 +355,66 @@
       <button class="act" id="s-cancel">FERMER <kbd>Échap</kbd></button>
       <button class="act primary" id="s-save">ENREGISTRER</button>
     </footer>
+  </div>
+</div>
+
+<!-- Panneau ESPRIT — voir js/mind.js et cognition/hud.py. Tout ce qui s'affiche
+     ici est lu dans memory/cognition.db : des variables calculées et des données
+     enregistrées, pas un ressenti. Un clic ici est une décision de l'utilisateur. -->
+<div id="mind" class="overlay" hidden>
+  <div class="modal mind">
+    <header class="st-head">
+      <div class="st-brand">
+        <div class="st-kicker">ARCHITECTURE COGNITIVE</div>
+        <div class="st-title">ESPRIT</div>
+        <div class="st-request" id="mind-sub">Variables calculées et données enregistrées — pas un ressenti.</div>
+      </div>
+      <nav class="mind-tabs" id="mind-tabs">
+        <button data-tab="state" class="sel">ÉTAT</button>
+        <button data-tab="goals">OBJECTIFS <span id="mind-goal-badge" class="mind-badge" hidden></span></button>
+        <button data-tab="memories">SOUVENIRS <span id="mind-mem-badge" class="mind-badge" hidden></span></button>
+        <button data-tab="self">MODÈLE DE SOI</button>
+      </nav>
+      <button class="ico" id="mind-close" title="Fermer (Échap)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </header>
+    <div id="mind-unavailable" class="set-note accent mind-unavailable" hidden>
+      Le panneau ESPRIT lit la base cognitive de <b>ce PC</b> : il n'est disponible qu'en
+      mode local (<b>python main.py --local</b>).
+    </div>
+    <div class="mind-body" id="mind-body">
+      <section data-pane="state">
+        <div id="mind-affect" class="mind-affect"></div>
+        <h4>CONSIGNES ACTIVES <small>ce que l'état change dans son comportement</small></h4>
+        <div id="mind-directives" class="mind-directives"></div>
+        <h4>DERNIÈRES CAUSES <small>chaque changement vient d'un événement nommé</small></h4>
+        <div id="mind-causes" class="mind-log"></div>
+      </section>
+      <section data-pane="goals" hidden>
+        <div class="set-note">JARVIS <b>propose</b>, vous <b>disposez</b> : un objectif ne devient actif, atteint ou annulé que par vous.</div>
+        <div id="mind-goals" class="mind-cards"></div>
+        <h4>CLOS RÉCEMMENT</h4>
+        <div id="mind-closed" class="mind-log"></div>
+      </section>
+      <section data-pane="memories" hidden>
+        <div class="mem-tools">
+          <input id="mind-q" type="text" placeholder="Rechercher dans ses souvenirs…" autocomplete="off">
+        </div>
+        <div id="mind-views" class="mind-views"></div>
+        <div class="set-note">✓ <b>Valider</b> : c'est vrai (il s'en servira comme d'un fait). ✗ <b>Rejeter</b> : c'est faux (gardé dans l'historique, plus jamais rappelé). 🗑 <b>Oublier</b> : effacé pour de bon.</div>
+        <div id="mind-mem" class="mem-list"></div>
+      </section>
+      <section data-pane="self" hidden>
+        <h4>FIABILITÉ MESURÉE DES OUTILS <small>attente de réussite (Laplace) sur ses 50 derniers essais</small></h4>
+        <div id="mind-tools" class="mind-tools"></div>
+        <h4>CALIBRATION <small>ses attentes correspondent-elles à ce qui arrive ? 0 = parfait</small></h4>
+        <div id="mind-calib" class="mind-calib"></div>
+        <h4>LIMITES IMPOSÉES PAR LE CODE <small>vraies quoi qu'il « pense »</small></h4>
+        <ul id="mind-limits" class="mind-limits"></ul>
+        <h4>GÉNÉRATEURS DE SECOURS</h4>
+        <div id="mind-providers" class="mind-log"></div>
+      </section>
+    </div>
+    <footer class="mind-foot"><span id="mind-status"></span><span id="mind-meta"></span></footer>
   </div>
 </div>
 

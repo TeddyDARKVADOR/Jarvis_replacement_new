@@ -36,7 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import affect as A
-from . import policy, reflection
+from . import policy, reflection, selfmodel
 from .constitution import ConstitutionDrift, load as load_constitution, register
 from .goals import GoalError, Goals
 from .memory import Memory, slot_for
@@ -288,6 +288,8 @@ class Cognition:
         self._submit(self.memory.log_event, "tool_result", session_id=self.session_id,
                      actor=name, summary=text[:300], payload={"args": safe_args},
                      outcome="error" if failed else "ok")
+        if events:          # les outils neutres (avatar, self_state) ne comptent pas
+            self._submit(selfmodel.record_outcome, self.store, name, not failed)
         fresh = self._appraise(events, tool=name)
         # Le prompt système est figé à la connexion. Le seul canal qui atteint
         # le modèle pendant la session sans déclencher de prise de parole est la
@@ -389,6 +391,11 @@ class Cognition:
         goal_lines = self.goals.prompt_lines()
         if goal_lines:
             parts.append("\n".join(goal_lines))
+        weak = selfmodel.weak_spots(self.store)[:2]
+        if weak:
+            parts.append("[SELF-KNOWLEDGE — measured, not guessed] Recently unreliable: " + "; ".join(
+                f"{w['tool']} (expected success {w['expected']:.0%} over {w['n']} tries)"
+                for w in weak) + ". Say so before relying on them; prefer another way if one exists.")
         episodes = self.memory.recent("episodic", limit=3)
         if episodes:
             lines = ["[EARLIER CONVERSATIONS — your own archive, summaries not transcripts]"]
@@ -419,14 +426,19 @@ class Cognition:
         return "Memories found:\n" + "\n".join(lines)
 
     @_safe(default="Self-state unavailable.")
-    def self_report(self) -> str:
-        """Ce que JARVIS peut dire de lui-même, lu dans les données, pas imaginé."""
+    def self_report(self, about: str = "") -> str:
+        """Ce que JARVIS peut dire de lui-même, lu dans les données, pas imaginé.
+        `about` : un outil dont on veut la fiabilité mesurée."""
         st = self.current_affect()
         causes = self.store.query(
             "SELECT ts, var, before, after, rule FROM affect_log ORDER BY id DESC LIMIT 6")
         counts = self.memory.counts()
         unverified = sum(v.get("proposed", 0) for v in counts.values())
+        contested = sum(v.get("contested", 0) for v in counts.values())
         tools = sorted(self.tool_names() or [])
+        rel = selfmodel.reliability(self.store)
+        cal = selfmodel.tool_calibration(self.store)
+        mcal = selfmodel.memory_calibration(self.store)
         out = [
             "These are recorded variables computed by rules from events — not felt emotions.",
             "State: " + "; ".join(f"{n} {st.values[n]:.2f} ({A._word(n, st.values[n])})" for n in A.VARS),
@@ -434,12 +446,36 @@ class Cognition:
             "Recent causes: " + ("; ".join(
                 f"{r['var']} {r['before']:.2f}->{r['after']:.2f} after {r['rule']}" for r in causes)
                 or "none recorded"),
-            f"Memory: {sum(sum(v.values()) for v in counts.values())} items, {unverified} unverified.",
+            f"Memory: {sum(sum(v.values()) for v in counts.values())} items, {unverified} unverified, "
+            f"{contested} contested.",
             "Goals: " + ("; ".join(self.goals.describe(g) for g in self.goals.open_goals())
                          or "none open"),
             f"Constitution v{self.constitution.version}. Tools loaded: {len(tools)}.",
         ]
+        if about:
+            hit = next((r for r in rel if r["tool"] == about.strip()), None)
+            out.append(f"Tool {about}: " + (
+                f"expected success {hit['expected']:.0%} over {hit['n']} recorded tries"
+                if hit else "no recorded tries yet"))
+        weak = [r for r in rel if r["weak"]]
+        if weak:
+            out.append("Measured weak spots: " + ", ".join(
+                f"{r['tool']} {r['expected']:.0%}" for r in weak))
+        if cal["n"]:
+            out.append(f"Self-prediction calibration on {cal['n']} tool calls: Brier {cal['brier']}, "
+                       f"ECE {cal['ece']} (0 = perfect).")
+        if mcal["n"]:
+            out.append(f"Memory confidence vs the user's verdicts ({mcal['n']} reviews): "
+                       f"Brier {mcal['brier']}.")
+        out.append("Hard limits (enforced by code): " + " ".join(selfmodel.HARD_LIMITS))
+        out.append("This describes the architecture's records; it is not evidence of what the "
+                   "language model itself experiences or can introspect.")
         return "\n".join(out)
+
+    def hud(self, op: str, data: dict | None = None) -> dict:
+        """Le panneau ESPRIT (clics de l'utilisateur uniquement, cf. hud.py)."""
+        from . import hud
+        return hud.call(self, op, data)
 
     # ── Objectifs (appelés par plugins/cognition_goals.py) ───────────────────
     # Ce que le modèle peut faire seul : proposer, noter un progrès, retirer sa

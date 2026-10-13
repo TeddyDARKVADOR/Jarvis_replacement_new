@@ -13,9 +13,14 @@ PLUGIN = {
         "changes, active guidance, memory counts. Call it whenever the user asks how you "
         "feel, how you are doing, what is going on inside you, or why you act a certain "
         "way — and answer from its numbers, never from imagination. These are computed "
-        "variables, not felt emotions: say so if relevant."
+        "variables, not felt emotions: say so if relevant. Also gives your measured "
+        "reliability per tool, calibration and hard limits: use it when asked what you can "
+        "or cannot do, or how sure you are."
     ),
-    "parameters": {"type": "OBJECT", "properties": {}, "required": []},
+    "parameters": {"type": "OBJECT", "properties": {
+        "about": {"type": "STRING",
+                  "description": "Optional: a tool name, to get its measured reliability"},
+    }, "required": []},
 }
 
 
@@ -27,4 +32,4 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
     cog = get_active()
     if cog is None:
         return "My internal-state module only runs on the local desktop brain for now."
-    return cog.self_report()
+    return cog.self_report(str((parameters or {}).get("about", "") or ""))

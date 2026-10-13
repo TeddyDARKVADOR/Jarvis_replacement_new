@@ -143,7 +143,28 @@ CREATE TABLE goal_events (
 );
 """
 
-_MIGRATIONS = [_V1, _V2, _V3]
+# Phase 6 : attentes de réussite des outils, verdicts de l'utilisateur sur les
+# souvenirs. Les deux sont des paires (prédiction, résultat) : la calibration.
+_V4 = """
+CREATE TABLE tool_outcomes (
+  id         INTEGER PRIMARY KEY,
+  ts         TEXT NOT NULL,
+  tool       TEXT NOT NULL,
+  predicted  REAL NOT NULL,          -- attente AVANT le résultat
+  outcome    INTEGER NOT NULL        -- 1 réussi, 0 échoué
+);
+CREATE INDEX tool_outcomes_tool ON tool_outcomes(tool, id);
+CREATE TABLE memory_reviews (
+  id         INTEGER PRIMARY KEY,
+  ts         TEXT NOT NULL,
+  memory_id  TEXT NOT NULL,          -- pas de clé étrangère : « forget » efface le souvenir
+  source     TEXT NOT NULL,
+  confidence REAL NOT NULL,          -- la confiance qu'il avait au moment du verdict
+  verdict    TEXT NOT NULL           -- validate|reject|forget
+);
+"""
+
+_MIGRATIONS = [_V1, _V2, _V3, _V4]
 
 
 class Store:

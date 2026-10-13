@@ -48,6 +48,23 @@ fenêtre développeur.
 
 ---
 
+## Le panneau ESPRIT (bouton cerveau, mode local)
+
+Ce que l'architecture cognitive (`cognition/`) enregistre, lu dans
+`memory/cognition.db` : des variables calculées et des données, pas un ressenti.
+Disponible seulement en mode local ; en mode Oracle, le panneau dit pourquoi.
+
+| Onglet | Contenu |
+|---|---|
+| **ÉTAT** | Les 6 variables affectives avec leur ligne de base, les consignes actives (ce que l'état change dans son comportement) et la cause nommée de chaque changement récent. |
+| **OBJECTIFS** | Objectifs ouverts : **APPROUVER**, **RELANCER** (objectif bloqué), **ATTEINT**, **ANNULER** (double clic). JARVIS propose, vous disposez. |
+| **SOUVENIRS** | Recherche, et vues tous / non vérifiés / contestés / réflexions / épisodes / validés. ✓ valider, ✗ rejeter (plus jamais rappelé), 🗑 oublier (double clic, effacé pour de bon). |
+| **MODÈLE DE SOI** | Fiabilité mesurée de chaque outil, calibration (Brier, ECE) de ses attentes et de sa confiance dans les souvenirs face à vos verdicts, limites imposées par le code, générateurs de secours. |
+
+Un clic ici est une décision de l'utilisateur : aucun outil du modèle ne mène à
+ces opérations (vérifié par `python -m cognition.selftest`, contrôle 46).
+Code : [web/js/mind.js](web/js/mind.js) · [cognition/hud.py](../../cognition/hud.py).
+
 ## Ce qui a changé, et ce qui n'a pas changé
 
 **Rien du client existant n'a été modifié.** Le contrôleur (`app.JarvisDesktop`),

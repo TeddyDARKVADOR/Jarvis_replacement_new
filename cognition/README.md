@@ -1,4 +1,4 @@
-# `cognition/` — architecture cognitive persistante (phases 1–5)
+# `cognition/` — architecture cognitive persistante (phases 1–6)
 
 Paquet racine au sens de [docs/V2_CONTRACT.md](../docs/V2_CONTRACT.md). Actif
 **en mode local uniquement** (`python main.py --local`) pour l'instant. Supprimer
@@ -7,7 +7,7 @@ chaque hook de `main.py` est un `if self._cognition:`, et l'attache est sous
 `try/except`.
 
 ```
-python -m cognition.selftest      # 42 checks, sans clé, sans réseau, sans toucher tes données
+python -m cognition.selftest      # 48 checks, sans clé, sans réseau, sans toucher tes données
 python -m cognition.providers     # sonde réelle des générateurs gratuits configurés
 ```
 
@@ -31,6 +31,8 @@ Recherche et plan complet : [docs/cognition/RECHERCHE.md](../docs/cognition/RECH
 | **`self_state`** | Nouvel outil. « Comment tu te sens ? » obtient une réponse lue dans les données (valeurs, causes récentes, consignes actives), présentée comme des variables calculées, pas comme un ressenti. Le selftest vérifie que le rapport est identique aux données, avec un témoin. |
 | **Réflexion** (`reflection.py`) | Après environ 1,5 d'importance cumulée (au plus toutes les 12 h), un modèle gratuit propose jusqu'à 3 synthèses, **chacune citant ses souvenirs sources**. Une citation inventée invalide la synthèse. Les synthèses restent `proposed` et n'entrent jamais dans le prompt ; le rappel les marque REFLECTION. |
 | **Objectifs persistants** (`goals.py`, outil `goals`) | **JARVIS propose, tu disposes.** Tout objectif naît `proposed`. Il ne devient actif, atteint, annulé ou relancé que si tu appuies sur **CONFIRMER** sur le HUD : c'est le même bandeau que pour l'arrêt de la machine (`core/confirm.py`), avec un jeton émis par l'interface que le modèle ne peut pas fabriquer. Le modèle peut seulement proposer, noter un progrès, ou retirer sa propre proposition.<br>Chaque objectif a une justification, un critère de réussite, une priorité de 1 à 5, une échéance facultative et un **budget d'actions**. Budget épuisé ou même note de progrès répétée 3 fois → `blocked` (anti-boucle) ; échéance passée → `expired`.<br>Au plus 10 objectifs ouverts et 3 propositions de JARVIS par jour. Seuls les objectifs actifs entrent dans le prompt. Un objectif atteint fait monter la valence, un objectif bloqué la frustration. L'historique (`goal_events`) dit qui a fait quoi : modèle, utilisateur ou système. |
+| **Modèle de soi et calibration** (`selfmodel.py`) | Avant chaque appel d'outil, JARVIS a une **attente de réussite** tirée de son propre historique (règle de Laplace, sur les 50 derniers essais), enregistrée **avant** le résultat. Le score de **Brier** et l'**ECE** disent si ses attentes correspondent à ce qui arrive. Un outil mesuré peu fiable (5 essais ou plus, réussite attendue < 50 %) est signalé dans le prompt.<br>Quand tu valides ou rejettes un souvenir dans le panneau, ton verdict mesure si la confiance attribuée par provenance est juste. `self_state` donne aussi la fiabilité d'un outil précis, la calibration et les limites imposées par le code, avec la mention explicite que ce sont les données de l'architecture, pas une introspection du modèle de langage. |
+| **Panneau ESPRIT du HUD** (`hud.py`, `client_desktop/hud/web/js/mind.js`) | Bouton cerveau dans la barre du haut. Quatre onglets : **état** (variables, consignes, causes), **objectifs** (approuver, relancer, atteint, annuler), **souvenirs** (recherche, vues, valider / rejeter / oublier), **modèle de soi** (fiabilité, calibration, limites, générateurs). Seul l'utilisateur peut déclencher ces opérations : aucun outil du modèle n'y mène. |
 | **Générateurs de secours** | `providers.py` enchaîne local (Ollama et compatibles) → Groq → Cerebras → Gemini → OpenRouter → Mistral, selon les clés présentes. Un quota épuisé met le fournisseur en pause (durée annoncée par le serveur, sinon 60 s doublées), une clé refusée le met en pause 1 h. Utilisé pour le second avis et la réflexion. `Cognition.generate()` donne à **n'importe quel** modèle, IA locale comprise, la constitution et l'état émotionnel courant dans son prompt système. |
 
 ## Coût
@@ -67,9 +69,11 @@ Un fournisseur sans clé est ignoré. Le serveur local n'est essayé que s'il r�
 | `affect.py` | moteur émotionnel pur : variables, règles, décroissance, consignes |
 | `reflection.py` | synthèses citées (Park 2023), jamais promues sans preuve |
 | `goals.py` | objectifs : règles, budgets, boucles, échéances, historique |
+| `selfmodel.py` | fiabilité des outils, Brier, ECE, revue des souvenirs, limites dures |
+| `hud.py` | les 4 opérations du panneau ESPRIT (clics de l'utilisateur uniquement) |
 | `../plugins/cognition_goals.py` | le seul pont vers `core/confirm.py` |
 | `runtime.py` | `Cognition` + `attach()` : ce que voit `main.py` ; aucune exception ne sort |
-| `selftest.py` | les 42 vérifications |
+| `selftest.py` | les 48 vérifications |
 
 ## Mesures réelles sur ce PC (2026-10-13)
 
@@ -98,4 +102,6 @@ Un fournisseur sans clé est ignoré. Le serveur local n'est essayé que s'il r�
 - **Un seul bandeau de confirmation à la fois** (contrainte de `core/confirm.py`). Si une confirmation attend déjà, une nouvelle proposition est enregistrée, mais son bouton devra être redemandé (`request_approval`).
 - **Le progrès vers un objectif est déclaré par le modèle** (`progress`). Ses autres actions n'y sont pas rattachées automatiquement, donc le budget compte ce qu'il déclare, pas tout ce qu'il fait.
 - **Aucune boucle autonome ne poursuit encore les objectifs** (phase 7) : ils guident la conversation, sans déclencher d'action seuls.
-- **Le modèle de soi est partiel** : `self_state` couvre l'état, la mémoire, les objectifs, la constitution et le nombre d'outils.
+- **La calibration porte sur l'architecture, pas sur Gemini.** Les attentes de réussite sont calculées par `selfmodel.py`. On ne mesure pas une confiance que Gemini exprimerait lui-même : l'API Live ne la donne pas.
+- **Le panneau ESPRIT n'existe qu'en mode local.** En mode Oracle, il explique pourquoi.
+- **Rejeter un souvenir dans ESPRIT ne touche pas `long_term.json`** (V1). Le panneau mémoire V1 (Paramètres) reste l'endroit pour l'effacer de là.
