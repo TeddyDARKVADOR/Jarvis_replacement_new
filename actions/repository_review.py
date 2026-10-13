@@ -189,7 +189,11 @@ def inspect_repository(parameters: dict, player=None) -> str:
         key = json.loads(key_file.read_text(encoding="utf-8-sig")).get("gemini_api_key", "")
         if not key:
             return "No Gemini API key is configured for repository analysis."
-        response = genai.Client(api_key=key).models.generate_content(
+        # Keep the client referenced: google-genai 2.x closes its HTTP client
+        # when the Client is collected, which a chained call allowed before
+        # the request was sent ("the client has been closed", 2026-10-13).
+        client = genai.Client(api_key=key)
+        response = client.models.generate_content(
             model="gemini-3.1-flash-lite",
             contents=prompt,
             config={"max_output_tokens": 900},

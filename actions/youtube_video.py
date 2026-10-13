@@ -86,7 +86,7 @@ def _scrape_first_video_url(query: str) -> str | None:
     )
 
     try:
-        r    = requests.get(search_url, headers=HEADERS, timeout=10)
+        r    = requests.get(search_url, headers=HEADERS, cookies=_CONSENT, timeout=10)
         html = r.text
 
         video_ids = re.findall(r'"videoId":"([A-Za-z0-9_-]{11})"', html)
@@ -226,7 +226,7 @@ def _scrape_video_info(video_id: str) -> dict:
         return {}
     url = f"https://www.youtube.com/watch?v={video_id}"
     try:
-        r    = requests.get(url, headers=HEADERS, timeout=12)
+        r    = requests.get(url, headers=HEADERS, cookies=_CONSENT, timeout=12)
         html = r.text
         info = {}
 
@@ -254,12 +254,17 @@ def _scrape_video_info(video_id: str) -> dict:
         return {}
 
 
+#: Without it, a European IP is redirected to consent.youtube.com, a page with
+#: no video on it (seen from France, 2026-10-13).
+_CONSENT = {"SOCS": "CAI"}
+
+
 def _scrape_trending(region: str = "TR", max_results: int = 8) -> list[dict]:
     if not _REQUESTS_OK:
         return []
     url = f"https://www.youtube.com/feed/trending?gl={region.upper()}"
     try:
-        r    = requests.get(url, headers=HEADERS, timeout=12)
+        r    = requests.get(url, headers=HEADERS, cookies=_CONSENT, timeout=12)
         html = r.text
 
         titles   = re.findall(r'"title":\{"runs":\[\{"text":"([^"]+)"\}\]', html)
@@ -385,9 +390,13 @@ def _handle_trending(parameters: dict, player, speak) -> str:
     if player:
         player.write_log(f"[YouTube] Trending: {region}")
 
-    trending = _scrape_trending(region=region, max_results=8)
+    # YouTube retired its Trending page in July 2025 (replaced by category
+    # charts); the scrape now only finds interface labels. Say so instead.
+    trending = [v for v in _scrape_trending(region=region, max_results=8)
+                if v["channel"] != "Unknown"]
     if not trending:
-        return f"Could not fetch trending videos for region {region}, sir."
+        return ("YouTube no longer has a Trending page (retired in July 2025). "
+                "Offer to search YouTube for a topic instead.")
 
     lines  = [f"Top trending videos in {region}:"]
     lines += [f"{v['rank']}. {v['title']} — {v['channel']}" for v in trending]
@@ -443,13 +452,13 @@ def youtube_video(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "youtube_video",
-    "description": "Controls YouTube. Use for: playing videos, summarizing a video's content, getting video info, or showing trending videos.",
+    "description": "Controls YouTube: play a video, summarize a video's content, or get video info.",
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "play | summarize | get_info | trending (default: play)"
+                "description": "play | summarize | get_info (default: play)"
             },
             "query": {
                 "type": "STRING",
