@@ -131,7 +131,7 @@ class _Lane:
 class Cognition:
     def __init__(self, db_path: Path | str = DEFAULT_DB, *, logger=None,
                  legacy_path: Path | None = LEGACY_PATH, background: bool = True,
-                 constitution_path: Path | None = None, chain=None,
+                 constitution_path: Path | None = None, chain=None, embedder=None,
                  clock=time.time, debug: bool = False):
         self.debug = debug
         self._logger = logger or (lambda m: print(f"[Cognition] {m}"))
@@ -149,6 +149,9 @@ class Cognition:
             # Signalé, pas bloquant : le selftest, lui, échoue.
             self._log(f"⚠️ {e}")
         self._chain = chain          # None = construite à la demande ; False = aucune
+        # Même règle pour les vecteurs ; sans chaîne (tests, évaluations), aucun.
+        # Une chaîne injectée (tests, évaluations) n'emmène pas de vecteurs avec elle.
+        self._embedder = embedder if embedder is not None else (None if chain is None else False)
         self.tool_names = lambda: []
         self.session_id = self._new_session()
         self._turns_this_session = 0
@@ -203,6 +206,13 @@ class Cognition:
 
     def _meta_set(self, key: str, value: str) -> None:
         self.store.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?,?)", (key, value))
+
+    @property
+    def embedder(self):
+        if self._embedder is None:
+            from .embeddings import default
+            self._embedder = default()
+        return self._embedder or None
 
     @property
     def chain(self):
@@ -329,13 +339,54 @@ class Cognition:
     def _record_model_save(self, category: str, key: str, value: str, sid: str) -> None:
         turns = self.memory.recent_user_turns(sid, limit=8)
         verdict, ratio = policy.lexical_verdict(value, turns)
-        if verdict == "unclear" and self.chain:
+        if verdict == "unclear" and (self.embedder or self.chain):
             # Probablement une traduction (« pastries » pour « pâtisseries ») :
-            # on demande à un AUTRE modèle, hors du fil d'écriture.
-            self._llm.submit(self._judge_then_store, category, key, value, sid, turns, ratio)
+            # le sens d'abord (local), un AUTRE modèle seulement si le sens hésite.
+            self._llm.submit(self._weigh_unclear, category, key, value, sid, turns, ratio)
             return
         source = "user_stated" if verdict == "supported" else "model_inferred"
         self._store_fact(category, key, value, sid, source, ratio, f"lexical:{verdict}")
+
+    def _weigh_unclear(self, category, key, value, sid, turns, ratio) -> None:
+        """Les éléments précis ont été dits, pas les mots ordinaires. Le vecteur
+        tranche les cas nets sur ce PC ; seul l'entre-deux coûte un appel."""
+        from . import embeddings as E
+        sim = self.embedder.best_match(value, turns) if self.embedder else None
+        if sim is not None and sim >= E.SAME_MEANING:
+            self._submit(self._store_fact, category, key, value, sid, "user_stated", ratio,
+                         f"semantic:{sim:.2f}", policy.JUDGED_CONFIDENCE)
+        elif sim is not None and sim < E.UNRELATED:
+            self._submit(self._store_fact, category, key, value, sid, "model_inferred", ratio,
+                         f"semantic:{sim:.2f}")
+        elif self.chain:
+            self._judge_then_store(category, key, value, sid, turns, ratio)
+        else:
+            self._submit(self._store_fact, category, key, value, sid, "model_inferred", ratio,
+                         "lexical:unclear")
+
+    def index_embeddings(self, limit: int = 64) -> int:
+        """Vectorise les souvenirs rappelables qui n'en ont pas encore."""
+        emb = self.embedder
+        if not emb:
+            return 0
+        statuses = ",".join(f"'{s}'" for s in policy.RECALLABLE)
+        rows = self.store.query(
+            f"SELECT m.id, m.content FROM memories m LEFT JOIN memory_embeddings e ON e.memory_id = m.id "
+            f"WHERE e.memory_id IS NULL AND m.status IN ({statuses}) ORDER BY m.created_at DESC LIMIT ?",
+            (limit,))
+        if not rows:
+            return 0
+        got = emb.embed([r["content"] for r in rows])
+        if not got:
+            return 0
+        from .embeddings import pack
+        model, vecs = got
+        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with self.store.transaction() as c:
+            for r, v in zip(rows, vecs):
+                c.execute("INSERT OR REPLACE INTO memory_embeddings(memory_id, model, dim, vec, ts) "
+                          "VALUES (?,?,?,?,?)", (r["id"], model, len(v), pack(v), ts))
+        return len(rows)
 
     def _judge_then_store(self, category, key, value, sid, turns, ratio) -> None:
         method, ok = "judge:unavailable", None
@@ -364,6 +415,8 @@ class Cognition:
                         importance=0.8 if category == "identity" else 0.6, event_id=ev)
         if source == "model_inferred":
             self._log(f"souvenir non vérifié : {category}/{key} ({method})")
+        if self._embedder is not False:
+            self._llm.submit(self.index_embeddings)
 
     @_safe()
     def archive_session(self, summary: str) -> None:
@@ -434,7 +487,7 @@ class Cognition:
 
     @_safe(default="Mémoire épisodique indisponible.")
     def recall(self, query: str, limit: int = 5) -> str:
-        rows = self.memory.search(query or "", limit=limit)
+        rows = self.memory.search(query or "", limit=limit, embedder=self.embedder)
         if not rows:
             return f"Aucun souvenir trouvé pour « {query} »." if query else "Aucun souvenir archivé."
         lines = []
@@ -649,4 +702,16 @@ def attach(jarvis, db_path: Path | str | None = None,
 
     _active.autonomy.tool_runner = _run_tool
     _active.autonomy.start()
+
+    # Les souvenirs déjà en base reçoivent leur vecteur, en fond, par lots.
+    def _backfill(cog=_active) -> None:
+        total = 0
+        for _ in range(50):
+            n = cog.index_embeddings()
+            total += n
+            if not n:
+                break
+        if total:
+            cog._log(f"{total} souvenir(s) vectorisé(s) pour le rappel par le sens")
+    _active._llm.submit(_backfill)
     return _active

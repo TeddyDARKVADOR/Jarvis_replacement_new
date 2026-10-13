@@ -168,15 +168,16 @@ def _removal():
 @check("4 schéma créé, versionné, FTS5 opérationnel")
 def _schema():
     s = Store(TMP / "schema.db")
-    assert s.schema_version == 5
+    assert s.schema_version == 6
     tables = {r["name"] for r in s.query("SELECT name FROM sqlite_master WHERE type='table'")}
     for t in ("events", "memories", "memories_fts", "memory_links", "constitution_versions",
               "affect_state", "affect_log", "meta", "goals", "goal_events",
-              "tool_outcomes", "memory_reviews", "autonomy_runs", "autonomy_steps"):
+              "tool_outcomes", "memory_reviews", "autonomy_runs", "autonomy_steps",
+              "memory_embeddings"):
         assert t in tables, t
     s.close()
     s = Store(TMP / "schema.db")                  # réouverture : pas de remigration
-    assert s.schema_version == 5
+    assert s.schema_version == 6
     s.close()
     # Une base v1 (celle du commit précédent) migre sans perte.
     import sqlite3
@@ -187,9 +188,9 @@ def _schema():
     con.execute("INSERT INTO events(ts, kind) VALUES ('2026-10-13', 'system')")
     con.commit(); con.close()
     s = Store(old)
-    assert s.schema_version == 5 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
+    assert s.schema_version == 6 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
     s.close()
-    return "user_version=5, 14 tables ; une base v1 migre en gardant ses données"
+    return "user_version=6, 15 tables ; une base v1 migre en gardant ses données"
 
 
 @check("5 conservation après redémarrage (fermeture puis réouverture)")
@@ -1009,6 +1010,58 @@ def _goal_counts_real_tools():
     assert c.goals.get(h["id"])["spent_actions"] == 1, c.goals.get(h["id"])
     c.close()
     return "3 vrais outils comptés, outils neutres ignorés, pas de double compte, fenêtre de 10 min"
+
+
+class _FakeEmbedder:
+    """Sens jouet : un axe par notion, reconnue dans les deux langues."""
+    AXES = [("infirm", "nurse"), ("patisser", "pastr"), ("tesla", "voiture rouge"), ("jazz",)]
+
+    def embed(self, texts):
+        vecs = []
+        for t in texts:
+            low = t.lower()
+            v = [1.0 if any(k in low for k in axis) else 0.0 for axis in self.AXES] + [0.05]
+            vecs.append(v)
+        return "fake", vecs
+
+    def best_match(self, text, candidates):
+        from cognition.embeddings import cosine
+        _, (q, *cs) = self.embed([text] + list(candidates))
+        return max(cosine(q, c) for c in cs) if cs else None
+
+
+class _NoJudge:
+    calls = 0
+
+    def complete(self, *a, **k):
+        _NoJudge.calls += 1
+        raise RuntimeError("le second avis ne doit pas être appelé")
+
+
+@check("62 le sens tranche les traductions sans appel réseau, et le rappel trouve par le sens")
+def _semantic():
+    c = _cog("semantic", chain=_NoJudge(), embedder=_FakeEmbedder())
+    c.observe_turn("user", "Ma sœur est infirmière.")
+    c.on_save_memory("relationships", "sister_job", "sister works as a nurse")   # unclear lexical
+    c.observe_turn("user", "J'aime bien le jazz.")
+    c.on_save_memory("notes", "car", "drives a red Tesla")                     # sans rapport
+    c.observe_turn("assistant", "Noté.")
+    c.flush()
+    job = c.memory.by_slot("relationships/sister_job")[0]
+    car = c.memory.by_slot("notes/car")[0]
+    assert job["source"] == "user_stated" and job["status"] == "active", job
+    assert car["status"] == "proposed", car
+    assert _NoJudge.calls == 0, "un appel réseau pour un cas que le sens tranchait"
+    n = c.store.query("SELECT count(*) n FROM memory_embeddings")[0]["n"]
+    assert n >= 1, "aucun vecteur indexé"
+    hits = c.memory.search("infirmière", limit=3, touch=False, embedder=c.embedder)
+    assert hits and "nurse" in hits[0]["content"], [h["content"] for h in hits]
+    assert not c.memory.search("infirmière", limit=3, touch=False), "le lexical seul ne devait rien trouver"
+    c.memory.forget(job["id"])
+    left = c.store.query("SELECT count(*) n FROM memory_embeddings WHERE memory_id=?", (job["id"],))[0]["n"]
+    assert left == 0, "le vecteur a survécu à l'oubli"
+    c.close()
+    return "traduction acceptée par le sens, invention gardée non vérifiée, « infirmière » → nurse, vecteur oublié"
 
 
 @check("40 échéance dépassée -> expiré ; l'historique reste")

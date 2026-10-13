@@ -191,7 +191,23 @@ CREATE TABLE autonomy_steps (
 );
 """
 
-_MIGRATIONS = [_V1, _V2, _V3, _V4, _V5]
+# v6 — vecteurs des souvenirs (cognition/embeddings.py). Le déclencheur garde
+# l'oubli RÉEL : effacer un souvenir efface son vecteur, quel que soit le chemin.
+_V6 = """
+CREATE TABLE memory_embeddings (
+  memory_id TEXT PRIMARY KEY,
+  model     TEXT NOT NULL,
+  dim       INTEGER NOT NULL,
+  vec       BLOB NOT NULL,
+  ts        TEXT NOT NULL
+);
+CREATE TRIGGER memory_embeddings_forget AFTER DELETE ON memories
+BEGIN
+  DELETE FROM memory_embeddings WHERE memory_id = old.id;
+END;
+"""
+
+_MIGRATIONS = [_V1, _V2, _V3, _V4, _V5, _V6]
 
 
 class Store:

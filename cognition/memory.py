@@ -30,6 +30,8 @@ from .store import Store, now_iso
 
 RAW_TURN_DAYS = 30
 RECENCY_DECAY = 0.995          # par heure, comme Park et al.
+#: Un souvenir sans mot commun avec la requête n'entre au rappel qu'au-delà.
+SEMANTIC_RECALL = 0.38
 _LEGACY_CATEGORIES = ("identity", "preferences", "projects", "relationships",
                       "wishes", "notes")
 _TEXT_MAX = 2000
@@ -234,12 +236,36 @@ class Memory:
             "SELECT * FROM memories WHERE kind=? AND status IN ('active','validated') "
             "ORDER BY created_at DESC, rowid DESC LIMIT ?", (kind, limit))]
 
+    def _semantic(self, query: str, embedder, statuses: str, kind_sql: str,
+                  params: list) -> dict[str, float]:
+        """id → similarité de sens avec la requête, pour les souvenirs vectorisés."""
+        if not embedder or not (query or "").strip():
+            return {}
+        try:
+            got = (embedder.embed_query(query) if hasattr(embedder, "embed_query")
+                   else (lambda r: (r[0], r[1][0]) if r else None)(embedder.embed([query])))
+        except Exception:
+            got = None
+        if not got:
+            return {}
+        from .embeddings import cosine, unpack
+        model, qv = got
+        rows = self.store.query(
+            f"SELECT m.id, e.vec FROM memory_embeddings e JOIN memories m ON m.id = e.memory_id "
+            f"WHERE e.model = ? AND m.status IN ({statuses}){kind_sql}", [model] + params)
+        return {r["id"]: cosine(qv, unpack(r["vec"])) for r in rows}
+
     def search(self, query: str, *, limit: int = 6, kinds: tuple[str, ...] | None = None,
-               touch: bool = True, weights: tuple[float, float, float] = (1.0, 1.0, 1.0)) -> list[dict]:
+               touch: bool = True, weights: tuple[float, float, float] = (1.0, 1.0, 1.0),
+               embedder=None) -> list[dict]:
         """Rappel : récence + importance + pertinence, chacune min-max (Park 2023).
 
         Une requête vide renvoie les plus récents. Les souvenirs `proposed` sont
         rendus avec `verified=False` : à l'appelant de les présenter comme tels.
+
+        Avec un `embedder` (cognition/embeddings.py), la pertinence est le
+        maximum de la pertinence lexicale (BM25, min-max) et de la similarité
+        de sens : « infirmière » retrouve « nurse », qui n'a aucun mot commun.
         """
         statuses = ",".join(f"'{s}'" for s in policy.RECALLABLE)
         kind_sql, params = "", []
@@ -257,16 +283,29 @@ class Memory:
             rows = self.store.query(
                 f"SELECT m.*, m.rowid AS _rid, 0.0 AS bm FROM memories m WHERE m.status IN ({statuses}){kind_sql} "
                 f"ORDER BY m.created_at DESC, m.rowid DESC LIMIT 200", params)
+        rows = [dict(r) for r in rows]
+        sims = self._semantic(query, embedder, statuses, kind_sql, params) if q else {}
+        known = {r["id"] for r in rows}
+        extra = [i for i, sim in sims.items() if i not in known and sim >= SEMANTIC_RECALL]
+        if extra:
+            marks = ",".join("?" * len(extra))
+            for r in self.store.query(f"SELECT m.*, m.rowid AS _rid, NULL AS bm FROM memories m "
+                                      f"WHERE m.id IN ({marks})", extra):
+                rows.append(dict(r))
         if not rows:
             return []
 
         now = self._now()
         cands = []
+        lex = [-float(r["bm"]) for r in rows if r["bm"] is not None]
+        lo, hi = (min(lex), max(lex)) if lex else (0.0, 0.0)
         for r in rows:
             last = _parse(r["last_accessed"]) or _parse(r["created_at"]) or now
             hours = max(0.0, (now - last).total_seconds() / 3600)
-            cands.append({"row": dict(r), "recency": RECENCY_DECAY ** hours,
-                          "importance": r["importance"], "relevance": -float(r["bm"])})
+            lex_n = 0.0 if r["bm"] is None else ((-float(r["bm"]) - lo) / (hi - lo) if hi > lo else 1.0)
+            cands.append({"row": r, "recency": RECENCY_DECAY ** hours,
+                          "importance": r["importance"],
+                          "relevance_n": max(lex_n, sims.get(r["id"], 0.0))})
 
         def _norm(key: str) -> None:
             vals = [c[key] for c in cands]
@@ -274,7 +313,7 @@ class Memory:
             for c in cands:
                 c[key + "_n"] = (c[key] - lo) / (hi - lo) if hi > lo else 1.0
 
-        for k in ("recency", "importance", "relevance"):
+        for k in ("recency", "importance"):
             _norm(k)
         for c in cands:
             # Poids (récence, importance, pertinence) : tous à 1 comme chez Park ;

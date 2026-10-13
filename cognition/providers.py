@@ -210,10 +210,23 @@ class ProviderChain:
         self._local_checked_at = now
         try:
             import requests
-            self._local_ok = requests.get(f"{p.base_url}/models", timeout=0.5).ok
+            r = requests.get(f"{p.base_url}/models", timeout=0.5)
+            # Un serveur qui répond ne suffit pas : le modèle doit y être. Le
+            # 2026-10-13, Ollama tournait sans qwen3:4b-instruct, et chaque
+            # appel échouait sur lui avant de passer au suivant.
+            names = {m.get("id", "") for m in (r.json().get("data") or [])} if r.ok else set()
+            self._local_ok = r.ok and (not names or p.model in names
+                                       or f"{p.model}:latest" in names)
+            if r.ok and names and not self._local_ok:
+                self._log_once(f"modèle local {p.model} absent d'Ollama : générateur local ignoré")
         except Exception:
             self._local_ok = False
         return self._local_ok
+
+    def _log_once(self, msg: str) -> None:
+        if getattr(self, "_logged", None) != msg:
+            self._logged = msg
+            print(f"[Cognition] {msg}")
 
     def complete(self, prompt: str, *, system: str = "", max_tokens: int = 400,
                  temperature: float = 0.3, prefer: str | None = None,
