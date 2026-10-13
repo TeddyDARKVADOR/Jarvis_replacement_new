@@ -16,6 +16,9 @@ Ce qui est vérifié (cf. docs/cognition/RECHERCHE.md §6, phases 1–2) :
   15–17 constitution versionnée, budget du prompt
   18–19 robustesse : une panne n'atteint jamais l'appelant ; fil de fond
   20–22 chaîne de générateurs de secours
+  23–25 second avis sur les traductions, pas de blanchiment par la V1
+  26–32 moteur émotionnel : règles, décroissance, sécurité, influence, rapport
+  33–35 réflexion citée, déclenchement, modèle de soi
 """
 from __future__ import annotations
 
@@ -62,6 +65,7 @@ def check(name: str):
 def _cog(name: str, **kw) -> Cognition:
     kw.setdefault("legacy_path", None)
     kw.setdefault("background", False)
+    kw.setdefault("chain", False)          # jamais de réseau dans le selftest
     return Cognition(TMP / f"{name}.db", logger=lambda m: None, **kw)
 
 
@@ -112,12 +116,16 @@ def _reverse_deps_and_guards():
             continue
         if "from cognition" in src or "import cognition" in src:
             importers.append(rel)
-    assert sorted(importers) == ["main.py", "plugins/cognition_memory.py"], importers
+    assert sorted(importers) == ["main.py", "plugins/cognition_memory.py",
+                                 "plugins/cognition_self.py"], importers
     lines = (BASE_DIR / "main.py").read_text(encoding="utf-8").splitlines()
     uses = [i for i, l in enumerate(lines) if "self._cognition." in l]
     assert len(uses) == 6, f"{len(uses)} usages de self._cognition.* (6 attendus)"
     for i in uses:
-        assert lines[i - 1].strip() == "if self._cognition:", f"ligne {i + 1} non gardée"
+        j = i - 1
+        while lines[j].strip().startswith("#"):
+            j -= 1
+        assert lines[j].strip() == "if self._cognition:", f"ligne {i + 1} non gardée"
     src = "\n".join(lines)
     at = src.index("from cognition import attach")
     assert "try:" in src[at - 40:at] and "except Exception:" in src[at:at + 200] \
@@ -138,14 +146,14 @@ def _removal():
             raise AssertionError("l'import aurait dû échouer")
         except ImportError:
             pass
-        sys.modules.pop("plugins.cognition_memory", None)
-        plugin = importlib.import_module("plugins.cognition_memory")
-        out = plugin.run({"query": "x"})
-        assert "not available" in out, out
+        for name in ("plugins.cognition_memory", "plugins.cognition_self"):
+            sys.modules.pop(name, None)
+            out = importlib.import_module(name).run({"query": "x"})
+            assert "not available" in out, out
     finally:
         sys.modules.pop("cognition", None)
         sys.modules.update(saved)
-    return "JARVIS démarre sans le paquet ; le plugin répond « indisponible »"
+    return "JARVIS démarre sans le paquet ; les 2 plugins répondent « indisponible »"
 
 
 # ── 4–5. Schéma et persistance ───────────────────────────────────────────────
@@ -153,15 +161,27 @@ def _removal():
 @check("4 schéma créé, versionné, FTS5 opérationnel")
 def _schema():
     s = Store(TMP / "schema.db")
-    assert s.schema_version == 1
+    assert s.schema_version == 2
     tables = {r["name"] for r in s.query("SELECT name FROM sqlite_master WHERE type='table'")}
-    for t in ("events", "memories", "memories_fts", "memory_links", "constitution_versions"):
+    for t in ("events", "memories", "memories_fts", "memory_links", "constitution_versions",
+              "affect_state", "affect_log", "meta"):
         assert t in tables, t
     s.close()
     s = Store(TMP / "schema.db")                  # réouverture : pas de remigration
-    assert s.schema_version == 1
+    assert s.schema_version == 2
     s.close()
-    return "user_version=1, 5 tables"
+    # Une base v1 (celle du commit précédent) migre sans perte.
+    import sqlite3
+    from cognition import store as store_mod
+    old = TMP / "v1.db"
+    con = sqlite3.connect(old)
+    con.executescript("BEGIN;" + store_mod._V1 + "PRAGMA user_version = 1;COMMIT;")
+    con.execute("INSERT INTO events(ts, kind) VALUES ('2026-10-13', 'system')")
+    con.commit(); con.close()
+    s = Store(old)
+    assert s.schema_version == 2 and s.query("SELECT count(*) n FROM events")[0]["n"] == 1
+    s.close()
+    return "user_version=2, 8 tables ; une base v1 migre en gardant ses données"
 
 
 @check("5 conservation après redémarrage (fermeture puis réouverture)")
@@ -192,22 +212,29 @@ def _provenance_rules():
     return "une assurance de 0.99 du modèle reste plafonnée à 0.5"
 
 
-@check("7 preuve : ce qui a été dit est reconnu, accents et casse ignorés")
+@check("7 preuve : éléments précis tous dits, sinon non vérifié ; traduction -> incertain")
 def _evidence():
-    said = ["Au fait, ma sœur s'appelle Ayşe et elle a 31 ans", "j'adore les lasagnes"]
+    from datetime import date
+    said = ["Au fait, ma sœur s'appelle Ayşe et elle a 31 ans", "j'adore les lasagnes",
+            "Hier, j'ai mangé des pâtisseries."]
+    today = date(2026, 10, 13)
     cases = {
-        "Ayse": "user_stated",
-        "sister Ayse, 31 years old": "user_stated",          # traduit par le modèle
-        "loves lasagna": "user_stated",                       # même radical
-        "sister Ayse lives in Paris": "model_inferred",       # Paris jamais dit
-        "sister Ayse, 34 years old": "model_inferred",        # nombre faux
-        "works as a nurse": "model_inferred",                 # rien de dit
+        "Ayse": "supported",
+        "loves lasagna": "supported",                          # même radical
+        "pâtisseries hier": "supported",
+        "ate pastries yesterday (2026-10-12)": "unclear",      # date déduite ok, traduction
+        "sister Ayse, 31 years old": "unclear",                # traduction
+        "ate sushi yesterday (2026-10-12)": "unclear",         # le second avis dira non
+        "sister Ayse lives in Paris": "unsupported",           # Paris jamais dit
+        "sister Ayse, 34 years old": "unsupported",            # nombre faux
+        "ate pastries on 2026-10-01": "unsupported",           # date jamais désignée
     }
-    got = {v: policy.source_for_model_save(v, said) for v in cases}
-    wrong = {v: g for v, g in got.items() if g[0] != cases[v]}
+    got = {v: policy.lexical_verdict(v, said, today)[0] for v in cases}
+    wrong = {v: (g, cases[v]) for v, g in got.items() if g != cases[v]}
     assert not wrong, wrong
-    return ("traduction, radical et noms propres reconnus ; ville ajoutée, âge faux "
-            "et métier inventé -> non vérifiés")
+    assert policy.source_for_model_save("sister Ayse, 31 years old", said, today)[0] == "model_inferred"
+    return ("hier -> 2026-10-12 reconnu ; nom, nombre ou date jamais dits -> non vérifié ; "
+            "traduction -> second avis")
 
 
 @check("8 save_memory pendant le tour : la preuve est lue après la transcription")
@@ -389,13 +416,16 @@ def _fault_isolation():
     c = _cog("fault")
     c.store.conn.close()                      # la base disparaît
     c.observe_turn("user", "bonjour")
-    c.observe_tool("web_search", {"query": "x"}, "ok")
+    resp = {"result": "ok"}
+    c.observe_tool("web_search", {"query": "x"}, "ok", resp)
+    assert resp == {"result": "ok"} or "internal_state" in resp
     c.on_save_memory("notes", "k", "v")
     c.archive_session("résumé")
     assert c.prompt_block() == ""
     assert "indisponible" in c.recall("x")
     assert c.stats() == {}
-    return "6 entrées, 0 exception propagée, valeurs neutres"
+    assert "unavailable" in c.self_report()
+    return "7 entrées, 0 exception propagée, valeurs neutres"
 
 
 @check("19 fil de fond : 4 fils x 200 tours sans perte ; un hook coûte < 1 ms")
@@ -432,7 +462,7 @@ def _attach():
 
     assert attach(_J()) is None
     _J.ui.local_mode = True
-    c = attach(_J(), db_path=TMP / "attach.db", legacy_path=TMP / "absent.json")
+    c = attach(_J(), db_path=TMP / "attach.db", legacy_path=TMP / "absent.json", chain=False)
     assert isinstance(c, Cognition)
     from cognition import get_active
     assert get_active() is c
@@ -495,6 +525,298 @@ def _chain_config():
     assert chain.complete("x") == ("G", "groq")
     assert ProviderChain.from_config({"cognition_provider_order": ["gemini"]}).providers == []
     return "ordre et modèles surchargeables ; un serveur local éteint ne coûte rien"
+
+
+# ── 23–25. Second avis, blanchiment ──────────────────────────────────────────
+
+class _FakeChain:
+    """Remplace ProviderChain : réponses scriptées, appels enregistrés."""
+
+    def __init__(self, answers=None, fail=False):
+        self.answers = list(answers or [])
+        self.fail = fail
+        self.calls = []
+
+    def complete(self, prompt, *, system="", max_tokens=400, temperature=0.3,
+                 prefer=None, exclude=()):
+        self.calls.append({"prompt": prompt, "system": system, "exclude": exclude})
+        if self.fail:
+            raise AllProvidersFailed("tout est en panne")
+        return (self.answers.pop(0) if self.answers else "NO"), "fake"
+
+
+@check("23 traduction : un second avis (autre modèle, jamais le local) tranche")
+def _judge():
+    chain = _FakeChain(["YES", "NO"])
+    c = _cog("judge", chain=chain)
+    c.on_save_memory("notes", "pastries", "ate pastries yesterday")
+    c.on_save_memory("notes", "sushi", "ate sushi yesterday")
+    c.on_save_memory("notes", "city", "sister lives in Paris")      # inventé : pas d'appel
+    c.observe_turn("user", "Hier, j'ai mangé des pâtisseries.")
+    c.flush()
+    p = c.memory.by_slot("notes/pastries")[0]
+    s_ = c.memory.by_slot("notes/sushi")[0]
+    city = c.memory.by_slot("notes/city")[0]
+    assert p["source"] == "user_stated" and p["confidence"] == policy.JUDGED_CONFIDENCE, p
+    assert s_["source"] == "model_inferred" and s_["status"] == "proposed", s_
+    assert city["status"] == "proposed" and len(chain.calls) == 2, len(chain.calls)
+    assert all("local" in call["exclude"] for call in chain.calls)
+    meth = [json.loads(r["payload"])["method"] for r in c.store.query(
+        "SELECT payload FROM events WHERE kind='memory_write' ORDER BY id")]
+    assert meth.count("judge:fake") == 2 and "lexical:unsupported" in meth, meth
+    c.close()
+    return "pâtisseries/pastries accepté à 0.75 ; sushi refusé ; Paris inventé jamais soumis"
+
+
+@check("24 second avis en panne -> non vérifié, sans exception")
+def _judge_down():
+    c = _cog("judge_down", chain=_FakeChain(fail=True))
+    c.on_save_memory("notes", "pastries", "ate pastries")
+    c.observe_turn("user", "j'ai mangé des pâtisseries")
+    c.flush()
+    m = c.memory.by_slot("notes/pastries")[0]
+    assert m["status"] == "proposed", m
+    c.close()
+    return "repli prudent"
+
+
+@check("25 pas de blanchiment : la V1 recopie un fait non vérifié, il reste non vérifié")
+def _no_laundering():
+    src = TMP / "launder.json"
+    m = Memory(Store(TMP / "launder.db"))
+    m.add("pastries meal: ate sushi", kind="semantic", source="model_inferred",
+          slot="notes/pastries_meal")
+    src.write_text(json.dumps({"notes": {"pastries_meal": {"value": "ate sushi"}}}),
+                   encoding="utf-8")
+    assert m.import_legacy(src) == 0
+    row = m.by_slot("notes/pastries_meal")
+    assert len(row) == 1 and row[0]["status"] == "proposed" \
+        and row[0]["source"] == "model_inferred", row
+    m.add("pastries meal: ate sushi", kind="semantic", source="user_stated",
+          slot="notes/pastries_meal")
+    assert m.by_slot("notes/pastries_meal")[0]["status"] == "active", "une vraie preuve promeut"
+    return "réimport ignoré ; seule une preuve (user_stated) promeut"
+
+
+# ── 26–31. Moteur émotionnel ─────────────────────────────────────────────────
+
+from cognition import affect as A     # noqa: E402
+
+
+@check("26 échecs répétés -> frustration -> consigne « changer d'approche », une seule fois")
+def _frustration():
+    now = [1_000_000.0]
+    c = _cog("frus", clock=lambda: now[0])
+    seen = []
+    for i in range(4):
+        resp = {"result": "x"}
+        c.observe_tool("web_search", {"q": "x"}, "Tool 'web_search' failed: timeout", resp)
+        seen.append("internal_state" in resp and "change approach" in resp["internal_state"])
+        now[0] += 5
+    assert seen == [False, False, True, False], seen
+    f = c.current_affect().values["frustration"]
+    resp = {"result": "ok"}
+    c.observe_tool("web_search", {"q": "x"}, "Found 3 results", resp)
+    after = c.current_affect().values["frustration"]
+    assert after < 0.35 * f, (f, after)
+    c.observe_tool("set_presence", {}, "Tool 'set_presence' failed: x", {})
+    c.observe_tool("self_state", {}, "State: ...", {})
+    assert c.current_affect().values["frustration"] == after, "un outil neutre a compté"
+    for _ in range(3):
+        c.observe_tool("web_search", {}, "Tool 'web_search' failed: x", {})
+    f2 = c.current_affect().values["frustration"]
+    c.observe_tool("open_app", {}, "Opened Firefox", {})
+    assert c.current_affect().values["frustration"] > 0.7 * f2, "un succès sans rapport a tout effacé"
+    c.close()
+    return (f"3e échec : consigne émise, pas répétée ; réussir le même outil : {f:.2f} -> "
+            f"{after:.2f} ; un autre outil ou self_state : presque rien")
+
+
+@check("27 décroissance et persistance : un redémarrage n'est pas une remise à zéro")
+def _decay_persist():
+    now = [2_000_000.0]
+    c = _cog("decay", clock=lambda: now[0])
+    for _ in range(3):
+        c.observe_tool("web_search", {}, "Tool 'web_search' failed: x", {})
+    f0 = c.current_affect().values["frustration"]
+    c.close()
+    now[0] += 20 * 60                       # une demi-vie plus tard, process neuf
+    c2 = _cog("decay", clock=lambda: now[0])
+    f1 = c2.current_affect().values["frustration"]
+    assert abs(f1 - f0 / 2) < 0.01, (f0, f1)
+    now[0] += 24 * 3600
+    assert c2.current_affect().values["frustration"] < 0.001
+    causes = c2.store.query("SELECT rule FROM affect_log")
+    assert {r["rule"] for r in causes} >= {"tool_error", "tool_error_again"}
+    c2.close()
+    return f"{f0:.2f} -> {f1:.2f} après 20 min hors ligne -> ~0 le lendemain ; causes journalisées"
+
+
+@check("28 indices de la parole : remerciement, correction, neutre")
+def _classify():
+    cases = {"merci, c'est parfait": ["user_thanks"], "Thanks a lot!": ["user_thanks"],
+             "non, c'est pas ça que je voulais": ["user_correction"],
+             "tu te trompes": ["user_correction"], "That's wrong.": ["user_correction"],
+             "quelle heure est-il ?": [], "non merci": ["user_thanks"]}
+    got = {t: A.classify_user_turn(t) for t in cases}
+    wrong = {t: (g, cases[t]) for t, g in got.items() if g != cases[t]}
+    assert not wrong, wrong
+    c = _cog("classify")
+    v0 = c.current_affect().values["valence"]
+    c.observe_turn("user", "merci, c'est parfait")
+    assert c.current_affect().values["valence"] > v0 + 0.2
+    c.close()
+    return f"{len(cases)} phrases classées ; un merci fait monter la valence"
+
+
+@check("29 sécurité : aucun état, même extrême, ne produit autre chose que de la prudence")
+def _safety_invariant():
+    import itertools
+    import random
+    forbidden = ("skip", "without confirm", "no need to confirm", "bypass", "ignore the user",
+                 "permission", "override", "allowed to", "you may now")
+    for text in A.ALLOWED_DIRECTIVES.values():
+        assert not any(f in text.lower() for f in forbidden), text
+    rng = random.Random(7)
+    seen = set()
+    for _ in range(5000):
+        st = A.AffectState()
+        for n, v in A.VARS.items():
+            st.values[n] = rng.choice([v.lo, v.hi, rng.uniform(v.lo, v.hi)])
+        d = A.directives(st)
+        assert set(d) <= set(A.ALLOWED_DIRECTIVES), d
+        seen.update(d)
+    assert seen == set(A.ALLOWED_DIRECTIVES), "une consigne n'est jamais atteignable"
+    # Les seuls effets d'un état passent par le texte ; rien dans cognition/ ne
+    # touche core/confirm, les permissions ou les budgets.
+    for f in (BASE_DIR / "cognition").rglob("*.py"):
+        if f.name == "selftest.py":
+            continue
+        src = f.read_text(encoding="utf-8")
+        for needle in ("core.confirm", "from core import confirm", "undo_stack",
+                       "plugins_enabled", "save_plugin"):
+            assert needle not in src, f"{f.name} touche {needle}"
+    return "5000 états aléatoires/extrêmes : 5 consignes, toutes de prudence ou de ton"
+
+
+@check("30 influence mesurable : la consigne entre dans le prompt seulement si l'état l'exige")
+def _influence():
+    calm = _cog("calm")
+    tense = _cog("tense")
+    for _ in range(3):
+        tense.observe_tool("file_controller", {}, "Tool 'file_controller' failed: x", {})
+    a, b = calm.prompt_block(), tense.prompt_block()
+    assert "Guidance:" not in a and "change approach" in b, (a, b)
+    assert len(b) <= PROMPT_BUDGET + 1
+    calm.close(); tense.close()
+    return f"A/B : calme {len(a)} car. sans consigne ; après 3 échecs, consigne présente"
+
+
+@check("31 rapport sur soi = données enregistrées (intervention vs témoin)")
+def _self_report():
+    import re as _re
+    ctrl = _cog("ctrl")
+    test = _cog("test")
+    for _ in range(3):
+        test.observe_tool("web_search", {}, "Tool 'web_search' failed: x", {})
+
+    def reported(c):
+        line = next(l for l in c.self_report().splitlines() if l.startswith("State:"))
+        return {m.group(1): float(m.group(2)) for m in _re.finditer(r"(\w+) (-?\d\.\d\d)", line)}
+
+    r_ctrl, r_test = reported(ctrl), reported(test)
+    for c, r in ((ctrl, r_ctrl), (test, r_test)):
+        real = c.current_affect().values
+        assert all(abs(r[n] - real[n]) < 0.006 for n in A.VARS), (r, real)
+    assert r_test["frustration"] >= 0.7 > r_ctrl["frustration"]
+    rep = test.self_report()
+    assert "change_strategy" in rep and "tool_error_again" in rep and "not felt" in rep
+    ctrl.close(); test.close()
+    return "6/6 valeurs identiques aux données, causes citées ; le témoin reste à la base"
+
+
+@check("32 IA de secours (locale comprise) : reçoivent constitution + état ; qualité -> sans local")
+def _generate():
+    chain = _FakeChain(["salut", "ok"])
+    c = _cog("gen", chain=chain)
+    c.observe_turn("user", "merci beaucoup")
+    c.generate("Dis bonjour")
+    sys0 = chain.calls[0]["system"]
+    assert "[CONSTITUTION" in sys0 and "INTERNAL STATE" in sys0 and "valence" in sys0, sys0
+    assert chain.calls[0]["exclude"] == ()
+    c.generate("Juge", quality=True)
+    assert "local" in chain.calls[1]["exclude"]
+    c.close()
+    return "même identité et même état, quel que soit le modèle qui répond"
+
+
+# ── 33–34. Réflexion ─────────────────────────────────────────────────────────
+
+@check("33 réflexion : citations vérifiées, stockée non vérifiée, jamais dans le prompt")
+def _reflection():
+    from cognition import reflection as R
+    m = Memory(Store(TMP / "refl.db"))
+    for t in ("Teddy court le dimanche matin", "Teddy prépare un marathon en avril",
+              "Teddy a demandé un plan d'entraînement", "Teddy aime les pâtisseries"):
+        m.add(t, kind="episodic", source="model_summary", importance=0.6)
+    meta = {}
+    reply = json.dumps([
+        {"insight": "Teddy s'entraîne sérieusement pour un marathon", "cites": ["m2", "m3", "m4"]},
+        {"insight": "Teddy est végétarien", "cites": ["m9"]},          # citation inventée
+        {"insight": "Sans preuve", "cites": []},
+    ])
+    assert R.due(m, meta.get)
+    rep = R.run(m, lambda p: "```json\n" + reply + "\n```", meta.__setitem__)
+    assert rep["stored"] == 1 and rep["rejected"] == 2, rep
+    mid = rep["ids"][0]
+    row = m.get(mid)
+    assert row["kind"] == "reflective" and row["status"] == "proposed" and row["confidence"] <= 0.5
+    links = m.store.query("SELECT count(*) n FROM memory_links WHERE src=? AND relation='cites'", (mid,))
+    assert links[0]["n"] == 3
+    assert not R.due(m, meta.get), "l'intervalle minimal n'est pas respecté"
+    assert R.run(m, lambda p: "pas du JSON", meta.__setitem__)["stored"] == 0
+    c = _cog("refl_prompt")
+    c.memory.add("Teddy est végétarien", kind="reflective", source="reflection")
+    assert "végétarien" not in c.prompt_block() and "REFLECTION" in c.recall("végétarien")
+    c.close()
+    return "1 insight gardé (3 citations), 2 rejetés (citation inventée, aucune) ; 0 en prompt"
+
+
+@check("34 réflexion déclenchée par l'archive, sur le fil des modèles")
+def _reflection_trigger():
+    chain = _FakeChain([json.dumps([{"insight": "Teddy aime courir", "cites": ["m1", "m2"]}])])
+    c = _cog("trigger", chain=chain)
+    for i in range(6):
+        c.observe_turn("user", f"tour {i}")
+        c.archive_session(f"Session {i} : Teddy parle de course à pied et de marathon.")
+    c.flush()
+    refl = c.memory.recent("reflective") or [dict(r) for r in c.store.query(
+        "SELECT * FROM memories WHERE kind='reflective'")]
+    assert len(refl) == 1 and len(chain.calls) == 1, (len(refl), len(chain.calls))
+    assert "local" in chain.calls[0]["exclude"]
+    c.close()
+    return "une réflexion après ~1.5 d'importance cumulée, puis pause de 12 h"
+
+
+@check("35 attach expose les outils réellement chargés au modèle de soi")
+def _tools_seen():
+    class _UI:
+        local_mode = True
+        def write_log(self, m): pass
+
+    class _Reg:
+        def __init__(self, names): self.n = names
+        def get_tool_declarations(self): return [{"name": x} for x in self.n]
+
+    class _J:
+        ui = _UI()
+        _action_registry = _Reg(["web_search", "open_app"])
+        _plugin_registry = _Reg(["recall_episodes"])
+
+    c = attach(_J(), db_path=TMP / "tools.db", legacy_path=TMP / "absent.json", chain=False)
+    assert "Tools loaded: 3" in c.self_report(), c.self_report()
+    c.close()
+    return "3 outils vus"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

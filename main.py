@@ -1050,11 +1050,14 @@ class JarvisLive:
             self.ui.set_state("LISTENING")
 
         print(f"[JARVIS] 📤 {name} → {str(result)[:80]}")
+        _response = {"result": result}
         if self._cognition:
-            self._cognition.observe_tool(name, args, result)
+            # Peut ajouter `internal_state` : un changement d'état qui doit
+            # influencer la suite (ex. échecs répétés -> changer d'approche).
+            self._cognition.observe_tool(name, args, result, _response)
         return types.FunctionResponse(
             id=fc.id, name=name,
-            response={"result": result}
+            response=_response
         )
 
     async def _send_realtime(self):

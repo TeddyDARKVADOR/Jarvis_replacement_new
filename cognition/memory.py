@@ -123,15 +123,21 @@ class Memory:
                     if row["content"].strip().lower() == content.lower():
                         # Même valeur redite : on la renforce, sans doublon. Une
                         # source plus fiable la promeut (proposed -> active).
-                        new_status = row["status"]
-                        if (policy.can_supersede(source, row["source"])
-                                and status == "active" and row["status"] == "proposed"):
-                            new_status = "active"
-                        c.execute(
-                            "UPDATE memories SET updated_at=?, confidence=max(confidence, ?), "
-                            "status=?, source=CASE WHEN ? THEN ? ELSE source END WHERE id=?",
-                            (ts, conf, new_status,
-                             int(policy.can_supersede(source, row["source"])), source, row["id"]))
+                        # Seule une PREUVE promeut (proposed -> active) : ce que
+                        # l'utilisateur a dit, ou un outil. Une réimportation
+                        # de long_term.json, où la V1 a recopié l'écriture du
+                        # modèle, n'en est pas une : sinon le fait non vérifié
+                        # serait « blanchi » par un aller-retour dans la V1.
+                        promotes = source in policy.EVIDENCE_SOURCES
+                        if promotes and row["status"] in ("proposed", "contested"):
+                            c.execute(
+                                "UPDATE memories SET updated_at=?, confidence=max(confidence, ?), "
+                                "status='active', source=? WHERE id=?",
+                                (ts, conf, source, row["id"]))
+                        elif promotes:
+                            c.execute("UPDATE memories SET updated_at=?, "
+                                      "confidence=max(confidence, ?) WHERE id=?",
+                                      (ts, conf, row["id"]))
                         return row["id"]
 
             mid = uuid.uuid4().hex[:16]
@@ -298,7 +304,10 @@ class Memory:
                     continue
                 slot = slot_for(cat, key)
                 text = f"{key.replace('_', ' ')}: {val}"
-                before = {m["id"] for m in self.by_slot(slot)}
+                existing = self.by_slot(slot)
+                if any(m["content"].strip().lower() == text.lower() for m in existing):
+                    continue          # déjà connu, quelle qu'en soit la provenance
+                before = {m["id"] for m in existing}
                 mid = self.add(text, kind="semantic", source="legacy_import", slot=slot,
                                importance=0.8 if cat == "identity" else 0.6)
                 if mid not in before:

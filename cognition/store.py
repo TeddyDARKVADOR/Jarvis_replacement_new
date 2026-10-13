@@ -93,7 +93,27 @@ CREATE TABLE constitution_versions (
 );
 """
 
-_MIGRATIONS = [_V1]
+# Phase 3–4 : état émotionnel persistant, journal de ses causes, métadonnées.
+_V2 = """
+CREATE TABLE affect_state (
+  var        TEXT PRIMARY KEY,
+  value      REAL NOT NULL,
+  updated_at REAL NOT NULL          -- secondes epoch : la décroissance en dépend
+);
+CREATE TABLE affect_log (
+  id        INTEGER PRIMARY KEY,
+  ts        TEXT NOT NULL,
+  var       TEXT NOT NULL,
+  before    REAL NOT NULL,
+  after     REAL NOT NULL,
+  rule      TEXT NOT NULL,          -- l'événement qui l'a causé (affect.RULES)
+  event_id  INTEGER REFERENCES events(id) ON DELETE SET NULL
+);
+CREATE INDEX affect_log_ts ON affect_log(ts);
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+"""
+
+_MIGRATIONS = [_V1, _V2]
 
 
 class Store:

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from datetime import date as _date, timedelta
 
 SOURCES = ("user_stated", "tool_observed", "legacy_import", "model_summary",
            "model_inferred", "reflection")
@@ -38,6 +39,9 @@ KINDS = ("episodic", "semantic", "autobiographical", "procedural",
 
 STATUSES = ("proposed", "active", "validated", "contested", "superseded",
             "retracted")
+
+# Sources qui constituent une preuve et peuvent donc promouvoir un souvenir.
+EVIDENCE_SOURCES = ("user_stated", "tool_observed")
 
 # Statuts qu'un rappel peut renvoyer. superseded/retracted restent en base pour
 # l'historique, mais ne sont plus « ce que JARVIS sait ».
@@ -133,36 +137,101 @@ def _heard(word: str, heard: set[str]) -> bool:
     return any(h.startswith(stem) and abs(len(h) - len(word)) <= 3 for h in heard)
 
 
-def evidence_ratio(value: str, user_turns: list[str]) -> float:
-    """Part de `value` qu'on retrouve dans ce que l'utilisateur a dit.
+# Dates écrites par le modèle à partir d'un mot relatif (« hier » -> 2026-10-12).
+_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+_RELATIVE = {"avant-hier": -2, "avant hier": -2, "hier": -1, "aujourd'hui": 0,
+             "aujourd hui": 0, "ce matin": 0, "ce soir": 0, "cet apres-midi": 0,
+             "demain": 1, "apres-demain": 2, "apres demain": 2,
+             "yesterday": -1, "today": 0, "tonight": 0, "this morning": 0,
+             "tomorrow": 1}
 
-    Volontairement simple et lexical : c'est un filtre contre l'invention, pas
-    une compréhension. Si la valeur contient des noms propres ou des nombres,
-    seuls eux comptent : Gemini écrit souvent en anglais ce qui a été dit en
-    français, et « sister Ayse, 31 years old » est soutenu par « ma sœur
-    s'appelle Ayşe, 31 ans » alors que « sister » et « years » n'y sont pas.
-    Sinon, tous les mots porteurs comptent.
 
-    Les faux négatifs (paraphrase, traduction d'un mot commun) ne perdent rien :
-    le souvenir est gardé, seulement marqué non vérifié.
+def mentioned_dates(user_turns: list[str], today: _date) -> set[_date]:
+    """Les jours que l'utilisateur a désignés par un mot relatif."""
+    text = _fold(" ".join(user_turns))
+    return {today + timedelta(days=off) for phrase, off in _RELATIVE.items()
+            if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text)}
+
+
+def _split_dates(value: str) -> tuple[str, list[_date]]:
+    dates = []
+    for y, m, d in _DATE.findall(value or ""):
+        try:
+            dates.append(_date(int(y), int(m), int(d)))
+        except ValueError:
+            pass
+    return _DATE.sub(" ", value or ""), dates
+
+
+def lexical_verdict(value: str, user_turns: list[str],
+                    today: _date | None = None) -> tuple[str, float]:
+    """Confronte `value` à ce que l'utilisateur a dit : (verdict, part retrouvée).
+
+        unsupported  un nom propre, un nombre ou une date jamais dit : c'est la
+                     forme typique d'un souvenir inventé (« Ayse lives in
+                     Paris », « 34 ans » au lieu de 31). Aucun second avis ne
+                     peut le rattraper.
+        supported    tous les éléments précis ont été dits ET au moins la
+                     moitié des mots ordinaires.
+        unclear      les éléments précis sont là, mais les mots ordinaires ne
+                     se retrouvent pas : le plus souvent une traduction
+                     (Gemini écrit « pastries » pour « pâtisseries »). C'est le
+                     cas où un second avis est demandé (runtime.py).
+
+    Une date est soutenue si l'utilisateur a dit le mot relatif qui y mène
+    (« hier » -> la veille). Volontairement simple et lexical : un filtre
+    contre l'invention, pas une compréhension.
     """
-    words = set(specific_words(value)) or set(content_words(value))
-    if not words:
-        return 0.0
+    rest, dates = _split_dates(value)
+    specifics = set(specific_words(rest))
+    ordinary = set(content_words(rest)) - specifics
     heard = set(content_words(" ".join(user_turns)))
-    return sum(_heard(w, heard) for w in words) / len(words)
+    ok_dates = mentioned_dates(user_turns, today or _date.today())
+    spec_hits = sum(_heard(w, heard) for w in specifics) + sum(d in ok_dates for d in dates)
+    n_spec = len(specifics) + len(dates)
+    ord_hits = sum(_heard(w, heard) for w in ordinary)
+    total = n_spec + len(ordinary)
+    ratio = (spec_hits + ord_hits) / total if total else 0.0
+    if total == 0 or spec_hits < n_spec:
+        return "unsupported", ratio
+    if not ordinary or ord_hits / len(ordinary) >= EVIDENCE_THRESHOLD:
+        return "supported", ratio
+    return "unclear", ratio
 
 
-def source_for_model_save(value: str, user_turns: list[str]) -> tuple[str, float]:
-    """Provenance d'un `save_memory` appelé par le modèle : (source, ratio).
+def source_for_model_save(value: str, user_turns: list[str],
+                          today: _date | None = None) -> tuple[str, float]:
+    """Provenance d'un `save_memory` sans second avis : (source, part retrouvée).
 
     Seule la valeur est confrontée à la transcription. La clé est une étiquette
     choisie par le modèle (« sister », « favorite_food ») : la compter comme
     preuve reviendrait à laisser le modèle se citer lui-même.
     """
-    ratio = evidence_ratio(value, user_turns)
-    # Un seul nom propre ou nombre jamais entendu suffit à fabriquer un faux
-    # souvenir (« Ayse lives in Paris », « 34 ans » au lieu de 31) : quand la
-    # valeur en contient, ils doivent TOUS avoir été dits.
-    needed = 1.0 if specific_words(value) else EVIDENCE_THRESHOLD
-    return ("user_stated" if ratio >= needed else "model_inferred"), ratio
+    verdict, ratio = lexical_verdict(value, user_turns, today)
+    return ("user_stated" if verdict == "supported" else "model_inferred"), ratio
+
+
+# Ce qu'un second avis (un AUTRE modèle) peut accorder : jamais plus que ce que
+# l'utilisateur a dit mot pour mot. Le juge peut se tromper ; on le sait et on
+# le marque.
+JUDGED_CONFIDENCE = 0.75
+
+JUDGE_PROMPT = """You check an assistant's memory for invented details.
+Today is {today}.
+What the user actually said (speech transcript, may be in any language):
+{said}
+
+Fact the assistant wants to store:
+{fact}
+
+Is EVERY detail of the fact supported by what the user said? Translation is
+allowed, and turning "yesterday"/"hier" into a date is allowed. Any added
+detail (a place, a number, a name, a reason, a feeling) that the user did not
+say makes it unsupported. Answer with exactly one word: YES or NO."""
+
+
+def parse_judgement(text: str) -> bool | None:
+    m = re.search(r"\b(YES|NO|OUI|NON)\b", (text or "").upper())
+    if not m:
+        return None
+    return m.group(1) in ("YES", "OUI")

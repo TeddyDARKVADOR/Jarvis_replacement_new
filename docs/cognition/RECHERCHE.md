@@ -398,6 +398,18 @@ Réponses de Teddy, qui m'a délégué les choix restants :
 
 **Fait (phases 1–2)** : paquet `cognition/`, 23/23 au selftest, intégration vérifiée sur le vrai `JarvisLive` en mode local. Voir [cognition/README.md](../../cognition/README.md).
 
+**Fait ensuite (phases 3–4, même jour)** : 36/36 au selftest.
+- Réflexion citée (phase 3).
+- Moteur émotionnel à règles avec conséquences et invariant de sécurité (phase 4).
+- Outil `self_state` : début de la phase 6.
+- Second avis sur les traductions.
+
+Le premier test réel de Teddy a révélé deux défauts, tous deux corrigés et couverts par des tests :
+- une date déduite d'« hier » faisait marquer non vérifié un fait vrai ;
+- un fait non vérifié était blanchi en passant par `long_term.json`.
+
+Mesures réelles détaillées dans le README.
+
 Sonde réelle des générateurs (2026-10-13) :
 
 | Générateur | Résultat |
