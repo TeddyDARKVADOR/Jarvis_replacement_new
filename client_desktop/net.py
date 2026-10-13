@@ -103,6 +103,9 @@ class JarvisClient:
         self._sockets_open: set[str] = set()
         self._announced_connected = False
         self._closing = False
+        # `ts` of the last show_graph obeyed: a reconnection replays /ws's
+        # history, and the panel must not reopen for a request already served.
+        self._graph_last_ts: float = 0.0
 
     @property
     def endpoint(self) -> ServerEndpoint:
@@ -294,6 +297,17 @@ class JarvisClient:
 
         elif kind == P.EV_CONFIRM_HIDE:
             self._store.clear_confirmation()
+
+        elif kind == P.EV_SHOW_GRAPH:
+            try:
+                stamp = float(event.get("ts"))
+            except (TypeError, ValueError):
+                return
+            if time.time() - stamp > P.SHOW_GRAPH_FRESH_SECONDS or stamp <= self._graph_last_ts:
+                return
+            self._graph_last_ts = stamp
+            self._store.request_graph(str(event.get("graph") or "general"),
+                                      str(event.get("focus") or ""))
 
     # ── /ws/phone-out — JARVIS's voice ───────────────────────────────────────
 

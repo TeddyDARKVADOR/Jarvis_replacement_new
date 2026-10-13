@@ -1,0 +1,43 @@
+{
+  "schema": "jarvis.graph/1",
+  "id": "preprod",
+  "title": "jarvis-preprod — le laboratoire Android",
+  "updated": "2026-10-13",
+  "summary": "Un banc d'essai pour le client Android sur émulateur. Une règle le sépare du reste : rien ici ne touche un appareil réel.",
+  "replaces": ["jarvis-preprod/README.md"],
+  "nodes": [
+    {"id": "preprod", "label": "jarvis-preprod/", "kind": "racine",
+     "summary": "./preprod deps · build · up/down · smoke · notifications · network · ui · devices · audio · all · report · clean.",
+     "details": ["Chaque campagne repart d'un reports/latest vide : un rapport qui mélange deux exécutions ment sur au moins l'une.", "La campagne « face » a été retirée avec l'avatar le 2026-10-13."],
+     "files": ["jarvis-preprod/preprod", "jarvis-preprod/config/lab.env"]},
+    {"id": "r.emulateur", "label": "Jamais un appareil réel", "kind": "regle", "status": "ok",
+     "summary": "tools/adb.sh refuse tout numéro de série qui n'est pas emulator-* : un force-stop ou un uninstall parti sur le téléphone de tous les jours ne se rattrape pas.",
+     "files": ["jarvis-preprod/tools/adb.sh"]},
+    {"id": "d.config", "label": "lab.env", "kind": "donnee",
+     "summary": "La seule source de configuration : AVD, numéro de série, ports, SDK, JDK, rendu graphique (swiftshader par défaut, host = GPU), mémoire. Tout est surchargeable par l'environnement.",
+     "files": ["jarvis-preprod/config/lab.env"]},
+    {"id": "p.demarrer", "label": "Démarrer", "kind": "procedure",
+     "summary": "cd jarvis-preprod ; ./preprod deps ; ./emulator/create.sh (une fois, AVD jarvis_lab sur D:) ; ./preprod build ; ./preprod all.",
+     "files": ["jarvis-preprod/emulator/create.sh"]},
+    {"id": "m.lab_server", "label": "Serveur de labo", "kind": "module", "status": "ok",
+     "summary": "MARK LIII sans clé Gemini, avec des routes /lab/* pour injecter des états, des appareils et des notifications.",
+     "files": ["jarvis-preprod/tools/lab_server.py", "jarvis-preprod/tools/server.sh"]},
+    {"id": "t.smoke", "label": "smoke", "kind": "test", "status": "ok", "summary": "Installe l'app et vérifie qu'elle démarre.", "files": ["jarvis-preprod/tests/smoke/test_launch.sh"]},
+    {"id": "t.notifications", "label": "notifications", "kind": "test", "status": "ok", "summary": "Les quatre priorités, la déduplication, le rejeu.", "files": ["jarvis-preprod/tests/notifications/test_notifications.sh"]},
+    {"id": "t.network", "label": "network", "kind": "test", "status": "ok", "summary": "Perte réseau (mode avion) et reconnexion.", "files": ["jarvis-preprod/tests/network/test_reconnect.sh"]},
+    {"id": "t.ui", "label": "ui", "kind": "test", "status": "ok", "summary": "Navigation et états de l'interface.", "files": ["jarvis-preprod/tests/ui/test_states.sh"]},
+    {"id": "t.devices", "label": "devices", "kind": "test", "status": "ok", "summary": "Identité, capacités déclarées, commandes routées.", "files": ["jarvis-preprod/tests/devices/test_routing.sh"]},
+    {"id": "t.audio", "label": "audio", "kind": "test", "status": "partiel", "summary": "Ce qui est déterministe ; le reste sort en PHYSICAL_ONLY.", "files": ["jarvis-preprod/tests/audio/test_audio.sh"]},
+    {"id": "r.verdicts", "label": "Les quatre verdicts", "kind": "regle", "status": "ok",
+     "summary": "PASS (vérifié sur l'AVD) · FAIL (capture, logcat et état ADB joints) · SKIP (non observable ici) · PHYSICAL_ONLY (aucun émulateur ne le prouvera : micro, haut-parleur, A2DP).",
+     "details": ["PHYSICAL_ONLY a son propre bloc : une campagne toute verte ne doit jamais se lire « tout est validé »."],
+     "files": ["jarvis-preprod/tools/report.py"]}
+  ],
+  "edges": [
+    ["preprod", "r.emulateur", "contient"], ["preprod", "d.config", "contient"], ["preprod", "p.demarrer", "contient"], ["preprod", "m.lab_server", "contient"],
+    ["preprod", "t.smoke", "contient"], ["preprod", "t.notifications", "contient"], ["preprod", "t.network", "contient"], ["preprod", "t.ui", "contient"],
+    ["preprod", "t.devices", "contient"], ["preprod", "t.audio", "contient"], ["preprod", "r.verdicts", "contient"],
+    ["t.notifications", "m.lab_server", "utilise"], ["t.devices", "m.lab_server", "utilise"], ["t.ui", "m.lab_server", "utilise"],
+    ["r.emulateur", "t.smoke", "protege"], ["d.config", "preprod", "alimente"]
+  ]
+}

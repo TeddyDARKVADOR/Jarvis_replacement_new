@@ -337,6 +337,11 @@ class JarvisDesktop(QObject):
         if kind == "message" and getattr(payload, "from_jarvis", False):
             self._last_jarvis_at = time.monotonic()
 
+        # Asked for by the user, through JARVIS: not a notification.
+        if kind == "graph" and isinstance(payload, dict):
+            self.hud.show_graph(payload.get("graph", "general"), payload.get("focus", ""))
+            return
+
         if not self.settings.notifications:
             return
         snapshot: Snapshot = self.store.snapshot()

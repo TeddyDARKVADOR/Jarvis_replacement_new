@@ -180,6 +180,15 @@ class HeadlessUI:
         self._emit({"type": "content",
                     "title": str(title)[:48], "text": str(text)[:4000]})
 
+    def show_graph(self, graph: str = "general", focus: str = "") -> None:
+        """Ask the HUD to open its GRAPHE panel (plugins/capabilities.py).
+
+        The graphs themselves are not sent: the HUD reads its own copy of
+        capabilities/graphs/. `ts` lets a client ignore the replay of this
+        event when it reconnects (/ws replays its last 50 messages)."""
+        self._emit({"type": "show_graph", "graph": str(graph or "general")[:40],
+                    "focus": str(focus or "")[:80], "ts": time.time()})
+
     def notify_phone_connected(self) -> None:
         self.state.note_phone_connected()
 

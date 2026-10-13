@@ -359,6 +359,11 @@ class JarvisStore:
         )
         self._emit("confirm_hide", None)
 
+    def request_graph(self, graph: str = "general", focus: str = "") -> None:
+        """JARVIS was asked to show its capability graph. An event, never
+        state: the HUD opens its GRAPHE panel and reads the graphs itself."""
+        self._emit("graph", {"graph": graph or "general", "focus": focus or ""})
+
     def reset_session_counters(self) -> None:
         """Called when the client stops. A stopped client owns nothing any more:
         leaving the byte counters up while the link shows OFFLINE reads as "it is

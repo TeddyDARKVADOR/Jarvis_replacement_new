@@ -21,6 +21,9 @@ are a large part of why this file exists:
 Checks 16-17 are the device capabilities: a capability is a promise the router
 acts on, so every declared name must be a real action that actually imported.
 
+Check 20 is "show me your graph" arriving from Oracle: obeyed once, never
+replayed by a reconnection.
+
 Checks 25-33 are the HUD: the controller's contract with the window, the page
 and its files, the settings page, and `main.py`'s launcher block.
 
@@ -122,7 +125,7 @@ def run() -> bool:  # noqa: C901
         and "/ws/phone-audio?token=" in endpoint.mic_uplink("t")
         and "/ws/phone-out?token=" in endpoint.audio_downlink("t")
     )
-    report.check("2  endpoint URLs match PROTOCOL.md", urls_ok)
+    report.check("2  endpoint URLs match the protocol (graph android)", urls_ok)
 
     # A bearer is base64-ish and can contain '+' and '/'. Unescaped, those
     # become a space and a path separator, and the socket is refused with a
@@ -405,6 +408,37 @@ def run() -> bool:  # noqa: C901
         )
     except Exception as exc:
         report.fail("19 MARK LIII is untouched", f"git unavailable: {exc}")
+
+    # -- 20. "show me your graph", arriving over the wire -------------------
+    #
+    # plugins/capabilities.py on Oracle asks the HUD to open its GRAPHE panel.
+    # `/ws` replays its last 50 events to a client that connects, so a request
+    # served this morning must not reopen the panel at noon, nor twice.
+    try:
+        import json as _json
+
+        from client_desktop.net import JarvisClient
+
+        store = JarvisStore()
+        opened: list[object] = []
+        store.subscribe(lambda kind, payload: opened.append(payload) if kind == "graph" else None)
+        client = JarvisClient(
+            config_mod.Settings(host="h.ts.net", device_token="tok"), store, speaker=None,
+            on_connected=lambda: None, on_disconnected=lambda _r, _f: None,
+        )
+        now = _time.time()
+        fresh = _json.dumps({"type": P.EV_SHOW_GRAPH, "graph": "server", "focus": "f.routage", "ts": now})
+        client._handle_event(fresh)
+        arrived = opened == [{"graph": "server", "focus": "f.routage"}]
+        client._handle_event(fresh)                                   # the replay of the same one
+        client._handle_event(_json.dumps({"type": P.EV_SHOW_GRAPH, "graph": "hud",
+                                          "ts": now - P.SHOW_GRAPH_FRESH_SECONDS - 5}))
+        for bad in ('{"type":"show_graph"}', '{"type":"show_graph","ts":"soon"}'):
+            client._handle_event(bad)
+        report.check("20 a show_graph request opens the panel once, a replay never",
+                     arrived and len(opened) == 1, f"opened={opened}")
+    except Exception as exc:
+        report.fail("20 a show_graph request opens the panel", repr(exc))
 
     _hud_checks(report)
 

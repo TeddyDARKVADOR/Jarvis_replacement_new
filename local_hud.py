@@ -169,6 +169,10 @@ class LocalUI(HeadlessUI):
     def show_content(self, title: str, text: str) -> None:
         self.store.add_message(Message(True, str(text)[:4000], time.time(), title=str(title)[:48]))
 
+    def show_graph(self, graph: str = "general", focus: str = "") -> None:
+        # plugins/capabilities.py: open the HUD's GRAPHE panel, on this PC.
+        self.store.request_graph(graph, focus)
+
     # ── the microphone ───────────────────────────────────────────────────────
 
     @property
@@ -442,7 +446,9 @@ def main(argv: list[str] | None = None) -> int:
     store.subscribe(lambda kind, payload: bridge.event.emit(kind, payload))
 
     def on_event(kind: str, payload: object) -> None:
-        if kind == "confirm":
+        if kind == "graph" and isinstance(payload, dict):
+            hud.show_graph(payload.get("graph", "general"), payload.get("focus", ""))
+        elif kind == "confirm":
             hud.show()
             hud.raise_()
             if settings.notifications:

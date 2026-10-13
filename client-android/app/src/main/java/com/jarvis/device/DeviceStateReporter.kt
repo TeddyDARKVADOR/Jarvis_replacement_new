@@ -24,7 +24,7 @@ import org.json.JSONObject
  * Reports what this phone can see about its own situation, so MARK LIII can
  * decide whether now is a good moment to speak.
  *
- * The server side is `context/` (see `context/README.md`). This class is the
+ * The server side is `context/` (see capabilities/graphs/context.json). This class is the
  * only thing on the phone that knows about it, and the server treats every
  * field as optional — so a signal this phone cannot read is a field that is
  * simply absent, never an error at either end.

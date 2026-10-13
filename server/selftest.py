@@ -475,7 +475,7 @@ def _status_contract():
         body = r.json()
         raw = r.text
 
-    # What ORACLE.md tells an operator to watch. Renaming any of these silently
+    # What the deployment graph (p.installation) tells an operator to watch. Renaming any of these silently
     # breaks a monitoring script that has no way to notice.
     required = ["service", "uptime_s", "state", "session_live", "session_held_s",
                 "longest_session_s", "phone", "counts", "audio_out"]

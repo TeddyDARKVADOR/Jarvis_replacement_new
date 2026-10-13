@@ -1,7 +1,7 @@
 """
 cognition_memory — l'archive de JARVIS : conversations passées et faits avec provenance.
 
-Plugin ordinaire (docs/V2_CONTRACT.md, cas 1). Il ne fait que lire
+Plugin ordinaire (graphe contrat, cas 1). Il ne fait que lire
 cognition.get_active() : hors mode local, ou si cognition/ est absent, il répond
 que l'archive est indisponible et JARVIS continue comme avant.
 """

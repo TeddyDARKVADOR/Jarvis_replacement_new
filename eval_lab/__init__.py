@@ -4,7 +4,7 @@ eval_lab/ — the lab that looks for the limits of JARVIS.
     python -m eval_lab --help
     python -m eval_lab.selftest
 
-A root package in the sense of docs/V2_CONTRACT.md §3: it imports context/,
+A root package in the sense of the V2 contract (capabilities/graphs/contrat.json): it imports context/,
 and server/ to exercise them, and NOTHING imports it.
 Deleting this directory leaves JARVIS exactly as it was; `python main.py`
 never loads a line of it.

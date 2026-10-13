@@ -1,7 +1,7 @@
 """
 cognition_self — l'état de JARVIS tel qu'il est ENREGISTRÉ, pas tel qu'il l'imagine.
 
-Plugin ordinaire (docs/V2_CONTRACT.md, cas 1). Lit cognition.get_active() ;
+Plugin ordinaire (graphe contrat, cas 1). Lit cognition.get_active() ;
 hors mode local, ou si cognition/ est absent, répond que c'est indisponible.
 """
 
@@ -14,8 +14,8 @@ PLUGIN = {
         "feel, how you are doing, what is going on inside you, or why you act a certain "
         "way — and answer from its numbers, never from imagination. These are computed "
         "variables, not felt emotions: say so if relevant. Also gives your measured "
-        "reliability per tool, calibration and hard limits: use it when asked what you can "
-        "or cannot do, or how sure you are."
+        "reliability per tool, calibration and hard limits: use it when asked how reliable "
+        "you are or how sure you are. For which features you have, use 'capabilities'."
     ),
     "parameters": {"type": "OBJECT", "properties": {
         "about": {"type": "STRING",

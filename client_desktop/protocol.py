@@ -19,7 +19,7 @@ are not phone-specific: `/ws/phone-audio` is "a microphone that is not the
 server's own", which is exactly what this workstation is.
 
 Source of truth, in order: `dashboard/server.py`, `server/api.py`, `main.py`,
-then `client-android/PROTOCOL.md`.
+then capabilities/graphs/android.json (the pr.* nodes).
 """
 
 from __future__ import annotations
@@ -77,6 +77,10 @@ EV_CONTENT = "content"              # {"title","text"}
 EV_CONFIRM = "confirm"              # {"id","title","detail","timeout_s"}
 EV_CONFIRM_HIDE = "confirm_hide"    # no payload - take the banner down
 EV_AUDIO_FORMAT = "audio_format"    # first frame of /ws/phone-out
+EV_SHOW_GRAPH = "show_graph"        # {"graph","focus","ts"} - open the GRAPHE panel
+
+#: A `show_graph` older than this is a replay from /ws's history, not a request.
+SHOW_GRAPH_FRESH_SECONDS = 30.0
 
 # ── Client -> server ─────────────────────────────────────────────────────────
 CMD_COMMAND = "command"
@@ -86,7 +90,7 @@ CMD_CONFIRMATION_RESPONSE = "confirmation_response"
 # ── /ws/device ───────────────────────────────────────────────────────────────
 #
 # Server -> client, and the answer back. Unknown types are ignored by both ends
-# (PROTOCOL.md section 4), so a client or server that predates these carries on
+# (capabilities/graphs/android.json, pr.events), so a client or server that predates these carries on
 # without noticing them.
 EV_DEVICE_COMMAND = "device_command"    # {"id","target_device_id","action","parameters"}
 CMD_DEVICE_RESULT = "device_result"     # {"id","result"}
@@ -119,7 +123,7 @@ class ServerEndpoint:
     port: int = 8000
     # MARK LIII serves TLS only when `config/certs/` is populated. Over
     # Tailscale the tunnel already encrypts everything; see the transport note
-    # in PROTOCOL.md section 6.
+    # in capabilities/graphs/android.json, pr.securite.
     use_tls: bool = False
 
     @property

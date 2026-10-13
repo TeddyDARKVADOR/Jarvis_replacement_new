@@ -24,7 +24,7 @@ import org.json.JSONObject
  * ## Showing it once is the hard part
  *
  * The server replays recent events to a client that connects — the last 50
- * messages, plus every notification still inside its TTL (PROTOCOL.md §4). That
+ * messages, plus every notification still inside its TTL (capabilities/graphs/android.json, pr.notify). That
  * is what stops a notification being lost while the phone is out of coverage,
  * and it is also what would show the same alert on every single reconnect.
  *

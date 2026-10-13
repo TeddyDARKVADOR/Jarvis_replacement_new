@@ -867,3 +867,45 @@ body.mini #camera, body.mini #clip { display: none !important; }
 .mr-step.d-refused span:first-child, .mr-step.d-refused code { color: var(--c-err); }
 .mr-step.d-executed span:first-child { color: var(--c-listen); }
 .mc-line.wait { color: var(--c-think); }
+
+/* ── panneau GRAPHE (js/graph.js, capabilities/) ───────────────────────── */
+.modal.graph { width: min(1400px, 97vw); height: min(900px, 94vh); padding: 0; display: flex;
+  flex-direction: column; user-select: text; }
+.graph-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.graph-tools input { width: 260px; background: var(--a06); border: 1px solid var(--a20); color: var(--text);
+  font: inherit; font-size: 12px; padding: 7px 10px; outline: none; }
+.graph-tools input:focus { border-color: var(--a60); }
+#graph-count { font-size: 11px; color: var(--muted); min-width: 64px; }
+.graph-trail { display: flex; align-items: center; gap: 8px; padding: 6px 26px; font-size: 10.5px;
+  letter-spacing: 2px; color: var(--muted); border-bottom: 1px solid var(--a12); min-height: 30px; }
+.graph-trail b { color: var(--accent); font-weight: 600; }
+.graph-trail button { background: none; border: 0; color: var(--muted); font: inherit; letter-spacing: 2px; cursor: pointer; padding: 0; }
+.graph-trail button:hover { color: var(--accent); }
+.graph-body { flex: 1; display: flex; min-height: 0; }
+.graph-stage { flex: 1; position: relative; min-width: 0; overflow: hidden;
+  background: radial-gradient(circle at 50% 50%, var(--a06), transparent 70%); }
+.graph-stage canvas { position: absolute; inset: 0; cursor: grab; }
+.graph-side { width: 360px; flex: none; overflow: auto; padding: 16px 20px; border-left: 1px solid var(--a12); font-size: 12.5px; }
+.gs-kind { font-size: 10px; letter-spacing: 3px; color: var(--c); }
+.gs-title { margin: 6px 0 8px; font-size: 17px; color: #E6EEF9; font-weight: 600; letter-spacing: .5px; }
+.gs-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.gs-badge { font-size: 9.5px; letter-spacing: 2px; padding: 3px 7px; border: 1px solid var(--c, var(--muted)); color: var(--c, var(--muted)); }
+.gs-badge.muted { --c: var(--muted); }
+.gs-badge.tool { --c: #F9A8D4; font-family: var(--mono); letter-spacing: 0; }
+.gs-summary { margin: 0 0 10px; line-height: 1.5; color: var(--text); }
+.gs-details { margin: 0 0 12px; padding-left: 16px; color: #B4C2D8; line-height: 1.45; }
+.gs-details li { margin-bottom: 5px; }
+.gs-open { margin: 4px 0 12px; }
+.gs-label { margin: 14px 0 6px; font-size: 10px; letter-spacing: 3px; color: var(--accent); }
+.gs-code, .gs-files code { display: block; font-family: var(--mono); font-size: 11px; color: #C9D6EA;
+  background: var(--a06); padding: 4px 7px; margin-bottom: 3px; word-break: break-all; }
+.gs-rels { display: flex; flex-direction: column; gap: 3px; }
+.gs-rel { text-align: left; background: none; border: 1px solid transparent; color: var(--text); font: inherit;
+  font-size: 12px; padding: 3px 6px; cursor: pointer; }
+.gs-rel:hover { border-color: var(--a35); color: var(--accent); }
+.gs-rel i { font-style: normal; color: var(--muted); font-size: 10.5px; margin-right: 4px; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 10px; letter-spacing: 1.5px; }
+.graph-legend i.ring { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--c);
+  margin-right: 5px; vertical-align: -1px; }
+.graph-legend i.ring.dashed { border: 1px dashed var(--accent); }
+#graph-meta { font-family: var(--mono); font-size: 10px; }

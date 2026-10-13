@@ -153,7 +153,7 @@ object Protocol {
     /** What this phone can see about its own situation: `{"state": {...}}`.
      *
      *  Read by the server's optional `context/` package, which decides from it
-     *  whether JARVIS may speak right now (see `context/README.md`). Every
+     *  whether JARVIS may speak right now (see capabilities/graphs/context.json). Every
      *  field inside `state` is optional and the server merges what arrives into
      *  what it already had, so a phone that cannot read a signal omits it
      *  rather than sending a placeholder — and an older phone sending half the

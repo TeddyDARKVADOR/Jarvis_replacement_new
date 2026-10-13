@@ -8,7 +8,7 @@
 #   bash deployment/redeploy.sh                  # deploiement complet (demande confirmation)
 #
 # Options : --yes (pas de confirmation), --no-restart, --skip-tests.
-# Procedure complete, et restauration : deployment/RECOVERY.md.
+# Procedure complete, et restauration : capabilities/graphs/deployment.json.
 #
 # CE QUE CE SCRIPT FAIT, DANS L'ORDRE
 #   1 repo        l'arbre suivi est propre ; on deploie EXACTEMENT HEAD
@@ -194,4 +194,4 @@ ok "copie git == ${SHA:0:7}"
 ok "/opt/jarvis identique au commit (secrets et donnees exclus)"
 [ "${C_HEALTH:-0}" = 1 ] || die "/health ne repond pas"
 ok "/health"
-step "-" "Oracle a ${SHA:0:7}. Retour arriere : deployment/RECOVERY.md, sauvegarde $BACKUP"
+step "-" "Oracle a ${SHA:0:7}. Retour arriere : capabilities/graphs/deployment.json (p.retour), sauvegarde $BACKUP"

@@ -1,7 +1,7 @@
 """
 cognition_goals — objectifs persistants : JARVIS propose, l'utilisateur dispose.
 
-Plugin ordinaire (docs/V2_CONTRACT.md, cas 1), et le SEUL pont entre
+Plugin ordinaire (graphe contrat, cas 1), et le SEUL pont entre
 cognition/ et core/confirm.py. Le modèle peut proposer, noter un progrès,
 retirer sa proposition. Activer, clore, annuler ou relancer un objectif met un
 bouton CONFIRMER sur le HUD : l'action n'a lieu que si l'utilisateur appuie.

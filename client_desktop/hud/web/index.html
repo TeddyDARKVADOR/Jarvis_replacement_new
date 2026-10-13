@@ -186,6 +186,7 @@
         <p><b>Au clic</b> — cliquez sur le noyau ou sur le bouton micro pour ouvrir le micro ; recliquez pour le fermer.</p>
         <p><b>Au clavier</b> — tapez une commande en bas et appuyez sur Entrée.</p>
         <p><b>Interrompre</b> — cliquez sur le noyau pendant qu'il parle, ou Échap.</p>
+        <p><b>Ce qu'il sait faire</b> — demandez-lui <q>montre-moi ton graphe</q> (ou <q>…le graphe du serveur</q>).</p>
         <p class="legend">
           <span style="--c:var(--c-idle)">PRÊT</span><span style="--c:var(--c-listen)">ÉCOUTE</span><span style="--c:var(--c-think)">RÉFLEXION</span><span style="--c:var(--c-speak)">RÉPONSE</span><span style="--c:var(--c-warn)">CONNEXION</span><span style="--c:var(--c-err)">ERREUR</span>
         </p>
@@ -425,6 +426,32 @@
 </div>
 
 <!-- Jarvis Code Studio — see js/studio.js and core/code_workspace/ -->
+<!-- Panneau GRAPHE — voir js/graph.js et capabilities/. Pas de bouton : il s'ouvre
+     quand on demande à JARVIS de montrer son graphe (outil capabilities, action show). -->
+<div id="graph" class="overlay" hidden>
+  <div class="modal graph">
+    <header class="st-head">
+      <div class="st-brand">
+        <div class="st-kicker">CONNAISSANCE DE SOI</div>
+        <div class="st-title" id="graph-title">GRAPHE</div>
+        <div class="st-request" id="graph-sub"></div>
+      </div>
+      <div class="graph-tools">
+        <input id="graph-q" type="text" placeholder="Chercher une fonctionnalité…" autocomplete="off">
+        <span id="graph-count"></span>
+        <button class="mini-btn" id="graph-fit" title="Tout voir">⤢ TOUT VOIR</button>
+      </div>
+      <button class="ico" id="graph-close" title="Fermer (Échap)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </header>
+    <nav class="graph-trail" id="graph-trail"></nav>
+    <div class="graph-body">
+      <div class="graph-stage"><canvas id="graph-canvas"></canvas></div>
+      <aside class="graph-side" id="graph-side"></aside>
+    </div>
+    <footer class="mind-foot"><span id="graph-legend" class="graph-legend"></span><span id="graph-meta"></span></footer>
+  </div>
+</div>
+
 <div id="studio" class="overlay" hidden>
   <div class="modal studio">
     <div id="st-unavailable" class="st-unavailable" hidden>

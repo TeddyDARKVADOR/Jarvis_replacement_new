@@ -18,7 +18,7 @@ des critères ; une « introspection » la lecture de ces données.
 |---|---|
 | Langage | Python ≥ 3.11 (`asyncio.TaskGroup`), venv local en 3.14. Client Android en Kotlin. |
 | Architecture | `main.py` (`JarvisLive`) = boucle Gemini Live : audio entrant/sortant, dispatch d'outils, tâches de fond. Autour : `actions/` (outils auto-décrits `TOOL`), `plugins/` (`PLUGIN` + `run()`), `core/` (undo, confirmation, wake word, Studio de code), `context/` (situation → politique de prise de parole), `server/` (mode headless sur Oracle), `client_desktop/` (HUD), `eval_lab/`. |
-| Règle de projet | [docs/V2_CONTRACT.md](../V2_CONTRACT.md) : toute fonctionnalité post-V1 doit pouvoir être **retirée sans casser V1** ; ordre de préférence plugin → paquet racine + hook d'une ligne → cœur en dernier recours. `context/`, `server/`, `eval_lab/` respectent déjà ce modèle (« rien ne m'importe », vérifié par selftest). |
+| Règle de projet | le contrat V2 (graphe `contrat`) : toute fonctionnalité post-V1 doit pouvoir être **retirée sans casser V1** ; ordre de préférence plugin → paquet racine + hook d'une ligne → cœur en dernier recours. `context/`, `server/`, `eval_lab/` respectent déjà ce modèle (« rien ne m'importe », vérifié par selftest). |
 | Modèle | `models/gemini-3.1-flash-live-preview` (audio natif, Live API) pour la conversation ; `gemini-3.1-flash-lite` pour le résumé de session ; Studio de code : Groq (`openai/gpt-oss-120b`) sinon `gemini-flash-latest`. SDK `google-genai`. |
 | Prompt / contexte | `_build_config()` assemble **une fois par connexion** : date/heure + identité (nom, forme d'adresse) + bloc mémoire + [core/prompt.txt](../../core/prompt.txt). Compression par fenêtre glissante, reprise de session par handle (en RAM). Pas de cache de contexte sur le modèle Live. Les injections en cours de session passent par `send_client_content` (briefing, proactif, alertes). |
 | Mémoire | [memory/memory_manager.py](../../memory/memory_manager.py) : un JSON clé→`{value, updated}` en 6 catégories (identity, preferences, projects, relationships, wishes, notes). Prompt : identité + entrées récentes (900 car.) + index des clés (420 car.). Rappel : outil `recall_memory`, score **lexical** local. Écriture : outil `save_memory` appelé **par le modèle**, sans source ni confiance. Résumés de session : liste `sessions` (max 3), **consommée** (`pop_last_session`) au briefing suivant puis effacée. |
@@ -28,7 +28,7 @@ des critères ; une « introspection » la lecture de ces données.
 | Boucles autonomes | `_run_proactive_mode` (minute par minute ; 15 min de silence, 20 min de cooldown ; filtrée par `context/`), `_run_background_monitor` (sujets suivis, 30 min), `_run_system_monitor` (10 s), briefing de démarrage. Aucune boucle ne poursuit d'objectif propre. |
 | Journalisation | `print` + `ui.write_log` ; `memory/token_usage.jsonl` (sans contenu) ; journal du Studio. Pas de journal d'événements structuré commun. |
 | Tests | Selftests par paquet + `eval_lab`. **Base mesurée aujourd'hui** : context 33/33, presence 60/60, server 42/42, routing 35/35, client_desktop 33/33, token_usage PASS, code_workspace **32/34**, eval_lab **26/28** (voir §0.1). |
-| Matériel / coût | Serveur Oracle Always Free (1 Go RAM suffisant d'après [ORACLE.md](../../deployment/ORACLE.md) : aucun modèle local). Dernier commit : réduction des coûts Gemini → sensibilité forte au coût en tokens. |
+| Matériel / coût | Serveur Oracle Always Free (1 Go RAM suffisant d'après le guide de déploiement (graphe `deployment`) : aucun modèle local). Dernier commit : réduction des coûts Gemini → sensibilité forte au coût en tokens. |
 | Confidentialité | Mémoire en fichier local (ignoré par Git) ; son contenu part chez Google dans le prompt. Clés dans `config/api_keys.json` (ignoré par Git). |
 
 ### 0.1 Échecs déjà présents avant toute modification
@@ -395,7 +395,7 @@ Réponses de Teddy, qui m'a délégué les choix restants :
 - **Confidentialité** : envoyer des données à Google est acceptable.
 - La **constitution** est un premier jet de ma part, à amender.
 
-**Fait (phases 1–2)** : paquet `cognition/`, 23/23 au selftest, intégration vérifiée sur le vrai `JarvisLive` en mode local. Voir [cognition/README.md](../../cognition/README.md).
+**Fait (phases 1–2)** : paquet `cognition/`, 23/23 au selftest, intégration vérifiée sur le vrai `JarvisLive` en mode local. Voir le graphe `cognition` (capabilities/graphs/cognition.json).
 
 **Fait ensuite (phases 3–4, même jour)** : 36/36 au selftest.
 - Réflexion citée (phase 3).
@@ -407,7 +407,7 @@ Le premier test réel de Teddy a révélé deux défauts, tous deux corrigés et
 - une date déduite d'« hier » faisait marquer non vérifié un fait vrai ;
 - un fait non vérifié était blanchi en passant par `long_term.json`.
 
-Mesures réelles détaillées dans le README.
+Mesures réelles détaillées dans le graphe `cognition`.
 
 **Phase 5 (objectifs persistants)** : 42/42 au selftest.
 - JARVIS propose ; activer, clore, annuler ou relancer passe par le bouton CONFIRMER existant (`core/confirm.py`).

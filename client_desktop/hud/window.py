@@ -447,6 +447,10 @@ class HudWindow(QWidget):
         if tab:
             self._pending_settings_tab = None
             self._run(f"window.HUD&&HUD.openSettings({json.dumps(tab)})")
+        graph = getattr(self, "_pending_graph", None)
+        if graph:
+            self._pending_graph = None
+            self._run(f"window.HUD&&HUD.showGraph({json.dumps(graph, ensure_ascii=False)})")
 
     # ── the controller's surface ─────────────────────────────────────────────
 
@@ -465,6 +469,31 @@ class HudWindow(QWidget):
             # Clear only the minimised bit, so a maximised HUD comes back maximised.
             self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
         self.activateWindow()
+
+    # ── the capability graph ─────────────────────────────────────────────────
+
+    def show_graph(self, graph: str = "general", focus: str = "") -> None:
+        """Open the GRAPHE panel: JARVIS was asked to show what he can do.
+
+        The graphs are read here, from this PC's copy of capabilities/graphs/,
+        never sent over the wire. There is no button for this panel on purpose:
+        it opens when the user asks JARVIS for it (plugins/capabilities.py)."""
+        try:
+            import capabilities as cap
+            cap.reset()
+            payload = {"graphs": cap.load_all(), "start": graph or cap.GENERAL,
+                       "focus": focus or "", "kinds": cap.KINDS, "statuses": cap.STATUSES,
+                       "relations": cap.RELATIONS}
+        except Exception as exc:
+            payload = {"error": f"graphes illisibles : {exc}"}
+        if self._mini:
+            self._set_mini(False)
+        self.show()
+        self.raise_()
+        self._pending_graph = payload
+        if self._loaded:
+            self._pending_graph = None
+            self._run(f"window.HUD&&HUD.showGraph({json.dumps(payload, ensure_ascii=False)})")
 
     # ── the settings page ────────────────────────────────────────────────────
 

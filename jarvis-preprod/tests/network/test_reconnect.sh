@@ -7,7 +7,7 @@
 #     c'est précisément ce qui le rend différent d'une vraie perte de Wi-Fi.
 #     Dans la vraie vie le socket ne reçoit aucun reset : il reste ouvert et
 #     silencieux, et seul le ping applicatif d'OkHttp finit par le déclarer
-#     mort (PROTOCOL.md §5). Ici, Android signale la perte immédiatement via
+#     mort (graphe android, pr.reconnexion). Ici, Android signale la perte immédiatement via
 #     ConnectivityManager et la reconnexion part tout de suite.
 #
 #     Ce test prouve donc que la machine à états et la reprise fonctionnent.
