@@ -8,6 +8,11 @@
 > prompt de la section 12 en remplaçant le numéro de phase. Chaque phase se
 > termine par des critères d'acceptation vérifiables : tant qu'ils ne sont pas
 > tous verts, la phase n'est pas finie.
+>
+> **Avancement au 2026-10-14 : phase 1 validée** (ses six critères sont cochés
+> plus bas, avec leur preuve). Le détail vit dans le graphe
+> `capabilities/graphs/nightshift.json`. Suite : la phase 0 côté GitHub (secret
+> Groq, variables), puis la phase 2.
 
 ---
 
@@ -67,20 +72,24 @@ l'infrastructure existe**.
 **Un juge déjà écrit : 306 contrôles en 12 suites**, chacune lancée par
 `python -m <suite>`, sans clé ni réseau (sauf mention) :
 
-| Suite | Contrôles | Sous Linux (runner GitHub) |
+| Suite | Contrôles | Sous Linux — mesuré le 2026-10-14 (runner GitHub `ubuntu-24.04`, Python 3.12.15) |
 |---|---|---|
-| `capabilities.selftest` | 11 | probable (pur Python) — à confirmer en phase 1 |
-| `context.selftest` | 33 | probable |
-| `server.selftest` | 35 | **oui** : le serveur tourne en production sous Linux |
-| `server.routing_selftest` | 35 | probable |
-| `client_desktop --selftest` | 28 | à mesurer (PyQt6 sans écran : `QT_QPA_PLATFORM=offscreen`) |
-| `cognition.selftest` | 64 | probable |
-| `eval_lab.selftest` | 28 | probable |
-| `core.code_workspace.selftest` | 34 | **non pour 2 contrôles** connus (n°2 jonction Windows, n°33 Pyright) |
-| `reminders.selftest` | 4 | probable |
-| `resilience.selftest` | 13 | **oui** (vérifié sous WSL2 le 2026-10-13) |
-| `extensions.selftest` | 11 | **oui** (vérifié sous WSL2) |
-| `offline.selftest` | 10 (+4 avec `--real`) | **oui** pour les 10 (vérifié sous WSL2) |
+| `capabilities.selftest` | 11 | **oui** : 11/11 |
+| `context.selftest` | 33 | **oui** : 33/33 |
+| `server.selftest` | 35 | **oui** : 35/35 |
+| `server.routing_selftest` | 35 | **oui** : 35/35 |
+| `client_desktop --selftest` | 28 | **oui, avec les bibliothèques de Qt** (17 paquets, mesurés avec `ldd`) : 27/28 au premier run, le n°25 cassé par un commentaire de la route NUIT (corrigé) — 28/28 à confirmer |
+| `cognition.selftest` | 64 | **oui** : 64/64 |
+| `eval_lab.selftest` | 28 | **oui** : 28/28 |
+| `core.code_workspace.selftest` | 34 | **33/34** : seul le n°2 échoue, à cause du nettoyage du test (`os.rmdir` sur un lien symbolique), pas de la sandbox ; le n°33 passe sans Pyright |
+| `reminders.selftest` | 4 | **oui** : 4/4 |
+| `resilience.selftest` | 13 | **oui** : 13/13 |
+| `extensions.selftest` | 11 | **oui** : 11/11 |
+| `offline.selftest` | 10 (+4 avec `--real`) | **oui** : 10/10 |
+
+S'y ajoutent `core.token_usage_selftest`, `actions.repository_review_selftest`
+et `nightshift.selftest` (14 contrôles) : 15 suites en tout, la liste de
+`nightshift/suites.py`.
 
 Plus `python -m capabilities.verify --quick` (sondes réelles des 35 outils :
 19 réelles, 11 « à vide »), qui demande des clés pour certaines sondes.
@@ -146,7 +155,8 @@ réutiliser ces idées et du code de `diagnose.py`.
 | Gemini gratuit | Clé valide, mais quota texte épuisé pendant les tests du 2026-10-13 (429) | Secours seulement ; `resilience/` gère la bascule. |
 | Ollama local | RTX 3060 12 Go. `gemma4:12b` (7,6 Go, 1,2–1,8 s/réponse) tient en VRAM ; `qwen3.6` (23 Go) et `qwen3:30b` (18 Go) non (41,6 s) ; `qwen3:4b-instruct` absent | Bon pour trier et classer, **pas pour écrire des correctifs multi-fichiers**. Seulement si le PC est réveillé (phase 5). |
 | VM Oracle | En panne (inactive trop longtemps) | Hors du plan. Le relais hors-ligne couvre déjà le HUD sans Oracle. |
-| WSL2 sur ce PC | Plante au démarrage (`Wsl/Service/CreateInstance/E_FAIL`) depuis le 2026-10-13 | Les tests Linux se feront sur le runner GitHub (phase 1). |
+| WSL2 sur ce PC | Plante au démarrage (`Wsl/Service/CreateInstance/E_FAIL`) depuis le 2026-10-13 | Les tests Linux se font sur le runner GitHub (phase 1, fait). |
+| Portable sous Fedora 44 (2026-10-14) | Pas de Windows, donc pas de WSL ; un conteneur toolbox Ubuntu 24.04 (`toolbox run -c ubuntu-toolbox-24.04 …`) reproduit le runner ; GPU de 4 Go | Les suites Linux se lancent aussi ici, comme sur le runner. Pour la phase 5, ce PC ne peut pas faire tourner `gemma4:12b`. |
 
 ### 2.5 Le point de départ
 
@@ -155,6 +165,11 @@ réutiliser ces idées et du code de `diagnose.py`.
   sont de fausses alertes faute de `target-version = "py311"`. **Il n'y a
   presque pas de « bugs gratuits » à trouver par l'analyse statique** : les
   vraies tâches viendront des tests, des régressions et des graphes.
+  *Mis à jour le 2026-10-14 :* ruff 0.17 a changé ses règles par défaut (1 277
+  remarques sans configuration). `pyproject.toml` fixe une liste explicite et
+  le workflow épingle `ruff==0.17.0` : **4 remarques, toutes de vrais suspects**
+  (3 F841, 1 F811), dont 2 dans la zone autorisée de la phase 2
+  (`eval_lab/mutate.py:97`, `offline/selftest.py:217`).
 - **Tests** : tous verts sous Windows le 2026-10-13 après le commit `e302e07`.
   L'état sous Linux est à établir (phase 1, premier livrable).
 
@@ -210,13 +225,17 @@ orpheline, ne contient que des rapports, et sert aussi de mémoire (phase 3).
    create and approve pull requests »** (nécessaire en phase 2 seulement).
 4. **WSL** : redémarrer le PC ; si `wsl -d Ubuntu -- echo ok` échoue encore,
    `wsl --update` dans un terminal administrateur. (Confort seulement : la
-   phase 1 n'en dépend pas.)
+   phase 1 n'en dépend pas.) *Sans objet sur le portable Fedora :*
+   `toolbox run -c ubuntu-toolbox-24.04 echo ok` en tient lieu (2026-10-14).
 5. **Oracle** (facultatif) : regarder dans la console si l'instance est arrêtée
    (redémarrable) ou supprimée. Rien dans ce plan n'en dépend.
 
 **Fini quand** : le secret et les deux variables existent ; la case PR est cochée.
 
-### Phase 1 — Le veilleur, sans IA (un week-end, 0 token)
+**État au 2026-10-14** : pas encore faite. La phase 1 n'en a eu besoin pour
+rien (aucun secret, aucune variable) ; la phase 2 en dépend.
+
+### Phase 1 — Le veilleur, sans IA (un week-end, 0 token) — ✅ validée le 2026-10-14
 
 **But** : chaque nuit, savoir si quelque chose a cassé, et l'entendre au réveil.
 C'est la phase qui rapporte le plus pour le moins d'effort.
@@ -265,15 +284,46 @@ C'est la phase qui rapporte le plus pour le moins d'effort.
    (domaine `dom.tests`), `updated` à la date du jour.
 
 **Critères d'acceptation**
-- [ ] `workflow_dispatch` lancé à la main : le run passe au vert, `latest.json`
+- [x] `workflow_dispatch` lancé à la main : le run passe au vert, `latest.json`
       apparaît sur `nightshift-data`, le résumé s'affiche dans l'onglet Actions.
-- [ ] **Premier vrai livrable : la liste des suites qui passent sous Linux**,
+      *Preuve : run 38532442387 (main, `85114b2`), vert en 54 s ; la branche
+      contient `latest.json`, `latest.md`, `baseline.json` et `runs/` ; le PC
+      relit le rapport sans jeton (ETag, puis 304).*
+- [x] **Premier vrai livrable : la liste des suites qui passent sous Linux**,
       inscrite dans `nightshift/suites.py` et dans le graphe.
-- [ ] Une régression simulée (commit qui casse un contrôle, sur une branche de
+      *Preuve : tableau de la section 2.2 ; 14 suites vertes sur 15 au run
+      38535001267, code_workspace n°2 compris comme échec connu.*
+- [x] Une régression simulée (commit qui casse un contrôle, sur une branche de
       test lancée à la main) est classée « régression » avec le bon commit.
-- [ ] Le briefing annonce le rapport une fois, pas deux.
-- [ ] `python -m nightshift.selftest` et `python -m capabilities.selftest` passent.
-- [ ] Aucun secret dans le workflow de phase 1.
+      *Preuve : run 38535049698 (branche `test/regression-simulee`, supprimée
+      ensuite) : run rouge, « reminders n°1 » depuis `17e0f85`, dernier vert
+      `dd5f268`, ce commit seul suspect ; seul `runs/` a été écrit.*
+- [x] Le briefing annonce le rapport une fois, pas deux.
+      *Preuve : la vraie `JarvisLive._send_startup_briefing` exécutée deux fois
+      (deux processus, session factice, sans Gemini) : la phrase « 13/15 suites
+      vertes ; régression : reminders n°1 depuis le commit 17e0f85 » part dans
+      la phase 1 du briefing au premier démarrage, rien au second.*
+- [x] `python -m nightshift.selftest` et `python -m capabilities.selftest` passent.
+      *Preuve : 14/14 et 11/11, en local et sur le runner.*
+- [x] Aucun secret dans le workflow de phase 1.
+      *Preuve : aucun `secrets.` dans `nightly.yml` (nightshift.selftest n°12).*
+
+**Réalisé — ce qui diffère du plan**
+- `runs-on: ubuntu-24.04` et non `ubuntu-latest`, qui passe à Ubuntu 26.04
+  entre le 19 octobre et le 19 novembre 2026 : un changement d'image
+  passerait pour des régressions.
+- ruff : liste de règles explicite et version épinglée (voir 2.5).
+- 15 suites et non 12 (voir 2.2).
+- La référence de comparaison est `baseline.json` sur `nightshift-data`
+  (dernière nuit mesurée) ; `latest.json` et `baseline.json` ne viennent que
+  de `main`, un essai sur une autre branche ne laisse sa trace que dans `runs/`.
+- Un échec que la veille ne permet pas de dater (suite qui tourne pour la
+  première fois) est « sans référence », pas « déjà rouge » : le format est
+  passé à `jarvis.nightly/1.2`.
+- client_desktop : le workflow installe les 17 paquets système que Qt charge en
+  mode offscreen (le runner n'avait pas `libEGL.so.1`).
+- Actions épinglées par SHA : checkout v7.0.1, setup-python v7.0.0,
+  upload-artifact v7.0.1, download-artifact v8.0.1.
 
 ### Phase 2 — Une seule tâche IA par nuit (Groq gratuit)
 
@@ -457,6 +507,8 @@ En une phrase au briefing, en détail dans l'onglet NUIT :
 
 Stable et versionné ; tout ajout de champ incrémente la version mineure dans
 la doc du graphe, tout changement incompatible passe à `jarvis.nightly/2`.
+*Version actuelle : 1.2* — les champs ajoutés depuis l'exemple ci-dessous sont
+décrits dans le graphe `nightshift` (nœud « Le format jarvis.nightly/1 »).
 
 ```json
 {

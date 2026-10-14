@@ -13,7 +13,8 @@ QUAND SE TAIRE
     L'onglet NUIT montre tout, toujours.
 QUAND PARLER
   - une régression, une suite en erreur ou hors délai, une réparation, une
-    nouvelle remarque ruff, le retour au vert, la première nuit ;
+    nouvelle remarque ruff, un échec sans référence (suite qui tourne pour la
+    première fois), le retour au vert, la première nuit ;
   - le dernier rapport a plus de 48 h : le veilleur ne tourne plus (GitHub
     désactive une planification après 60 jours sans activité du dépôt).
 
@@ -74,8 +75,9 @@ def sentence(r: dict) -> str:
     broken = [s for s in ran if s.get("status") in ("error", "timeout")]
     new_lint = (r.get("lint") or {}).get("new") or []
     first = r.get("previous") is None
+    unref = [] if first else [x for x in r.get("unreferenced") or [] if isinstance(x, dict)]
     back_to_green = r.get("status") == "success" and r.get("green_streak") == 1 and not first
-    if not (regs or reps or broken or new_lint or first or back_to_green):
+    if not (regs or reps or broken or new_lint or unref or first or back_to_green):
         return ""
     parts = [f"{len(green)}/{len(ran)} suites vertes"]
     if first:
@@ -84,6 +86,8 @@ def sentence(r: dict) -> str:
         parts.append("régression : " + _list([_ref(x) + _since(x) for x in regs]))
     if broken:
         parts.append("en erreur : " + _list([_suite(s.get("name")) for s in broken]))
+    if unref:
+        parts.append("rouge sans référence : " + _list([_ref(x) for x in unref]))
     if reps:
         parts.append("réparé : " + _list([_ref(x) for x in reps]))
     if new_lint and isinstance(new_lint, list):
