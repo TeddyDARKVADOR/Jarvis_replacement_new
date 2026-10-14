@@ -278,6 +278,7 @@ SUITES = {
     "core.token_usage_selftest": [],
     "actions.repository_review_selftest": [],
     "reminders.selftest": [],
+    "nightshift.selftest": [],
 }
 
 

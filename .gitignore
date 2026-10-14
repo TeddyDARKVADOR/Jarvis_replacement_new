@@ -84,6 +84,11 @@ eval_lab/runs/
 # Rejouable a l'identique depuis sa graine (`generate --seed`), donc pas versionne.
 eval_lab/corpus/generated/
 memory/reminders.json
+# nightshift/ : le dernier rapport de nuit en cache et ce que le briefing a
+# déjà annoncé (memory/ est surveillé par les selftests du cœur : un fichier
+# non ignoré ici les ferait échouer)
+memory/nightshift.json
+memory/.nightshift-*.tmp
 
 # MCP servers (extensions/mcp.py) — their env often carries access tokens
 config/mcp.json

@@ -652,6 +652,13 @@ class JarvisLive:
         except Exception:
             pass
 
+        # ── nightshift/ (optionnel) : le rapport de la nuit des tests au briefing ─
+        try:
+            import nightshift
+            nightshift.attach(self)
+        except Exception:
+            pass
+
     # ── Wake word: state machine ─────────────────────────────────────────────
 
     def _wake_state(self) -> dict:
@@ -1536,6 +1543,7 @@ class JarvisLive:
             session_clause = (
                 f" Also briefly and naturally mention that {_when}: {last['summary']}"
             )
+        session_clause += await asyncio.to_thread(getattr(self, "_night_clause", str))  # nightshift/
 
         p1 = (
             f"Greet the user warmly, mention it is {time_str}, and say you are fetching today's news now.{session_clause} "

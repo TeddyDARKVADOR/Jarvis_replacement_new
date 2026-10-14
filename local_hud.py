@@ -348,6 +348,14 @@ class LocalBackend:
             if cog is None:
                 return {"error": "la cognition n'est pas active (JARVIS démarre encore ?)"}
             return cog.hud(op, data)
+        if str(op).startswith("nightshift."):
+            # Onglet NUIT (nightshift/hud.py) : le rapport de la nuit des tests,
+            # en lecture seule. Paquet absent -> une erreur lisible, rien d'autre.
+            try:
+                from nightshift import hud as night_hud
+            except Exception:
+                return {"error": "module nightshift absent"}
+            return night_hud.call(op, data)
         return self._control.call(op, data)
 
     def attach_file(self, path: str) -> dict:

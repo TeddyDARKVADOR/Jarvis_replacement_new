@@ -373,6 +373,7 @@
         <button data-tab="memories">SOUVENIRS <span id="mind-mem-badge" class="mind-badge" hidden></span></button>
         <button data-tab="self">MODÈLE DE SOI</button>
         <button data-tab="usage">USAGE</button>
+        <button data-tab="night">NUIT</button>
       </nav>
       <button class="ico" id="mind-close" title="Fermer (Échap)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </header>
@@ -432,6 +433,23 @@
         <div id="usage-tools" class="usage-tools"></div>
         <h4>OÙ PARTENT LES TOKENS</h4>
         <div id="usage-sources" class="mind-log"></div>
+      </section>
+      <!-- Onglet NUIT — voir js/night.js et nightshift/hud.py : le rapport du veilleur
+           de nuit (GitHub Actions, branche nightshift-data), en lecture seule. -->
+      <section data-pane="night" hidden>
+        <div class="set-note">Chaque nuit à 03 h 17, GitHub lance les suites du dépôt sous Linux et ruff, et compare avec la nuit d'avant. <b>Lecture seule</b> : rien n'est jamais écrit sur main.</div>
+        <div class="usage-range" id="night-actions">
+          <button data-night="refresh">RELIRE</button><button data-night="run">L'EXÉCUTION</button><button data-night="data">LES RAPPORTS</button><button data-night="actions">ACTIONS</button>
+        </div>
+        <div id="night-tiles" class="usage-tiles"></div>
+        <h4>SUITES <small>ce que chaque suite a donné, comparé à la nuit précédente</small></h4>
+        <div id="night-suites" class="usage-tools"></div>
+        <h4>CE QUI A CHANGÉ <small>régressions avec leur commit suspect, réparations, ce qui était déjà rouge</small></h4>
+        <div id="night-changes" class="mind-log"></div>
+        <h4>RUFF <small>seulement les vrais bugs probables (pyproject.toml)</small></h4>
+        <div id="night-lint" class="mind-log"></div>
+        <h4>LIMITES <small>ce que cette nuit n'a pas pu vérifier</small></h4>
+        <ul id="night-limits" class="mind-limits"></ul>
       </section>
     </div>
     <footer class="mind-foot"><span id="mind-status"></span><span id="mind-meta"></span></footer>

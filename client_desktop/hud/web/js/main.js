@@ -810,7 +810,7 @@ const studio = createStudio({
   isMini: () => V.mini,
 });
 const mind = createMind({
-  rpc, sound,
+  rpc, sound, call,
   caps: () => init.caps || {},
 });
 const graph = createGraph({ sound });

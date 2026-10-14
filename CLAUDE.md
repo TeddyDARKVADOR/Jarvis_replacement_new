@@ -7,7 +7,7 @@ dans `capabilities/graphs/*.json` (format `jarvis.graph/1`, voir
 `capabilities/__init__.py`). `general.json` couvre tout JARVIS ; chaque
 sous-graphe détaille une partie (`server`, `hud`, `client_desktop`, `android`,
 `cognition`, `context`, `studio`, `deployment`, `eval_lab`, `preprod`,
-`contrat`). JARVIS lit ces graphes lui-même (outil `capabilities`) et les
+`contrat`, `nightshift`). JARVIS lit ces graphes lui-même (outil `capabilities`) et les
 affiche dans le HUD quand on le lui demande.
 
 - **Ne pas créer de README ni de nouveau `.md` de documentation.** Une
@@ -53,6 +53,7 @@ python -m cognition.selftest
 python -m eval_lab.selftest
 python -m core.code_workspace.selftest
 python -m reminders.selftest
+python -m nightshift.selftest
 python -m capabilities.verify --quick   # sondes réelles des outils
 ```
 

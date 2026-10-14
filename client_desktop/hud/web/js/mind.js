@@ -10,6 +10,8 @@
  * fait une vérité (et une mesure de calibration), approuver un objectif
  * l'active. Aucun outil du modèle ne passe par ici (selftest cognition #46).
  */
+import { loadNight, wireNight } from './night.js';
+
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const day = (ts) => (ts ? String(ts).slice(0, 10) : '');
@@ -85,6 +87,7 @@ export function createMind(ctx) {
     for (const sec of $('mind-body').querySelectorAll('section')) sec.hidden = sec.dataset.pane !== t;
     if (t === 'memories') loadMemories();
     if (t === 'usage') loadUsage();
+    if (t === 'night') loadNight(ctx, status);
   }
 
   // ── usage : ce que JARVIS a coûté et réussi (cognition/usage.py) ──
@@ -357,6 +360,7 @@ export function createMind(ctx) {
       for (const x of $('usage-range').querySelectorAll('button')) x.classList.toggle('sel', x === b);
       loadUsage();
     });
+    wireNight(ctx, status);
     $('mind-views').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-view]');
       if (b) { view = b.dataset.view; loadMemories(); }

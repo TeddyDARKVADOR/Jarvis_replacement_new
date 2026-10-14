@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "general",
   "title": "JARVIS — toutes les fonctionnalités",
-  "updated": "2026-10-13",
+  "updated": "2026-10-14",
   "summary": "Ce que JARVIS sait faire, domaine par domaine. Chaque domaine ouvre un sous-graphe quand il en a un. Les outils sont ceux que Gemini peut appeler : le selftest vérifie qu'il n'en manque aucun.",
   "replaces": [],
   "nodes": [
@@ -83,10 +83,11 @@
     {"id": "dom.serveur", "label": "Serveur 24/7 (Oracle)", "kind": "domaine", "summary": "Le même JarvisLive sur une VM sans écran ni carte son, joignable par Tailscale, avec routage des commandes vers le bon appareil.", "graph": "server", "files": ["server/run_headless.py"], "test": "python -m server.selftest", "status": "ok", "verified": "2026-10-13 — server.selftest : 35/35"},
     {"id": "f.routage", "label": "Routage multi-appareils", "kind": "fonction", "status": "ok", "summary": "Qui exécute l'outil que Gemini vient d'appeler : l'appareil nommé, sinon le seul capable, sinon l'origine, sinon on demande.", "files": ["server/routing.py", "server/targeting.py"], "graph": "server", "test": "python -m server.routing_selftest", "verified": "2026-10-13 — server.routing_selftest : 35/35"},
     {"id": "dom.deploiement", "label": "Déploiement", "kind": "domaine", "summary": "Installer et mettre à jour Oracle depuis n'importe quel PC qui a ce dépôt, sauvegarde et vérification comprises.", "graph": "deployment", "files": ["deployment/redeploy.sh", "deployment/install.sh"]},
-    {"id": "dom.tests", "label": "Tests et évaluation", "kind": "domaine", "summary": "Selftests par paquet sans clé ni réseau, laboratoire de scénarios (eval_lab), banc Android sur émulateur (jarvis-preprod), évaluation cognitive.", "files": ["eval_lab/runner.py"]},
+    {"id": "dom.tests", "label": "Tests et évaluation", "kind": "domaine", "summary": "Selftests par paquet sans clé ni réseau, veilleur de nuit (GitHub Actions), laboratoire de scénarios (eval_lab), banc Android sur émulateur (jarvis-preprod), évaluation cognitive.", "files": ["eval_lab/runner.py"]},
     {"id": "f.eval_lab", "label": "EVAL LAB", "kind": "fonction", "status": "ok", "summary": "Des milliers de scénarios générés, mutés et jugés contre le vrai code de contexte et de routage, triés en causes.", "graph": "eval_lab", "files": ["eval_lab/cli.py"], "test": "python -m eval_lab.selftest", "verified": "2026-10-13 — eval_lab.selftest : 28/28"},
     {"id": "f.preprod", "label": "Laboratoire Android", "kind": "fonction", "status": "ok", "summary": "Campagnes sur émulateur uniquement : démarrage, notifications, réseau, interface, appareils, audio.", "graph": "preprod", "files": ["jarvis-preprod/preprod"]},
-    {"id": "t.selftests", "label": "Selftests", "kind": "test", "summary": "Chaque paquet se prouve seul : capabilities 11, context 33, routing 35, server 35, client_desktop 28, cognition 64, eval_lab 28, code_workspace 34, reminders 4, resilience 13, extensions 11, offline 14, token_usage, repository_review.", "details": ["Tous verts le 2026-10-13 (python -m capabilities.verify).", "Seuls échecs connus hors de ce PC : code_workspace n°2 et n°33 sous Linux (jonction Windows, Pyright)."], "files": ["server/selftest.py", "context/selftest.py", "cognition/selftest.py", "client_desktop/selftest.py", "eval_lab/selftest.py", "core/code_workspace/selftest.py", "reminders/selftest.py", "capabilities/selftest.py", "resilience/selftest.py", "extensions/selftest.py", "offline/selftest.py"], "status": "ok"}
+    {"id": "f.nightshift", "label": "Veilleur de nuit (Night Shift)", "kind": "fonction", "status": "a_tester", "summary": "Chaque nuit à 03 h 17, GitHub Actions lance les suites testables sous Linux et ruff, compare avec la nuit précédente et pousse le rapport sur la branche nightshift-data. Le matin : une phrase au briefing quand il y a du nouveau, le détail dans l'onglet NUIT. Sans IA, sans secret.", "graph": "nightshift", "files": ["nightshift/__init__.py", ".github/workflows/nightly.yml"], "test": "python -m nightshift.selftest"},
+    {"id": "t.selftests", "label": "Selftests", "kind": "test", "summary": "Chaque paquet se prouve seul : capabilities 11, context 33, routing 35, server 35, client_desktop 28, cognition 64, eval_lab 28, code_workspace 34, reminders 4, resilience 13, extensions 11, offline 14, token_usage, repository_review, nightshift 14.", "details": ["Tous verts sous Windows le 2026-10-13 (python -m capabilities.verify).", "Sous Linux (Ubuntu 24.04, Python 3.12.3, le 2026-10-14) : 13 suites sur 14 vertes. code_workspace 33/34 : seul le n°2 échoue, à cause du nettoyage du test (os.rmdir sur un lien symbolique), pas de la sandbox ; le n°33 passe sans Pyright. client_desktop à mesurer (PyQt6-WebEngine, PortAudio). Le veilleur de nuit les relance chaque nuit."], "files": ["server/selftest.py", "context/selftest.py", "cognition/selftest.py", "client_desktop/selftest.py", "eval_lab/selftest.py", "core/code_workspace/selftest.py", "reminders/selftest.py", "capabilities/selftest.py", "resilience/selftest.py", "extensions/selftest.py", "offline/selftest.py", "nightshift/selftest.py"], "status": "ok"}
   ],
   "edges": [
     ["jarvis", "dom.voix", "contient"],
@@ -204,6 +205,7 @@
     ["t.selftests", "d.graphes", "teste"],
     ["dom.pc", "f.rappels", "contient"],
     ["tool.reminder", "f.rappels", "alimente"],
-    ["f.rappels", "f.notifications", "utilise"]
+    ["f.rappels", "f.notifications", "utilise"],
+    ["dom.tests", "f.nightshift", "contient"]
   ]
 }
