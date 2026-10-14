@@ -1,0 +1,23 @@
+# Configuration des outils seulement : JARVIS ne s'installe pas avec pip
+# (python setup.py installe ses dépendances, voir requirements.txt).
+
+[tool.ruff]
+# Le code utilise BaseExceptionGroup et asyncio.TaskGroup : sans cette cible,
+# ruff signale trois « noms indéfinis » (F821) qui n'en sont pas.
+target-version = "py311"
+
+[tool.ruff.lint]
+# Ce qui peut être un vrai bug, rien d'autre : erreurs de syntaxe (E9),
+# pyflakes (F : nom indéfini, redéfinition, variable jamais lue…) et les
+# comparaisons douteuses (E7). La liste est explicite, pas les règles par
+# défaut : ruff 0.17 a encore changé ce défaut, qui remontait plus de mille
+# remarques de style sur ce dépôt. Le veilleur de nuit (nightshift/) épingle
+# aussi la version de ruff pour que ses remarques restent comparables.
+select = ["E7", "E9", "F"]
+ignore = [
+    "E701",  # plusieurs instructions sur une ligne (deux-points) : style du dépôt
+    "E702",  # plusieurs instructions sur une ligne (point-virgule)
+    "E741",  # noms ambigus (l, O, I)
+    "F401",  # import inutilisé : souvent un import de vérification ou un ré-export
+    "F541",  # f-string sans variable : sans effet
+]

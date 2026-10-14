@@ -1,0 +1,286 @@
+"""
+nightshift/report.py — le rapport jarvis.nightly/1 : JSON, Markdown, résumé du run.
+
+    build(...)          le rapport complet d'une nuit (appelle compare.py)
+    failed(...)         le rapport d'une nuit qui n'a rien pu mesurer
+    to_markdown(r)      pour $GITHUB_STEP_SUMMARY et latest.md
+    write(r, md, d)     report.json + report.md dans d (écriture atomique)
+    step_summary(md)    ajoute le Markdown au résumé du run, dans GitHub Actions
+
+LE SCHÉMA — jarvis.nightly/1
+  1.0  celui du plan Night Shift (section 7) : run_id, run_url, commit,
+       started_at, finished_at, status, summary, suites, regressions, task,
+       pull_request_url, usage, budgets, limitations.
+  1.1  ajouté en phase 1 : repository, ref, event, commit_full, previous,
+       duration_s, environment, repaired, preexisting, lint, green_streak ;
+       dans chaque suite : outcome (ce qu'elle a fait, avant classement), failed
+       (id, libellé, détail, classe), reason, tail.
+  Un champ ajouté fait monter la version mineure (notée dans le graphe
+  nightshift) ; un changement incompatible passera à jarvis.nightly/2.
+
+status : success (tout est vert, échecs connus compris), partial_success (le
+run a tourné et quelque chose est rouge), failed (le run n'a rien pu mesurer).
+"""
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+from datetime import datetime
+from pathlib import Path
+
+from nightshift import SCHEMA
+from nightshift import compare as C
+from nightshift.suites import short
+
+
+def _iso(t: datetime | str | None) -> str | None:
+    return t.isoformat() if isinstance(t, datetime) else t
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+def _ref(x: dict) -> str:
+    """« cognition n°21 », « server (suite entière) », « context « libellé » »."""
+    name, check = short(x.get("suite", "?")), str(x.get("check", "?"))
+    if check == "*":
+        return f"{name} (suite entière)"
+    if check[:1].isdigit():
+        return f"{name} n°{check}"
+    return f"{name} « {str(x.get('label') or check)[:50]} »"
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'s' if n > 1 else ''}"
+
+
+def _status(suites: list[dict], regressions: list[dict]) -> str:
+    ran = [s for s in suites if s.get("status") != "skipped"]
+    if not ran:
+        return "failed"
+    if not regressions and all(s.get("status") in ("ok", "known_failure") for s in ran):
+        return "success"
+    return "partial_success"
+
+
+def summarize(r: dict) -> str:
+    """La phrase du rapport : « 13/14 suites vertes ; aucune régression ; ruff : 4 remarques. »"""
+    if r.get("status") == "failed" and not r.get("suites"):
+        return r.get("summary") or "Nuit sans mesure."
+    suites = r.get("suites") or []
+    ran = [s for s in suites if s.get("status") != "skipped"]
+    green = [s for s in ran if s.get("status") in ("ok", "known_failure")]
+    skipped = len(suites) - len(ran)
+    head = f"{len(green)}/{len(ran)} suites vertes"
+    if skipped:
+        head += f" ({_plural(skipped, 'ignorée')})"
+    parts = [head]
+    regs = r.get("regressions") or []
+    if regs:
+        more = f" et {len(regs) - 3} autre(s)" if len(regs) > 3 else ""
+        parts.append(f"{_plural(len(regs), 'régression')} ({', '.join(_ref(x) for x in regs[:3])}{more})")
+    else:
+        parts.append("aucune régression")
+    broken = [s for s in ran if s.get("status") in ("error", "timeout")]
+    if broken:
+        parts.append(f"en erreur : {', '.join(short(s['name']) for s in broken[:3])}")
+    reps = r.get("repaired") or []
+    if reps:
+        parts.append(f"réparé : {', '.join(_ref(x) for x in reps[:3])}")
+    lint = r.get("lint") or {}
+    if lint.get("available"):
+        new = len(lint.get("new") or [])
+        parts.append(f"ruff : {_plural(lint.get('count', 0), 'remarque')}"
+                     + (f" dont {_plural(new, 'nouvelle')}" if new else ""))
+    return " ; ".join(parts) + "."
+
+
+def _limitations(suites: list[dict], previous: dict | None, lint: dict, regressions: list[dict]) -> list[str]:
+    out = []
+    for s in suites:
+        if s.get("status") == "skipped":
+            out.append(f"{s['name']} non testée sur {s.get('platform')} : {s.get('reason', '?')}")
+        for f in s.get("failed") or []:
+            if f.get("class") == "known":
+                out.append(f"{short(s['name'])} n°{f.get('id')} : échec connu sur {s.get('platform')}")
+    if previous is None:
+        out.append("pas de rapport précédent : aucune régression ne peut être établie cette nuit")
+    if not lint.get("available"):
+        out.append(lint.get("reason") or "ruff non lancé")
+    if regressions and any(x.get("suspects") is None for x in regressions):
+        out.append("commits suspects inconnus : l'historique git ne contient pas le dernier commit vert")
+    return out
+
+
+def _previous_ref(previous: dict | None) -> dict | None:
+    if not previous:
+        return None
+    return {k: previous.get(k) for k in ("run_id", "commit", "finished_at", "status")}
+
+
+def build(*, meta: dict, git: dict, env: dict, started_at: datetime, finished_at: datetime,
+          suites: list[dict], lint: dict, previous: dict | None, suspects: list[str] | None,
+          known: dict[str, dict[str, str]]) -> dict:
+    """Le rapport complet. `previous` est le dernier rapport qui a des résultats de suites."""
+    cmp = C.classify(suites, previous, known, commit=git.get("commit", ""),
+                     previous_commit=(previous or {}).get("commit", ""), suspects=suspects)
+    lint = dict(lint)
+    if lint.get("available"):
+        lint["new"] = C.lint_new(lint, previous)
+    status = _status(cmp["suites"], cmp["regressions"])
+    r = {
+        "schema_version": SCHEMA,
+        "run_id": meta.get("run_id"),
+        "run_url": meta.get("run_url"),
+        "repository": meta.get("repository"),
+        "ref": git.get("ref"),
+        "event": meta.get("event"),
+        "commit": git.get("commit"),
+        "commit_full": git.get("commit_full"),
+        "previous": _previous_ref(previous),
+        "started_at": _iso(started_at),
+        "finished_at": _iso(finished_at),
+        "duration_s": round((finished_at - started_at).total_seconds(), 1),
+        "status": status,
+        "summary": "",
+        "environment": env,
+        "suites": cmp["suites"],
+        "regressions": cmp["regressions"],
+        "repaired": cmp["repaired"],
+        "preexisting": cmp["preexisting"],
+        "lint": lint,
+        "green_streak": C.green_streak(status == "success", previous),
+        "task": None,
+        "pull_request_url": None,
+        "usage": {"llm_calls": 0, "tokens_in": 0, "tokens_out": 0, "providers": {}},
+        "budgets": {"max_llm_calls": 0, "max_tokens": 0,
+                    "max_runtime_minutes": _int_env("NIGHTLY_MAX_RUNTIME_MINUTES", 45)},
+        "limitations": _limitations(cmp["suites"], previous, lint, cmp["regressions"]),
+    }
+    r["summary"] = summarize(r)
+    return r
+
+
+def failed(meta: dict, git: dict, reason: str, started_at: datetime | None = None) -> dict:
+    """Une nuit qui n'a rien pu mesurer : le rapport le dit, avec la cause."""
+    t = _iso(started_at) if started_at else datetime.now().astimezone().replace(microsecond=0).isoformat()
+    return {
+        "schema_version": SCHEMA, "run_id": meta.get("run_id"), "run_url": meta.get("run_url"),
+        "repository": meta.get("repository"), "ref": git.get("ref"), "event": meta.get("event"),
+        "commit": git.get("commit"), "commit_full": git.get("commit_full"), "previous": None,
+        "started_at": t, "finished_at": t, "duration_s": 0.0, "status": "failed",
+        "summary": f"Nuit sans mesure : {reason}"[:300], "environment": {}, "suites": [],
+        "regressions": [], "repaired": [], "preexisting": [], "lint": {"tool": "ruff", "available": False},
+        "green_streak": 0, "task": None, "pull_request_url": None,
+        "usage": {"llm_calls": 0, "tokens_in": 0, "tokens_out": 0, "providers": {}},
+        "budgets": {"max_llm_calls": 0, "max_tokens": 0, "max_runtime_minutes": 45},
+        "limitations": [reason[:300]],
+    }
+
+
+# ── Markdown ─────────────────────────────────────────────────────────────────
+
+STATE_FR = {
+    "ok": "✅ vert", "known_failure": "☑️ échec connu", "failing": "❌ rouge (déjà)",
+    "regression": "🔴 RÉGRESSION", "error": "💥 en erreur", "timeout": "⏱️ délai dépassé",
+    "skipped": "⏭️ ignorée",
+}
+
+
+def _cell(text) -> str:
+    return str(text if text is not None else "—").replace("|", "\\|").replace("\n", " ")
+
+
+def to_markdown(r: dict) -> str:
+    day = str(r.get("started_at") or "")[:10]
+    env = r.get("environment") or {}
+    lines = [f"## JARVIS Night Shift — {day}", "", f"**{_cell(r.get('summary'))}**", ""]
+    meta = [f"commit `{r.get('commit') or '?'}`"]
+    if r.get("ref"):
+        meta.append(f"branche `{r['ref']}`")
+    if env:
+        meta.append(" · ".join(x for x in (env.get("image") or env.get("os"), f"Python {env.get('python')}") if x))
+    if r.get("duration_s") is not None:
+        meta.append(f"{int(r['duration_s'] // 60)} min {int(r['duration_s'] % 60):02d} s")
+    if r.get("run_url"):
+        meta.append(f"[exécution]({r['run_url']})")
+    lines += [" · ".join(meta), ""]
+
+    if r.get("suites"):
+        lines += ["| Suite | Score | État | Durée |", "|---|---:|---|---:|"]
+        for s in r["suites"]:
+            score = f"{s.get('passed')}/{s.get('total')}" if s.get("total") is not None else "—"
+            state = STATE_FR.get(s.get("status"), s.get("status"))
+            known = [f.get("id") for f in s.get("failed") or [] if f.get("class") == "known"]
+            if known:
+                state += f" (n°{', '.join(known)})"
+            if s.get("reason"):
+                state += f" — {s['reason']}"
+            lines.append(f"| {_cell(s.get('name'))} | {score} | {_cell(state)} | {s.get('duration_s', 0):.1f} s |")
+        lines.append("")
+
+    def section(title: str, rows: list[str]) -> None:
+        if rows:
+            lines.extend([f"### {title}", "", *rows, ""])
+
+    section("Régressions", [
+        f"- **{_cell(_ref(x))}** — {_cell(x.get('label'))} · depuis `{x.get('since_commit') or '?'}`"
+        + (f" (dernier vert : `{x['last_green_commit']}`)" if x.get("last_green_commit") else "")
+        + (f" · commits suspects : {', '.join('`' + _cell(c) + '`' for c in x['suspects'][:5])}"
+           if x.get("suspects") else "")
+        for x in r.get("regressions") or []])
+    section("Réparé", [f"- {_cell(_ref(x))} — {_cell(x.get('label'))}" for x in r.get("repaired") or []])
+    section("Déjà rouge", [f"- {_cell(_ref(x))} — {_cell(x.get('label'))}" for x in r.get("preexisting") or []])
+    for s in r.get("suites") or []:
+        if s.get("tail"):
+            section(f"Fin de sortie — {s['name']}", ["```", *s["tail"], "```"])
+    lint = r.get("lint") or {}
+    if lint.get("available"):
+        new = {(f.get("code"), f.get("path"), f.get("message")) for f in lint.get("new") or []}
+        section(f"ruff {lint.get('version', '')} — {lint.get('count', 0)} remarque(s)", [
+            f"- `{_cell(f.get('path'))}:{f.get('line')}` {f.get('code')} {_cell(f.get('message'))}"
+            + (" **(nouvelle)**" if (f.get("code"), f.get("path"), f.get("message")) in new else "")
+            for f in lint.get("findings") or []])
+    section("Limites", [f"- {_cell(x)}" for x in r.get("limitations") or []])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# ── écriture ─────────────────────────────────────────────────────────────────
+
+def _atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}-", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def dumps(r: dict) -> str:
+    return json.dumps(r, ensure_ascii=False, indent=1) + "\n"
+
+
+def write(r: dict, md: str, out_dir: Path) -> None:
+    _atomic_write(out_dir / "report.json", dumps(r))
+    _atomic_write(out_dir / "report.md", md)
+
+
+def step_summary(md: str) -> bool:
+    """Ajoute le Markdown au résumé du run GitHub ($GITHUB_STEP_SUMMARY), s'il existe."""
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return False
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(md + "\n")
+        return True
+    except OSError:
+        return False
