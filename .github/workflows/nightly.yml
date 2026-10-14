@@ -49,6 +49,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      pull-requests: read    # les verdicts humains : PR Night Shift fusionnées ou fermées
     outputs:
       has_task: ${{ steps.task.outputs.has_task }}
       dry_run: ${{ steps.mode.outputs.dry_run }}
@@ -84,15 +85,27 @@ jobs:
           "$RUNNER_TEMP/hud/bin/python" -m pip install PyQt6 PyQt6-WebEngine sounddevice websockets
           echo "NIGHTSHIFT_PYTHON_HUD=$RUNNER_TEMP/hud/bin/python" >> "$GITHUB_ENV"
 
-      - name: Référence (dernière nuit mesurée)
+      - name: Référence (dernière nuit mesurée) et mémoire
         run: |
           mkdir -p "$RUNNER_TEMP/nightshift"
           if git fetch --quiet origin nightshift-data; then
             git show FETCH_HEAD:baseline.json > "$RUNNER_TEMP/nightshift/baseline.json" 2>/dev/null \
               || echo "Pas encore de baseline.json : première nuit."
+            git show FETCH_HEAD:state.json > "$RUNNER_TEMP/nightshift/state.json" 2>/dev/null \
+              || echo "Pas encore de mémoire (state.json) : elle commence cette nuit."
           else
             echo "Pas encore de branche nightshift-data : première nuit."
           fi
+
+      - name: PR Night Shift (verdicts humains, lecture seule)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr list --repo "$GITHUB_REPOSITORY" --state all --limit 100 \
+            --json number,url,state,headRefName,mergedAt \
+            --jq '[.[] | select(.headRefName | startswith("automation/jarvis-nightly-"))]' \
+            > "$RUNNER_TEMP/nightshift/prs.json" \
+            || { echo "::warning::PR illisibles : la mémoire ne verra pas les verdicts cette nuit."; echo "[]" > "$RUNNER_TEMP/nightshift/prs.json"; }
 
       - name: La nuit
         env:
@@ -127,6 +140,8 @@ jobs:
           python -m nightshift.tasks
           --report "$RUNNER_TEMP/nightshift/report.json"
           --out "$RUNNER_TEMP/nightshift"
+          --state "$RUNNER_TEMP/nightshift/state.json"
+          --prs "$RUNNER_TEMP/nightshift/prs.json"
           --github-output
 
       - name: Garder la veille pour les jobs suivants
@@ -139,6 +154,8 @@ jobs:
             ${{ runner.temp }}/nightshift/report.md
             ${{ runner.temp }}/nightshift/task.json
             ${{ runner.temp }}/nightshift/prompt.json
+            ${{ runner.temp }}/nightshift/state.json
+            ${{ runner.temp }}/nightshift/prs.json
             ${{ runner.temp }}/nightshift/outputs/
           retention-days: 14
           if-no-files-found: warn
@@ -389,6 +406,7 @@ jobs:
           path: |
             ${{ runner.temp }}/nightshift/report.json
             ${{ runner.temp }}/nightshift/report.md
+            ${{ runner.temp }}/nightshift/state.json
           retention-days: 14
           if-no-files-found: warn
 
@@ -469,6 +487,10 @@ jobs:
             if [ -f ../report/report.md ]; then cp ../report/report.md latest.md; fi
             if jq -e '(.suites | length) > 0' ../report/report.json > /dev/null; then
               cp ../report/report.json baseline.json
+            fi
+            # La mémoire (phase 3) : seulement si elle est lisible et du bon schéma.
+            if jq -e '.schema == "jarvis.nightshift-state/1"' ../report/state.json > /dev/null 2>&1; then
+              cp ../report/state.json state.json
             fi
           fi
           git add -A

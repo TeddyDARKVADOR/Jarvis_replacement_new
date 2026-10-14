@@ -15,7 +15,7 @@ QUAND PARLER
   - une régression, une suite en erreur ou hors délai, une réparation, une
     nouvelle remarque ruff, un échec sans référence (suite qui tourne pour la
     première fois), un correctif validé (PR ouverte, ou dry run), le retour au
-    vert, la première nuit ;
+    vert, la première nuit, et le dimanche le résumé de la semaine ;
   - le dernier rapport a plus de 48 h : le veilleur ne tourne plus (GitHub
     désactive une planification après 60 jours sans activité du dépôt).
 
@@ -89,7 +89,8 @@ def sentence(r: dict) -> str:
     back_to_green = r.get("status") == "success" and r.get("green_streak") == 1 and not first
     task = r.get("task") if isinstance(r.get("task"), dict) else {}
     fixed = task.get("outcome") == "patch_validated"
-    if not (regs or reps or broken or new_lint or unref or first or back_to_green or fixed):
+    week = r.get("week") if isinstance(r.get("week"), dict) else None
+    if not (regs or reps or broken or new_lint or unref or first or back_to_green or fixed or week):
         return ""
     parts = [f"{len(green)}/{len(ran)} suites vertes"]
     if first:
@@ -109,6 +110,11 @@ def sentence(r: dict) -> str:
                       else "correctif validé, sans PR (dry run) : ") + _task(task))
     if back_to_green:
         parts.append("tout est revenu au vert")
+    if week:
+        n = lambda k: int(week.get(k) or 0)   # noqa: E731 — des nombres, rien d'autre
+        parts.append(f"cette semaine : {n('nights')} nuits dont {n('green')} vertes, {n('tried')} tâche(s) "
+                     f"tentée(s), {n('validated')} correctif(s) validé(s), {n('accepted')} PR acceptée(s), "
+                     f"{n('rejected')} refusée(s), {n('tokens')} tokens")
     return "« " + " ; ".join(parts) + " »."
 
 
