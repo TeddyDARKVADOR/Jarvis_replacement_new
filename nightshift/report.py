@@ -24,6 +24,11 @@ LE SCHÉMA — jarvis.nightly/1
   1.4  phase 3 : task.skipped (ce que la mémoire a passé, et pourquoi),
        diagnostics (échecs persistants : faits, hypothèses), backlog (nœuds bug
        et partiel des graphes), week (le dimanche : la semaine en chiffres).
+  1.5  phase 4 : metrics (eval_lab par corpus et par cause, cognition, coût en
+       contexte) et metrics_changes (baisse, hausse, changement face à la
+       référence) ; task.review_closely quand un correctif dégrade un indicateur.
+  1.6  phase 5 : local (les derniers avis du PC réveillé la nuit, ou
+       « indisponible » avec la raison — jamais « en attente »).
   Un champ ajouté fait monter la version mineure (notée dans le graphe
   nightshift) ; un changement incompatible passera à jarvis.nightly/2.
 
@@ -40,6 +45,7 @@ from pathlib import Path
 
 from nightshift import SCHEMA
 from nightshift import compare as C
+from nightshift import metrics as M
 from nightshift.suites import short
 
 
@@ -79,6 +85,8 @@ def _task_part(r: dict) -> str | None:
     if t["outcome"] == "skipped":
         return t.get("reason") or "rien à corriger"
     part = f"tâche {task_ref(t)} : {OUTCOME_FR.get(t['outcome'], t['outcome'])}"
+    if t["outcome"] == "patch_validated" and t.get("review_closely"):
+        part += " (à relire de près)"
     if t["outcome"] == "patch_validated":
         part += " — " + ("PR ouverte" if r.get("pull_request_url") else (t.get("publication") or "pas de PR"))
     elif t.get("reason"):
@@ -141,6 +149,9 @@ def summarize(r: dict) -> str:
         new = len(lint.get("new") or [])
         parts.append(f"ruff : {_plural(lint.get('count', 0), 'remarque')}"
                      + (f" dont {_plural(new, 'nouvelle')}" if new else ""))
+    changes = r.get("metrics_changes") or []
+    if changes:
+        parts.append(f"indicateurs : {_plural(len(changes), 'changement')} à relire ({changes[0]['metric']})")
     task = _task_part(r)
     if task:
         parts.append(task)
@@ -172,7 +183,7 @@ def _previous_ref(previous: dict | None) -> dict | None:
 
 def build(*, meta: dict, git: dict, env: dict, started_at: datetime, finished_at: datetime,
           suites: list[dict], lint: dict, previous: dict | None, suspects: list[str] | None,
-          known: dict[str, dict[str, str]]) -> dict:
+          known: dict[str, dict[str, str]], metrics: dict | None = None) -> dict:
     """Le rapport complet. `previous` est le dernier rapport qui a des résultats de suites."""
     cmp = C.classify(suites, previous, known, commit=git.get("commit", ""),
                      previous_commit=(previous or {}).get("commit", ""), suspects=suspects)
@@ -202,6 +213,8 @@ def build(*, meta: dict, git: dict, env: dict, started_at: datetime, finished_at
         "preexisting": cmp["preexisting"],
         "unreferenced": cmp["unreferenced"],
         "lint": lint,
+        "metrics": metrics,
+        "metrics_changes": M.compare(metrics, (previous or {}).get("metrics")) if metrics else [],
         "green_streak": C.green_streak(status == "success", previous),
         "task": None,
         "pull_request_url": None,
@@ -209,6 +222,9 @@ def build(*, meta: dict, git: dict, env: dict, started_at: datetime, finished_at
         "budgets": budgets(),
         "limitations": _limitations(cmp["suites"], previous, lint, cmp["regressions"]),
     }
+    for name, m in (metrics or {}).items():
+        if not (m or {}).get("available"):
+            r["limitations"].append(f"indicateur {name} indisponible : {(m or {}).get('reason', '?')}"[:200])
     r["summary"] = summarize(r)
     return r
 
@@ -315,6 +331,35 @@ def to_markdown(r: dict) -> str:
             f"- {w.get('tried')} tâche(s) tentée(s), {w.get('validated')} correctif(s) validé(s)",
             f"- {w.get('prs')} PR ouverte(s) : {w.get('accepted')} acceptée(s), {w.get('rejected')} refusée(s)",
             f"- {w.get('tokens')} tokens consommés"])
+    m = r.get("metrics") or {}
+    if m:
+        rows = []
+        for corpus, c in ((m.get("eval_lab") or {}).get("corpora") or {}).items():
+            if c.get("available"):
+                causes = ", ".join(f"{k} ×{v}" for k, v in (c.get("causes") or {}).items())
+                rows.append(f"- eval_lab {corpus} : {c['pass']}/{c['total']} réussis"
+                            + (f" · échecs par cause : {_cell(causes)}" if causes else ""))
+        ctx = m.get("context") or {}
+        if ctx.get("available"):
+            rows.append(f"- Coût en contexte : prompt {ctx['system_prompt_chars']} car. + outils {ctx['local']['chars']} car. "
+                        f"({ctx['local']['tools']} outils, mode local) ≈ {ctx['estimated_tokens_local']} tokens par connexion")
+        cog = m.get("cognition") or {}
+        if cog.get("available"):
+            rows.append(f"- Cognition : {len(cog.get('values') or {})} valeurs mesurées (architecture complète)")
+        rows += [f"- **{_cell(x['metric'])}** : {_cell(x['before'])} → {_cell(x['now'])} ({x['verdict']})"
+                 + (f" — {_cell(x['detail'])}" if x.get("detail") else "") for x in r.get("metrics_changes") or []]
+        section("Indicateurs — JARVIS s'améliore-t-il ?", rows)
+
+    loc = r.get("local")
+    if isinstance(loc, dict):
+        if loc.get("available"):
+            section(f"Avis du modèle local (non vérifiés) — {_cell(loc.get('model'))}, {loc.get('status')}", [
+                f"- {_cell(x.get('kind'))} · {x.get('status')}"
+                + (f" : {_cell(x.get('output'))}" if x.get("output") else f" — {_cell(x.get('error'))}")
+                for x in loc.get("tasks") or []] or ["- aucune tâche"])
+        else:
+            section("Modèle local", [f"- indisponible : {_cell(loc.get('reason'))}"])
+
     bl = r.get("backlog") or []
     section(f"Backlog du graphe — {len(bl)} nœud(s) bug ou partiel", [
         f"- {b.get('status')} · `{_cell(b.get('graph'))}/{_cell(b.get('node'))}` — {_cell(b.get('label'))} · "

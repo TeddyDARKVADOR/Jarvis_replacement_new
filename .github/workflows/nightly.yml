@@ -93,6 +93,8 @@ jobs:
               || echo "Pas encore de baseline.json : première nuit."
             git show FETCH_HEAD:state.json > "$RUNNER_TEMP/nightshift/state.json" 2>/dev/null \
               || echo "Pas encore de mémoire (state.json) : elle commence cette nuit."
+            git show FETCH_HEAD:local/latest.json > "$RUNNER_TEMP/nightshift/local.json" 2>/dev/null \
+              || echo "Pas d'avis du PC (phase 5, facultative) : « indisponible »."
           else
             echo "Pas encore de branche nightshift-data : première nuit."
           fi
@@ -156,6 +158,7 @@ jobs:
             ${{ runner.temp }}/nightshift/prompt.json
             ${{ runner.temp }}/nightshift/state.json
             ${{ runner.temp }}/nightshift/prs.json
+            ${{ runner.temp }}/nightshift/local.json
             ${{ runner.temp }}/nightshift/outputs/
           retention-days: 14
           if-no-files-found: warn
@@ -407,6 +410,7 @@ jobs:
             ${{ runner.temp }}/nightshift/report.json
             ${{ runner.temp }}/nightshift/report.md
             ${{ runner.temp }}/nightshift/state.json
+            ${{ runner.temp }}/nightshift/queue.json
           retention-days: 14
           if-no-files-found: warn
 
@@ -491,6 +495,10 @@ jobs:
             # La mémoire (phase 3) : seulement si elle est lisible et du bon schéma.
             if jq -e '.schema == "jarvis.nightshift-state/1"' ../report/state.json > /dev/null 2>&1; then
               cp ../report/state.json state.json
+            fi
+            # La file du PC réveillé la nuit (phase 5) : des avis à donner, rien à exécuter.
+            if jq -e '.schema == "jarvis.nightshift-queue/1"' ../report/queue.json > /dev/null 2>&1; then
+              cp ../report/queue.json queue.json
             fi
           fi
           git add -A
