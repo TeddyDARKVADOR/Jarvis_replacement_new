@@ -1,14 +1,24 @@
-# JARVIS Night Shift — phase 1 : le veilleur, sans IA.
+# JARVIS Night Shift — le veilleur de nuit (phase 1) et une seule tâche IA par nuit (phase 2).
 # La documentation est le graphe capabilities/graphs/nightshift.json (CLAUDE.md).
 #
-# Chaque nuit à 03 h 17 (Paris) : les suites du dépôt testables sous Linux et
-# ruff, comparées à la dernière nuit mesurée. Le rapport est poussé sur la
-# branche orpheline nightshift-data, jamais sur main ; JARVIS l'y lit sans jeton.
+#   veille       suites + ruff, comparées à la dernière nuit mesurée ; choisit la
+#                tâche et prépare son contexte. Aucun secret, lecture seule.
+#   proposition  demande UN correctif au modèle gratuit (Groq, secours Gemini).
+#                La clé n'existe que dans une étape, qui ne lance aucun test et
+#                n'exécute rien de ce que le modèle écrit.
+#   validation   applique le patch, le commite localement, relance les suites.
+#                Aucun secret, aucun jeton d'écriture : c'est le seul endroit où
+#                le code proposé par le modèle s'exécute.
+#   publication  patch validé et dry run levé : une branche
+#                automation/jarvis-nightly-AAAA-MM-JJ et une PR, jamais de fusion.
+#                Pas de clé Groq, aucun code du dépôt exécuté.
+#   assemblage   un seul rapport pour la nuit. Aucun secret, lecture seule.
+#   rapport      pousse le rapport sur la branche orpheline nightshift-data
+#                (jamais main), sans exécuter le code du dépôt. Une régression
+#                rend le run rouge, ici, une fois le rapport poussé.
 #
-# Sécurité (plan Night Shift, section 5) : aucun secret. Le job qui exécute le
-# code du dépôt n'a qu'un jeton en lecture, qu'il ne conserve pas. Le job qui
-# écrit ne récupère ni n'exécute le code du dépôt : il pousse un fichier.
-# Arrêt immédiat : onglet Actions → nightly → « Disable workflow ».
+# Arrêt immédiat : Actions → nightly → « Disable workflow ». Garder le veilleur
+# sans IA : variable NIGHTLY_MAX_TASKS=0.
 name: nightly
 
 on:
@@ -16,6 +26,12 @@ on:
     - cron: "17 3 * * *"
       timezone: "Europe/Paris"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run — auto : la variable NIGHTLY_DRY_RUN ; false : publier une PR si le correctif est validé"
+        type: choice
+        options: [auto, "true", "false"]
+        default: auto
 
 permissions:
   contents: read
@@ -26,7 +42,7 @@ concurrency:
 
 jobs:
   veille:
-    name: Veille — suites et ruff
+    name: Veille — suites, ruff, tâche
     # Épinglé : ubuntu-latest passe à Ubuntu 26.04 entre le 19 octobre et le
     # 19 novembre 2026. Un changement d'image passerait pour des régressions.
     runs-on: ubuntu-24.04
@@ -34,7 +50,8 @@ jobs:
     permissions:
       contents: read
     outputs:
-      regression: ${{ steps.night.outputs.regression }}
+      has_task: ${{ steps.task.outputs.has_task }}
+      dry_run: ${{ steps.mode.outputs.dry_run }}
     steps:
       - name: Récupérer le dépôt (historique complet, pour nommer les commits suspects)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,7 +95,6 @@ jobs:
           fi
 
       - name: La nuit
-        id: night
         env:
           QT_QPA_PLATFORM: offscreen
         run: >-
@@ -86,7 +102,284 @@ jobs:
           --out "$RUNNER_TEMP/nightshift"
           --previous "$RUNNER_TEMP/nightshift/baseline.json"
           --github-output
-          --fail-on-regression
+
+      - name: Mode de la nuit (dry run ?)
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT: ${{ inputs.dry_run }}
+          VAR: ${{ vars.NIGHTLY_DRY_RUN }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ] && { [ "$INPUT" = "true" ] || [ "$INPUT" = "false" ]; }; then
+            v="$INPUT"
+          else
+            v="${VAR:-true}"
+          fi
+          [ "$v" = "false" ] || v=true
+          echo "dry_run=$v" >> "$GITHUB_OUTPUT"
+          echo "Dry run : $v"
+
+      - name: Tâche de la nuit (une seule, choisie par le code)
+        id: task
+        env:
+          NIGHTLY_MAX_TASKS: ${{ vars.NIGHTLY_MAX_TASKS }}
+        run: >-
+          python -m nightshift.tasks
+          --report "$RUNNER_TEMP/nightshift/report.json"
+          --out "$RUNNER_TEMP/nightshift"
+          --github-output
+
+      - name: Garder la veille pour les jobs suivants
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightshift-veille
+          path: |
+            ${{ runner.temp }}/nightshift/report.json
+            ${{ runner.temp }}/nightshift/report.md
+            ${{ runner.temp }}/nightshift/task.json
+            ${{ runner.temp }}/nightshift/prompt.json
+            ${{ runner.temp }}/nightshift/outputs/
+          retention-days: 14
+          if-no-files-found: warn
+
+  proposition:
+    name: Proposition — un correctif demandé au modèle
+    needs: veille
+    if: needs.veille.outputs.has_task == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    outputs:
+      patch: ${{ steps.propose.outputs.patch }}
+    steps:
+      - name: Récupérer le dépôt (pour git apply --check)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Récupérer la veille
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightshift-veille
+          path: ${{ runner.temp }}/veille
+
+      - name: Appel au modèle (la seule étape qui voit la clé)
+        id: propose
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+          NIGHTLY_MAX_LLM_CALLS: ${{ vars.NIGHTLY_MAX_LLM_CALLS }}
+          NIGHTLY_MAX_TOKENS: ${{ vars.NIGHTLY_MAX_TOKENS }}
+          NIGHTLY_MAX_RUNTIME_MINUTES: ${{ vars.NIGHTLY_MAX_RUNTIME_MINUTES }}
+        run: >-
+          python -m nightshift.propose
+          --veille "$RUNNER_TEMP/veille"
+          --repo .
+          --out "$RUNNER_TEMP/proposal"
+          --github-output
+
+      - name: Garder la proposition
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightshift-proposal
+          path: ${{ runner.temp }}/proposal/
+          retention-days: 14
+          if-no-files-found: warn
+
+  validation:
+    name: Validation — les suites sur le code corrigé
+    needs: [veille, proposition]
+    if: needs.proposition.outputs.patch == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      validated: ${{ steps.validate.outputs.validated }}
+    steps:
+      - name: Récupérer le dépôt (le même commit que la veille)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Dépendances (celles du serveur, pyyaml, ruff épinglé)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r deployment/requirements-server.txt pyyaml "ruff==0.17.0"
+
+      - name: Dépendances du HUD pour client_desktop (au mieux, environnement à part)
+        continue-on-error: true
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libportaudio2 \
+            libegl1 libgl1 libfontconfig1 libfreetype6 libxkbcommon0 \
+            libnss3 libnspr4 libasound2t64 libgbm1 libxcb-dri3-0 libxkbfile1 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxtst6
+          python -m venv --system-site-packages "$RUNNER_TEMP/hud"
+          "$RUNNER_TEMP/hud/bin/python" -m pip install PyQt6 PyQt6-WebEngine sounddevice websockets
+          echo "NIGHTSHIFT_PYTHON_HUD=$RUNNER_TEMP/hud/bin/python" >> "$GITHUB_ENV"
+
+      - name: Récupérer la veille
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightshift-veille
+          path: ${{ runner.temp }}/veille
+
+      - name: Récupérer la proposition
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightshift-proposal
+          path: ${{ runner.temp }}/proposal
+
+      - name: Appliquer, commiter localement, relancer les suites
+        id: validate
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >-
+          python -m nightshift.validate
+          --veille "$RUNNER_TEMP/veille"
+          --proposal "$RUNNER_TEMP/proposal"
+          --repo .
+          --out "$RUNNER_TEMP/validation"
+          --github-output
+
+      - name: Garder la validation
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightshift-validation
+          path: |
+            ${{ runner.temp }}/validation/validation.json
+            ${{ runner.temp }}/validation/after.json
+            ${{ runner.temp }}/validation/pr_body.md
+          retention-days: 14
+          if-no-files-found: warn
+
+  publication:
+    name: Publication — une PR, jamais de fusion
+    needs: [veille, proposition, validation]
+    if: needs.validation.outputs.validated == 'true' && needs.veille.outputs.dry_run == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Récupérer la proposition
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightshift-proposal
+          path: proposal
+
+      - name: Récupérer la validation
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightshift-validation
+          path: validation
+
+      - name: Récupérer le dépôt (sans rien en exécuter)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+
+      - name: Ouvrir la PR (si aucune PR Night Shift n'est déjà ouverte)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Le patch publié est exactement celui que la validation a prouvé.
+          echo "$(jq -r .patch_sha256 validation/validation.json)  proposal/patch.diff" | sha256sum -c -
+          TITLE="$(jq -r .title validation/validation.json)"
+          cd repo
+          open="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json headRefName,url \
+            --jq '[.[] | select(.headRefName | startswith("automation/jarvis-nightly-"))][0].url // ""')"
+          if [ -n "$open" ]; then
+            jq -n --arg url "$open" '{published: false, reason: "pr_already_open", url: $url}' > ../publish.json
+            echo "Une PR Night Shift est déjà ouverte : $open — rien de publié." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          BRANCH="automation/jarvis-nightly-$(TZ=Europe/Paris date +%F)"
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then BRANCH="$BRANCH-$GITHUB_RUN_ID"; fi
+          git checkout -q -b "$BRANCH"
+          git apply --recount --whitespace=nowarn ../proposal/patch.diff
+          git add -A
+          git -c user.name="jarvis-nightshift" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q --no-verify -m "$TITLE"
+          git push -q origin "HEAD:refs/heads/$BRANCH"
+          gh label create nightshift --repo "$GITHUB_REPOSITORY" --color 5319E7 \
+            --description "Proposé par le veilleur de nuit" 2>/dev/null || true
+          url="$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$GITHUB_REF_NAME" --head "$BRANCH" \
+            --title "$TITLE" --body-file ../validation/pr_body.md)"
+          gh pr edit "$url" --repo "$GITHUB_REPOSITORY" --add-label nightshift 2>/dev/null \
+            || echo "::warning::Étiquette nightshift non posée."
+          jq -n --arg url "$url" --arg branch "$BRANCH" '{published: true, url: $url, branch: $branch}' > ../publish.json
+          echo "PR ouverte : $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Garder la publication
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightshift-publish
+          path: publish.json
+          retention-days: 14
+          if-no-files-found: warn
+
+  assemblage:
+    name: Assemblage — un seul rapport pour la nuit
+    needs: [veille, proposition, validation, publication]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Récupérer ce que chaque job a laissé
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: nightshift-*
+          path: ${{ runner.temp }}/parts
+
+      - name: Assembler
+        env:
+          NIGHTLY_MAX_TASKS: ${{ vars.NIGHTLY_MAX_TASKS }}
+          NIGHTLY_MAX_LLM_CALLS: ${{ vars.NIGHTLY_MAX_LLM_CALLS }}
+          NIGHTLY_MAX_TOKENS: ${{ vars.NIGHTLY_MAX_TOKENS }}
+          NIGHTLY_MAX_RUNTIME_MINUTES: ${{ vars.NIGHTLY_MAX_RUNTIME_MINUTES }}
+          DRY_RUN: ${{ needs.veille.outputs.dry_run || 'true' }}
+        run: >-
+          python -m nightshift.assemble
+          --veille "$RUNNER_TEMP/parts/nightshift-veille"
+          --proposal "$RUNNER_TEMP/parts/nightshift-proposal"
+          --validation "$RUNNER_TEMP/parts/nightshift-validation"
+          --publish "$RUNNER_TEMP/parts/nightshift-publish"
+          --dry-run "$DRY_RUN"
+          --out "$RUNNER_TEMP/nightshift"
 
       - name: Garder le rapport pour le job « rapport »
         if: always()
@@ -101,18 +394,26 @@ jobs:
 
   rapport:
     name: Rapport — branche nightshift-data
-    needs: veille
+    needs: [veille, assemblage]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
     steps:
-      - name: Récupérer le rapport de la veille
+      - name: Récupérer le rapport assemblé
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nightshift-report
+          path: report
+
+      - name: À défaut, celui de la veille
+        if: hashFiles('report/report.json') == ''
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightshift-veille
           path: report
 
       - name: Pousser sur nightshift-data (jamais sur main)
@@ -182,3 +483,10 @@ jobs:
           done
           echo "::error::Impossible de pousser sur nightshift-data."
           exit 1
+
+      - name: Une régression rend le run rouge (e-mail de GitHub), une fois le rapport poussé
+        run: |
+          if jq -e '(.regressions // []) | length > 0' report/report.json > /dev/null 2>&1; then
+            echo "::error::Régression détectée : voir le résumé du run et l'onglet NUIT."
+            exit 1
+          fi

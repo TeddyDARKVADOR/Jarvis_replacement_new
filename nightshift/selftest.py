@@ -26,6 +26,19 @@ sont des rapports simulés.
      épinglées, ubuntu-24.04, seul le job « rapport » écrit, et sans code du dépôt
  13  memory/nightshift.json est ignoré par Git (les gardes du cœur restent propres)
  14  le graphe nightshift cite chaque suite
+  — phase 2, sans clé ni réseau —
+ 15  zone autorisée : main.py, cœur, tests, nightshift/, binaires… rejetés entiers
+ 16  choix de la tâche : régression > contrôle rouge > ruff ; hors zone écarté ;
+     rien à corriger → pas d'appel ; NIGHTLY_MAX_TASKS=0 → IA coupée
+ 17  contexte ciblé : le contrôle, ses fonctions, sous le budget de tokens
+ 18  client du modèle : 429 + Retry-After, délai, clé refusée, modèle disparu,
+     réponse vide, rythme par minute, plafonds, la clé jamais dans un message
+ 19  proposition : réussite à la 2e tentative, échec définitif après 2, patch
+     sur main.py rejeté sans toucher au dépôt, réponse vide, NO_PATCH
+ 20  validation : verdict par les suites, application et commit local, PR
+     décrite par les résultats
+ 21  assemblage : la tâche, son issue, la PR ou la raison de son absence
+ 22  briefing : une PR ouverte est annoncée
 """
 from __future__ import annotations
 
@@ -47,6 +60,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nightshift import SCHEMA, briefing, compare, fetch, hud, report, run, state  # noqa: E402
+from nightshift import assemble, context, llm, propose, tasks, validate, zone  # noqa: E402
 from nightshift.suites import SUITES, Suite, platform_name  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
@@ -561,7 +575,7 @@ def _module_exists(argv: tuple[str, ...]) -> bool:
     return base.with_suffix(".py").is_file() or (base / "__main__.py").is_file()
 
 
-@check("12 suites.py et le workflow : modules présents, aucun secret, actions épinglées, rôles séparés")
+@check("12 suites.py et le workflow : actions épinglées, clé dans une seule étape, écriture isolée")
 def _workflow():
     names = [s.name for s in SUITES]
     assert len(names) == len(set(names)), "suite en double"
@@ -575,21 +589,35 @@ def _workflow():
     assert "workflow_dispatch:" in wf and "pull_request_target" not in wf
     assert re.search(r"^permissions:\n  contents: read\n", wf, re.MULTILINE), "permissions par défaut"
     assert re.search(r"concurrency:\n  group: nightshift\n  cancel-in-progress: false", wf), "concurrence"
-    assert "secrets." not in wf, "phase 1 : aucun secret"
     uses = re.findall(r"uses:\s*(\S+)", wf)
     assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in uses), f"non épinglées : {uses}"
     jobs = re.split(r"^  (?=[a-z_]+:\n)", wf.split("\njobs:\n", 1)[1], flags=re.MULTILINE)
     jobs = {j.split(":", 1)[0]: j for j in jobs if j.strip()}
-    assert set(jobs) == {"veille", "rapport"}, sorted(jobs)
+    assert set(jobs) == {"veille", "proposition", "validation", "publication", "assemblage", "rapport"}, sorted(jobs)
     for name, body in jobs.items():
         assert "timeout-minutes:" in body, f"{name}: pas de timeout-minutes"
         assert "runs-on: ubuntu-24.04" in body, f"{name}: runner non épinglé (ubuntu-latest change en octobre 2026)"
-    assert "contents: write" in jobs["rapport"] and "contents: write" not in jobs["veille"]
-    assert "persist-credentials: false" in jobs["veille"]
-    assert "actions/checkout" not in jobs["rapport"] and "python" not in jobs["rapport"].lower(), \
-        "le job qui écrit ne doit ni récupérer ni exécuter le code du dépôt"
-    assert "--fail-on-regression" in jobs["veille"] and "if: always()" in jobs["rapport"]
-    return f"{len(SUITES)} suites présentes ; {len(uses)} actions épinglées ; aucun secret ; écriture isolée"
+        steps = re.split(r"^      - ", body, flags=re.MULTILINE)
+        with_secret = [st.split("\n", 1)[0] for st in steps if "secrets." in st]
+        if name == "proposition":
+            assert len(with_secret) == 1 and "python -m nightshift.propose" in body, \
+                f"la clé doit vivre dans une seule étape : {with_secret}"
+            assert "nightshift.validate" not in body and "nightshift.run" not in body, "aucun test avec la clé"
+        else:
+            assert not with_secret, f"{name}: secret hors du job proposition"
+        write = "contents: write" in body or "pull-requests: write" in body
+        assert write == (name in ("publication", "rapport")), f"{name}: droits d'écriture inattendus"
+        if name in ("veille", "proposition", "validation", "assemblage"):
+            assert "persist-credentials: false" in body, f"{name}: jeton conservé"
+        if name in ("publication", "rapport"):
+            assert "python" not in body.lower(), f"{name}: le job qui écrit n'exécute pas le code du dépôt"
+    assert "actions/checkout" not in jobs["rapport"], "le rapport n'a pas besoin du code"
+    pub = jobs["publication"]
+    assert pub.index("gh pr list") < pub.index("gh pr create"), "vérifier la PR ouverte avant d'en créer une"
+    assert "sha256sum -c" in pub and "pr_already_open" in pub, "le patch publié est celui qui a été validé"
+    assert "dry_run == 'false'" in pub and "validated == 'true'" in pub
+    assert "if: always()" in jobs["rapport"] and "regressions" in jobs["rapport"]
+    return f"{len(SUITES)} suites ; {len(uses)} actions épinglées ; 6 jobs, clé dans 1 étape, écriture dans 2 jobs"
 
 
 # ── 13. memory/ reste propre ─────────────────────────────────────────────────
@@ -616,6 +644,342 @@ def _graph():
     assert not absent, f"suites absentes du graphe : {absent}"
     assert SCHEMA in text and "ubuntu-24.04" in text
     return f"{len(g['nodes'])} nœuds, mis à jour le {g['updated']}"
+
+
+# ── 15-22. phase 2 : une tâche IA par nuit, sans clé ni réseau ici ───────────
+
+_REM_SRC = 'def mark(data, rid):\n    data[rid] = "livré"\n    return data\n'
+_GOOD = ('--- a/reminders/__init__.py\n+++ b/reminders/__init__.py\n@@ -1,3 +1,4 @@\n'
+         ' def mark(data, rid):\n     data[rid] = "livré"\n+    data["saved"] = True\n     return data\n')
+_BAD = ('--- a/reminders/__init__.py\n+++ b/reminders/__init__.py\n@@ -1,3 +1,4 @@\n'
+        ' def mark(data, rid):\n     data[rid] = "pas ce texte"\n+    x = 1\n     return data\n')
+_MAIN = "--- a/main.py\n+++ b/main.py\n@@ -1 +1 @@\n-print('cœur')\n+print('piraté')\n"
+
+
+def _d(path: str) -> str:
+    return f"--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n-a\n+b\n"
+
+
+def _answer(diff: str) -> str:
+    return f"Voici le correctif.\n```diff\n{diff}```\n"
+
+
+def _git_repo(name: str) -> Path | None:
+    d = TMP / name
+    (d / "reminders").mkdir(parents=True)
+    (d / "reminders" / "__init__.py").write_text(_REM_SRC, encoding="utf-8")
+    (d / "main.py").write_text("print('cœur')\n", encoding="utf-8")
+    try:
+        for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
+                    ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]):
+            subprocess.run(cmd, cwd=d, check=True, capture_output=True, timeout=30)
+    except Exception:
+        return None
+    return d
+
+
+def _clean(d: Path) -> bool:
+    return subprocess.run(["git", "status", "--porcelain"], cwd=d, capture_output=True, text=True).stdout == ""
+
+
+@check("15 zone autorisée : main.py, cœur, tests, nightshift/, binaires… rejetés entiers")
+def _zone():
+    ok = zone.check_patch(_GOOD)
+    assert ok.ok and ok.files == ["reminders/__init__.py"], ok
+    refused = {"main.py": _MAIN, "core/": _d("core/confirm.py"), ".github/": _d(".github/workflows/nightly.yml"),
+               "pyproject": _d("pyproject.toml"), "requirements": _d("requirements.txt"),
+               "nightshift/": _d("nightshift/zone.py"), "selftest": _d("cognition/selftest.py"),
+               "corpus": _d("eval_lab/corpus/regressions/manifest.json"), "remontée": _d("reminders/../main.py"),
+               "absolu": _d("/etc/passwd"), "secret": _d("cognition/api_keys.json"), "server/": _d("server/api.py")}
+    for name, diff in refused.items():
+        assert not zone.check_patch(diff).ok, f"{name} accepté"
+    assert not zone.check_patch(_GOOD + _MAIN).ok, "un seul chemin hors zone doit rejeter le patch entier"
+    shapes = {"binaire": "diff --git a/reminders/x.py b/reminders/x.py\nGIT binary patch\nliteral 0\n",
+              "lien": ("diff --git a/reminders/l.py b/reminders/l.py\nnew file mode 120000\n--- /dev/null\n"
+                       "+++ b/reminders/l.py\n@@ -0,0 +1 @@\n+/etc/passwd\n"),
+              "droits": "diff --git a/reminders/__init__.py b/reminders/__init__.py\nold mode 100644\nnew mode 100755\n",
+              "renommage": "diff --git a/reminders/a.py b/core/a.py\nrename from reminders/a.py\nrename to core/a.py\n"}
+    for name, diff in shapes.items():
+        assert not zone.check_patch(diff).ok, f"{name} accepté"
+    bare = zone.normalize("--- reminders/__init__.py\n+++ reminders/__init__.py\n@@ -1 +1 @@\n-a\n+b\n")
+    assert "--- a/reminders/__init__.py" in bare and "+++ b/reminders/__init__.py" in bare
+    tricky = "--- a/reminders/__init__.py\n+++ b/reminders/__init__.py\n@@ -1,2 +1,1 @@\n--- pas un en-tête\n x = 1\n"
+    assert zone.check_patch(tricky).files == ["reminders/__init__.py"], "une ligne retirée prise pour un en-tête"
+    return f"{len(refused) + len(shapes) + 1} patchs refusés entiers ; préfixes ajoutés ; blocs @@ suivis"
+
+
+def _tasks_report() -> dict:
+    return {"commit": "abc1234", "status": "partial_success",
+            "suites": [{"name": "reminders.selftest", "failed": [{"id": "1", "detail": "livré deux fois"}]},
+                       {"name": "cognition.selftest", "failed": [{"id": "5", "detail": "d"}]}],
+            "regressions": [{"suite": "reminders.selftest", "check": "1", "label": "inscrit, échu, livré une seule fois",
+                             "since_commit": "abc1234", "suspects": ["abc1234 casse"]}],
+            "preexisting": [{"suite": "cognition.selftest", "check": "5", "label": "x"}],
+            "unreferenced": [{"suite": "client_desktop --selftest", "check": "25", "label": "membres"}],
+            "lint": {"available": True, "findings": [
+                {"code": "F841", "path": "eval_lab/mutate.py", "line": 97, "message": "m"},
+                {"code": "F841", "path": "offline/selftest.py", "line": 217, "message": "n"},
+                {"code": "E711", "path": "cognition/x.py", "line": 3, "message": "style"}]}}
+
+
+@check("16 tâche : régression > contrôle rouge > ruff ; hors zone écarté ; rien à faire → aucun appel")
+def _tasks():
+    rep = _tasks_report()
+    c = tasks.choose(rep, 1)
+    assert c["task"]["id"] == "reg-reminders-1-abc1234" and c["task"]["files"] == ["reminders/"], c["task"]
+    found, out = tasks.candidates(rep)
+    assert [t["source"] for t in found] == ["regression", "failing_check", "ruff"], [t["id"] for t in found]
+    assert found[2]["path"] == "eval_lab/mutate.py", "E711 n'est pas un vrai bug ; offline/selftest.py est un test"
+    assert {x["id"].split("-")[1] for x in out} >= {"client_desktop", "F841"}, out
+    off = tasks.choose(rep, 0)
+    assert off["task"] is None and "NIGHTLY_MAX_TASKS=0" in off["reason"]
+    calm = {"commit": "abc1234", "status": "success", "suites": [{"name": "x", "failed": []}], "regressions": [],
+            "preexisting": [], "unreferenced": [], "lint": {"available": True, "findings": []}}
+    assert tasks.choose(calm, 1)["task"] is None and tasks.choose(calm, 1)["reason"] == "rien à corriger"
+    dead = dict(calm, status="failed", suites=[])
+    assert tasks.choose(dead, 1)["task"] is None, "une nuit sans mesure ne propose rien"
+    return f"{len(found)} candidates dans l'ordre du plan, {len(out)} écartées hors zone"
+
+
+@check("17 contexte ciblé : le contrôle, les fonctions qu'il appelle, sous le budget de tokens")
+def _context():
+    task = {"id": "t", "source": "regression", "suite": "reminders.selftest", "check": "1",
+            "label": "inscrit, échu, livré une seule fois", "detail": "livré deux fois", "suspects": []}
+    p = context.build(task, REPO)
+    user = p["messages"][1]["content"]
+    assert p["estimated_tokens"] <= context.PROMPT_BUDGET, p["estimated_tokens"]
+    assert '@check("1 inscrit' in user and "def mark_delivered" in user, p["sections"]
+    ruff = context.build({"id": "r", "source": "ruff", "code": "F841", "path": "eval_lab/mutate.py", "line": 97,
+                          "message": "Local variable `stim` is assigned to but never used"}, REPO)
+    assert "_routing_mutations" in ruff["messages"][1]["content"], ruff["sections"]
+    cd = _src("client_desktop/selftest.py")
+    span = context.find_check(cd, "25")
+    assert span and 'report.check(f"25' in "\n".join(cd.splitlines()[span[0] - 1:span[1]]), span
+    return f"régression : {p['estimated_tokens']} tokens, {len(p['sections'])} sections ; ruff : {ruff['estimated_tokens']}"
+
+
+class _Clock:
+    def __init__(self):
+        self.t, self.slept = 1000.0, []
+
+    def now(self) -> float:
+        return self.t
+
+    def sleep(self, s: float) -> None:
+        self.slept.append(round(s, 1))
+        self.t += s
+
+
+def _resp(text: str = "ok", tin: int = 100, tout: int = 50, status: int = 200, headers: dict | None = None):
+    body = json.dumps({"choices": [{"message": {"content": text}}],
+                       "usage": {"prompt_tokens": tin, "completion_tokens": tout}}).encode()
+    return status, headers or {}, body
+
+
+def _transport(script: list):
+    def t(url, headers, body, timeout):
+        t.calls.append((json.loads(body)["model"], headers.get("Authorization", "")))
+        item = script.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+    t.calls = []
+    return t
+
+
+@check("18 client du modèle : 429 + Retry-After, délai, clé refusée, modèle disparu, réponse vide, rythme, plafonds")
+def _llm():
+    key = "gsk_" + "k" * 40
+    env = {"GROQ_API_KEY": key, "GEMINI_API_KEY": "AIza" + "g" * 35}
+    msgs = [{"role": "user", "content": "x" * 300}]
+    logs: list[str] = []
+
+    def chain(script, budget=None, env_=env, tpm=8000):
+        c = _Clock()
+        return llm.Chain.from_env(env_, budget or llm.Budget(), transport=_transport(script), clock=c.now,
+                                  sleep=c.sleep, tpm=tpm, log=logs.append), c
+
+    ch, _ = chain([_resp("bonjour")])
+    r = ch.complete(msgs, max_tokens=200)
+    assert (r.text, r.model) == ("bonjour", "groq/openai/gpt-oss-120b") and ch.budget.calls == 1
+    assert ch.transport.calls[0][1] == f"Bearer {key}", "la clé doit partir dans l'en-tête, et là seulement"
+    ch, c = chain([_resp(status=429, headers={"retry-after": "7"}), _resp("après")])
+    assert ch.complete(msgs, 200).text == "après" and 7.0 in c.slept, c.slept
+    ch, _ = chain([_resp(status=429, headers={"retry-after": "120"}), _resp("suivant")])
+    assert ch.complete(msgs, 200).model == "groq/qwen/qwen3.8-27b", "429 long : modèle suivant"
+    ch, _ = chain([TimeoutError("lent"), _resp("suivant")])
+    assert ch.complete(msgs, 200).model == "groq/qwen/qwen3.8-27b", "délai dépassé : modèle suivant"
+    ch, _ = chain([_resp(status=401), _resp("gemini")])
+    assert ch.complete(msgs, 200).model == "gemini/gemini-3.1-flash-lite", "clé refusée : fournisseur écarté"
+    ch, _ = chain([_resp(status=404, headers={}, text="")[:2] + (b'{"error":{"code":"model_not_found"}}',),
+                   _resp("qwen")])
+    assert ch.complete(msgs, 200).model == "groq/qwen/qwen3.8-27b", "modèle disparu : écarté"
+    ch, _ = chain([_resp(""), _resp(""), _resp("")], env_={"GROQ_API_KEY": key})
+    try:
+        ch.complete(msgs, 200)
+        raise AssertionError("trois réponses vides acceptées")
+    except llm.LLMError as e:
+        assert "réponse vide" in str(e) and not isinstance(e, llm.BudgetExhausted)
+    ch, _ = chain([_resp("un"), _resp("deux")], budget=llm.Budget(max_calls=1))
+    ch.complete(msgs, 200)
+    try:
+        ch.complete(msgs, 200)
+        raise AssertionError("plafond d'appels dépassé")
+    except llm.BudgetExhausted:
+        pass
+    try:
+        chain([], env_={})[0].complete(msgs, 200)
+        raise AssertionError("sans clé, aucun appel n'est possible")
+    except llm.LLMError as e:
+        assert "aucun fournisseur" in str(e)
+    ch, c = chain([_resp("un", tin=850, tout=50), _resp("deux")], tpm=1000)
+    ch.complete(msgs, 50)
+    ch.complete(msgs, 50)
+    assert c.slept and 55 <= c.slept[-1] <= 60, f"rythme par minute non tenu : {c.slept}"
+    ch, _ = chain([_resp(status=500, text="")[:2] + (f"erreur interne, clé {key}".encode(),), _resp("ok")])
+    ch.complete(msgs, 200)
+    text = json.dumps(logs, ensure_ascii=False)
+    assert key not in text, "la clé apparaît dans un journal"
+    try:
+        chain([_resp(status=500, text="")[:2] + (f"echo {key}".encode(),)] * 4, env_={"GROQ_API_KEY": key})[0] \
+            .complete(msgs, 200)
+    except llm.LLMError as e:
+        assert key not in str(e), "la clé apparaît dans un message d'erreur"
+    return "succès, 429 court (attente) et long (suivant), délai, 401, 404, vide, plafond, sans clé, rythme, clé tue"
+
+
+class _FakeChain:
+    def __init__(self, answers: list):
+        self.answers, self.budget, self.calls = list(answers), llm.Budget(), []
+
+    def complete(self, messages, max_tokens=1800, reasoning_effort="low"):
+        self.calls.append((len(messages), reasoning_effort))
+        self.budget.calls += 1
+        a = self.answers.pop(0)
+        if isinstance(a, Exception):
+            raise a
+        self.budget.record("fake/model", 100, 50)
+        return llm.Reply(a, "fake/model", 100, 50)
+
+
+@check("19 proposition : 2e tentative, échec après 2, main.py rejeté sans toucher au dépôt, vide, NO_PATCH")
+def _propose():
+    repo = _git_repo("propose")
+    if repo is None:
+        return "skipped (git indisponible)"
+    prompt = {"messages": [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}], "response_budget": 500}
+    quiet = lambda *a: None  # noqa: E731
+    fc = _FakeChain([_answer(_BAD), _answer(_GOOD)])
+    out = propose.propose({"id": "t"}, prompt, repo, fc, log=quiet)
+    assert out["outcome"] == "patch_proposed" and [a["result"] for a in out["attempts"]] == ["apply_failed", "ok"], out
+    assert fc.calls[1] == (4, "medium"), f"la 2e tentative reçoit l'erreur : {fc.calls}"
+    assert out["diff"].startswith("--- a/reminders/__init__.py") and out["usage"]["llm_calls"] == 2
+    out = propose.propose({"id": "t"}, prompt, repo, _FakeChain([_answer(_BAD), _answer(_BAD)]), log=quiet)
+    assert out["outcome"] == "no_patch" and len(out["attempts"]) == 2 and "ne s'applique pas" in out["reason"]
+    out = propose.propose({"id": "t"}, prompt, repo, _FakeChain([_answer(_MAIN), "NO_PATCH: rien de sûr"]), log=quiet)
+    assert out["attempts"][0]["result"] == "out_of_zone" and out["outcome"] == "no_patch", out
+    assert (repo / "main.py").read_text(encoding="utf-8") == "print('cœur')\n" and _clean(repo), "le dépôt a bougé"
+    assert "renonce" in out["reason"]
+    out = propose.propose({"id": "t"}, prompt, repo, _FakeChain(["", "   "]), log=quiet)
+    assert out["outcome"] == "no_patch" and out["reason"] == "réponse vide"
+    out = propose.propose({"id": "t"}, prompt, repo, _FakeChain([llm.LLMError("groq : quota (429)"), _answer(_GOOD)]),
+                          log=quiet)
+    assert out["outcome"] == "patch_proposed" and out["attempts"][0]["result"] == "llm_error"
+    out = propose.propose({"id": "t"}, prompt, repo, _FakeChain([llm.BudgetExhausted("plafond d'appels")]), log=quiet)
+    assert out["outcome"] == "no_patch" and out["reason"].startswith("budget") and len(out["attempts"]) == 1
+    assert propose.extract_diff("NO_PATCH: x")[0] is None and propose.extract_diff(_GOOD)[0], "diff nu accepté"
+    assert _clean(repo), "propose ne doit jamais modifier le dépôt"
+    return "6 scénarios ; le dépôt n'a jamais bougé"
+
+
+def _after(failed_ids=(), regressions=(), lint_findings=(), new_lint=()) -> dict:
+    return {"suites": [{"name": "reminders.selftest", "status": "ok" if not failed_ids else "failing",
+                        "outcome": "ok" if not failed_ids else "failing", "passed": 4 - len(failed_ids), "total": 4,
+                        "failed": [{"id": i} for i in failed_ids]}],
+            "regressions": list(regressions), "lint": {"available": True, "findings": list(lint_findings),
+                                                       "new": list(new_lint)}, "limitations": []}
+
+
+@check("20 validation : verdict par les suites, application et commit local, PR décrite par les résultats")
+def _validate():
+    task = {"id": "t", "source": "regression", "suite": "reminders.selftest", "check": "1", "label": "l",
+            "detail": "livré deux fois", "since_commit": "abc1234"}
+    assert validate.verdict(task, _after())["validated"], "cible réparée, rien de cassé : validé"
+    assert not validate.verdict(task, _after(["1"]))["validated"], "cible encore rouge"
+    reg = [{"suite": "cognition.selftest", "check": "3"}]
+    v = validate.verdict(task, _after(regressions=reg))
+    assert not v["validated"] and "régression" in v["reason"], v
+    rtask = {"source": "ruff", "code": "F841", "path": "eval_lab/mutate.py", "message": "m"}
+    assert validate.verdict(rtask, _after())["validated"]
+    assert not validate.verdict(rtask, _after(lint_findings=[{"code": "F841", "path": "eval_lab/mutate.py",
+                                                               "message": "m"}]))["validated"]
+    assert not validate.verdict(rtask, _after(new_lint=[{"code": "F821"}]))["validated"], "nouvelle remarque ruff"
+    assert validate.title(task) == "Night Shift : régression reminders n°1"
+    repo = _git_repo("validate")
+    if repo is not None:
+        ok, err = validate.apply_and_commit(_GOOD, repo, "Night Shift : test")
+        log = subprocess.run(["git", "log", "--oneline"], cwd=repo, capture_output=True, text=True).stdout
+        assert ok and len(log.splitlines()) == 2 and _clean(repo), (ok, err, log)
+        assert not validate.apply_and_commit(_BAD, repo, "x")[0], "un patch qui ne s'applique pas est refusé"
+    body = validate.pr_body(task, {"attempts": [{"model": "fake/model"}]}, _after(["1"]), _after(),
+                            validate.verdict(task, _after()), ["reminders/__init__.py"])
+    assert "## La preuve" in body and "| Suite | Avant | Après |" in body and "`reminders/__init__.py`" in body
+    assert "3/4 (n°1 rouge)" in body and "4/4" in body and "```" not in body, body
+    return "verdict, commit local et description tirée des résultats"
+
+
+@check("21 assemblage : la tâche, son issue, la PR ou la raison de son absence")
+def _assemble():
+    choice = {"task": {"id": "reg-reminders-1-abc1234", "source": "regression", "suite": "reminders.selftest",
+                       "check": "1", "files": ["reminders/"]}, "reason": "", "out_of_zone": []}
+    prop = {"outcome": "patch_proposed", "attempts": [{"model": "fake/model"}], "files": ["reminders/__init__.py"],
+            "usage": {"llm_calls": 1, "tokens_in": 100, "tokens_out": 50, "providers": {}}}
+    ok_v = {"validated": True, "target": "le n°1 passe"}
+    cases = {
+        "rien": (assemble.task_section({"task": None, "reason": "rien à corriger", "out_of_zone": []},
+                                       None, None, None, True), ("skipped", None)),
+        "pas de patch": (assemble.task_section(choice, {"outcome": "no_patch", "reason": "réponse vide",
+                                                        "attempts": [{}]}, None, None, True), ("no_patch", None)),
+        "rejeté": (assemble.task_section(choice, prop, {"validated": False, "reason": "1 régression"}, None, True),
+                   ("patch_rejected", None)),
+        "dry run": (assemble.task_section(choice, prop, ok_v, None, True), ("patch_validated", None)),
+        "publié": (assemble.task_section(choice, prop, ok_v, {"published": True, "url": "https://x/pr/1"}, False),
+                   ("patch_validated", "https://x/pr/1")),
+        "déjà ouverte": (assemble.task_section(choice, prop, ok_v, {"published": False, "reason": "pr_already_open",
+                                                                    "url": "https://x/pr/0"}, False),
+                         ("patch_validated", None)),
+    }
+    for name, ((task, url), (outcome, want_url)) in cases.items():
+        assert task["outcome"] == outcome and url == want_url, f"{name} : {task} {url}"
+    assert "dry run" in cases["dry run"][0][0]["publication"]
+    assert "déjà ouverte" in cases["déjà ouverte"][0][0]["publication"], "pas de doublon : le rapport le dit"
+    d = TMP / "assemble"
+    for sub in ("veille", "proposal", "validation"):
+        (d / sub).mkdir(parents=True)
+    rep = _night([_suite("reminders.selftest", "failing", ["1"], 3, 4)])
+    (d / "veille" / "report.json").write_text(json.dumps(rep), encoding="utf-8")
+    (d / "veille" / "task.json").write_text(json.dumps(choice), encoding="utf-8")
+    (d / "proposal" / "proposal.json").write_text(json.dumps(prop), encoding="utf-8")
+    (d / "validation" / "validation.json").write_text(json.dumps(ok_v), encoding="utf-8")
+    final = assemble.assemble(d / "veille", d / "proposal", d / "validation", None, True)
+    assert final["task"]["outcome"] == "patch_validated" and final["usage"]["llm_calls"] == 1
+    assert "tâche reminders n°1 : correctif validé" in final["summary"], final["summary"]
+    assert "### Tâche de la nuit" in report.to_markdown(final) and fetch.valid(final)
+    return f"{len(cases)} issues possibles ; « {final['summary'][-60:]} »"
+
+
+@check("22 briefing : un correctif validé ou une PR ouverte est annoncé")
+def _briefing_pr():
+    base = _night([_suite("reminders.selftest")])
+    pr = dict(base, run_id="9", previous={"run_id": "8"}, green_streak=2, pull_request_url="https://x/pr/1",
+              task={"outcome": "patch_validated", "source": "regression", "suite": "reminders.selftest", "check": "1"})
+    text = briefing.sentence(pr)
+    assert "une PR attend d'être relue : reminders n°1" in text, text
+    dry = dict(pr, pull_request_url=None)
+    assert "correctif validé, sans PR (dry run) : reminders n°1" in briefing.sentence(dry)
+    calm = dict(pr, pull_request_url=None, task={"outcome": "skipped", "reason": "rien à corriger"})
+    assert briefing.sentence(calm) == "", "rien de nouveau : silence"
+    return "PR et dry run annoncés ; rien à corriger, silence"
 
 
 def main() -> int:

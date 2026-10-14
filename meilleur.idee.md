@@ -10,9 +10,9 @@
 > tous verts, la phase n'est pas finie.
 >
 > **Avancement au 2026-10-14 : phase 1 validée** (ses six critères sont cochés
-> plus bas, avec leur preuve). Le détail vit dans le graphe
-> `capabilities/graphs/nightshift.json`. Suite : la phase 0 côté GitHub (secret
-> Groq, variables), puis la phase 2.
+> plus bas, avec leur preuve) ; phase 0 faite à la main ; **phase 2 en place,
+> en dry run** : deux critères prouvés, les quatre autres attendent leurs runs
+> GitHub. Le détail vit dans le graphe `capabilities/graphs/nightshift.json`.
 
 ---
 
@@ -325,7 +325,7 @@ C'est la phase qui rapporte le plus pour le moins d'effort.
 - Actions épinglées par SHA : checkout v7.0.1, setup-python v7.0.0,
   upload-artifact v7.0.1, download-artifact v8.0.1.
 
-### Phase 2 — Une seule tâche IA par nuit (Groq gratuit)
+### Phase 2 — Une seule tâche IA par nuit (Groq gratuit) — 🚧 en place le 2026-10-14, en dry run
 
 **But** : au réveil, au plus une PR qui corrige un vrai problème, ou un rapport
 qui dit honnêtement pourquoi il n'y en a pas.
@@ -388,15 +388,56 @@ workflows : c'est acceptable puisque la validation a déjà tourné dans le run.
 (`true` : tout sauf la publication).
 
 **Critères d'acceptation**
-- [ ] Tests sans token qui simulent : réponse du modèle vide, diff invalide,
+- [x] Tests sans token qui simulent : réponse du modèle vide, diff invalide,
       diff hors zone, 429 avec `Retry-After`, délai dépassé, réussite à la 2e
       tentative, échec définitif après 2 tentatives, aucune tâche disponible.
+      *Preuve : `python -m nightshift.selftest`, contrôles 15 à 22, tous verts
+      (22/22) ; faux transport et fausse horloge pour le client du modèle, vrai
+      petit dépôt Git pour la proposition et la validation.*
 - [ ] Un vrai bug planté exprès dans une branche de test (dans la zone
       autorisée) est corrigé et la PR est ouverte — en `workflow_dispatch`.
-- [ ] Un patch qui touche `main.py` est rejeté avant toute exécution.
+      *Fait en local le 2026-10-14 avec un faux modèle : régression
+      « reminders n°1 » choisie, contexte de 2 209 tokens, patch accepté,
+      suites relancées (3/4 → 4/4), verdict validé. Reste le vrai modèle et la
+      PR, sur GitHub.*
+- [x] Un patch qui touche `main.py` est rejeté avant toute exécution.
+      *Preuve : selftest n°15 (17 patchs refusés entiers) et n°19 (rejeté par
+      la proposition, dépôt intact) ; la validation refait le contrôle avant
+      d'appliquer quoi que ce soit.*
 - [ ] Une 2e nuit avec une PR déjà ouverte ne crée pas de doublon.
+      *Écrit : la publication cherche une PR ouverte sur
+      `automation/jarvis-nightly-*` avant d'en créer une. À vérifier sur GitHub.*
 - [ ] Le secret Groq n'apparaît dans aucun journal (vérifier les logs du run).
+      *Écrit : la clé ne vit que dans une étape, n'est jamais affichée, et le
+      selftest n°18 vérifie qu'elle n'entre dans aucun journal ni message
+      d'erreur. Reste à relire les journaux d'un vrai run.*
 - [ ] Dix nuits en `NIGHTLY_DRY_RUN=true` avant la première publication réelle.
+      *Commence avec la première nuit après la fusion.*
+
+**Réalisé — ce qui diffère du plan**
+- Le choix de la tâche et la construction du contexte se font dans le job
+  « veille », sans secret : le job « proposition » ne fait qu'appeler le modèle
+  (clé dans une seule étape) et vérifier son diff, sans rien exécuter.
+- Zone autorisée plus stricte : les fichiers de test et le corpus d'eval_lab
+  sont refusés (un correctif qui réécrit sa preuve ne prouve rien), et
+  `nightshift/` l'est en entier (chacun de ses fichiers fixe ou applique une
+  règle).
+- Pas d'adaptateur de `cognition/providers.py` : il importe le cœur
+  (`core.token_usage`) et `cognition.selftest` n°2 fige ses importeurs. Un petit
+  client autonome (`nightshift/llm.py`, bibliothèque standard) le remplace.
+- Le contexte d'une régression inclut le diff des commits suspects, limité à
+  la zone : c'est souvent la pièce décisive.
+- Faits vérifiés le 2026-10-14 : les modèles et limites Groq du plan tiennent ;
+  `qwen/qwen3.8-27b` est en *preview* (peut disparaître sans préavis) ; Gemini
+  est joignable en mode compatible OpenAI.
+- Une régression ne fait plus échouer le job « veille » (sinon la nuit ne
+  pourrait pas la corriger) : le run passe rouge à la fin, dans le job
+  « rapport ».
+- Un job « assemblage » réunit tout en un seul rapport (`jarvis.nightly/1.3`),
+  pour que le job qui écrit sur `nightshift-data` n'exécute toujours aucun code.
+- La publication vérifie l'empreinte SHA-256 du patch : elle publie exactement
+  celui que la validation a prouvé. « Run workflow » propose une option
+  `dry_run` (auto, true, false) pour les essais à la main.
 
 ### Phase 3 — La mémoire et le backlog
 
