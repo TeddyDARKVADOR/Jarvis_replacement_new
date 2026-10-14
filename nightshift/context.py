@@ -37,7 +37,8 @@ You get the failing check or the lint finding, the exact symptom and the relevan
 
 Rules:
 - Answer with ONE unified diff in a ```diff fenced block: paths relative to the repository
-  root with a/ and b/ prefixes, context lines copied verbatim from the code shown.
+  root with a/ and b/ prefixes, context lines copied verbatim from the code shown, and
+  every hunk header with its line numbers, e.g. @@ -83,6 +83,7 @@ (never a bare @@).
 - Make the smallest change that fixes the root cause in the product code. No refactoring,
   no reformatting, keep the surrounding style.
 - Never edit tests or selftests, CI, dependencies or configuration: such a patch is rejected.

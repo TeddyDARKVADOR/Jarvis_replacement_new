@@ -94,7 +94,7 @@ l'infrastructure existe**.
 | `context.selftest` | 33 | **oui** : 33/33 |
 | `server.selftest` | 35 | **oui** : 35/35 |
 | `server.routing_selftest` | 35 | **oui** : 35/35 |
-| `client_desktop --selftest` | 28 | **oui, avec les bibliothèques de Qt** (17 paquets, mesurés avec `ldd`) : 27/28 au premier run, le n°25 cassé par un commentaire de la route NUIT (corrigé) — 28/28 à confirmer |
+| `client_desktop --selftest` | 28 | **oui, avec les bibliothèques de Qt** (17 paquets, mesurés avec `ldd`) : 28/28 au run 38560540611, une fois réparé le n°25 qu'un commentaire de la route NUIT avait cassé |
 | `cognition.selftest` | 64 | **oui** : 64/64 |
 | `eval_lab.selftest` | 28 | **oui** : 28/28 |
 | `core.code_workspace.selftest` | 34 | **33/34** : seul le n°2 échoue, à cause du nettoyage du test (`os.rmdir` sur un lien symbolique), pas de la sandbox ; le n°33 passe sans Pyright |
@@ -414,8 +414,14 @@ workflows : c'est acceptable puisque la validation a déjà tourné dans le run.
       autorisée) est corrigé et la PR est ouverte — en `workflow_dispatch`.
       *Fait en local le 2026-10-14 avec un faux modèle : régression
       « reminders n°1 » choisie, contexte de 2 209 tokens, patch accepté,
-      suites relancées (3/4 → 4/4), verdict validé. Reste le vrai modèle et la
-      PR, sur GitHub.*
+      suites relancées (3/4 → 4/4), verdict validé.*
+      *Premier vrai run (2026-10-14, run 38560540611) : la régression est
+      choisie et Groq (gpt-oss-120b) répond deux fois — 5 836 tokens —, mais ses
+      deux diffs ont des en-têtes `@@` sans numéros : git apply les refuse
+      (« No valid patches in input »). Corrigé le jour même par le réancrage
+      (`nightshift/reanchor.py`, selftest n°31) et rejoué en local avec une
+      réponse de ce format : patch accepté, verdict validé. À relancer sur
+      GitHub.*
 - [x] Un patch qui touche `main.py` est rejeté avant toute exécution.
       *Preuve : selftest n°15 (17 patchs refusés entiers) et n°19 (rejeté par
       la proposition, dépôt intact) ; la validation refait le contrôle avant

@@ -20,7 +20,8 @@ connu n'est jamais compté comme une régression, mais reste affiché.
     bibliothèques dont l'import a besoin en mode offscreen, et le workflow les
     installe toutes. Quand l'une manque, la suite est « ignorée » (dépendance
     absente), pas « en erreur ». Avec elles, elle tourne : 27/28 au run
-    38535001267, le n°25 cassé par un commentaire de local_hud.py (corrigé).
+    38535001267 (le n°25 cassé par un commentaire de local_hud.py), puis
+    28/28 au run 38560540611 une fois le commentaire corrigé.
 
     Le champ `linux` de chaque suite garde ce qui a été mesuré ; le workflow le
     revérifie chaque nuit.
@@ -83,8 +84,8 @@ SUITES: tuple[Suite, ...] = (
     Suite("client_desktop --selftest", ("-m", "client_desktop", "--selftest"),
           requires=("PyQt6.QtWebEngineWidgets", "sounddevice"),
           python_env="NIGHTSHIFT_PYTHON_HUD",
-          linux="27/28 le 2026-10-14 sur GitHub (run 38535001267) : le n°25 lisait un faux membre "
-                "« py » dans un commentaire de local_hud.py, corrigé le même jour ; 28/28 à confirmer"),
+          linux="28/28 le 2026-10-14 sur GitHub (run 38560540611), avec les bibliothèques de Qt "
+                "mesurées par ldd ; le n°25 avait été cassé par un commentaire de local_hud.py, corrigé"),
     Suite("cognition.selftest", ("-m", "cognition.selftest"), linux=f"{_MEASURED} : 64/64"),
     Suite("eval_lab.selftest", ("-m", "eval_lab.selftest"), linux=f"{_MEASURED} : 28/28"),
     Suite("core.code_workspace.selftest", ("-m", "core.code_workspace.selftest"), timeout_s=600,

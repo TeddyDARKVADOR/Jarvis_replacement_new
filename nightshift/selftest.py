@@ -56,6 +56,10 @@ sont des rapports simulés.
      timed_out, heure limite, 2 tentatives, pas de veille sans l'option
  30  côté GitHub : la file ne demande que des avis ; sans PC « indisponible » ;
      un avis local n'atteint jamais le briefing
+  — leçon du premier vrai run —
+ 31  réancrage : un diff de modèle sans numéros de ligne (« @@ ... @@ »), aux
+     faux numéros ou aux espaces mangés est régénéré ; introuvable, ambigu ou
+     hors zone : refusé ; la réponse du modèle est gardée pour le diagnostic
 """
 from __future__ import annotations
 
@@ -77,7 +81,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nightshift import SCHEMA, briefing, compare, fetch, hud, report, run, state  # noqa: E402
-from nightshift import assemble, context, llm, memory, metrics, propose, tasks, validate, zone  # noqa: E402
+from nightshift import assemble, context, llm, memory, metrics, propose, reanchor, tasks, validate, zone  # noqa: E402
 from nightshift.suites import SUITES, Suite, platform_name  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
@@ -1286,6 +1290,43 @@ def _local_github():
     wf = _src(".github/workflows/nightly.yml")
     assert "local/latest.json" in wf and '"jarvis.nightshift-queue/1"' in wf
     return "file : résumé et tri seulement ; sans PC : indisponible ; avis affichés, jamais lus par le briefing"
+
+
+# ── 31. réancrage des diffs de modèle (leçon du premier vrai run) ────────────
+
+@check("31 réancrage : @@ sans numéros, faux numéros, espaces, contexte sans espace → diff propre ; sinon refus")
+def _reanchor():
+    repo = _git_repo("reanchor")
+    if repo is None:
+        return "skipped (git indisponible)"
+    head = "--- a/reminders/__init__.py\n+++ b/reminders/__init__.py\n"
+    body = ' def mark(data, rid):\n     data[rid] = "livré"\n+    data["saved"] = True\n'
+    cases = {
+        "@@ ... @@ (le vrai run)": head + "@@ ... @@\n" + body,
+        "@@ seul": head + "@@\n" + body,
+        "faux numéros": head + "@@ -40,2 +40,3 @@\n" + body,
+        "espaces de fin": head + '@@\n def mark(data, rid):   \n     data[rid] = "livré"\n+    data["saved"] = True\n',
+        "contexte sans espace": head + '@@\ndef mark(data, rid):\n    data[rid] = "livré"\n+    data["saved"] = True\n',
+    }
+    for name, diff in cases.items():
+        fixed, notes = reanchor.repair(diff, repo)
+        assert fixed and "@@ -1,3 +1,4 @@" in fixed and propose.apply_check(fixed, repo)[0], (name, notes, fixed)
+        assert ' def mark(data, rid):\n     data[rid] = "livré"\n' in fixed, f"{name} : le contexte vient du fichier"
+    assert reanchor.repair(head + "@@\n def autre():\n+    x = 1\n", repo)[0] is None, "bloc introuvable accepté"
+    assert reanchor.repair("--- a/main.py\n+++ b/main.py\n@@\n x\n+y\n", repo)[0] is None, "chemin hors zone lu"
+    twin = _git_repo("reanchor-twin")
+    if twin is not None:
+        (twin / "reminders" / "double.py").write_text("a = 1\nb = 2\n\na = 1\nb = 2\n", encoding="utf-8")
+        fixed, notes = reanchor.repair("--- a/reminders/double.py\n+++ b/reminders/double.py\n@@\n a = 1\n+c = 3\n b = 2\n",
+                                       twin)
+        assert fixed is None and "ambigu" in notes[0], notes
+    prompt = {"messages": [{"role": "user", "content": "u"}], "response_budget": 500}
+    out = propose.propose({"id": "t"}, prompt, repo, _FakeChain([_answer(cases["@@ ... @@ (le vrai run)"])]),
+                          log=lambda *a: None)
+    first = out["attempts"][0]
+    assert out["outcome"] == "patch_proposed" and first["repair"] and first["response"], out
+    assert _clean(repo), "le réancrage ne touche jamais au dépôt"
+    return f"{len(cases)} diffs mal formés réparés ; introuvable, hors zone et ambigu refusés ; réponse gardée"
 
 
 def main() -> int:
