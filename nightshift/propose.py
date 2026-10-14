@@ -13,9 +13,14 @@ Au plus 2 tentatives. Chacune :
      ou rien de reconnaissable : tentative ratée ;
   3. zone.check_patch : un seul chemin hors zone et le patch est rejeté entier
      (main.py, core/, tests, nightshift/…), sans jamais toucher au dépôt ;
-  4. git apply --check --recount : le patch s'applique-t-il ? (vérification
+  4. reanchor.repair : les en-têtes @@ refaits d'après le contenu des blocs
+     (les modèles écrivent « @@ ... @@ » ou de faux numéros — c'est ce qui a
+     fait échouer le premier vrai run, le 2026-10-14) ;
+  5. git apply --check --recount : le patch s'applique-t-il ? (vérification
      seule, le dépôt n'est pas modifié).
-Une tentative ratée renvoie l'erreur exacte au modèle pour la suivante.
+Une tentative ratée renvoie l'erreur exacte au modèle pour la suivante. Chaque
+tentative garde un extrait de la réponse du modèle (passé par redact) : sans
+lui, un échec ne se diagnostique pas.
 
 Écrit proposal.json (toujours : issue, raison, tentatives, consommation) et
 patch.diff (seulement si un patch est proposé).
@@ -36,7 +41,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nightshift import llm, zone
+from nightshift import llm, reanchor, zone
 from nightshift.run import redact
 
 MAX_ATTEMPTS = 2
@@ -96,29 +101,37 @@ def propose(task: dict, prompt: dict, repo: Path, chain: llm.Chain, log=print) -
             attempts.append({"n": n, "result": "llm_error", "detail": str(e)[:300]})
             continue
         diff, why = extract_diff(reply.text)
+        said = redact(reply.text)[:3000]
         if diff is None:
             reason = why
-            attempts.append({"n": n, "result": "no_diff", "model": reply.model, "detail": why})
+            attempts.append({"n": n, "result": "no_diff", "model": reply.model, "detail": why, "response": said})
             messages += [{"role": "assistant", "content": reply.text[:4000]}, _feedback(why)]
             continue
         check = zone.check_patch(diff)
         if not check.ok:
             reason = "hors zone : " + " ; ".join(check.reasons)
             attempts.append({"n": n, "result": "out_of_zone", "model": reply.model, "files": check.files,
-                             "detail": reason[:300]})
+                             "detail": reason[:300], "response": said})
             log(f"  tentative {n} : patch rejeté entier — {reason[:160]}")
             messages += [{"role": "assistant", "content": reply.text[:4000]}, _feedback(reason)]
             continue
-        ok, err = apply_check(diff, repo)
+        fixed, notes = reanchor.repair(diff, repo)
+        ok, err = apply_check(fixed, repo) if fixed else (False, "")
+        if ok:
+            diff = fixed
+        else:                                        # le réancrage n'a pas pu : la version brute a sa chance
+            ok, raw_err = apply_check(diff, repo)
+            err = " ; ".join(x for x in (" ; ".join(notes), err, raw_err) if x)
         if not ok:
             reason = f"le patch ne s'applique pas : {err}"
             attempts.append({"n": n, "result": "apply_failed", "model": reply.model, "files": check.files,
-                             "detail": err[:300]})
+                             "detail": err[:300], "response": said})
             log(f"  tentative {n} : git apply --check refuse — {err[:160]}")
             messages += [{"role": "assistant", "content": reply.text[:4000]}, _feedback(reason)]
             continue
         outcome, reason, diff_ok = "patch_proposed", "", diff
-        attempts.append({"n": n, "result": "ok", "model": reply.model, "files": check.files})
+        attempts.append({"n": n, "result": "ok", "model": reply.model, "files": check.files, "repair": notes,
+                         "response": said})
         log(f"  tentative {n} : patch accepté ({', '.join(check.files)}) par {reply.model}")
         break
     out = {"task_id": task.get("id"), "outcome": outcome, "reason": reason, "attempts": attempts,
