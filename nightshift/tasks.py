@@ -15,6 +15,12 @@ Les autres sont listées « hors zone » : elles reviennent à un humain.
 Rien à corriger → pas d'appel au modèle : c'est un bon résultat.
 NIGHTLY_MAX_TASKS=0 coupe l'IA ; le veilleur, lui, continue.
 
+PHASE 3 — la mémoire (memory.py) passe ce qui a déjà été tenté au même commit
+avec le même contexte, ce qu'un humain a refusé (PR fermée) et les échecs
+persistants ; priorities.toml force ou interdit une tâche. Le backlog (nœuds
+bug et partiel des graphes) est affiché, pas confié au modèle : aucun contrôle
+ne prouverait son correctif (principe n°3 du plan).
+
 Écrit task.json (toujours : la tâche ou la raison de son absence, et ce qui a été
 écarté) et prompt.json (seulement s'il y a une tâche : le contexte ciblé).
 Tourne dans le job « veille », sans secret.
@@ -31,7 +37,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nightshift import context, zone
+from nightshift import context, memory, zone
 from nightshift.suites import short
 
 REPO = Path(__file__).resolve().parent.parent
@@ -91,19 +97,53 @@ def candidates(report: dict, repo: Path = REPO) -> tuple[list[dict], list[dict]]
     return found, out
 
 
-def choose(report: dict, max_tasks: int = 1, repo: Path = REPO) -> dict:
-    """{"task": la tâche ou None, "reason": pourquoi rien, "out_of_zone": [...], "considered": n}."""
+def choose(report: dict, max_tasks: int = 1, repo: Path = REPO, state: dict | None = None,
+           prs: list | None = None, prio: dict | None = None, outputs_dir: Path | None = None) -> dict:
+    """{"task", "prompt", "reason", "out_of_zone", "skipped", "considered"} — la tâche ou pourquoi rien."""
     found, out = candidates(report, repo)
+    base = {"task": None, "prompt": None, "out_of_zone": out, "skipped": [], "considered": len(found)}
     if max_tasks <= 0:
-        return {"task": None, "reason": "IA coupée (NIGHTLY_MAX_TASKS=0)", "out_of_zone": out,
-                "considered": len(found)}
+        return {**base, "reason": "IA coupée (NIGHTLY_MAX_TASKS=0)"}
     if report.get("status") == "failed" or not report.get("suites"):
-        return {"task": None, "reason": "la veille n'a rien mesuré : pas de tâche", "out_of_zone": out,
-                "considered": 0}
+        return {**base, "reason": "la veille n'a rien mesuré : pas de tâche", "considered": 0}
     if not found:
-        reason = "rien à corriger" if not out else "rien à corriger dans la zone autorisée"
-        return {"task": None, "reason": reason, "out_of_zone": out, "considered": 0}
-    return {"task": found[0], "reason": "", "out_of_zone": out, "considered": len(found)}
+        return {**base, "reason": "rien à corriger" if not out else "rien à corriger dans la zone autorisée"}
+    state, prio, by_url = state or memory.empty(), prio or {"force": [], "forbid": []}, memory.prs_by_url(prs)
+    for task in memory.order(found, prio)[:10]:
+        prompt = context.build(task, repo, outputs_dir)
+        fp = memory.fingerprint(prompt)
+        why = memory.skip_reason(task, report.get("commit") or "", fp, state, by_url, prio)
+        if why:
+            base["skipped"].append({"id": task["id"], "idea": memory.idea_key(task), "reason": why})
+            continue
+        task.update(fingerprint=fp, idea=memory.idea_key(task), prompt_tokens=prompt["estimated_tokens"],
+                    sections=prompt["sections"])
+        return {**base, "task": task, "prompt": prompt, "reason": ""}
+    return {**base, "reason": "rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant"}
+
+
+def backlog(repo: Path = REPO) -> list[dict]:
+    """Les nœuds bug et partiel des graphes : régression > bug > partiel, puis le moins de fichiers.
+
+    Affichés pour l'humain (onglet NUIT, rapport), jamais confiés au modèle :
+    aucun contrôle ne prouverait leur correctif. Lus dans les fichiers JSON des
+    graphes : nightshift n'importe pas capabilities."""
+    rows = []
+    for f in sorted((repo / "capabilities" / "graphs").glob("*.json")):
+        try:
+            g = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for n in g.get("nodes") or []:
+            if n.get("status") not in ("bug", "partiel"):
+                continue
+            files = [str(x) for x in n.get("files") or []]
+            inzone = bool(files) and all(zone.allowed(x)[0] for x in files)
+            rows.append({"graph": g.get("id", f.stem), "node": n.get("id"), "label": n.get("label", ""),
+                         "status": n["status"], "summary": str(n.get("summary", ""))[:200], "files": files,
+                         "zone": inzone, "owner": "humain" if not inzone else "humain (aucun contrôle ne le prouverait)"})
+    rows.sort(key=lambda r: (0 if r["status"] == "bug" else 1, len(r["files"]) or 99, r["graph"], r["node"]))
+    return rows
 
 
 def _int_env(name: str, default: int) -> int:
@@ -118,26 +158,37 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--report", required=True, help="report.json de la veille")
     ap.add_argument("--out", required=True, help="dossier où écrire task.json et prompt.json")
     ap.add_argument("--github-output", action="store_true", help="écrire has_task=… dans $GITHUB_OUTPUT")
+    ap.add_argument("--state", help="state.json de la branche nightshift-data (la mémoire)")
+    ap.add_argument("--prs", help="prs.json : les PR Night Shift lues par gh (tous états)")
+    ap.add_argument("--priorities", help="priorities.toml (défaut : nightshift/priorities.toml)")
     args = ap.parse_args(argv)
     out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    state = memory.load(args.state)
+    try:
+        prs = json.loads(Path(args.prs).read_text(encoding="utf-8")) if args.prs else []
+    except Exception:
+        prs = []
     try:
         report = json.loads(Path(args.report).read_text(encoding="utf-8"))
-        choice = choose(report, _int_env("NIGHTLY_MAX_TASKS", 1))
-        if choice["task"]:
-            prompt = context.build(choice["task"], REPO, out / "outputs")
+        choice = choose(report, _int_env("NIGHTLY_MAX_TASKS", 1), REPO, state, prs,
+                        memory.load_priorities(args.priorities), out / "outputs")
+        prompt = choice.pop("prompt")
+        if prompt:
             (out / "prompt.json").write_text(json.dumps(prompt, ensure_ascii=False, indent=1), encoding="utf-8")
-            choice["task"]["prompt_tokens"] = prompt["estimated_tokens"]
-            choice["task"]["sections"] = prompt["sections"]
     except Exception as e:  # pas de tâche plutôt qu'un plantage : la veille a déjà son rapport
         choice = {"task": None, "reason": f"sélection impossible : {type(e).__name__}: {e}"[:200],
-                  "out_of_zone": [], "considered": 0}
-    out.mkdir(parents=True, exist_ok=True)
+                  "out_of_zone": [], "skipped": [], "considered": 0}
+    choice["backlog"] = backlog(REPO)
+    choice["diagnostics"] = memory.diagnostics(state)
     (out / "task.json").write_text(json.dumps(choice, ensure_ascii=False, indent=1), encoding="utf-8")
     t = choice["task"]
     print(f"Tâche de la nuit : {t['id']} ({t.get('prompt_tokens')} tokens de contexte)" if t
           else f"Pas de tâche : {choice['reason']}")
     for x in choice["out_of_zone"]:
         print(f"  hors zone : {x['id']} — {x['reason']}")
+    for x in choice.get("skipped") or []:
+        print(f"  mémoire : {x['id']} — {x['reason']}")
     if args.github_output and os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
             f.write(f"has_task={'true' if t else 'false'}\n")

@@ -39,6 +39,13 @@ sont des rapports simulés.
      décrite par les résultats
  21  assemblage : la tâche, son issue, la PR ou la raison de son absence
  22  briefing : une PR ouverte est annoncée
+  — phase 3 —
+ 23  mémoire : pas de seconde analyse au même commit, PR refusée jamais
+     reproposée, échec persistant diagnostiqué (faits, hypothèses)
+ 24  tâche et mémoire : la candidate passée laisse la place à la suivante ;
+     priorities.toml (force, forbid), hors zone
+ 25  backlog : exactement les nœuds bug et partiel des graphes
+ 26  la semaine : le dimanche seulement, annoncée au briefing
 """
 from __future__ import annotations
 
@@ -60,7 +67,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nightshift import SCHEMA, briefing, compare, fetch, hud, report, run, state  # noqa: E402
-from nightshift import assemble, context, llm, propose, tasks, validate, zone  # noqa: E402
+from nightshift import assemble, context, llm, memory, propose, tasks, validate, zone  # noqa: E402
 from nightshift.suites import SUITES, Suite, platform_name  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
@@ -961,7 +968,8 @@ def _assemble():
     (d / "veille" / "task.json").write_text(json.dumps(choice), encoding="utf-8")
     (d / "proposal" / "proposal.json").write_text(json.dumps(prop), encoding="utf-8")
     (d / "validation" / "validation.json").write_text(json.dumps(ok_v), encoding="utf-8")
-    final = assemble.assemble(d / "veille", d / "proposal", d / "validation", None, True)
+    final, mem = assemble.assemble(d / "veille", d / "proposal", d / "validation", None, True)
+    assert mem["schema"] == memory.SCHEMA and len(mem["nights"]) == 1, "la mémoire retient la nuit"
     assert final["task"]["outcome"] == "patch_validated" and final["usage"]["llm_calls"] == 1
     assert "tâche reminders n°1 : correctif validé" in final["summary"], final["summary"]
     assert "### Tâche de la nuit" in report.to_markdown(final) and fetch.valid(final)
@@ -980,6 +988,117 @@ def _briefing_pr():
     calm = dict(pr, pull_request_url=None, task={"outcome": "skipped", "reason": "rien à corriger"})
     assert briefing.sentence(calm) == "", "rien de nouveau : silence"
     return "PR et dry run annoncés ; rien à corriger, silence"
+
+
+# ── 23-26. phase 3 : la mémoire et le backlog ────────────────────────────────
+
+def _mem_report(run_id: str, commit: str, outcome: str, reason: str = "", pr: str | None = None,
+                day: str = "2026-10-15") -> dict:
+    return {"run_id": run_id, "started_at": f"{day}T03:17:00+02:00", "finished_at": f"{day}T03:30:00+02:00",
+            "commit": commit, "status": "partial_success", "pull_request_url": pr,
+            "task": {"id": "t", "outcome": outcome, "reason": reason, "model": "groq/m"},
+            "usage": {"llm_calls": 2, "tokens_in": 1000, "tokens_out": 200}}
+
+
+@check("23 mémoire : pas de seconde analyse au même commit, PR refusée jamais reproposée, échec persistant diagnostiqué")
+def _memory():
+    task = {"source": "regression", "suite": "reminders.selftest", "check": "1", "label": "l", "fingerprint": "fp1"}
+    idea = memory.idea_key(task)
+    none = {"force": [], "forbid": []}
+    assert idea == "check:reminders.selftest:1"
+    st = memory.update(memory.empty(), _mem_report("1", "c1", "no_patch", "réponse vide"), task, [])
+    assert "déjà tentée" in memory.skip_reason(task, "c1", "fp1", st, {}, none), "même commit, même contexte"
+    assert memory.skip_reason(task, "c2", "fp2", st, {}, none) is None, "le code a changé : on retente"
+    st = memory.update(st, _mem_report("2", "c2", "no_patch", "le patch ne s'applique pas : x"), task, [])
+    assert "échec persistant" in memory.skip_reason(task, "c3", "fp1", st, {}, none)
+    diag = memory.diagnostics(st)
+    assert len(diag) == 1 and diag[0]["attempts"] == 2 and len(diag[0]["facts"]) == 2, diag
+    assert any("ne correspond pas" in h for h in diag[0]["hypotheses"]), diag[0]["hypotheses"]
+    assert memory.skip_reason(task, "c3", "fp1", st, {}, {"force": [idea], "forbid": []}) is None, "force"
+    assert "interdite" in memory.skip_reason(task, "c9", "fp9", memory.empty(), {}, {"force": [], "forbid": [idea]})
+    url = "https://github.com/o/r/pull/7"
+    t4 = dict(task, fingerprint="fp4")
+    st2 = memory.update(memory.empty(), _mem_report("3", "c4", "patch_validated", "le n°1 passe", url), t4,
+                        [{"url": url, "state": "OPEN"}])
+    open_ = memory.prs_by_url([{"url": url, "state": "OPEN"}])
+    assert "attend déjà sa relecture" in memory.skip_reason(t4, "c5", "fp5", st2, open_, none)
+    closed = [{"url": url, "state": "CLOSED"}]
+    st3 = memory.update(st2, _mem_report("4", "c5", "skipped"), None, closed)
+    assert st3["ideas"][idea]["verdict"] == "rejected"
+    assert "PR refusée" in memory.skip_reason(t4, "c6", "fp6", st3, memory.prs_by_url(closed), none)
+    assert "PR refusée" in memory.skip_reason(t4, "c6", "fp6", st3, {}, none), "le verdict reste, même si la PR n'est plus listée"
+    merged = memory.prs_by_url([{"url": url, "state": "MERGED", "mergedAt": "2026-10-16T08:00:00Z"}])
+    assert memory.verdict(st2["ideas"][idea], merged) == "accepted"
+    big = memory.empty()
+    for i in range(70):
+        big = memory.update(big, _mem_report(str(i), "c", "skipped"), None, [])
+    assert len(big["nights"]) == memory.MAX_NIGHTS
+    return "déjà tentée, retentée au changement, persistant + dossier, force/forbid, PR ouverte/refusée/acceptée"
+
+
+@check("24 tâche et mémoire : la candidate déjà tentée est passée, la suivante choisie ; priorities.toml respecté")
+def _tasks_memory():
+    rep = _tasks_report()
+    first = tasks.choose(rep, 1)
+    t0 = first["task"]
+    assert t0["idea"] == "check:reminders.selftest:1" and len(t0["fingerprint"]) == 16, t0
+    st = memory.update(memory.empty(), dict(_mem_report("1", rep["commit"], "no_patch", "x"),
+                                            task={"id": t0["id"], "outcome": "no_patch", "reason": "x"}), t0, [])
+    second = tasks.choose(rep, 1, state=st)
+    assert second["task"]["idea"] == "check:cognition.selftest:5", second["task"]
+    assert second["skipped"] == [{"id": t0["id"], "idea": t0["idea"],
+                                  "reason": f"déjà tentée au commit {rep['commit']} avec le même contexte"}]
+    ruff_idea = "ruff:F841:eval_lab/mutate.py:m"
+    assert tasks.choose(rep, 1, prio={"force": [ruff_idea], "forbid": []})["task"]["idea"] == ruff_idea
+    ideas = ["check:reminders.selftest:1", "check:cognition.selftest:5", ruff_idea]
+    none_left = tasks.choose(rep, 1, prio={"force": [], "forbid": ideas})
+    assert none_left["task"] is None and "rien de neuf" in none_left["reason"] and len(none_left["skipped"]) == 3
+    prio = memory.load_priorities()
+    assert prio == {"force": [], "forbid": []}, f"priorities.toml doit partir vide : {prio}"
+    assert not zone.allowed("nightshift/priorities.toml")[0], "seul un humain règle les priorités"
+    return "passée → suivante ; force en tête ; forbid jamais ; priorities.toml vide et hors zone"
+
+
+@check("25 backlog : les nœuds bug et partiel des graphes, bug d'abord, le moins de fichiers ensuite")
+def _backlog():
+    b = tasks.backlog(REPO)
+    want = set()
+    for f in (REPO / "capabilities" / "graphs").glob("*.json"):
+        g = json.loads(f.read_text(encoding="utf-8"))
+        want |= {(g["id"], n["id"]) for n in g["nodes"] if n.get("status") in ("bug", "partiel")}
+    assert {(x["graph"], x["node"]) for x in b} == want, "le backlog doit être exactement les nœuds du graphe"
+    ranks = [(0 if x["status"] == "bug" else 1) for x in b]
+    assert ranks == sorted(ranks), "bug d'abord"
+    assert all(x["zone"] == (bool(x["files"]) and all(zone.allowed(f)[0] for f in x["files"])) for x in b)
+    night = _src("client_desktop/hud/web/js/night.js")
+    assert "rep.backlog" in night and 'id="night-backlog"' in _src("client_desktop/hud/web/index.html")
+    return f"{len(b)} nœuds, {sum(x['zone'] for x in b)} dans la zone autorisée ; affichés dans l'onglet NUIT"
+
+
+@check("26 la semaine : le dimanche seulement, les bons chiffres, annoncée au briefing")
+def _week():
+    from datetime import date
+    st = memory.empty()
+    days = [f"2026-10-{d:02d}" for d in range(11, 19)]          # du dimanche 11 au dimanche 18
+    url = "https://github.com/o/r/pull/9"
+    for i, day in enumerate(days):
+        outcome = "patch_validated" if day == "2026-10-16" else ("no_patch" if day == "2026-10-14" else "skipped")
+        task = {"source": "ruff", "code": "F841", "path": "eval_lab/mutate.py", "message": "m",
+                "fingerprint": f"fp{i}"} if outcome != "skipped" else None
+        rep = _mem_report(str(i), f"c{i}", outcome, pr=url if outcome == "patch_validated" else None, day=day)
+        rep["status"] = "success" if i % 2 else "partial_success"
+        st = memory.update(st, rep, task, [{"url": url, "state": "MERGED", "mergedAt": "x"}])
+    w = memory.week(st, date(2026, 10, 18))
+    assert w["nights"] == 7 and w["from"] == "2026-10-12", w            # le 11 est hors de la semaine
+    assert (w["tried"], w["validated"], w["prs"], w["accepted"]) == (2, 1, 1, 1), w
+    assert w["tokens"] == 7 * 1200, w
+    assert memory.week(st, date(2026, 10, 17)) is None, "le samedi, pas de résumé"
+    base = _night([_suite("reminders.selftest")])
+    sunday = dict(base, run_id="w", previous={"run_id": "v"}, green_streak=3, week=w)
+    assert "cette semaine : 7 nuits" in briefing.sentence(sunday), briefing.sentence(sunday)
+    md = report.to_markdown(dict(sunday, task={"outcome": "skipped", "reason": "rien à corriger"}))
+    assert "### La semaine" in md
+    return f"dimanche : {w['nights']} nuits, {w['tried']} tentées, {w['accepted']} PR acceptée ; samedi : rien"
 
 
 def main() -> int:

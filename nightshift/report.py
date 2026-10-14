@@ -21,6 +21,9 @@ LE SCHÉMA — jarvis.nightly/1
   1.3  phase 2 : task (id, source, suite et check ou code et path, files,
        attempts, outcome, reason, model, publication, out_of_zone), usage
        (appels et tokens réels), budgets (max_tasks en plus), dry_run.
+  1.4  phase 3 : task.skipped (ce que la mémoire a passé, et pourquoi),
+       diagnostics (échecs persistants : faits, hypothèses), backlog (nœuds bug
+       et partiel des graphes), week (le dimanche : la semaine en chiffres).
   Un champ ajouté fait monter la version mineure (notée dans le graphe
   nightshift) ; un changement incompatible passera à jarvis.nightly/2.
 
@@ -298,6 +301,24 @@ def to_markdown(r: dict) -> str:
         rows += [f"- Hors zone (pour un humain) : {_cell(x.get('id'))} — {_cell(x.get('reason'))}"
                  for x in (t.get("out_of_zone") or [])[:6]]
         section("Tâche de la nuit", rows)
+        section("Mémoire — tâches passées cette nuit", [
+            f"- `{_cell(x.get('idea') or x.get('id'))}` — {_cell(x.get('reason'))}" for x in t.get("skipped") or []])
+    for d in r.get("diagnostics") or []:
+        section(f"Échec persistant — {_cell(d.get('label') or d.get('idea'))}", [
+            f"Idée `{_cell(d.get('idea'))}`, {d.get('attempts')} tentatives sur le même contexte.", "",
+            "**Faits**", *[f"- {_cell(x)}" for x in d.get("facts") or []], "",
+            "**Hypothèses** (non vérifiées)", *[f"- {_cell(x)}" for x in d.get("hypotheses") or []]])
+    w = r.get("week")
+    if isinstance(w, dict):
+        section("La semaine", [
+            f"- {w.get('nights')} nuit(s) du {w.get('from')} au {w.get('to')}, dont {w.get('green')} verte(s)",
+            f"- {w.get('tried')} tâche(s) tentée(s), {w.get('validated')} correctif(s) validé(s)",
+            f"- {w.get('prs')} PR ouverte(s) : {w.get('accepted')} acceptée(s), {w.get('rejected')} refusée(s)",
+            f"- {w.get('tokens')} tokens consommés"])
+    bl = r.get("backlog") or []
+    section(f"Backlog du graphe — {len(bl)} nœud(s) bug ou partiel", [
+        f"- {b.get('status')} · `{_cell(b.get('graph'))}/{_cell(b.get('node'))}` — {_cell(b.get('label'))} · "
+        + ("zone autorisée" if b.get("zone") else "hors zone") for b in bl[:20]])
 
     section("Régressions", [
         f"- **{_cell(_ref(x))}** — {_cell(x.get('label'))} · depuis `{x.get('since_commit') or '?'}`"

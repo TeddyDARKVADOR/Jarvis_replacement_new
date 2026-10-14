@@ -13,6 +13,12 @@ nightshift-data, n'a plus qu'à pousser le fichier : il n'exécute aucun code.
 
 Une pièce manquante (job sauté ou en échec) n'empêche rien : le rapport dit ce
 qui manque au lieu de l'inventer.
+
+PHASE 3 — il tient aussi la mémoire (memory.py) : la tentative de la nuit, les
+verdicts des PR, la nuit elle-même, écrits dans state.json que le job
+« rapport » pousse sur nightshift-data (nuits de main seulement). Le rapport
+porte les tâches passées par la mémoire, les dossiers de diagnostic des échecs
+persistants, le backlog du graphe et, le dimanche, le résumé de la semaine.
 """
 from __future__ import annotations
 
@@ -25,6 +31,9 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from datetime import datetime
+
+from nightshift import memory
 from nightshift import report as R
 
 
@@ -81,14 +90,32 @@ def task_section(choice: dict | None, proposal: dict | None, validation: dict | 
     return task, None
 
 
+def _load_list(path: Path) -> list:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _night_date(report: dict):
+    try:
+        return datetime.fromisoformat(str(report.get("started_at"))).date()
+    except (TypeError, ValueError):
+        return memory.today_paris()
+
+
 def assemble(veille: Path, proposal: Path | None, validation: Path | None, publish: Path | None,
-             dry_run: bool) -> dict:
+             dry_run: bool) -> tuple[dict, dict]:
+    """(le rapport de la nuit, la mémoire après la nuit)."""
     report = _load(veille / "report.json")
     if report is None:
         report = R.failed({"run_id": os.environ.get("GITHUB_RUN_ID")}, {}, "rapport de la veille absent")
-    task, url = task_section(_load(veille / "task.json"), _load(proposal / "proposal.json") if proposal else None,
+    choice = _load(veille / "task.json")
+    task, url = task_section(choice, _load(proposal / "proposal.json") if proposal else None,
                              _load(validation / "validation.json") if validation else None,
                              _load(publish / "publish.json") if publish else None, dry_run)
+    task["skipped"] = (choice or {}).get("skipped") or []
     report["task"] = task
     report["pull_request_url"] = url
     prop = _load(proposal / "proposal.json") if proposal else None
@@ -96,8 +123,13 @@ def assemble(veille: Path, proposal: Path | None, validation: Path | None, publi
         report["usage"] = prop["usage"]
     report["budgets"] = R.budgets()
     report["dry_run"] = dry_run
+    report["backlog"] = (choice or {}).get("backlog") or []
+    state = memory.update(memory.load(veille / "state.json"), report, (choice or {}).get("task"),
+                          _load_list(veille / "prs.json"))
+    report["diagnostics"] = memory.diagnostics(state)
+    report["week"] = memory.week(state, _night_date(report))
     report["summary"] = R.summarize(report)
-    return report
+    return report, state
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -110,10 +142,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     opt = lambda p: Path(p) if p and Path(p).is_dir() else None   # noqa: E731
-    report = assemble(Path(args.veille), opt(args.proposal), opt(args.validation), opt(args.publish),
-                      args.dry_run != "false")
+    report, state = assemble(Path(args.veille), opt(args.proposal), opt(args.validation), opt(args.publish),
+                             args.dry_run != "false")
     md = R.to_markdown(report)
     R.write(report, md, Path(args.out))
+    R._atomic_write(Path(args.out) / "state.json", json.dumps(state, ensure_ascii=False, indent=1) + "\n")
     R.step_summary(md)
     print(report["summary"])
     return 0

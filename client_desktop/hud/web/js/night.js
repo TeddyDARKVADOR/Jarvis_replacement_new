@@ -39,7 +39,7 @@ function row(kind, cls, a, b, why) {
 function renderEmpty(r) {
   $('night-tiles').innerHTML = `<div class="ut"><div class="ut-k">VEILLEUR DE NUIT</div><div class="ut-v">AUCUN RAPPORT</div>
     <div class="ut-s">${esc(r.error || 'pas encore de nuit')}</div></div>`;
-  for (const id of ['night-task', 'night-suites', 'night-changes', 'night-lint']) $(id).innerHTML = '<div class="mind-empty">—</div>';
+  for (const id of ['night-task', 'night-suites', 'night-changes', 'night-lint', 'night-memory', 'night-backlog']) $(id).innerHTML = '<div class="mind-empty">—</div>';
   $('night-limits').innerHTML = '<li>Le premier rapport arrive après la première exécution du workflow « nightly » (onglet Actions du dépôt, bouton Run workflow).</li>';
 }
 
@@ -101,6 +101,19 @@ function render(r) {
       || '<div class="mind-empty">Aucune remarque.</div>';
 
   $('night-limits').innerHTML = (rep.limitations || []).map((l) => `<li>${esc(l)}</li>`).join('') || '<li>—</li>';
+
+  const w = rep.week;
+  const memory = [
+    ...(w ? [row('SEMAINE', 'up', `${w.nights} nuits, ${w.green} vertes`, `${w.tried} tentée(s), ${w.validated} validée(s)`,
+      `${w.prs} PR : ${w.accepted} acceptée(s), ${w.rejected} refusée(s) · ${w.tokens} tokens`)] : []),
+    ...((rep.task && rep.task.skipped) || []).map((x) => row('PASSÉE', '', x.idea || x.id, '', x.reason)),
+    ...(rep.diagnostics || []).map((d) => row('ÉCHEC PERSISTANT', 'down', d.label || d.idea, `${d.attempts} tentatives`,
+      `faits : ${(d.facts || []).join(' · ')} — hypothèses (non vérifiées) : ${(d.hypotheses || []).join(' · ')}`)),
+  ];
+  $('night-memory').innerHTML = memory.join('') || '<div class="mind-empty">Rien à signaler : aucune tâche passée, aucun échec persistant.</div>';
+  $('night-backlog').innerHTML = (rep.backlog || []).map((b) => row(b.status === 'bug' ? 'BUG' : 'PARTIEL', b.status === 'bug' ? 'down' : '',
+    `${b.graph}/${b.node}`, b.zone ? 'zone autorisée' : 'hors zone', `${b.label} — ${b.summary}`)).join('')
+    || '<div class="mind-empty">Aucun nœud bug ou partiel dans les graphes.</div>';
 }
 
 export async function loadNight(ctx, status, refresh = false) {

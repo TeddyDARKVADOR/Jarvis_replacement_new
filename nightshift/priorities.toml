@@ -1,0 +1,13 @@
+# Forcer ou interdire une tâche de la nuit (lu par nightshift/tasks.py, phase 3).
+#
+# nightshift/ est hors de la zone autorisée : seul un humain modifie ce fichier.
+# Une tâche se désigne par son idée, telle que l'affichent le rapport et
+# l'onglet NUIT :
+#     "check:<suite>:<n°>"                ex. "check:reminders.selftest:1"
+#     "ruff:<code>:<chemin>:<message>"    ex. "ruff:F841:eval_lab/mutate.py:Local variable `stim` is assigned to but never used"
+#
+# force   proposée en tête, même après une PR refusée ou deux échecs
+# forbid  jamais proposée
+
+force = []
+forbid = []

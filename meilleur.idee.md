@@ -12,7 +12,9 @@
 > **Avancement au 2026-10-14 : phase 1 validée** (ses six critères sont cochés
 > plus bas, avec leur preuve) ; phase 0 faite à la main ; **phase 2 en place,
 > en dry run** : deux critères prouvés, les quatre autres attendent leurs runs
-> GitHub. Le détail vit dans le graphe `capabilities/graphs/nightshift.json`.
+> GitHub ; **phase 3 en place** : ses trois critères vérifiés par les tests, à
+> confirmer par les nuits. Le détail vit dans le graphe
+> `capabilities/graphs/nightshift.json`.
 
 ---
 
@@ -439,7 +441,7 @@ workflows : c'est acceptable puisque la validation a déjà tourné dans le run.
   celui que la validation a prouvé. « Run workflow » propose une option
   `dry_run` (auto, true, false) pour les essais à la main.
 
-### Phase 3 — La mémoire et le backlog
+### Phase 3 — La mémoire et le backlog — 🚧 en place le 2026-10-14
 
 **But** : ne pas recommencer à zéro chaque nuit, et choisir les tâches qui
 comptent pour moi.
@@ -463,6 +465,29 @@ comptent pour moi.
 **Critères** : une tâche déjà tentée n'est pas refaite au même commit ; une
 PR fermée n'est pas reproposée ; le backlog affiché dans l'onglet NUIT
 correspond aux nœuds du graphe.
+
+- [x] Une tâche déjà tentée n'est pas refaite au même commit.
+      *Preuve : selftest n°23 et 24, et à travers les vraies commandes sur le
+      rapport du bug planté : la nuit suivante, au même commit, la régression
+      est passée « déjà tentée au commit 475b8f2 avec le même contexte » et la
+      candidate suivante est choisie.*
+- [x] Une PR fermée n'est pas reproposée.
+      *Preuve : selftest n°23 (fermée → refusée, même quand la PR n'est plus
+      listée ; ouverte → en attente ; fusionnée → acceptée). À revoir sur la
+      première vraie PR de main : la mémoire ne retient que les nuits de main.*
+- [x] Le backlog affiché dans l'onglet NUIT correspond aux nœuds du graphe.
+      *Preuve : selftest n°25 (exactement les 16 nœuds bug et partiel) et le
+      rendu de l'onglet exécuté sous Node.*
+
+**Réalisé — ce qui diffère du plan**
+- Le backlog est affiché (rapport, onglet NUIT), pas confié au modèle : aucun
+  contrôle ne prouverait le correctif d'un nœud du graphe, et le principe n°3
+  exige une preuve. Le 2026-10-14, un seul des 16 nœuds est dans la zone
+  autorisée (`context`, `l.voiture`).
+- Une idée de correctif se nomme « check:<suite>:<n°> » ou
+  « ruff:<code>:<chemin>:<message> » : c'est ce qu'attend `priorities.toml`.
+- Les verdicts humains sont lus par `gh` dans le job « veille », avec un jeton
+  en lecture seule (`pull-requests: read`).
 
 ### Phase 4 — Mesurer si JARVIS s'améliore vraiment
 
