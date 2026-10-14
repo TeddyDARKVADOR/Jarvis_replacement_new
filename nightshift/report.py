@@ -18,6 +18,9 @@ LE SCHÉMA — jarvis.nightly/1
   1.2  unreferenced : les échecs que la veille ne permet pas de dater (pas de
        rapport, suite qui n'avait pas tourné), et la classe d'échec du même nom.
        Avant, ils passaient pour « déjà rouges ».
+  1.3  phase 2 : task (id, source, suite et check ou code et path, files,
+       attempts, outcome, reason, model, publication, out_of_zone), usage
+       (appels et tokens réels), budgets (max_tasks en plus), dry_run.
   Un champ ajouté fait monter la version mineure (notée dans le graphe
   nightshift) ; un changement incompatible passera à jarvis.nightly/2.
 
@@ -43,9 +46,41 @@ def _iso(t: datetime | str | None) -> str | None:
 
 def _int_env(name: str, default: int) -> int:
     try:
-        return int(os.environ.get(name, default))
+        return int(os.environ.get(name) or default)
     except ValueError:
         return default
+
+
+def budgets() -> dict:
+    """Les plafonds de la nuit (variables du dépôt), tels que la nuit les a appliqués."""
+    return {"max_tasks": _int_env("NIGHTLY_MAX_TASKS", 1), "max_llm_calls": _int_env("NIGHTLY_MAX_LLM_CALLS", 12),
+            "max_tokens": _int_env("NIGHTLY_MAX_TOKENS", 60000),
+            "max_runtime_minutes": _int_env("NIGHTLY_MAX_RUNTIME_MINUTES", 45)}
+
+
+OUTCOME_FR = {"patch_validated": "correctif validé", "patch_rejected": "correctif rejeté",
+              "no_patch": "pas de correctif", "skipped": "rien de tenté"}
+
+
+def task_ref(t: dict) -> str:
+    """« reminders n°1 », « F841 eval_lab/mutate.py »."""
+    if t.get("source") == "ruff":
+        return f"{t.get('code')} {t.get('path')}"
+    return _ref({"suite": t.get("suite", "?"), "check": t.get("check", "?"), "label": t.get("label")})
+
+
+def _task_part(r: dict) -> str | None:
+    t = r.get("task")
+    if not isinstance(t, dict) or not t.get("outcome"):
+        return None
+    if t["outcome"] == "skipped":
+        return t.get("reason") or "rien à corriger"
+    part = f"tâche {task_ref(t)} : {OUTCOME_FR.get(t['outcome'], t['outcome'])}"
+    if t["outcome"] == "patch_validated":
+        part += " — " + ("PR ouverte" if r.get("pull_request_url") else (t.get("publication") or "pas de PR"))
+    elif t.get("reason"):
+        part += f" ({str(t['reason'])[:90]})"
+    return part
 
 
 def _ref(x: dict) -> str:
@@ -103,6 +138,9 @@ def summarize(r: dict) -> str:
         new = len(lint.get("new") or [])
         parts.append(f"ruff : {_plural(lint.get('count', 0), 'remarque')}"
                      + (f" dont {_plural(new, 'nouvelle')}" if new else ""))
+    task = _task_part(r)
+    if task:
+        parts.append(task)
     return " ; ".join(parts) + "."
 
 
@@ -165,8 +203,7 @@ def build(*, meta: dict, git: dict, env: dict, started_at: datetime, finished_at
         "task": None,
         "pull_request_url": None,
         "usage": {"llm_calls": 0, "tokens_in": 0, "tokens_out": 0, "providers": {}},
-        "budgets": {"max_llm_calls": 0, "max_tokens": 0,
-                    "max_runtime_minutes": _int_env("NIGHTLY_MAX_RUNTIME_MINUTES", 45)},
+        "budgets": budgets(),
         "limitations": _limitations(cmp["suites"], previous, lint, cmp["regressions"]),
     }
     r["summary"] = summarize(r)
@@ -238,6 +275,29 @@ def to_markdown(r: dict) -> str:
     def section(title: str, rows: list[str]) -> None:
         if rows:
             lines.extend([f"### {title}", "", *rows, ""])
+
+    t = r.get("task")
+    if isinstance(t, dict) and t.get("outcome"):
+        u, bud = r.get("usage") or {}, r.get("budgets") or {}
+        rows = []
+        if t["outcome"] == "skipped":
+            rows.append(f"- {_cell(t.get('reason') or 'rien à corriger')}")
+        else:
+            src = {"regression": "régression", "failing_check": "contrôle rouge", "ruff": "ruff"}.get(t.get("source"), "?")
+            head = f"- **{_cell(task_ref(t))}** ({src}) — {OUTCOME_FR.get(t['outcome'], t['outcome'])}"
+            if t.get("reason"):
+                head += f" : {_cell(t['reason'])}"
+            rows.append(head)
+            if t.get("publication") or r.get("pull_request_url"):
+                rows.append(f"- Publication : {_cell(r.get('pull_request_url') or t.get('publication'))}")
+            rows.append(f"- {len(t.get('files') or [])} fichier(s) : "
+                        + (", ".join(f"`{_cell(f)}`" for f in t.get("files") or []) or "—")
+                        + f" · {t.get('attempts', 0)} tentative(s)" + (f" · {_cell(t['model'])}" if t.get("model") else ""))
+        rows.append(f"- Consommation : {u.get('llm_calls', 0)} appel(s) sur {bud.get('max_llm_calls', '?')} · "
+                    f"{u.get('tokens_in', 0) + u.get('tokens_out', 0)} tokens sur {bud.get('max_tokens', '?')}")
+        rows += [f"- Hors zone (pour un humain) : {_cell(x.get('id'))} — {_cell(x.get('reason'))}"
+                 for x in (t.get("out_of_zone") or [])[:6]]
+        section("Tâche de la nuit", rows)
 
     section("Régressions", [
         f"- **{_cell(_ref(x))}** — {_cell(x.get('label'))} · depuis `{x.get('since_commit') or '?'}`"

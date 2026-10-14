@@ -213,8 +213,14 @@ def _precheck(python: str, modules: tuple[str, ...], cwd: Path, env: dict) -> tu
     return False, (last[0] if last else "import impossible")
 
 
+def output_name(suite_name: str) -> str:
+    """Le nom de fichier de la sortie brute d'une suite (outputs/<nom>.log)."""
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", suite_name).strip("_") + ".log"
+
+
 def run_suite(suite: Suite, repo: Path = REPO, platform: str | None = None,
-              python: str | None = None, timeout_s: float | None = None) -> dict:
+              python: str | None = None, timeout_s: float | None = None,
+              output_dir: Path | None = None) -> dict:
     """Lance une suite et dit ce qu'elle a donné. Ne lève jamais.
 
     status : ok · failing (des contrôles rouges) · error (plantage, rien de
@@ -259,6 +265,14 @@ def run_suite(suite: Suite, repo: Path = REPO, platform: str | None = None,
         out["failures"] = [_failure_text(c) for c in fails[:MAX_FAILURES]]
         if out["status"] in ("error", "timeout"):
             out["tail"] = _tail(text)
+        if output_dir is not None and out["status"] != "ok":
+            # La sortie brute d'une suite rouge : le symptôme exact pour le contexte
+            # de la phase 2. Artefact du run seulement, jamais dans le rapport public.
+            try:
+                output_dir.mkdir(parents=True, exist_ok=True)
+                (output_dir / output_name(suite.name)).write_text(redact(text), encoding="utf-8")
+            except OSError:
+                pass
         return out
     except Exception as e:  # le banc ne plante pas : la suite est « en erreur », avec la cause
         return {**out, "status": "error", "reason": f"banc : {type(e).__name__}: {e}"[:200]}
@@ -384,14 +398,14 @@ def load_previous(path: str | None) -> dict | None:
 # ── la nuit ──────────────────────────────────────────────────────────────────
 
 def night(suites: list[Suite], previous: dict | None, repo: Path = REPO, ruff: bool = True,
-          echo=print) -> dict:
+          echo=print, output_dir: Path | None = None) -> dict:
     """Lance les suites et ruff, et renvoie le rapport complet (report.build)."""
     started = now()
     plat = platform_name()
     git = git_info(repo)
     results = []
     for i, s in enumerate(suites, 1):
-        r = run_suite(s, repo, plat)
+        r = run_suite(s, repo, plat, output_dir=output_dir)
         results.append(r)
         score = f"{r['passed']}/{r['total']}" if r["total"] is not None else "—"
         echo(f"  [{i:2}/{len(suites)}] {s.name:36} {score:>7}  {r['duration_s']:6.1f} s")
@@ -444,7 +458,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"JARVIS Night Shift — {len(selected)} suite(s) sur {platform_name()}"
           + ("" if previous else " — pas de rapport précédent"))
     try:
-        report = night(selected, previous, ruff=not args.no_ruff)
+        report = night(selected, previous, ruff=not args.no_ruff,
+                       output_dir=Path(args.out) / "outputs" if args.out else None)
     except Exception as e:  # dernier filet : un rapport « failed » plutôt qu'un plantage
         report = R.failed(run_meta(), git_info(), f"banc : {type(e).__name__}: {e}", started_at=now())
     md = R.to_markdown(report)

@@ -14,7 +14,8 @@ QUAND SE TAIRE
 QUAND PARLER
   - une régression, une suite en erreur ou hors délai, une réparation, une
     nouvelle remarque ruff, un échec sans référence (suite qui tourne pour la
-    première fois), le retour au vert, la première nuit ;
+    première fois), un correctif validé (PR ouverte, ou dry run), le retour au
+    vert, la première nuit ;
   - le dernier rapport a plus de 48 h : le veilleur ne tourne plus (GitHub
     désactive une planification après 60 jours sans activité du dépôt).
 
@@ -38,6 +39,8 @@ WAIT_S = 1.0
 _SUITE = re.compile(r"^[a-z0-9_.]{1,60}( --selftest)?$")
 _CHECK = re.compile(r"^\d{1,3}[a-z]?$")
 _COMMIT = re.compile(r"^[0-9a-f]{7,40}$")
+_RUFF = re.compile(r"^[A-Z]{1,3}\d{3}$")
+_PATH = re.compile(r"^[a-z0-9_./-]{1,80}\.py$")
 
 _ready = threading.Event()
 _started = False
@@ -56,6 +59,13 @@ def _ref(x: dict) -> str:
 def _since(x: dict) -> str:
     c = str(x.get("since_commit") or "")
     return f" depuis le commit {c[:7]}" if _COMMIT.match(c) else ""
+
+
+def _task(t: dict) -> str:
+    if t.get("source") == "ruff":
+        code, path = str(t.get("code", "")), str(t.get("path", ""))
+        return (f"{code} dans {path}" if _RUFF.match(code) and _PATH.match(path) else "une remarque ruff")
+    return _ref({"suite": t.get("suite"), "check": t.get("check")})
 
 
 def _list(items: list[str], limit: int = 2) -> str:
@@ -77,7 +87,9 @@ def sentence(r: dict) -> str:
     first = r.get("previous") is None
     unref = [] if first else [x for x in r.get("unreferenced") or [] if isinstance(x, dict)]
     back_to_green = r.get("status") == "success" and r.get("green_streak") == 1 and not first
-    if not (regs or reps or broken or new_lint or unref or first or back_to_green):
+    task = r.get("task") if isinstance(r.get("task"), dict) else {}
+    fixed = task.get("outcome") == "patch_validated"
+    if not (regs or reps or broken or new_lint or unref or first or back_to_green or fixed):
         return ""
     parts = [f"{len(green)}/{len(ran)} suites vertes"]
     if first:
@@ -92,6 +104,9 @@ def sentence(r: dict) -> str:
         parts.append("réparé : " + _list([_ref(x) for x in reps]))
     if new_lint and isinstance(new_lint, list):
         parts.append(f"{len(new_lint)} nouvelle(s) remarque(s) ruff")
+    if fixed:
+        parts.append(("une PR attend d'être relue : " if r.get("pull_request_url")
+                      else "correctif validé, sans PR (dry run) : ") + _task(task))
     if back_to_green:
         parts.append("tout est revenu au vert")
     return "« " + " ; ".join(parts) + " »."

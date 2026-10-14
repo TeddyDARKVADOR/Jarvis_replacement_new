@@ -39,7 +39,7 @@ function row(kind, cls, a, b, why) {
 function renderEmpty(r) {
   $('night-tiles').innerHTML = `<div class="ut"><div class="ut-k">VEILLEUR DE NUIT</div><div class="ut-v">AUCUN RAPPORT</div>
     <div class="ut-s">${esc(r.error || 'pas encore de nuit')}</div></div>`;
-  for (const id of ['night-suites', 'night-changes', 'night-lint']) $(id).innerHTML = '<div class="mind-empty">—</div>';
+  for (const id of ['night-task', 'night-suites', 'night-changes', 'night-lint']) $(id).innerHTML = '<div class="mind-empty">—</div>';
   $('night-limits').innerHTML = '<li>Le premier rapport arrive après la première exécution du workflow « nightly » (onglet Actions du dépôt, bouton Run workflow).</li>';
 }
 
@@ -53,6 +53,22 @@ function render(r) {
     ['SÉRIE VERTE', `${rep.green_streak ?? 0} nuit${(rep.green_streak ?? 0) > 1 ? 's' : ''}`, 'nuits vertes d’affilée, celle-ci comprise'],
     ['MACHINE', env.image || env.os || '—', `Python ${env.python || '?'} · ${dur}`],
   ].map(([k, v, sub]) => `<div class="ut"><div class="ut-k">${k}</div><div class="ut-v">${esc(v)}</div><div class="ut-s">${esc(sub)}</div></div>`).join('');
+
+  const t = rep.task || null;
+  const OUTCOME = { patch_validated: ['CORRECTIF VALIDÉ', 'up'], patch_rejected: ['CORRECTIF REJETÉ', 'down'],
+    no_patch: ['PAS DE CORRECTIF', ''], skipped: ['RIEN DE TENTÉ', ''] };
+  if (!t || !t.outcome) $('night-task').innerHTML = '<div class="mind-empty">Phase 1 : pas de tâche IA dans ce rapport.</div>';
+  else {
+    const [label, cls] = OUTCOME[t.outcome] || [t.outcome, ''];
+    const what = t.source === 'ruff' ? `${t.code} ${t.path}` : t.suite ? ref(t) : '—';
+    const u = rep.usage || {}, b = rep.budgets || {};
+    $('night-task').innerHTML = [
+      row(label, cls, what, t.attempts ? `${t.attempts} tentative(s)` : '', t.reason || ''),
+      (rep.pull_request_url || t.publication) ? row('PUBLICATION', rep.pull_request_url ? 'up' : '', rep.pull_request_url ? 'PR ouverte' : '', '', rep.pull_request_url || t.publication) : '',
+      row('CONSOMMATION', '', `${u.llm_calls || 0} / ${b.max_llm_calls ?? '?'} appels`, `${(u.tokens_in || 0) + (u.tokens_out || 0)} / ${b.max_tokens ?? '?'} tokens`, t.model || ''),
+      ...(t.out_of_zone || []).slice(0, 6).map((x) => row('HORS ZONE', '', x.id, '', x.reason)),
+    ].join('');
+  }
 
   const suites = rep.suites || [];
   $('night-suites').innerHTML = suites.length ? `<table class="ut-table"><thead><tr>
