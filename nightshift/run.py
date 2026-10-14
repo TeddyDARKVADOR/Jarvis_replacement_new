@@ -36,6 +36,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nightshift import SCHEMA
+from nightshift import metrics as M
 from nightshift import report as R
 from nightshift.suites import Suite, by_name, platform_name
 
@@ -410,11 +411,12 @@ def night(suites: list[Suite], previous: dict | None, repo: Path = REPO, ruff: b
         score = f"{r['passed']}/{r['total']}" if r["total"] is not None else "—"
         echo(f"  [{i:2}/{len(suites)}] {s.name:36} {score:>7}  {r['duration_s']:6.1f} s")
     lint = run_ruff(repo) if ruff else {"tool": "ruff", "available": False, "reason": "désactivé (--no-ruff)"}
+    measured = M.measure(repo) if ruff else None         # phase 4 : les indicateurs, avec ruff
     prev_commit = (previous or {}).get("commit_full") or (previous or {}).get("commit") or ""
     sus = suspects(repo, prev_commit, git["commit_full"]) if previous else None
     report = R.build(meta=run_meta(), git=git, env=environment(), started_at=started, finished_at=now(),
                      suites=results, lint=lint, previous=previous, suspects=sus,
-                     known={s.name: s.known(plat) for s in suites})
+                     known={s.name: s.known(plat) for s in suites}, metrics=measured)
     echo("")
     for r in report["suites"]:   # l'état final, une fois comparé à la veille
         echo(f"  {r['status']:13} {r['name']:36}" + (f"  {r['reason']}" if r.get("reason") else ""))

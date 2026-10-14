@@ -107,7 +107,8 @@ def sentence(r: dict) -> str:
         parts.append(f"{len(new_lint)} nouvelle(s) remarque(s) ruff")
     if fixed:
         parts.append(("une PR attend d'être relue : " if r.get("pull_request_url")
-                      else "correctif validé, sans PR (dry run) : ") + _task(task))
+                      else "correctif validé, sans PR (dry run) : ") + _task(task)
+                     + (", à relire de près : un indicateur a bougé" if task.get("review_closely") else ""))
     if back_to_green:
         parts.append("tout est revenu au vert")
     if week:

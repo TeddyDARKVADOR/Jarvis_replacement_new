@@ -9,12 +9,26 @@
 > termine par des critères d'acceptation vérifiables : tant qu'ils ne sont pas
 > tous verts, la phase n'est pas finie.
 >
-> **Avancement au 2026-10-14 : phase 1 validée** (ses six critères sont cochés
-> plus bas, avec leur preuve) ; phase 0 faite à la main ; **phase 2 en place,
-> en dry run** : deux critères prouvés, les quatre autres attendent leurs runs
-> GitHub ; **phase 3 en place** : ses trois critères vérifiés par les tests, à
-> confirmer par les nuits. Le détail vit dans le graphe
-> `capabilities/graphs/nightshift.json`.
+> **Avancement au 2026-10-14** — le détail vit dans le graphe
+> `capabilities/graphs/nightshift.json`, les preuves sous chaque phase.
+>
+> | Phase | État |
+> |---|---|
+> | 0 — Préparation | ✅ faite à la main |
+> | 1 — Le veilleur | ✅ validée : six critères sur six, prouvés sur GitHub |
+> | 2 — Une tâche IA par nuit | ✅ réalisée, en dry run : 2 critères prouvés, 4 attendent tes tests GitHub |
+> | 3 — Mémoire et backlog | ✅ réalisée : 3 critères vérifiés par les tests, à confirmer sur une vraie PR |
+> | 4 — Mesurer si JARVIS s'améliore | ✅ réalisée : indicateurs mesurés sur le vrai dépôt |
+> | 5 — PC réveillé, modèles locaux | ✅ réalisée, facultative : inactive tant qu'elle n'est pas planifiée sur le PC |
+> | 6 — Orchestration multi-modèles | ⏸ pas commencée : le plan la réserve à plus tard (voir sa section) |
+>
+> **À tester à la fin** : (1) Actions → nightly → Run workflow sur `main`
+> (dry_run auto) — premier vrai appel à Groq ; relire le journal de l'étape
+> « Appel au modèle » : la clé ne doit y apparaître nulle part ; (2) sur
+> `test/bug-plante` avec dry_run = false — une PR doit s'ouvrir vers cette
+> branche ; (3) le relancer — « PR déjà ouverte », pas de doublon ; (4) après
+> dix nuits sans surprise, `NIGHTLY_DRY_RUN=false` ; (5) facultatif : sur le PC
+> à RTX 3060, `python -m nightshift.local_worker --install-help`.
 
 ---
 
@@ -327,7 +341,7 @@ C'est la phase qui rapporte le plus pour le moins d'effort.
 - Actions épinglées par SHA : checkout v7.0.1, setup-python v7.0.0,
   upload-artifact v7.0.1, download-artifact v8.0.1.
 
-### Phase 2 — Une seule tâche IA par nuit (Groq gratuit) — 🚧 en place le 2026-10-14, en dry run
+### Phase 2 — Une seule tâche IA par nuit (Groq gratuit) — ✅ réalisée le 2026-10-14, en dry run (4 critères à tester sur GitHub)
 
 **But** : au réveil, au plus une PR qui corrige un vrai problème, ou un rapport
 qui dit honnêtement pourquoi il n'y en a pas.
@@ -441,7 +455,7 @@ workflows : c'est acceptable puisque la validation a déjà tourné dans le run.
   celui que la validation a prouvé. « Run workflow » propose une option
   `dry_run` (auto, true, false) pour les essais à la main.
 
-### Phase 3 — La mémoire et le backlog — 🚧 en place le 2026-10-14
+### Phase 3 — La mémoire et le backlog — ✅ réalisée le 2026-10-14
 
 **But** : ne pas recommencer à zéro chaque nuit, et choisir les tâches qui
 comptent pour moi.
@@ -489,7 +503,7 @@ correspond aux nœuds du graphe.
 - Les verdicts humains sont lus par `gh` dans le job « veille », avec un jeton
   en lecture seule (`pull-requests: read`).
 
-### Phase 4 — Mesurer si JARVIS s'améliore vraiment
+### Phase 4 — Mesurer si JARVIS s'améliore vraiment — ✅ réalisée le 2026-10-14
 
 Les tests disent « rien n'est cassé », pas « c'est mieux ». Ajouter au rapport
 des indicateurs qui existent déjà dans le dépôt :
@@ -500,7 +514,28 @@ des indicateurs qui existent déjà dans le dépôt :
 Un correctif qui fait baisser un de ces indicateurs est marqué « à relire de
 près », même si les tests sont verts.
 
-### Phase 5 — Réveiller le PC pour les modèles locaux (facultatif)
+**Fait** (`nightshift/metrics.py`) — chaque nuit dans le rapport, comparé à la
+veille, et avant/après chaque correctif dans la validation :
+- [x] eval_lab : taux de réussite par corpus et échecs par cause. *Mesuré le
+      2026-10-14 : 76/77 sur le corpus de référence — un échec, cause
+      `NO_DELIVERY_WITHOUT_SINK` (context/policy.py) — et 9/9 sur les
+      régressions.*
+- [x] Cognition : l'évaluation déterministe, architecture complète. *14 valeurs,
+      identiques d'un passage à l'autre (vérifié deux fois).*
+- [x] Coût en contexte. *34 outils, 23 520 caractères en mode local + 3 540 de
+      prompt, ≈ 7 731 tokens par connexion — cohérent avec les ~8 200 tokens
+      mesurés le 2026-10-13.*
+- [x] Un correctif qui dégrade un indicateur est « à relire de près » : rapport,
+      PR, briefing, onglet NUIT. *Preuve : selftest n°27 ; n°28 pour les
+      mesures elles-mêmes, sur le vrai dépôt.*
+
+*Écart* : une valeur de cognition qui change est signalée sans dire si c'est
+mieux ou pire — « questions justes » doit monter, « faux souvenirs » rester
+bas. Et pour mesurer sans importer JARVIS (contrat V2), cognition et coût en
+contexte passent par deux sondes qui chargent le dépôt dans un processus à
+part, comme `server.run_headless`.
+
+### Phase 5 — Réveiller le PC pour les modèles locaux (facultatif) — ✅ réalisée le 2026-10-14, inactive tant qu'elle n'est pas planifiée
 
 Seulement si les phases 1 à 4 ont prouvé leur valeur **et** qu'une tâche a
 besoin du GPU ou d'Ollama (tri de nombreuses remarques, résumé de journaux).
@@ -519,7 +554,23 @@ besoin du GPU ou d'Ollama (tri de nombreuses remarques, résumé de journaux).
 - Le job GitHub ne compte jamais sur ce PC : un modèle local absent est
   « indisponible », jamais « en attente ».
 
-### Phase 6 — L'orchestration multi-modèles (plus tard, peut-être jamais)
+**Fait** (`nightshift/local_worker.py`, file et avis dans `assemble.py`) :
+- [x] La file `queue.json` sur `nightshift-data` : des avis seulement — résumer
+      les échecs de la nuit, trier les remarques ruff —, tirés du rapport public.
+- [x] Le worker : Ollama et le modèle vérifiés, un résultat structuré par tâche
+      (`schema_version`, `task_id`, `status` succeeded|failed|timed_out|skipped,
+      `started_at`, `finished_at`, `error`…), 2 tentatives au plus, écriture
+      atomique, heure limite, poussée sur `local/`, veille avec `--sleep-after`.
+      *Preuve : selftest n°29 (faux Ollama) et le vrai worker lancé sur le
+      portable, Ollama arrêté : deux tâches « skipped », rien de poussé.*
+- [x] Côté GitHub, sans PC : « indisponible », jamais « en attente » ; les avis
+      sont affichés comme des hypothèses et jamais lus par le briefing.
+      *Preuve : selftest n°30.*
+- [ ] À faire par toi, si tu le veux : la planifier sur le PC à RTX 3060
+      (`python -m nightshift.local_worker --install-help` donne les étapes ; le
+      portable, avec 4 Go de GPU, ne fait pas tenir `gemma4:12b`).
+
+### Phase 6 — L'orchestration multi-modèles (plus tard, peut-être jamais) — ⏸ pas commencée
 
 Les sections 14 à 17 de la v1 (Groq superviseur, workers locaux en parallèle,
 registre d'état par tâche, enquête automatique) décrivent un projet de
@@ -532,6 +583,13 @@ et qu'un goulot précis le justifie. Les décisions à garder pour ce jour-là :
   `cancelled`, `skipped` ; `succeeded` ≠ « bug corrigé » ;
 - le statut global `success`, `partial_success`, `failed` ;
 - un worker absent ne fait pas échouer la session ; il est déclaré absent.
+
+**État au 2026-10-14** : pas commencée, comme le veut sa propre condition — les
+phases 1 à 5 doivent d'abord tourner des semaines, et aucun goulot ne la
+justifie. Les décisions ci-dessus sont déjà appliquées par les phases 2 et 5 :
+résultats structurés (proposal.json, validation.json, résultats locaux),
+écriture atomique, 2 tentatives au plus, ces états et ces statuts globaux, un
+PC absent déclaré « indisponible ».
 
 ---
 

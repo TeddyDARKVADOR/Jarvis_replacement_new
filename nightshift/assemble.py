@@ -19,6 +19,12 @@ verdicts des PR, la nuit elle-même, écrits dans state.json que le job
 « rapport » pousse sur nightshift-data (nuits de main seulement). Le rapport
 porte les tâches passées par la mémoire, les dossiers de diagnostic des échecs
 persistants, le backlog du graphe et, le dimanche, le résumé de la semaine.
+
+PHASE 5 — il écrit aussi queue.json, la file du PC réveillé la nuit
+(local_worker.py) : des tâches d'avis seulement (résumer les échecs, trier les
+remarques ruff), tirées du rapport public. Et il reprend les derniers avis du
+PC (local/latest.json) comme des hypothèses — ou « indisponible » : la nuit ne
+compte jamais sur le PC.
 """
 from __future__ import annotations
 
@@ -73,7 +79,8 @@ def task_section(choice: dict | None, proposal: dict | None, validation: dict | 
     if not validation.get("validated"):
         task.update(outcome="patch_rejected", reason=validation.get("reason") or "les suites ne le prouvent pas")
         return task, None
-    task.update(outcome="patch_validated", reason=validation.get("target") or "")
+    task.update(outcome="patch_validated", reason=validation.get("target") or "",
+                review_closely=validation.get("review_closely") or [])
     if dry_run:
         task["publication"] = "aucune PR : dry run (NIGHTLY_DRY_RUN=true)"
         return task, None
@@ -96,6 +103,40 @@ def _load_list(path: Path) -> list:
         return data if isinstance(data, list) else []
     except Exception:
         return []
+
+
+QUEUE_SCHEMA = "jarvis.nightshift-queue/1"
+LOCAL_SCHEMA = "jarvis.nightshift-local/1"
+
+
+def queue_for(report: dict) -> dict:
+    """La file du PC pour la nuit prochaine : des avis à donner, rien à exécuter."""
+    tasks = []
+    red = [{"suite": s.get("name"), "status": s.get("status"),
+            "failures": [{"check": f.get("id"), "label": f.get("label"), "detail": f.get("detail")}
+                         for f in s.get("failed") or [] if f.get("class") != "known"]}
+           for s in report.get("suites") or [] if s.get("status") in ("regression", "failing", "error", "timeout")]
+    if red:
+        tasks.append({"id": f"resume-{report.get('run_id')}", "kind": "resume",
+                      "input": {"summary": report.get("summary"), "red": red[:10]}})
+    findings = [{k: f.get(k) for k in ("code", "path", "line", "message")}
+                for f in (report.get("lint") or {}).get("findings") or []]
+    if findings:
+        tasks.append({"id": f"triage-{report.get('run_id')}", "kind": "triage", "input": {"findings": findings[:40]}})
+    return {"schema": QUEUE_SCHEMA, "run_id": report.get("run_id"), "created": report.get("finished_at"),
+            "tasks": tasks}
+
+
+def local_section(batch: dict | None) -> dict:
+    """Les derniers avis du PC, ou « indisponible » — jamais « en attente »."""
+    if not isinstance(batch, dict) or batch.get("schema_version") != LOCAL_SCHEMA:
+        return {"available": False,
+                "reason": "aucun avis local : PC éteint, ou worker non installé (phase 5, facultative)"}
+    return {"available": True, "status": batch.get("status"), "host": batch.get("host"),
+            "finished_at": batch.get("finished_at"), "model": batch.get("model"), "error": batch.get("error"),
+            "tasks": [{"task_id": t.get("task_id"), "kind": t.get("kind"), "status": t.get("status"),
+                       "output": str(t.get("output") or "")[:800], "error": t.get("error")}
+                      for t in (batch.get("tasks") or [])[:6] if isinstance(t, dict)]}
 
 
 def _night_date(report: dict):
@@ -128,6 +169,7 @@ def assemble(veille: Path, proposal: Path | None, validation: Path | None, publi
                           _load_list(veille / "prs.json"))
     report["diagnostics"] = memory.diagnostics(state)
     report["week"] = memory.week(state, _night_date(report))
+    report["local"] = local_section(_load(veille / "local.json"))
     report["summary"] = R.summarize(report)
     return report, state
 
@@ -147,6 +189,7 @@ def main(argv: list[str] | None = None) -> int:
     md = R.to_markdown(report)
     R.write(report, md, Path(args.out))
     R._atomic_write(Path(args.out) / "state.json", json.dumps(state, ensure_ascii=False, indent=1) + "\n")
+    R._atomic_write(Path(args.out) / "queue.json", json.dumps(queue_for(report), ensure_ascii=False, indent=1) + "\n")
     R.step_summary(md)
     print(report["summary"])
     return 0

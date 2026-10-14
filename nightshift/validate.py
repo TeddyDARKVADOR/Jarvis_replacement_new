@@ -11,7 +11,9 @@ où le code écrit par le modèle s'exécute, d'où ces deux absences.
      git status de server, client_desktop et eval_lab l'exigent ;
   3. les mêmes suites que la veille, comparées à la veille du même commit ;
   4. verdict : validé seulement si la cible est réparée (le contrôle passe, ou
-     la remarque ruff a disparu), sans aucune régression ni nouvelle remarque.
+     la remarque ruff a disparu), sans aucune régression ni nouvelle remarque ;
+  5. phase 4 : si un indicateur se dégrade (eval_lab, cognition, coût en
+     contexte), le correctif reste validé mais il est « à relire de près ».
 
 Écrit validation.json (verdict et preuves), after.json (le rapport des suites
 après le patch) et pr_body.md : la description de la PR, tirée des résultats et
@@ -82,7 +84,7 @@ def verdict(task: dict, after: dict) -> dict:
         f"{len(regs)} régression(s) : " + ", ".join(R._ref(x) for x in regs[:3]) if regs else None,
         f"{len(new_lint)} nouvelle(s) remarque(s) ruff" if new_lint else None) if r]
     return {"validated": ok, "target_fixed": fixed, "target": why, "regressions": regs, "new_lint": new_lint,
-            "reason": " ; ".join(reasons)}
+            "reason": " ; ".join(reasons), "review_closely": after.get("metrics_changes") or []}
 
 
 def title(task: dict) -> str:
@@ -121,6 +123,11 @@ def pr_body(task: dict, proposal: dict, before: dict, after: dict, v: dict, file
         + ("aucune régression, aucune nouvelle remarque ruff." if v["validated"] else v["reason"]),
         "", "| Suite | Avant | Après |", "|---|---|---|",
         *[f"| {name} | {b.get(name, '—')} | {a.get(name, '—')} |" for name in a],
+        *(["", "## ⚠️ À relire de près", "",
+            "Les suites sont vertes, mais un indicateur a bougé (phase 4) :", "",
+            *[f"- **{x['metric']}** : {x['before']} → {x['now']} ({x['verdict']})"
+              + (f" — {x['detail']}" if x.get("detail") else "") for x in v.get("review_closely") or []]]
+          if v.get("review_closely") else []),
         "", "## Fichiers touchés", "", *[f"- `{f}`" for f in files], "",
         "## Ce qu'il faut relire", "",
         "- Le diff, en entier : il est court par construction (zone autorisée, tests intouchables).",

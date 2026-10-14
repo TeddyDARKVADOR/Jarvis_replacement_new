@@ -39,7 +39,7 @@ function row(kind, cls, a, b, why) {
 function renderEmpty(r) {
   $('night-tiles').innerHTML = `<div class="ut"><div class="ut-k">VEILLEUR DE NUIT</div><div class="ut-v">AUCUN RAPPORT</div>
     <div class="ut-s">${esc(r.error || 'pas encore de nuit')}</div></div>`;
-  for (const id of ['night-task', 'night-suites', 'night-changes', 'night-lint', 'night-memory', 'night-backlog']) $(id).innerHTML = '<div class="mind-empty">—</div>';
+  for (const id of ['night-task', 'night-suites', 'night-changes', 'night-lint', 'night-metrics', 'night-local', 'night-memory', 'night-backlog']) $(id).innerHTML = '<div class="mind-empty">—</div>';
   $('night-limits').innerHTML = '<li>Le premier rapport arrive après la première exécution du workflow « nightly » (onglet Actions du dépôt, bouton Run workflow).</li>';
 }
 
@@ -64,6 +64,8 @@ function render(r) {
     const u = rep.usage || {}, b = rep.budgets || {};
     $('night-task').innerHTML = [
       row(label, cls, what, t.attempts ? `${t.attempts} tentative(s)` : '', t.reason || ''),
+      ...((t.review_closely || []).length ? [row('À RELIRE DE PRÈS', 'down', 'un indicateur a bougé', '',
+        t.review_closely.map((x) => `${x.metric} : ${x.before} → ${x.now}`).join(' · '))] : []),
       (rep.pull_request_url || t.publication) ? row('PUBLICATION', rep.pull_request_url ? 'up' : '', rep.pull_request_url ? 'PR ouverte' : '', '', rep.pull_request_url || t.publication) : '',
       row('CONSOMMATION', '', `${u.llm_calls || 0} / ${b.max_llm_calls ?? '?'} appels`, `${(u.tokens_in || 0) + (u.tokens_out || 0)} / ${b.max_tokens ?? '?'} tokens`, t.model || ''),
       ...(t.out_of_zone || []).slice(0, 6).map((x) => row('HORS ZONE', '', x.id, '', x.reason)),
@@ -101,6 +103,26 @@ function render(r) {
       || '<div class="mind-empty">Aucune remarque.</div>';
 
   $('night-limits').innerHTML = (rep.limitations || []).map((l) => `<li>${esc(l)}</li>`).join('') || '<li>—</li>';
+
+  const m = rep.metrics || {};
+  const corpora = (m.eval_lab && m.eval_lab.corpora) || {};
+  const ctx = m.context || {};
+  const metrics = [
+    ...Object.entries(corpora).filter(([, c]) => c.available).map(([name, c]) => row('EVAL_LAB', c.pass === c.total ? 'up' : 'down',
+      `${name} : ${c.pass}/${c.total}`, '', Object.entries(c.causes || {}).map(([k, v]) => `${k} ×${v}`).join(' · ') || 'aucun échec')),
+    ...(ctx.available ? [row('CONTEXTE', '', `${ctx.local.chars} car. d'outils (${ctx.local.tools})`, `prompt ${ctx.system_prompt_chars} car.`,
+      `≈ ${ctx.estimated_tokens_local} tokens refacturés à chaque connexion`)] : []),
+    ...((m.cognition && m.cognition.available) ? [row('COGNITION', '', `${Object.keys(m.cognition.values || {}).length} valeurs`, '', 'architecture complète, évaluation déterministe')] : []),
+    ...(rep.metrics_changes || []).map((x) => row(x.verdict.toUpperCase(), 'down', x.metric, `${x.before} → ${x.now}`, x.detail || '')),
+  ];
+  $('night-metrics').innerHTML = metrics.join('') || '<div class="mind-empty">Pas d’indicateurs dans ce rapport (avant la phase 4).</div>';
+
+  const loc = rep.local;
+  $('night-local').innerHTML = !loc ? '<div class="mind-empty">Pas de modèle local dans ce rapport (avant la phase 5).</div>'
+    : !loc.available ? row('INDISPONIBLE', '', 'modèle local', '', loc.reason || '')
+    : (loc.tasks || []).map((x) => row(x.status === 'succeeded' ? 'AVIS' : x.status.toUpperCase(), x.status === 'succeeded' ? '' : 'down',
+      `${x.kind} · ${loc.model || ''}`, `${loc.host || ''} ${loc.finished_at ? when(loc.finished_at) : ''}`, x.output || x.error || '')).join('')
+      || row('VIDE', '', 'modèle local', '', 'aucune tâche cette nuit');
 
   const w = rep.week;
   const memory = [
