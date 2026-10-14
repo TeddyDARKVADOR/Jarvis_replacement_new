@@ -1,18 +1,23 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "38532442387",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38532442387",
+ "run_id": "38535001267",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38535001267",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "workflow_dispatch",
- "commit": "85114b2",
- "commit_full": "85114b27e326bbbf6c1d18e75595545ccbcf449c",
- "previous": null,
- "started_at": "2026-10-14T10:03:56+02:00",
- "finished_at": "2026-10-14T10:04:50+02:00",
- "duration_s": 54.0,
- "status": "success",
- "summary": "14/14 suites vertes (1 ignorée) ; aucune régression ; ruff : 4 remarques.",
+ "commit": "dd5f268",
+ "commit_full": "dd5f2685e7fdd055aae7ba3a8d1bc427c7c391d7",
+ "previous": {
+  "run_id": "38532442387",
+  "commit": "85114b2",
+  "finished_at": "2026-10-14T10:04:50+02:00",
+  "status": "success"
+ },
+ "started_at": "2026-10-14T10:26:06+02:00",
+ "finished_at": "2026-10-14T10:27:01+02:00",
+ "duration_s": 55.0,
+ "status": "partial_success",
+ "summary": "14/15 suites vertes ; aucune régression ; ruff : 4 remarques.",
  "environment": {
   "runner": "github",
   "os": "Ubuntu 24.04.5 LTS",
@@ -50,7 +55,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 2.0,
+   "duration_s": 1.9,
    "outcome": "ok"
   },
   {
@@ -67,14 +72,22 @@
   {
    "name": "client_desktop --selftest",
    "platform": "linux",
-   "passed": null,
-   "total": null,
-   "status": "skipped",
-   "failures": [],
-   "failed": [],
-   "duration_s": 0.0,
-   "reason": "dépendance absente : ImportError: libEGL.so.1: cannot open shared object file: No such file or directory",
-   "outcome": "skipped"
+   "passed": 27,
+   "total": 28,
+   "status": "failing",
+   "failures": [
+    "25 every one of the 26 HUD members the two hosts use exists"
+   ],
+   "failed": [
+    {
+     "id": "25",
+     "label": "every one of the 26 HUD members the two hosts use exists",
+     "detail": "missing ['py']",
+     "class": "preexisting"
+    }
+   ],
+   "duration_s": 0.7,
+   "outcome": "failing"
   },
   {
    "name": "cognition.selftest",
@@ -84,7 +97,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 3.5,
+   "duration_s": 3.6,
    "outcome": "ok"
   },
   {
@@ -95,7 +108,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.5,
+   "duration_s": 6.7,
    "outcome": "ok"
   },
   {
@@ -111,7 +124,7 @@
     {
      "id": "2",
      "label": "une jonction ou un lien dans le projet n'ouvre pas de porte",
-     "detail": "NotADirectoryError: [Errno 20] Not a directory: '/tmp/jarvis-studio-test-50jfe9p0/ws/demo/door'",
+     "detail": "NotADirectoryError: [Errno 20] Not a directory: '/tmp/jarvis-studio-test-fn9orb8b/ws/demo/door'",
      "class": "known",
      "known_reason": "le nettoyage du test appelle os.rmdir() sur un lien symbolique (NotADirectoryError sous Linux) : l'échec masque le vrai verdict de la sandbox — correctif d'une ligne dans core/, humain seulement"
     }
@@ -138,7 +151,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.6,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -149,7 +162,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.8,
    "outcome": "ok"
   },
   {
@@ -199,7 +212,13 @@
  ],
  "regressions": [],
  "repaired": [],
- "preexisting": [],
+ "preexisting": [
+  {
+   "suite": "client_desktop --selftest",
+   "check": "25",
+   "label": "every one of the 26 HUD members the two hosts use exists"
+  }
+ ],
  "lint": {
   "tool": "ruff",
   "available": true,
@@ -233,7 +252,7 @@
   ],
   "new": []
  },
- "green_streak": 1,
+ "green_streak": 0,
  "task": null,
  "pull_request_url": null,
  "usage": {
@@ -248,8 +267,6 @@
   "max_runtime_minutes": 45
  },
  "limitations": [
-  "client_desktop --selftest non testée sur linux : dépendance absente : ImportError: libEGL.so.1: cannot open shared object file: No such file or directory",
-  "code_workspace n°2 : échec connu sur linux",
-  "pas de rapport précédent : aucune régression ne peut être établie cette nuit"
+  "code_workspace n°2 : échec connu sur linux"
  ]
 }
