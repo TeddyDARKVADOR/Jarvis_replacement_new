@@ -173,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
                             max_tokens=_int_env("NIGHTLY_MAX_TOKENS", 60000),
                             deadline=deadline_from(report, _int_env("NIGHTLY_MAX_RUNTIME_MINUTES", 45)))
         print(f"Proposition pour {task['id']} ({prompt.get('estimated_tokens')} tokens de contexte)")
-        result = propose(task, prompt, Path(args.repo), llm.Chain.from_env(budget=budget))
+        result = propose(task, prompt, Path(args.repo).resolve(), llm.Chain.from_env(budget=budget))
     except Exception as e:  # jamais de plantage silencieux : la raison va au rapport
         result = {"task_id": None, "outcome": "no_patch", "reason": f"proposition impossible : {type(e).__name__}: "
                   f"{redact(str(e))}"[:300], "attempts": [], "usage": llm.Budget().usage(), "files": []}

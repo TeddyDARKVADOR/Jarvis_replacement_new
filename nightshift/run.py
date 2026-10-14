@@ -289,6 +289,10 @@ def run_ruff(repo: Path = REPO, python: str | None = None) -> dict:
     """Les remarques de ruff selon pyproject.toml (que les vrais bugs probables).
     Ruff absent → {"available": False}. Ne lève jamais."""
     base = {"tool": "ruff", "available": False}
+    # Absolu, sinon relative_to() échoue pour un dépôt donné en « . » et chaque remarque
+    # ne garde que son nom de fichier : les 4 remarques de toujours passent pour
+    # nouvelles (run 38562012866, 2026-10-14 : un bon correctif rejeté pour ça).
+    repo = Path(repo).resolve()
     cmd = [python or sys.executable, "-m", "ruff"]
     code, version, _ = execute(cmd + ["--version"], repo, suite_env(), 60)
     if code != 0:

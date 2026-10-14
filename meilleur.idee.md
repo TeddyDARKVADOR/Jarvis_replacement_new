@@ -420,8 +420,13 @@ workflows : c'est acceptable puisque la validation a déjà tourné dans le run.
       deux diffs ont des en-têtes `@@` sans numéros : git apply les refuse
       (« No valid patches in input »). Corrigé le jour même par le réancrage
       (`nightshift/reanchor.py`, selftest n°31) et rejoué en local avec une
-      réponse de ce format : patch accepté, verdict validé. À relancer sur
-      GitHub.*
+      réponse de ce format : patch accepté, verdict validé.*
+      *Deuxième vrai run (run 38562012866) : gpt-oss-120b produit un patch
+      applicable à la 2e tentative ; la validation relance tout : le n°1 passe,
+      aucune régression. Mais le patch est rejeté à tort pour « 4 nouvelles
+      remarques ruff » : avec `--repo .`, ruff ne gardait que le nom des
+      fichiers. Corrigé (dépôt résolu en absolu) et rejoué à l'identique :
+      VALIDÉ. Aucune PR n'a donc encore été ouverte : à relancer.*
 - [x] Un patch qui touche `main.py` est rejeté avant toute exécution.
       *Preuve : selftest n°15 (17 patchs refusés entiers) et n°19 (rejeté par
       la proposition, dépôt intact) ; la validation refait le contrôle avant
