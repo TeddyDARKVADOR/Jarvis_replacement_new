@@ -16,19 +16,18 @@
 > |---|---|
 > | 0 — Préparation | ✅ faite à la main |
 > | 1 — Le veilleur | ✅ validée : six critères sur six, prouvés sur GitHub |
-> | 2 — Une tâche IA par nuit | ✅ réalisée : 3 critères prouvés (dont la PR #1 ouverte par la nuit), 3 attendent |
+> | 2 — Une tâche IA par nuit | ✅ réalisée : 5 critères sur 6 prouvés sur GitHub ; reste les dix nuits en dry run |
 > | 3 — Mémoire et backlog | ✅ réalisée : 3 critères vérifiés par les tests, à confirmer sur une vraie PR |
 > | 4 — Mesurer si JARVIS s'améliore | ✅ réalisée : indicateurs mesurés sur le vrai dépôt |
 > | 5 — PC réveillé, modèles locaux | ✅ réalisée, facultative : inactive tant qu'elle n'est pas planifiée sur le PC |
 > | 6 — Orchestration multi-modèles | ⏸ pas commencée : le plan la réserve à plus tard (voir sa section) |
 >
-> **À tester à la fin** : (1) Actions → nightly → Run workflow sur `main`
-> (dry_run auto) — premier vrai appel à Groq ; relire le journal de l'étape
-> « Appel au modèle » : la clé ne doit y apparaître nulle part ; (2) sur
-> `test/bug-plante` avec dry_run = false — une PR doit s'ouvrir vers cette
-> branche ; (3) le relancer — « PR déjà ouverte », pas de doublon ; (4) après
-> dix nuits sans surprise, `NIGHTLY_DRY_RUN=false` ; (5) facultatif : sur le PC
-> à RTX 3060, `python -m nightshift.local_worker --install-help`.
+> **Testé le 2026-10-14** : bug planté corrigé et PR ouverte par la nuit
+> (PR #1), pas de doublon, clé absente des journaux — puis la PR d'essai fermée
+> sans fusion et ses branches supprimées.
+> **Reste à faire** : (1) laisser tourner dix nuits en dry run, puis passer
+> `NIGHTLY_DRY_RUN` à `false` ; (2) facultatif : sur le PC à RTX 3060,
+> `python -m nightshift.local_worker --install-help`.
 
 ---
 
@@ -438,16 +437,19 @@ workflows : c'est acceptable puisque la validation a déjà tourné dans le run.
       *Preuve : selftest n°15 (17 patchs refusés entiers) et n°19 (rejeté par
       la proposition, dépôt intact) ; la validation refait le contrôle avant
       d'appliquer quoi que ce soit.*
-- [ ] Une 2e nuit avec une PR déjà ouverte ne crée pas de doublon.
-      *Écrit : la publication cherche une PR ouverte sur
-      `automation/jarvis-nightly-*` avant d'en créer une. À vérifier : relancer
-      sur `test/bug-plante` tant que la PR #1 est ouverte.*
-- [ ] Le secret Groq n'apparaît dans aucun journal (vérifier les logs du run).
-      *Écrit : la clé ne vit que dans une étape, n'est jamais affichée, et le
-      selftest n°18 vérifie qu'elle n'entre dans aucun journal ni message
-      d'erreur. Reste à relire les journaux d'un vrai run.*
+- [x] Une 2e nuit avec une PR déjà ouverte ne crée pas de doublon.
+      *Preuve : run 38566336246 (2026-10-14), relancé avec la PR #1 ouverte —
+      correctif de nouveau validé (1 tentative), mais publication : « une PR
+      Night Shift est déjà ouverte (…/pull/1) : rien de publié » ; le dépôt
+      est resté à une seule PR.*
+- [x] Le secret Groq n'apparaît dans aucun journal (vérifier les logs du run).
+      *Preuve : journal de l'étape « Appel au modèle » du run 38566336246, relu
+      le 2026-10-14 — le contexte (3 009 tokens), la consommation (2 747 + 166
+      tokens) et l'issue, rien d'autre ; et le selftest n°18 vérifie que la clé
+      n'entre dans aucun journal ni message d'erreur.*
 - [ ] Dix nuits en `NIGHTLY_DRY_RUN=true` avant la première publication réelle.
-      *Commence avec la première nuit après la fusion.*
+      *En cours : la nuit de 03 h 17 tourne sur main, en dry run, avec toutes
+      les phases ; après dix nuits sans surprise, passer la variable à false.*
 
 **Réalisé — ce qui diffère du plan**
 - Le choix de la tâche et la construction du contexte se font dans le job
