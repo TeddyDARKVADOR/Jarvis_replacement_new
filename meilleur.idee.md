@@ -16,7 +16,7 @@
 > |---|---|
 > | 0 — Préparation | ✅ faite à la main |
 > | 1 — Le veilleur | ✅ validée : six critères sur six, prouvés sur GitHub |
-> | 2 — Une tâche IA par nuit | ✅ réalisée, en dry run : 2 critères prouvés, 4 attendent tes tests GitHub |
+> | 2 — Une tâche IA par nuit | ✅ réalisée : 3 critères prouvés (dont la PR #1 ouverte par la nuit), 3 attendent |
 > | 3 — Mémoire et backlog | ✅ réalisée : 3 critères vérifiés par les tests, à confirmer sur une vraie PR |
 > | 4 — Mesurer si JARVIS s'améliore | ✅ réalisée : indicateurs mesurés sur le vrai dépôt |
 > | 5 — PC réveillé, modèles locaux | ✅ réalisée, facultative : inactive tant qu'elle n'est pas planifiée sur le PC |
@@ -410,8 +410,15 @@ workflows : c'est acceptable puisque la validation a déjà tourné dans le run.
       *Preuve : `python -m nightshift.selftest`, contrôles 15 à 22, tous verts
       (22/22) ; faux transport et fausse horloge pour le client du modèle, vrai
       petit dépôt Git pour la proposition et la validation.*
-- [ ] Un vrai bug planté exprès dans une branche de test (dans la zone
+- [x] Un vrai bug planté exprès dans une branche de test (dans la zone
       autorisée) est corrigé et la PR est ouverte — en `workflow_dispatch`.
+      *Preuve : run 38565066768 (2026-10-14) — régression « reminders n°1 »
+      choisie, correctif de gpt-oss-120b (2 tentatives, 6 463 tokens) réancré
+      puis validé par les 15 suites (3/4 → 4/4, aucune régression) ;
+      [PR #1](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/pull/1)
+      ouverte par github-actions[bot] vers `test/bug-plante`, étiquette
+      `nightshift`, jamais fusionnée ; son diff restaure exactement la ligne
+      retirée (`_save(data, path)`) et sa description vient des résultats.*
       *Fait en local le 2026-10-14 avec un faux modèle : régression
       « reminders n°1 » choisie, contexte de 2 209 tokens, patch accepté,
       suites relancées (3/4 → 4/4), verdict validé.*
@@ -433,7 +440,8 @@ workflows : c'est acceptable puisque la validation a déjà tourné dans le run.
       d'appliquer quoi que ce soit.*
 - [ ] Une 2e nuit avec une PR déjà ouverte ne crée pas de doublon.
       *Écrit : la publication cherche une PR ouverte sur
-      `automation/jarvis-nightly-*` avant d'en créer une. À vérifier sur GitHub.*
+      `automation/jarvis-nightly-*` avant d'en créer une. À vérifier : relancer
+      sur `test/bug-plante` tant que la PR #1 est ouverte.*
 - [ ] Le secret Groq n'apparaît dans aucun journal (vérifier les logs du run).
       *Écrit : la clé ne vit que dans une étape, n'est jamais affichée, et le
       selftest n°18 vérifie qu'elle n'entre dans aucun journal ni message
