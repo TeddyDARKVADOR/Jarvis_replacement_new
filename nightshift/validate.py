@@ -149,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--github-output", action="store_true", help="écrire validated=true|false dans $GITHUB_OUTPUT")
     args = ap.parse_args(argv)
-    veille, prop_dir, out, repo = Path(args.veille), Path(args.proposal), Path(args.out), Path(args.repo)
+    veille, prop_dir, out, repo = Path(args.veille), Path(args.proposal), Path(args.out), Path(args.repo).resolve()
     out.mkdir(parents=True, exist_ok=True)
     task = json.loads((veille / "task.json").read_text(encoding="utf-8"))["task"] or {}
     before = json.loads((veille / "report.json").read_text(encoding="utf-8"))
