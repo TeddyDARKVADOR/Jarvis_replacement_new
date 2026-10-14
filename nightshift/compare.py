@@ -8,8 +8,10 @@ Pour chaque contrôle rouge cette nuit :
   regression     il n'était pas rouge la veille alors que la suite avait tourné
                  (il passait, ou il vient d'apparaître) : c'est cette nuit qui
                  l'a cassé — avec le dernier commit vert et les commits suspects ;
-  preexisting    il était déjà rouge, ou la veille ne permet pas de le dire (pas
-                 de rapport, suite non lancée ou plantée).
+  preexisting    il était déjà rouge la veille ;
+  unreferenced   la veille ne permet pas de le dire : pas de rapport, ou la
+                 suite n'avait pas tourné (ignorée, plantée). Peut-être nouveau,
+                 peut-être ancien — le rapport ne tranche pas à sa place.
 
 Un contrôle rouge la veille qui ne l'est plus est « réparé ». Une suite qui ne
 s'exécute plus (erreur, délai) alors qu'elle tournait la veille est une
@@ -59,12 +61,13 @@ def classify(suites: list[dict], previous: dict | None, known: dict[str, dict[st
     """Classe chaque échec de la nuit. Ne modifie pas ses arguments.
 
     → {"suites": suites avec leur état final et la classe de chaque échec,
-       "regressions": [...], "repaired": [...], "preexisting": [...]}
+       "regressions": [...], "repaired": [...], "preexisting": [...],
+       "unreferenced": [...]}
 
-    État final d'une suite : regression > error / timeout > failing (déjà rouge)
-    > known_failure > ok ; skipped reste skipped."""
+    État final d'une suite : regression > error / timeout > failing (déjà rouge
+    ou sans référence) > known_failure > ok ; skipped reste skipped."""
     prev = {s.get("name"): s for s in (previous or {}).get("suites") or [] if isinstance(s, dict)}
-    found = {"regressions": [], "repaired": [], "preexisting": []}
+    found = {"regressions": [], "repaired": [], "preexisting": [], "unreferenced": []}
     out: list[dict] = []
     for s in suites:
         s = dict(s)
@@ -76,8 +79,7 @@ def classify(suites: list[dict], previous: dict | None, known: dict[str, dict[st
         def regression(check: str, label: str) -> None:
             found["regressions"].append(_regression(name, check, label, commit, previous_commit, suspects))
 
-        s["failed"] = _classify_failures(s, k, failed_ids(p) if p_ran else None, regression,
-                                         found["preexisting"])
+        s["failed"] = _classify_failures(s, k, failed_ids(p) if p_ran else None, regression, found)
         status = s["outcome"] = s.get("status")
         if status in BROKEN and p_ran:
             why = "délai dépassé" if status == "timeout" else "plantage"
@@ -90,8 +92,8 @@ def classify(suites: list[dict], previous: dict | None, known: dict[str, dict[st
 
 
 def _classify_failures(suite: dict, known: dict[str, str], yesterday: set[str] | None,
-                       regression, preexisting: list[dict]) -> list[dict]:
-    """La classe de chaque échec : known, regression ou preexisting.
+                       regression, found: dict) -> list[dict]:
+    """La classe de chaque échec : known, regression, preexisting ou unreferenced.
     `yesterday` est l'ensemble des échecs de la veille, None si la veille ne
     permet pas de comparer (pas de rapport, suite non lancée ou plantée)."""
     failed = []
@@ -104,8 +106,8 @@ def _classify_failures(suite: dict, known: dict[str, str], yesterday: set[str] |
             f["class"] = "regression"
             regression(cid, f.get("label", ""))
         else:
-            f["class"] = "preexisting"
-            preexisting.append({"suite": suite.get("name", "?"), "check": cid, "label": f.get("label", "")})
+            f["class"] = "preexisting" if yesterday is not None else "unreferenced"
+            found[f["class"]].append({"suite": suite.get("name", "?"), "check": cid, "label": f.get("label", "")})
         failed.append(f)
     return failed
 
@@ -118,7 +120,7 @@ def _final_status(status: str | None, failed: list[dict], broke_since_yesterday:
     classes = {f["class"] for f in failed}
     if "regression" in classes:
         return "regression"
-    if "preexisting" in classes:
+    if classes & {"preexisting", "unreferenced"}:
         return "failing"
     return "known_failure" if failed else "ok"
 

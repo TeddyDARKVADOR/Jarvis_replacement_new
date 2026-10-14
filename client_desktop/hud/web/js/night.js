@@ -11,7 +11,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const STATE_FR = {
-  ok: ['VERT', 'up'], known_failure: ['ÉCHEC CONNU', ''], failing: ['ROUGE (DÉJÀ)', 'down'],
+  ok: ['VERT', 'up'], known_failure: ['ÉCHEC CONNU', ''], failing: ['ROUGE', 'down'],
   regression: ['RÉGRESSION', 'down'], error: ['EN ERREUR', 'down'], timeout: ['DÉLAI DÉPASSÉ', 'down'],
   skipped: ['IGNORÉE', ''],
 };
@@ -58,7 +58,8 @@ function render(r) {
   $('night-suites').innerHTML = suites.length ? `<table class="ut-table"><thead><tr>
       <th>SUITE</th><th>SCORE</th><th>ÉTAT</th><th>DURÉE</th><th>DÉTAIL</th></tr></thead><tbody>${
     suites.map((s) => {
-      const [label, cls] = STATE_FR[s.status] || [s.status, ''];
+      let [label, cls] = STATE_FR[s.status] || [s.status, ''];
+      if (s.status === 'failing') label += (s.failed || []).some((f) => f.class === 'unreferenced') ? ' (SANS RÉFÉRENCE)' : ' (DÉJÀ)';
       const bad = cls === 'down';
       const detail = s.reason || (s.failed || []).map((f) => `n°${f.id}${f.class === 'known' ? ' (connu)' : ''} ${f.label}`).join(' · ');
       return `<tr class="${bad ? 'weak' : ''}"><td class="mt-name">${esc(s.name)}</td>
@@ -72,6 +73,7 @@ function render(r) {
       [x.label, x.suspects && x.suspects.length ? `suspects : ${x.suspects.slice(0, 3).join(' · ')}` : ''].filter(Boolean).join(' — '))),
     ...(rep.repaired || []).map((x) => row('RÉPARÉ', 'up', ref(x), x.was_known ? 'était connu' : '', x.label)),
     ...(rep.preexisting || []).map((x) => row('DÉJÀ ROUGE', '', ref(x), '', x.label)),
+    ...(rep.unreferenced || []).map((x) => row('SANS RÉFÉRENCE', 'down', ref(x), 'la veille ne permet pas de dater', x.label)),
   ];
   $('night-changes').innerHTML = changes.join('') || '<div class="mind-empty">Rien n’a changé depuis la nuit précédente.</div>';
 

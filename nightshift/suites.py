@@ -19,7 +19,8 @@ connu n'est jamais compté comme une régression, mais reste affiché.
     manquait libEGL.so.1 ; ldd sur PyQt6-WebEngine 6.11 liste les 16 autres
     bibliothèques dont l'import a besoin en mode offscreen, et le workflow les
     installe toutes. Quand l'une manque, la suite est « ignorée » (dépendance
-    absente), pas « en erreur ».
+    absente), pas « en erreur ». Avec elles, elle tourne : 27/28 au run
+    38535001267, le n°25 cassé par un commentaire de local_hud.py (corrigé).
 
     Le champ `linux` de chaque suite garde ce qui a été mesuré ; le workflow le
     revérifie chaque nuit.
@@ -82,8 +83,8 @@ SUITES: tuple[Suite, ...] = (
     Suite("client_desktop --selftest", ("-m", "client_desktop", "--selftest"),
           requires=("PyQt6.QtWebEngineWidgets", "sounddevice"),
           python_env="NIGHTSHIFT_PYTHON_HUD",
-          linux="ignorée le 2026-10-14 sur GitHub : libEGL.so.1 absente du runner. Le workflow "
-                "installe désormais les bibliothèques de Qt mesurées avec ldd : à confirmer"),
+          linux="27/28 le 2026-10-14 sur GitHub (run 38535001267) : le n°25 lisait un faux membre "
+                "« py » dans un commentaire de local_hud.py, corrigé le même jour ; 28/28 à confirmer"),
     Suite("cognition.selftest", ("-m", "cognition.selftest"), linux=f"{_MEASURED} : 64/64"),
     Suite("eval_lab.selftest", ("-m", "eval_lab.selftest"), linux=f"{_MEASURED} : 28/28"),
     Suite("core.code_workspace.selftest", ("-m", "core.code_workspace.selftest"), timeout_s=600,

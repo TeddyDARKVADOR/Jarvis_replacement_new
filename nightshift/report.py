@@ -15,6 +15,9 @@ LE SCHÉMA — jarvis.nightly/1
        duration_s, environment, repaired, preexisting, lint, green_streak ;
        dans chaque suite : outcome (ce qu'elle a fait, avant classement), failed
        (id, libellé, détail, classe), reason, tail.
+  1.2  unreferenced : les échecs que la veille ne permet pas de dater (pas de
+       rapport, suite qui n'avait pas tourné), et la classe d'échec du même nom.
+       Avant, ils passaient pour « déjà rouges ».
   Un champ ajouté fait monter la version mineure (notée dans le graphe
   nightshift) ; un changement incompatible passera à jarvis.nightly/2.
 
@@ -86,6 +89,9 @@ def summarize(r: dict) -> str:
         parts.append(f"{_plural(len(regs), 'régression')} ({', '.join(_ref(x) for x in regs[:3])}{more})")
     else:
         parts.append("aucune régression")
+    unref = r.get("unreferenced") or []
+    if unref and r.get("previous") is not None:   # la première nuit, tout est sans référence
+        parts.append(f"{_plural(len(unref), 'échec')} sans référence ({', '.join(_ref(x) for x in unref[:3])})")
     broken = [s for s in ran if s.get("status") in ("error", "timeout")]
     if broken:
         parts.append(f"en erreur : {', '.join(short(s['name']) for s in broken[:3])}")
@@ -153,6 +159,7 @@ def build(*, meta: dict, git: dict, env: dict, started_at: datetime, finished_at
         "regressions": cmp["regressions"],
         "repaired": cmp["repaired"],
         "preexisting": cmp["preexisting"],
+        "unreferenced": cmp["unreferenced"],
         "lint": lint,
         "green_streak": C.green_streak(status == "success", previous),
         "task": None,
@@ -175,7 +182,8 @@ def failed(meta: dict, git: dict, reason: str, started_at: datetime | None = Non
         "commit": git.get("commit"), "commit_full": git.get("commit_full"), "previous": None,
         "started_at": t, "finished_at": t, "duration_s": 0.0, "status": "failed",
         "summary": f"Nuit sans mesure : {reason}"[:300], "environment": {}, "suites": [],
-        "regressions": [], "repaired": [], "preexisting": [], "lint": {"tool": "ruff", "available": False},
+        "regressions": [], "repaired": [], "preexisting": [], "unreferenced": [],
+        "lint": {"tool": "ruff", "available": False},
         "green_streak": 0, "task": None, "pull_request_url": None,
         "usage": {"llm_calls": 0, "tokens_in": 0, "tokens_out": 0, "providers": {}},
         "budgets": {"max_llm_calls": 0, "max_tokens": 0, "max_runtime_minutes": 45},
@@ -186,7 +194,7 @@ def failed(meta: dict, git: dict, reason: str, started_at: datetime | None = Non
 # ── Markdown ─────────────────────────────────────────────────────────────────
 
 STATE_FR = {
-    "ok": "✅ vert", "known_failure": "☑️ échec connu", "failing": "❌ rouge (déjà)",
+    "ok": "✅ vert", "known_failure": "☑️ échec connu", "failing": "❌ rouge",
     "regression": "🔴 RÉGRESSION", "error": "💥 en erreur", "timeout": "⏱️ délai dépassé",
     "skipped": "⏭️ ignorée",
 }
@@ -216,6 +224,9 @@ def to_markdown(r: dict) -> str:
         for s in r["suites"]:
             score = f"{s.get('passed')}/{s.get('total')}" if s.get("total") is not None else "—"
             state = STATE_FR.get(s.get("status"), s.get("status"))
+            classes = {f.get("class") for f in s.get("failed") or []}
+            if s.get("status") == "failing":
+                state += " (sans référence)" if "unreferenced" in classes else " (déjà)"
             known = [f.get("id") for f in s.get("failed") or [] if f.get("class") == "known"]
             if known:
                 state += f" (n°{', '.join(known)})"
@@ -236,6 +247,10 @@ def to_markdown(r: dict) -> str:
         for x in r.get("regressions") or []])
     section("Réparé", [f"- {_cell(_ref(x))} — {_cell(x.get('label'))}" for x in r.get("repaired") or []])
     section("Déjà rouge", [f"- {_cell(_ref(x))} — {_cell(x.get('label'))}" for x in r.get("preexisting") or []])
+    if r.get("unreferenced"):
+        section("Rouge, sans référence", [
+            "La veille ne permet pas de dire si c'est nouveau (pas de rapport, ou la suite n'avait pas tourné).", "",
+            *[f"- {_cell(_ref(x))} — {_cell(x.get('label'))}" for x in r["unreferenced"]]])
     for s in r.get("suites") or []:
         if s.get("tail"):
             section(f"Fin de sortie — {s['name']}", ["```", *s["tail"], "```"])

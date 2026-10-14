@@ -133,6 +133,10 @@ def _hooks():
     at = local.index('startswith("nightshift.")')
     block = local[at:at + 400]
     assert "from nightshift import hud" in block and "except Exception" in block, "route non gardée"
+    # client_desktop n°25 lit tout « hud.<nom> » de local_hud.py comme un membre du HUD :
+    # un commentaire « nightshift/hud.py » y a déjà ajouté un faux membre « py ».
+    fake = re.findall(r"\bhud\.([A-Za-z_]\w*)", block)
+    assert not fake, f"la route ajoute des membres du HUD que client_desktop n°25 cherchera : {fake}"
 
     class J:
         pass
@@ -217,6 +221,8 @@ def _compare():
     first = _night([_suite("a"), _suite("cw", "failing", ["2"], 33, 34), _suite("b", "failing", ["5"], 9, 10)],
                    known=known, commit="aaaaaaa")
     assert first["regressions"] == [] and first["previous"] is None, "première nuit : aucune régression"
+    assert first["preexisting"] == [] and first["unreferenced"] == [{"suite": "b", "check": "5", "label": "contrôle 5"}], \
+        "sans veille, un échec n'est pas « déjà rouge » : il est sans référence"
     assert [s["status"] for s in first["suites"]] == ["ok", "known_failure", "failing"]
     assert first["status"] == "partial_success" and first["green_streak"] == 0
     assert any("pas de rapport précédent" in x for x in first["limitations"])
@@ -242,7 +248,8 @@ def _compare():
     after_broken = _night([_suite("a", "failing", ["3"], 9, 10), _suite("cw", "failing", ["2", "7"], 32, 34),
                            _suite("b"), _suite("c", "error", passed=None, total=None)], previous=third, known=known)
     assert after_broken["regressions"] == [], "la veille, cw n'avait pas tourné : rien ne peut être une régression"
-    assert {"suite": "cw", "check": "7", "label": "contrôle 7"} in after_broken["preexisting"]
+    assert after_broken["unreferenced"] == [{"suite": "cw", "check": "7", "label": "contrôle 7"}], after_broken["unreferenced"]
+    assert "1 échec sans référence (cw n°7)" in after_broken["summary"], after_broken["summary"]
 
     green = _night([_suite("a"), _suite("cw", "failing", ["2"], 33, 34), _suite("b"), _suite("c")],
                    previous=third, known=known)
@@ -357,17 +364,19 @@ _FIELDS_1_0 = ("schema_version", "run_id", "run_url", "commit", "started_at", "f
                "summary", "suites", "regressions", "task", "pull_request_url", "usage", "budgets", "limitations")
 _FIELDS_1_1 = ("repository", "ref", "event", "commit_full", "previous", "duration_s", "environment",
                "repaired", "preexisting", "lint", "green_streak")
+_FIELDS_1_2 = ("unreferenced",)
 
 
 @check("7 rapport : schéma 1.1, Markdown, écriture atomique, résumé GitHub")
 def _report():
     r = _night([_suite("a"), _suite("b", "failing", ["4"], 9, 10)])
-    missing = [k for k in _FIELDS_1_0 + _FIELDS_1_1 if k not in r]
+    missing = [k for k in _FIELDS_1_0 + _FIELDS_1_1 + _FIELDS_1_2 if k not in r]
     assert not missing, f"champs manquants : {missing}"
     assert r["schema_version"] == SCHEMA and fetch.valid(r)
     assert r["started_at"].startswith("2026-10-14T03:17:41") and r["duration_s"] == 90.0
     md = report.to_markdown(r)
-    assert r["summary"] in md and "| a | 10/10 |" in md and "### Déjà rouge" in md, md[:300]
+    assert r["summary"] in md and "| a | 10/10 |" in md and "### Rouge, sans référence" in md, md[:300]
+    assert "❌ rouge (sans référence)" in md, "l'état de la suite doit dire qu'elle n'a pas de référence"
     out = TMP / "out"
     report.write(r, md, out)
     assert json.loads((out / "report.json").read_text(encoding="utf-8"))["run_id"] == "2"
@@ -384,7 +393,8 @@ def _report():
             os.environ["GITHUB_STEP_SUMMARY"] = saved
     bad = report.failed({"run_id": "9"}, {"commit": "c0ffee1"}, "setup-python a échoué")
     assert bad["status"] == "failed" and fetch.valid(bad) and "setup-python" in bad["summary"]
-    return f"{len(_FIELDS_1_0)} champs 1.0 + {len(_FIELDS_1_1)} champs 1.1 ; Markdown et résumé GitHub"
+    return (f"{len(_FIELDS_1_0)} champs 1.0 + {len(_FIELDS_1_1)} champs 1.1 + {len(_FIELDS_1_2)} champ 1.2 ; "
+            "Markdown et résumé GitHub")
 
 
 @check("8 aucune clé ni dossier personnel n'entre dans un rapport")
@@ -481,6 +491,12 @@ def _briefing():
     reg["run_id"] = "3"
     text, _ = briefing.clause(reg, {"announced": "2"}, now)
     assert "régression : cognition n°21 depuis le commit abc1234" in text and "1/2 suites vertes" in text, text
+
+    debut = _night([_suite("cognition.selftest"), _suite("client_desktop --selftest", "failing", ["25"], 27, 28)],
+                   previous=dict(base, run_id="1"))
+    debut["run_id"] = "3b"
+    text, _ = briefing.clause(debut, {"announced": "3"}, now)
+    assert "rouge sans référence : client_desktop n°25" in text, text
 
     calm = _night([_suite("cognition.selftest"), _suite("context.selftest")], previous=dict(base, green_streak=1))
     calm["run_id"] = "4"

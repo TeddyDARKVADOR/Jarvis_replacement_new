@@ -134,7 +134,7 @@ jobs:
                 ref: $ref, event: $ev, commit: $sha[0:7], commit_full: $sha, previous: null,
                 started_at: $now, finished_at: $now, duration_s: 0, status: "failed",
                 summary: ("Nuit sans mesure : le job veille a fini en « " + $res + " » sans rapport."),
-                environment: {}, suites: [], regressions: [], repaired: [], preexisting: [],
+                environment: {}, suites: [], regressions: [], repaired: [], preexisting: [], unreferenced: [],
                 lint: {tool: "ruff", available: false}, green_streak: 0, task: null,
                 pull_request_url: null, usage: {llm_calls: 0, tokens_in: 0, tokens_out: 0, providers: {}},
                 budgets: {max_llm_calls: 0, max_tokens: 0, max_runtime_minutes: 45},
