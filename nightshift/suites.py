@@ -12,9 +12,14 @@ connu n'est jamais compté comme une régression, mais reste affiché.
     du workflow : deployment/requirements-server.txt + pyyaml + ruff.
 
     13 suites sur 14 passent ; code_workspace passe à son échec connu près.
-    client_desktop demande PyQt6-WebEngine et PortAudio (bibliothèque système) :
-    le workflow les installe au mieux dans un environnement à part, et la suite
-    est « ignorée » plutôt qu'« en erreur » quand ils manquent.
+    Confirmé le même jour par le premier run GitHub (image ubuntu24
+    20261004.327.1, Python 3.12.15) : mêmes scores, 54 s.
+
+    client_desktop demande PyQt6-WebEngine et PortAudio. Sur le runner, il
+    manquait libEGL.so.1 ; ldd sur PyQt6-WebEngine 6.11 liste les 16 autres
+    bibliothèques dont l'import a besoin en mode offscreen, et le workflow les
+    installe toutes. Quand l'une manque, la suite est « ignorée » (dépendance
+    absente), pas « en erreur ».
 
     Le champ `linux` de chaque suite garde ce qui a été mesuré ; le workflow le
     revérifie chaque nuit.
@@ -67,7 +72,7 @@ def short(name: str) -> str:
     return n
 
 
-_MEASURED = "ok le 2026-10-14 (Ubuntu 24.04, Python 3.12.3)"
+_MEASURED = "ok le 2026-10-14 (Ubuntu 24.04 : conteneur, Python 3.12.3, puis runner GitHub, Python 3.12.15)"
 
 SUITES: tuple[Suite, ...] = (
     Suite("capabilities.selftest", ("-m", "capabilities.selftest"), linux=f"{_MEASURED} : 11/11"),
@@ -77,8 +82,8 @@ SUITES: tuple[Suite, ...] = (
     Suite("client_desktop --selftest", ("-m", "client_desktop", "--selftest"),
           requires=("PyQt6.QtWebEngineWidgets", "sounddevice"),
           python_env="NIGHTSHIFT_PYTHON_HUD",
-          linux="à mesurer par le workflow : sans PyQt6-WebEngine ni PortAudio, le n°1 "
-                "(imports) échoue et rien d'autre ne se lance"),
+          linux="ignorée le 2026-10-14 sur GitHub : libEGL.so.1 absente du runner. Le workflow "
+                "installe désormais les bibliothèques de Qt mesurées avec ldd : à confirmer"),
     Suite("cognition.selftest", ("-m", "cognition.selftest"), linux=f"{_MEASURED} : 64/64"),
     Suite("eval_lab.selftest", ("-m", "eval_lab.selftest"), linux=f"{_MEASURED} : 28/28"),
     Suite("core.code_workspace.selftest", ("-m", "core.code_workspace.selftest"), timeout_s=600,
