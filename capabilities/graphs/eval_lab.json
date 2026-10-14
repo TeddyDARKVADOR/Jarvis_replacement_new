@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "eval_lab",
   "title": "EVAL LAB — le laboratoire qui cherche les limites de JARVIS",
-  "updated": "2026-10-13",
+  "updated": "2026-10-14",
   "summary": "Des scénarios canoniques exécutés contre le VRAI code de contexte, de politique et de routage, générés, mutés, triés en causes et promus en régressions par une personne. Rien ne l'importe ; python main.py n'en charge pas une ligne.",
   "replaces": ["eval_lab/README.md"],
   "nodes": [
@@ -18,7 +18,7 @@
     {"id": "m.regressions", "label": "Régressions", "kind": "module", "status": "ok", "summary": "Un bug confirmé devient un scénario permanent ; manifeste en ajout seul. Exemple : REG-0001, le check-in différé qui disparaissait.", "files": ["eval_lab/regressions.py", "eval_lab/corpus/regressions/manifest.json"]},
     {"id": "m.llm", "label": "Opus comme auteur et adversaire", "kind": "module", "status": "ok", "summary": "Propose des situations et des hypothèses de bug, jamais un verdict de vérité ; tout passe par les mêmes validateurs ; chaque réponse est rejouable depuis une cassette.", "files": ["eval_lab/llm.py", "eval_lab/grader.py"]},
     {"id": "m.real", "label": "Niveau REAL", "kind": "module", "status": "ok", "summary": "Ce que seul le vrai matériel prouve, exécuté par une personne (serveur réel, téléphone, PC éteint…).", "files": ["eval_lab/real.py", "eval_lab/corpus/real/real.jsonl"]},
-    {"id": "m.legacy", "label": "Corpus legacy", "kind": "module", "status": "partiel", "summary": "Les tests de context/selftest.py et du routage, transcrits en scénarios.", "details": ["Échec connu : corpus/legacy/context.jsonl a dérivé du code (relancer import-legacy et relire le diff)."], "files": ["eval_lab/legacy.py", "eval_lab/corpus/legacy/context.jsonl", "eval_lab/corpus/legacy/routing.jsonl"]},
+    {"id": "m.legacy", "label": "Corpus legacy", "kind": "module", "status": "partiel", "summary": "Les tests de context/selftest.py et du routage, transcrits en scénarios.", "details": ["Échec connu : corpus/legacy/context.jsonl a dérivé du code (relancer import-legacy et relire le diff).", "Mesuré chaque nuit par le veilleur (phase 4) : 76/77 le 2026-10-14, un échec NO_DELIVERY_WITHOUT_SINK (context/policy.py : une notification part sans appareil joignable)."], "files": ["eval_lab/legacy.py", "eval_lab/corpus/legacy/context.jsonl", "eval_lab/corpus/legacy/routing.jsonl"]},
     {"id": "v.echelle", "label": "L'échelle, mesurée", "kind": "test", "status": "ok", "summary": "100k scénarios en 24,5 s sur 8 processus, 31 Mo par processus, débit linéaire. Mais la couverture plafonne dès 10k : la suite est plus d'espace, pas plus d'essais.", "details": ["1k : 0,4 s ; 10k : 1,6 s ; traits de couverture 1 215 → 1 242."]}
   ],
   "edges": [
