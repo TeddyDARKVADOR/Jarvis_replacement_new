@@ -55,8 +55,14 @@ jobs:
       - name: Dépendances du HUD pour client_desktop (au mieux, environnement à part)
         continue-on-error: true
         run: |
+          # Ce que PyQt6-WebEngine et sounddevice chargent à l'import, en mode
+          # offscreen : mesuré avec ldd le 2026-10-14 (le runner n'a pas libEGL).
+          # Les bibliothèques xcb et wayland ne servent qu'à un vrai affichage.
           sudo apt-get update -q
-          sudo apt-get install -y -q libportaudio2
+          sudo apt-get install -y -q --no-install-recommends libportaudio2 \
+            libegl1 libgl1 libfontconfig1 libfreetype6 libxkbcommon0 \
+            libnss3 libnspr4 libasound2t64 libgbm1 libxcb-dri3-0 libxkbfile1 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxtst6
           python -m venv --system-site-packages "$RUNNER_TEMP/hud"
           "$RUNNER_TEMP/hud/bin/python" -m pip install PyQt6 PyQt6-WebEngine sounddevice websockets
           echo "NIGHTSHIFT_PYTHON_HUD=$RUNNER_TEMP/hud/bin/python" >> "$GITHUB_ENV"
