@@ -105,7 +105,10 @@ def sentence(r: dict) -> str:
         parts.append("réparé : " + _list([_ref(x) for x in reps]))
     if new_lint and isinstance(new_lint, list):
         parts.append(f"{len(new_lint)} nouvelle(s) remarque(s) ruff")
-    if fixed:
+    if fixed and r.get("pull_request_url") and task.get("auto_merge") is True:
+        parts.append("une PR se fusionnera seule ce soir à 19 h — CI verte et relecture d'accord — sauf si tu "
+                     "la fermes ou ajoutes l'étiquette « garder » : " + _task(task))
+    elif fixed:
         parts.append(("une PR attend d'être relue : " if r.get("pull_request_url")
                       else "correctif validé, sans PR (dry run) : ") + _task(task)
                      + (", à relire de près : un indicateur a bougé" if task.get("review_closely") else ""))

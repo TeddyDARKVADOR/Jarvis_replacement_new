@@ -155,6 +155,36 @@ def _phone():
     return f"livré par : {how} ; priorité {notes[0]['priority']}"
 
 
+@check("5 sans planificateur système (Oracle), le rappel est confié à JARVIS, pas refusé")
+def _no_scheduler():
+    class _Registry:
+        def __init__(self, answer):
+            self.answer, self.calls = answer, []
+
+        def run(self, name, parameters, ctx=None):
+            self.calls.append(name)
+            return self.answer
+
+        def has(self, name):
+            return True
+
+    when = (datetime.now() + timedelta(hours=1)).replace(second=0, microsecond=0)
+    args = {"date": f"{when:%Y-%m-%d}", "time": f"{when:%H:%M}", "message": "arroser le basilic"}
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "r.json"
+        reg = R.ReminderFallback(_Registry(R.NO_SCHEDULER), path=path)
+        reply = reg.run("reminder", args)
+        assert "JARVIS delivers it himself" in reply, reply
+        assert reg.has("reminder"), "le registre enveloppé ne délègue plus has()"
+        [(rid, r)] = R.upcoming(path)
+        assert r["message"] == "arroser le basilic" and r["due"].startswith(f"{when:%Y-%m-%dT%H:%M}"), r
+        ok = R.ReminderFallback(_Registry("Reminder set for later."), path=path)
+        assert ok.run("reminder", args) == "Reminder set for later.", "une planification réussie est réécrite"
+        assert R.ReminderFallback(_Registry(R.NO_SCHEDULER), path=path).run("open_app", {}) == R.NO_SCHEDULER
+        assert len(R.upcoming(path)) == 1, "un autre outil a inscrit un rappel"
+    return "inscrit pour JARVIS ; une vraie planification et les autres outils passent intacts"
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")

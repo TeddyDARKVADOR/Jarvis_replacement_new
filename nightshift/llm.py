@@ -10,8 +10,14 @@ cognition. Ce client fait moins, en bibliothèque standard :
 
   CHAÎNE   groq : GROQ_MODEL s'il est défini, puis openai/gpt-oss-120b,
            qwen/qwen3.8-27b (en « preview » chez Groq : peut disparaître) et
-           openai/gpt-oss-20b ; puis gemini : GEMINI_MODEL, sinon
+           openai/gpt-oss-20b ; puis openrouter : OPENROUTER_MODELS (liste
+           séparée par des virgules), sinon trois modèles « :free » (lus sur
+           openrouter.ai/api/v1/models le 2026-10-14 ; gratuits : 20 requêtes
+           par minute, 50 par jour) ; puis gemini : GEMINI_MODEL, sinon
            gemini-3.1-flash-lite. Un fournisseur sans clé est sauté.
+  RELECTURE  role="review" : l'ordre inverse — gemini, openrouter, groq — sans
+           aucun modèle de la famille de celui qui a écrit le correctif
+           (exclude_family) : un second avis n'en est un que s'il vient d'ailleurs.
   RYTHME   8 000 tokens par minute et par modèle (Groq gratuit, confirmé le
            2026-10-14) : avant chaque appel, le client attend que la fenêtre
            glissante d'une minute ait la place, ou passe au modèle suivant.
@@ -40,11 +46,27 @@ from nightshift.run import redact
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GROQ_MODELS = ("openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b")
+#: Les modèles gratuits d'OpenRouter tournent sans prévenir : un modèle disparu
+#: (404) est écarté pour la nuit, et OPENROUTER_MODELS remplace cette liste.
+OPENROUTER_MODELS = ("nvidia/nemotron-3-ultra-550b-a55b:free", "poolside/laguna-s-2.1:free",
+                     "google/gemma-4-31b-it:free")
+_FAMILIES = ("gpt-oss", "qwen", "gemini", "gemma", "nemotron", "laguna", "llama", "deepseek", "mistral",
+             "glm", "kimi", "phi", "inkling", "north")
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 TPM = 8000
 SHORT_RETRY_S = 30
 CHARS_PER_TOKEN = 3.2
+
+
+def family(label: str) -> str:
+    """« groq/openai/gpt-oss-120b » → « gpt-oss » ; « openrouter/poolside/laguna-s-2.1:free » → « laguna »."""
+    name = str(label or "").lower().rsplit("/", 1)[-1]
+    for f in _FAMILIES:
+        if f in name:
+            return f
+    return name.split("-", 1)[0]
 
 
 class LLMError(RuntimeError):
@@ -132,12 +154,23 @@ class Chain:
         self._dropped: set[str] = set()          # modèles et fournisseurs écartés pour la nuit
 
     @classmethod
-    def from_env(cls, env=None, budget: Budget | None = None, **kw) -> "Chain":
+    def from_env(cls, env=None, budget: Budget | None = None, role: str = "propose",
+                 exclude_family: str | None = None, **kw) -> "Chain":
         env = dict(os.environ if env is None else env)
         first = (env.get("GROQ_MODEL") or "").strip()
         groq = [first] + [m for m in GROQ_MODELS if m != first] if first else list(GROQ_MODELS)
-        models = [Model("groq", m, GROQ_URL, "GROQ_API_KEY") for m in groq]
-        models.append(Model("gemini", (env.get("GEMINI_MODEL") or GEMINI_MODEL).strip(), GEMINI_URL, "GEMINI_API_KEY"))
+        listed = [m.strip() for m in (env.get("OPENROUTER_MODELS") or "").split(",") if m.strip()]
+        groq_models = [Model("groq", m, GROQ_URL, "GROQ_API_KEY") for m in groq]
+        router_models = [Model("openrouter", m, OPENROUTER_URL, "OPENROUTER_API_KEY")
+                         for m in (listed or OPENROUTER_MODELS)]
+        gemini_models = [Model("gemini", (env.get("GEMINI_MODEL") or GEMINI_MODEL).strip(), GEMINI_URL,
+                               "GEMINI_API_KEY")]
+        if role == "review":
+            models = gemini_models + router_models + groq_models
+        else:
+            models = groq_models + router_models + gemini_models
+        if exclude_family:
+            models = [m for m in models if family(m.label) != exclude_family]
         return cls(models, env, budget or Budget(), **kw)
 
     def available(self) -> list[Model]:
@@ -171,6 +204,10 @@ class Chain:
             body["max_completion_tokens"] = max_tokens
             if effort and model.name.startswith("openai/gpt-oss"):
                 body["reasoning_effort"] = effort      # sans lui, gpt-oss peut tout dépenser en brouillon
+        elif model.provider == "openrouter":
+            body["max_tokens"] = max_tokens
+            if effort:
+                body["reasoning"] = {"effort": effort}  # ignoré par les modèles qui ne raisonnent pas
         else:
             body["max_tokens"] = max_tokens
             if effort:
@@ -225,7 +262,7 @@ class Chain:
             if reply is not None:
                 return reply
         if not errors:
-            raise LLMError("aucun fournisseur disponible (pas de clé GROQ_API_KEY ni GEMINI_API_KEY)")
+            raise LLMError("aucun fournisseur disponible (pas de clé GROQ_API_KEY, OPENROUTER_API_KEY ni GEMINI_API_KEY)")
         raise LLMError(" ; ".join(errors)[:600])
 
     def _try(self, model: Model, messages: list[dict], max_tokens: int, effort: str | None,

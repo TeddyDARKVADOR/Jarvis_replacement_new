@@ -67,6 +67,9 @@ function render(r) {
       ...((t.review_closely || []).length ? [row('À RELIRE DE PRÈS', 'down', 'un indicateur a bougé', '',
         t.review_closely.map((x) => `${x.metric} : ${x.before} → ${x.now}`).join(' · '))] : []),
       (rep.pull_request_url || t.publication) ? row('PUBLICATION', rep.pull_request_url ? 'up' : '', rep.pull_request_url ? 'PR ouverte' : '', '', rep.pull_request_url || t.publication) : '',
+      t.review ? row('RELECTURE', t.review.verdict === 'ok' ? 'up' : 'down',
+        { ok: 'd’accord', bloque: 'bloque la fusion auto' }[t.review.verdict] || 'indisponible', t.review.model || '', t.review.raison || '') : '',
+      t.auto_merge ? row('FUSION AUTO', 'up', 'ce soir à 19 h', '', 'sauf PR fermée ou étiquette « garder » d’ici là') : '',
       row('CONSOMMATION', '', `${u.llm_calls || 0} / ${b.max_llm_calls ?? '?'} appels`, `${(u.tokens_in || 0) + (u.tokens_out || 0)} / ${b.max_tokens ?? '?'} tokens`, t.model || ''),
       ...(t.out_of_zone || []).slice(0, 6).map((x) => row('HORS ZONE', '', x.id, '', x.reason)),
     ].join('');

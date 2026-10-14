@@ -94,7 +94,7 @@ def _context_mutations(s: dict, rng) -> list[tuple[str, object, object, Callable
 
 
 def _routing_mutations(s: dict, rng) -> list:
-    world, stim = s["world"], s["stimulus"]
+    world = s["world"]
     out = []
     for idx, d in enumerate(world.get("devices") or []):
         online = d.get("online", True)

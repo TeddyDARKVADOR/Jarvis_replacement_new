@@ -143,7 +143,7 @@ def _imports():
     return f"{len(list((REPO / 'nightshift').glob('*.py')))} fichiers, aucun import de JARVIS"
 
 
-@check("2 seuls main.py et local_hud.py importent nightshift ; chaque hook est gardé")
+@check("2 seuls main.py et local_hud.py importent nightshift (et l'e2e, gardé) ; chaque hook est gardé")
 def _hooks():
     importers = []
     for f in REPO.rglob("*.py"):
@@ -156,7 +156,11 @@ def _hooks():
             continue
         if re.search(r"^\s*(from nightshift\b|import nightshift\b)", text, re.MULTILINE):
             importers.append(rel)
-    assert sorted(importers) == ["local_hud.py", "main.py"], importers
+    assert sorted(importers) == ["e2e/hud_flows.py", "local_hud.py", "main.py"], importers
+    # L'e2e lit nightshift pour tester l'onglet NUIT ; sans le paquet, ce scénario
+    # est « sans objet », jamais rouge : retirer nightshift ne casse pas la CI.
+    e2e = _src("e2e/hud_flows.py")
+    assert "NotApplicable(\"paquet nightshift" in e2e, "e2e : l'onglet NUIT doit être « sans objet » sans nightshift"
     main = _src("main.py")
     at = main.index("import nightshift")
     assert "try:" in main[at - 40:at] and "except Exception:" in main[at:at + 120], "attache non gardée"
@@ -1332,6 +1336,65 @@ def _reanchor():
     assert out["outcome"] == "patch_proposed" and first["repair"] and first["response"], out
     assert _clean(repo), "le réancrage ne touche jamais au dépôt"
     return f"{len(cases)} diffs mal formés réparés ; introuvable, hors zone et ambigu refusés ; réponse gardée"
+
+
+@check("32 relecture : une autre famille, ordre inverse, un « ok » net seul compte ; injoignable → pas de fusion auto")
+def _review():
+    from nightshift import review
+
+    env = {"GROQ_API_KEY": "gsk_" + "k" * 40, "GEMINI_API_KEY": "AIza" + "g" * 35,
+           "OPENROUTER_API_KEY": "sk-or-v1-" + "o" * 40}
+    labels = [m.label for m in llm.Chain.from_env(env, llm.Budget(), role="review",
+                                                  exclude_family="gpt-oss").available()]
+    assert labels[0].startswith("gemini/") and not any("gpt-oss" in x for x in labels), labels
+    first_router = next(i for i, x in enumerate(labels) if x.startswith("openrouter/"))
+    assert first_router < labels.index("groq/qwen/qwen3.8-27b"), f"OpenRouter avant Groq en relecture : {labels}"
+    assert llm.Chain.from_env(env, llm.Budget()).available()[0].label == "groq/openai/gpt-oss-120b", \
+        "la proposition garde Groq en premier"
+    assert llm.family("groq/openai/gpt-oss-120b") == "gpt-oss"
+    assert llm.family("openrouter/poolside/laguna-s-2.1:free") == "laguna"
+    routed = llm.Chain.from_env({"OPENROUTER_API_KEY": "sk-or-v1-" + "o" * 40}, llm.Budget(),
+                                transport=_transport([_resp("ok")]), log=lambda *a: None)
+    assert routed.complete([{"role": "user", "content": "x"}], 100).model.startswith("openrouter/")
+    assert review.parse('{"verdict": "ok", "raison": "propre"}') == ("ok", "propre")
+    assert review.parse('Voilà : {"verdict": "bloque", "raison": "contourne le test"}')[0] == "bloque"
+    assert review.parse("ça me semble bien")[0] == "bloque", "une réponse illisible vaut un blocage"
+    task = {"source": "ruff", "code": "F841", "path": "eval_lab/mutate.py", "line": 97, "message": "unused",
+            "detail": "clé gsk_" + "z" * 40}
+    proposal = {"attempts": [{"result": "apply_failed", "model": "groq/qwen/qwen3.8-27b"},
+                             {"result": "ok", "model": "groq/openai/gpt-oss-120b"}]}
+    diff = "--- a/eval_lab/mutate.py\n+++ b/eval_lab/mutate.py\n@@ -1 +1 @@\n-x\n+y\n"
+    ok = review.review(task, proposal, diff, {"validated": True}, _FakeChain(['{"verdict": "ok", "raison": "ok"}']))
+    assert ok["verdict"] == "ok" and ok["author"] == "groq/openai/gpt-oss-120b", ok
+    down = review.review(task, proposal, diff, {"validated": True}, _FakeChain([llm.LLMError("tout est tombé")]))
+    assert down["verdict"] == "indisponible", down
+    assert review.review(task, proposal, "", {"validated": False}, _FakeChain([]))["verdict"] == "indisponible"
+    assert "gsk_" + "z" * 40 not in json.dumps(review.prompt(task, diff, {"validated": True})), "une clé part au relecteur"
+    return "gemini → openrouter → groq sans la famille de l'auteur ; ok net seul ; injoignable/illisible → pas de fusion"
+
+
+@check("33 CI stricte : un échec connu, une suite ignorée, ruff absent ou bavard — tout compte rouge")
+def _strict():
+    from nightshift import run as runner
+
+    def rep(suites, lint):
+        return {"suites": suites, "lint": lint, "status": "success"}
+
+    clean = {"available": True, "count": 0, "findings": []}
+    green = [{"name": "a", "outcome": "ok"},
+             {"name": "b", "outcome": "skipped", "reason": "sans objet sur win32"}]
+    assert runner.strict_failures(rep(green, clean)) == [], "vert, et une suite sans objet ici, c'est vert"
+    cases = {
+        "échec connu": [{"name": "c", "outcome": "failing", "failures": ["2 connu"]}],
+        "dépendance absente": [{"name": "d", "outcome": "skipped", "reason": "dépendance absente : PyQt6"}],
+        "délai": [{"name": "e", "outcome": "timeout", "reason": "délai dépassé"}],
+    }
+    for why, suites in cases.items():
+        assert runner.strict_failures(rep(green + suites, clean)), f"{why} : accepté en CI"
+    assert runner.strict_failures(rep(green, {"available": False, "reason": "ruff absent"})), "ruff absent accepté"
+    noisy = {"available": True, "count": 1, "findings": [{"path": "x.py", "line": 1, "code": "F841", "message": "m"}]}
+    assert "x.py:1 F841" in runner.strict_failures(rep(green, noisy))[0]
+    return "sans objet admis ; connu, ignoré faute de dépendance, délai, ruff absent ou bavard refusés"
 
 
 def main() -> int:

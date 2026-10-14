@@ -2068,9 +2068,14 @@ class JarvisLive:
                 # assistant would never come back at all: the feature meant to
                 # survive a reconnect would be the thing preventing one. Drop it
                 # once and let the next attempt start clean.
+                # "handle" as a word: err_str is flattened from the TaskGroup, and
+                # every group summary reads "unhandled errors in a TaskGroup" — the
+                # bare substring dropped the handle on ANY error after a resumed
+                # session, so a conversation survived one network drop, never two
+                # (found by python -m e2e, 2026-10-14).
                 if _resumed_with and (
                     "resum" in err_str.lower()
-                    or "handle" in err_str.lower()
+                    or re.search(r"\bhandle\b", err_str, re.IGNORECASE)
                     or "INVALID_ARGUMENT" in err_str
                     or "NOT_FOUND" in err_str
                 ):

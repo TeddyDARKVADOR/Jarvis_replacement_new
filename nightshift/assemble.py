@@ -2,7 +2,7 @@
 nightshift/assemble.py — un seul rapport pour toute la nuit.
 
     python -m nightshift.assemble --veille DIR [--proposal DIR] [--validation DIR]
-                                  [--publish DIR] --dry-run true|false --out DIR
+                                  [--publish DIR] [--review DIR] --dry-run true|false --out DIR
 
 Job « assemblage » : aucun secret, lecture seule. Il réunit ce que chaque job a
 laissé — la veille (report.json, task.json), la proposition (proposal.json), la
@@ -52,7 +52,7 @@ def _load(path: Path) -> dict | None:
 
 
 def task_section(choice: dict | None, proposal: dict | None, validation: dict | None,
-                 publish: dict | None, dry_run: bool) -> tuple[dict, str | None]:
+                 publish: dict | None, dry_run: bool, review: dict | None = None) -> tuple[dict, str | None]:
     """(r["task"], pull_request_url) selon ce que chaque job a produit."""
     choice = choice or {"task": None, "reason": "sélection absente (la veille a-t-elle échoué ?)", "out_of_zone": []}
     t = choice.get("task")
@@ -81,6 +81,9 @@ def task_section(choice: dict | None, proposal: dict | None, validation: dict | 
         return task, None
     task.update(outcome="patch_validated", reason=validation.get("target") or "",
                 review_closely=validation.get("review_closely") or [])
+    if isinstance(review, dict) and review.get("verdict"):
+        # Le second avis (nightshift/review.py) : il ne peut que bloquer une fusion automatique.
+        task["review"] = {k: review.get(k) for k in ("verdict", "raison", "model")}
     if dry_run:
         task["publication"] = "aucune PR : dry run (NIGHTLY_DRY_RUN=true)"
         return task, None
@@ -89,6 +92,9 @@ def task_section(choice: dict | None, proposal: dict | None, validation: dict | 
         return task, None
     if publish.get("published"):
         task["publication"] = "PR ouverte"
+        # Étiquette nightshift:fusion-auto posée : fusion le soir même (nightshift-fusion,
+        # 19 h), sauf PR fermée ou étiquette « garder » d'ici là.
+        task["auto_merge"] = publish.get("auto_merge") == "oui"
         return task, publish.get("url")
     if publish.get("reason") == "pr_already_open":
         task["publication"] = f"une PR Night Shift est déjà ouverte ({publish.get('url')}) : rien de publié"
@@ -147,7 +153,7 @@ def _night_date(report: dict):
 
 
 def assemble(veille: Path, proposal: Path | None, validation: Path | None, publish: Path | None,
-             dry_run: bool) -> tuple[dict, dict]:
+             dry_run: bool, review: Path | None = None) -> tuple[dict, dict]:
     """(le rapport de la nuit, la mémoire après la nuit)."""
     report = _load(veille / "report.json")
     if report is None:
@@ -155,7 +161,8 @@ def assemble(veille: Path, proposal: Path | None, validation: Path | None, publi
     choice = _load(veille / "task.json")
     task, url = task_section(choice, _load(proposal / "proposal.json") if proposal else None,
                              _load(validation / "validation.json") if validation else None,
-                             _load(publish / "publish.json") if publish else None, dry_run)
+                             _load(publish / "publish.json") if publish else None, dry_run,
+                             _load(review / "review.json") if review else None)
     task["skipped"] = (choice or {}).get("skipped") or []
     report["task"] = task
     report["pull_request_url"] = url
@@ -180,12 +187,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--proposal")
     ap.add_argument("--validation")
     ap.add_argument("--publish")
+    ap.add_argument("--review")
     ap.add_argument("--dry-run", default="true")
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     opt = lambda p: Path(p) if p and Path(p).is_dir() else None   # noqa: E731
     report, state = assemble(Path(args.veille), opt(args.proposal), opt(args.validation), opt(args.publish),
-                             args.dry_run != "false")
+                             args.dry_run != "false", opt(args.review))
     md = R.to_markdown(report)
     R.write(report, md, Path(args.out))
     R._atomic_write(Path(args.out) / "state.json", json.dumps(state, ensure_ascii=False, indent=1) + "\n")

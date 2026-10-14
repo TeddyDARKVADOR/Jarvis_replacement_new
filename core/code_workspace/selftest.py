@@ -140,7 +140,13 @@ def _():
         assert not (OUTSIDE / "evil.txt").exists()
         assert all(not f["path"].startswith("door") for f in WS.list_files("demo")), "listing suit la jonction"
     finally:
-        os.rmdir(link) if link.is_dir() else link.unlink()
+        # Un lien symbolique POSIX s'efface par unlink() : os.rmdir() lève
+        # NotADirectoryError sous Linux, ce qui masquait le vrai verdict. Une
+        # jonction, ou un lien de répertoire sous Windows, par os.rmdir().
+        if link.is_symlink() and os.name != "nt":
+            link.unlink()
+        else:
+            os.rmdir(link)
     return "jonction refusée en lecture, écriture et listing"
 
 
@@ -758,7 +764,6 @@ WEB_OK = WEB_BUG.replace("'lst'", "'list'")
 
 @check("26 page web : un vrai navigateur trouve le bug, la correction passe, l'aperçu s'ouvre seul")
 def _():
-    from core.code_workspace import webcheck
     if webcheck.available():
         return f"non lancé : {webcheck.available()}"
     extra = {"kind": "web", "entry_point": "index.html", "stack": ["html", "js"],

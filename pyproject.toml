@@ -21,3 +21,9 @@ ignore = [
     "F401",  # import inutilisé : souvent un import de vérification ou un ré-export
     "F541",  # f-string sans variable : sans effet
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# actions/ est figé (CLAUDE.md, contrat V2) : sa seule remarque, une variable
+# jamais lue (image_base64, ligne 481), reste où elle est plutôt que d'y toucher.
+# Toute autre remarque, partout ailleurs, fait échouer la CI.
+"actions/code_helper.py" = ["F841"]

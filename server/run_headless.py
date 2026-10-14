@@ -256,6 +256,63 @@ def _extras(jarvis, device_hub: DeviceHub | None = None) -> dict:
     return out
 
 
+async def _supervise(run, ui, summary_grace_s: float = 8.0) -> None:
+    """Run JarvisLive.run() until it ends, or until SIGTERM / SIGINT stops it for real.
+
+    WHY THIS EXISTS (until 2026-10-14, SIGTERM raised KeyboardInterrupt instead)
+    The dashboard's uvicorn captures SIGTERM and SIGINT while it serves: it shut
+    itself down, then re-raised the signal, so the KeyboardInterrupt surfaced
+    inside the dashboard's task, asyncio.run cancelled the assistant, and
+    main.py's reconnect loop — it catches BaseException, CancelledError
+    included, and files it as a network error — reconnected to Gemini with the
+    dashboard gone. systemd waited TimeoutStopSec (20 s), then SIGKILL: every
+    `systemctl restart jarvis` lost 20 s and the end-of-session summary. Found
+    by the e2e suite on its first run (python -m e2e, « SIGTERM … »).
+
+    HOW, WITHOUT TOUCHING main.py
+    The signal arrives through the event loop (loop.add_signal_handler: the
+    interpreter's wakeup fd fires whatever Python handler uvicorn installed
+    meanwhile). The assistant runs in its own task, cancelled until it really
+    ends — the reconnect loop swallows the first cancellation, the second lands
+    in its back-off sleep, outside any try. Then the summary main.py scheduled
+    on its way out gets a bounded moment to finish.
+    """
+    import asyncio
+
+    loop = asyncio.get_running_loop()
+    assistant = loop.create_task(run(), name="jarvis-run")
+    stopping = asyncio.Event()
+
+    def _on_signal(name: str) -> None:
+        if not stopping.is_set():
+            stopping.set()
+            ui.write_log(f"SYS: {name} — shutting down.")
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, _on_signal, sig.name)
+        except (RuntimeError, ValueError):    # NotImplementedError on Windows is one
+            pass    # Windows: the signal.signal handler set in main() stays
+
+    asked = loop.create_task(stopping.wait())
+    done, _ = await asyncio.wait({assistant, asked}, return_when=asyncio.FIRST_COMPLETED)
+    if assistant in done:
+        asked.cancel()
+        return assistant.result()
+
+    for _ in range(40):                       # at most ~10 s
+        if assistant.done():
+            break
+        assistant.cancel()
+        await asyncio.wait({assistant}, timeout=0.25)
+
+    summary = [t for t in asyncio.all_tasks(loop)
+               if not t.done() and "_save_session_summary" in getattr(t.get_coro(), "__qualname__", "")]
+    if summary:
+        await asyncio.wait(summary, timeout=summary_grace_s)
+    print("[Headless] stopped.", flush=True)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         prog="server.run_headless",
@@ -281,10 +338,9 @@ def main() -> int:
                                     allow_firewall=args.firewall)
 
     def _term(_sig, _frm):
-        # systemd sends SIGTERM on stop/restart. Raising in the main thread
-        # unwinds asyncio.run the same way Ctrl-C does, so main.py's own
-        # KeyboardInterrupt path runs and the session summary still gets its
-        # chance to be written.
+        # Only where the event loop cannot take signals itself (Windows, which
+        # never runs this under systemd). On POSIX, _supervise() installs a loop
+        # handler over this one — see why there.
         ui.write_log("SYS: SIGTERM — shutting down.")
         raise KeyboardInterrupt
 
@@ -303,8 +359,8 @@ def main() -> int:
     _original_run = jarvis.run
 
     async def _run_with_watch():
-        asyncio.ensure_future(_watch_link())
-        await _original_run()
+        _link = asyncio.ensure_future(_watch_link())    # held: a bare task can be collected
+        await _supervise(_original_run, ui)
 
     jarvis.run = _run_with_watch
 

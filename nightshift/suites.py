@@ -11,7 +11,8 @@ connu n'est jamais compté comme une régression, mais reste affiché.
     même image que le runner `ubuntu-24.04` du workflow), avec les dépendances
     du workflow : deployment/requirements-server.txt + pyyaml + ruff.
 
-    13 suites sur 14 passent ; code_workspace passe à son échec connu près.
+    13 suites sur 14 passent ; code_workspace passe à son échec connu près
+    (corrigé depuis : 34/34, plus aucun échec connu ; l'e2e est la 16e suite).
     Confirmé le même jour par le premier run GitHub (image ubuntu24
     20261004.327.1, Python 3.12.15) : mêmes scores, 54 s.
 
@@ -89,14 +90,9 @@ SUITES: tuple[Suite, ...] = (
     Suite("cognition.selftest", ("-m", "cognition.selftest"), linux=f"{_MEASURED} : 64/64"),
     Suite("eval_lab.selftest", ("-m", "eval_lab.selftest"), linux=f"{_MEASURED} : 28/28"),
     Suite("core.code_workspace.selftest", ("-m", "core.code_workspace.selftest"), timeout_s=600,
-          known_failures=(
-              ("linux", "2", "le nettoyage du test appelle os.rmdir() sur un lien symbolique "
-                             "(NotADirectoryError sous Linux) : l'échec masque le vrai verdict "
-                             "de la sandbox — correctif d'une ligne dans core/, humain seulement"),
-              ("linux", "33", "Pyright, seulement s'il est installé : sans lui le contrôle "
-                              "passe (« non lancé »), et le workflow ne l'installe pas"),
-          ),
-          linux="33/34 le 2026-10-14 (Ubuntu 24.04, Python 3.12.3) : seul le n°2 échoue (connu)"),
+          linux="34/34 le 2026-10-14 (Ubuntu 24.04, Python 3.12.3), Pyright installé compris : le "
+                "nettoyage du n°2 (os.rmdir sur un lien symbolique) est corrigé, il n'y a plus "
+                "d'échec connu"),
     Suite("reminders.selftest", ("-m", "reminders.selftest"), linux=f"{_MEASURED} : 4/4"),
     Suite("resilience.selftest", ("-m", "resilience.selftest"), linux=f"{_MEASURED} : 13/13"),
     Suite("extensions.selftest", ("-m", "extensions.selftest"), linux=f"{_MEASURED} : 11/11"),
@@ -105,6 +101,12 @@ SUITES: tuple[Suite, ...] = (
     Suite("actions.repository_review_selftest", ("-m", "actions.repository_review_selftest"),
           linux=f"{_MEASURED} : PASS"),
     Suite("nightshift.selftest", ("-m", "nightshift.selftest"), linux="ok le 2026-10-14 (Ubuntu 24.04)"),
+    # JARVIS de bout en bout (python -m e2e) : le vrai serveur contre un faux Gemini,
+    # la vraie page du HUD dans Chromium. Hors de la zone de la nuit : un e2e rouge
+    # n'est jamais confié au modèle, il se diagnostique à la main.
+    Suite("e2e", ("-m", "e2e"), timeout_s=900, requires=("uvicorn", "starlette", "websockets", "google.genai"),
+          linux="serveur 18/18 le 2026-10-14 (conteneur Ubuntu 24.04, Python 3.12.3) ; HUD 7/7 le même jour "
+                "dans Chromium (hôte Fedora, Python 3.14) — sans Playwright, la famille HUD est « ignorée »"),
 )
 
 

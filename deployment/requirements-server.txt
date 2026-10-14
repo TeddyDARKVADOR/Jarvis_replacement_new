@@ -23,20 +23,20 @@
 #                whole app fails at startup, not just uploads — this cost an
 #                afternoon once, hence the comment
 # cryptography   AES-256-CBC for encrypted commands (imported lazily)
-google-genai>=2.8.0
-numpy
-psutil
-fastapi
-uvicorn[standard]
-python-multipart
-cryptography
+google-genai==2.30.1
+numpy==2.5.4
+psutil==7.2.2
+fastapi==0.143.1
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
+cryptography==50.0.2
 
 # ── RECOMMENDED: cheap, and each one turns an action back on ─────────────────
 #
 # requests       several actions, the HUD's settings calls
 # ddgs           actions/web_search — the single most useful action on a server
-requests
-ddgs
+requests==2.34.2
+ddgs==9.16.0
 
 # ── OPTIONAL: only if you want that specific action on the server ────────────
 #

@@ -1,0 +1,178 @@
+# JARVIS CI — chaque commit, sur chaque branche, doit passer tout ceci pour rejoindre main.
+# La documentation est le graphe capabilities/graphs/ci.json (CLAUDE.md).
+#
+#   linux     build (python setup.py, l'installation d'un vrai PC), les 15 suites
+#             et ruff en mode strict, puis python -m e2e --strict (serveur + HUD).
+#   windows   la même chose sous Windows : c'est le PC de JARVIS.
+#   serveur   l'installation d'Oracle (deployment/install.sh) sur une Ubuntu
+#             24.04 propre, puis server.selftest sous l'utilisateur jarvis —
+#             l'étape 8 de deployment/redeploy.sh.
+#   verdict   vert seulement si les trois le sont : LA vérification que la règle
+#             de branche exige sur main (et que fusion-auto attend).
+#
+# Aucun secret, jeton en lecture seule : la CI exécute le code de la branche,
+# y compris celui qu'un modèle a écrit la nuit. Rien de réel n'est appelé : le
+# Gemini des tests e2e est un faux (e2e/gemini.py), sans réseau sortant.
+name: CI
+
+on:
+  push:
+    branches-ignore: [nightshift-data]
+  # Les branches poussées par un workflow (la nuit, la mise à jour d'une PR en
+  # retard sur main) ne déclenchent pas `push` : ils relancent la CI ainsi.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  linux:
+    name: Linux — build, unitaires, e2e
+    # Épinglé comme la nuit : ubuntu-latest passe à 26.04 entre octobre et novembre 2026.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Bibliothèques système (Qt offscreen, PortAudio)
+        run: |
+          # Ce que PyQt6-WebEngine et sounddevice chargent à l'import, mesuré avec
+          # ldd (2026-10-14) ; Chromium de Playwright vient à l'étape suivante.
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libportaudio2 \
+            libegl1 libgl1 libfontconfig1 libfreetype6 libxkbcommon0 \
+            libnss3 libnspr4 libasound2t64 libgbm1 libxcb-dri3-0 libxkbfile1 \
+            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxtst6
+
+      - name: Build — l'installation d'un vrai PC (python setup.py)
+        run: |
+          python -m pip install --upgrade pip
+          python setup.py
+          sudo "$(command -v python)" -m playwright install-deps chromium
+
+      - name: Build — tout le Python se compile
+        run: python -m compileall -q -x '(^|/)(\.git|client-android|jarvis-preprod)/' .
+
+      - name: Unitaires — les suites et ruff, sans échec toléré
+        run: python -m nightshift.run --strict --no-metrics --except e2e --out "$RUNNER_TEMP/unitaires"
+
+      - name: e2e — JARVIS de bout en bout, serveur et HUD
+        run: python -m e2e --strict --workdir "$RUNNER_TEMP/e2e"
+
+      - name: Journaux (en cas d'échec)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-linux
+          path: |
+            ${{ runner.temp }}/unitaires
+            ${{ runner.temp }}/e2e/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  windows:
+    name: Windows — build, unitaires, e2e
+    runs-on: windows-2025
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Build — l'installation d'un vrai PC (python setup.py)
+        run: |
+          python -m pip install --upgrade pip
+          python setup.py
+
+      - name: Build — tout le Python se compile
+        run: python -m compileall -q -x '(^|[/\\])(\.git|client-android|jarvis-preprod)[/\\]' .
+
+      - name: Unitaires — les suites et ruff, sans échec toléré
+        run: python -m nightshift.run --strict --no-metrics --except e2e --out "$RUNNER_TEMP/unitaires"
+
+      - name: e2e — JARVIS de bout en bout, serveur et HUD
+        run: python -m e2e --strict --workdir "$RUNNER_TEMP/e2e"
+
+      - name: Journaux (en cas d'échec)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-windows
+          path: |
+            ${{ runner.temp }}/unitaires
+            ${{ runner.temp }}/e2e/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  serveur:
+    name: Linux — installation d'Oracle (deployment/install.sh)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Ce qu'une VM Oracle neuve reçoit avant (graphe deployment, p.installation)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends python3 python3-venv python3-pip git rsync
+
+      - name: sudo bash deployment/install.sh
+        run: sudo bash deployment/install.sh
+
+      - name: Le service systemd est valide, l'appairage répond
+        run: |
+          systemd-analyze verify /etc/systemd/system/jarvis.service
+          sudo -u jarvis env HOME=/opt/jarvis bash -c 'cd /opt/jarvis && .venv/bin/python -m server.run_headless --pairing' \
+            | grep -q . && echo "appairage : identifiant produit"
+
+      - name: server.selftest dans l'arbre installé, sous l'utilisateur jarvis
+        run: sudo -u jarvis env HOME=/opt/jarvis bash -c 'cd /opt/jarvis && .venv/bin/python -m server.selftest'
+
+  verdict:
+    name: verdict
+    # always() : un job sauté compte « réussi » pour une règle de branche ; ici,
+    # rien n'est vert tant que les trois jobs ne le sont pas vraiment.
+    if: always()
+    needs: [linux, windows, serveur]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Tout doit être vert
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | python3 -c '
+          import json, sys
+          needs = json.load(sys.stdin)
+          for name, job in needs.items():
+              print("  %-8s %s" % (name, job["result"]))
+          bad = sorted(name for name, job in needs.items() if job["result"] != "success")
+          sys.exit("CI rouge : " + ", ".join(bad) if bad else 0)'

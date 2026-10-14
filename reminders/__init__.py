@@ -126,6 +126,11 @@ def deliver(jarvis, rid: str, r: dict) -> str:
     """Livrer un rappel par tous les chemins disponibles. Rend ce qui a marché."""
     message = r.get("message") or "Rappel"
     done = []
+    # Décidé AVANT la notification : celle-ci, une fois reçue, arme le délai de
+    # silence du niveau IMPORTANT (server/notify, décision N3), et la voix du même
+    # rappel, décidée après, tombait dedans — un rappel n'était jamais dit dès
+    # qu'un téléphone était connecté (trouvé par python -m e2e, 2026-10-14).
+    speak = _may_speak()
     try:
         jarvis.ui.show_content("RAPPEL", message)
         done.append("hud")
@@ -133,7 +138,7 @@ def deliver(jarvis, rid: str, r: dict) -> str:
         pass
     if _to_phone(jarvis, message):
         done.append("téléphone")
-    if _may_speak() and getattr(jarvis, "session", None):
+    if speak and getattr(jarvis, "session", None):
         try:
             jarvis.plugin_say(
                 f"[REMINDER] The reminder the user set for now is due: \"{message}\". "
@@ -148,9 +153,53 @@ def deliver(jarvis, rid: str, r: dict) -> str:
     return ", ".join(done) or "rien"
 
 
+#: La réponse de actions/reminder.py (figé) quand aucun planificateur du système
+#: n'a accepté la tâche : ni schtasks, ni launchd, ni systemd-run --user, ni at.
+NO_SCHEDULER = "I couldn't register the reminder with the system scheduler."
+
+
+class ReminderFallback:
+    """Le registre d'actions de JARVIS, à un détail près : un rappel que le
+    système ne sait pas planifier est confié à JARVIS au lieu d'être refusé.
+
+    POURQUOI (trouvé en écrivant l'e2e, 2026-10-14)
+    Sur Oracle, un service systemd n'a pas de session utilisateur (systemd-run
+    --user échoue) et `at` n'est pas installé : actions/reminder.py refusait donc
+    tout rappel, alors que ce paquet sait le livrer tant que JARVIS tourne — et
+    sur Oracle, il tourne 24 h/24. actions/ est figé (contrat V2) : on enveloppe
+    le registre, comme server/routing.py, sans y toucher. Retirer reminders/
+    rend le comportement d'avant, refus compris.
+    """
+
+    def __init__(self, inner, path: Path = PATH) -> None:
+        self._inner = inner
+        self._path = path
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def run(self, name: str, parameters: dict, ctx: dict | None = None) -> str:
+        result = self._inner.run(name, parameters, ctx)
+        if name != "reminder" or str(result).strip() != NO_SCHEDULER:
+            return result
+        p = parameters or {}
+        try:
+            when = datetime.strptime(f"{str(p.get('date', '')).strip()} {str(p.get('time', '')).strip()}",
+                                     "%Y-%m-%d %H:%M")
+        except ValueError:
+            return result
+        message = (str(p.get("message") or "").strip() or "Reminder")[:200]
+        add(f"JARVISReminder_{when:%Y%m%d_%H%M%S}", when, message, path=self._path)
+        return (f"Reminder set for {when:%B %d at %I:%M %p}. This machine has no system scheduler, "
+                "so JARVIS delivers it himself (HUD, phone, voice) — as long as he is running.")
+
+
 def attach(jarvis, interval: float = CHECK_EVERY_S) -> None:
     """Le hook de main.py : une boucle de fond, une seule par processus."""
     global _thread
+    reg = getattr(jarvis, "_action_registry", None)
+    if reg is not None and not isinstance(reg, ReminderFallback):
+        jarvis._action_registry = ReminderFallback(reg)
     # Le hub des notifications retient la boucle asyncio qui l'a lié : il faut
     # donc le lier ici, depuis main.run(), et pas depuis le fil de fond. Sur
     # Oracle, run_headless l'a déjà lié ; en local, personne ne le faisait.

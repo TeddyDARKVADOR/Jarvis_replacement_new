@@ -1,62 +1,67 @@
 # JARVIS on a desktop — `python setup.py` installs this, for your OS only.
 # (The Oracle server installs deployment/requirements-server.txt instead.)
+#
+# Every version is pinned: the CI (.github/workflows/ci.yml) tests exactly these,
+# on Linux and on Windows, so a new PyQt6 or google-genai release cannot break
+# JARVIS without a commit. Dependabot proposes the updates each week; they merge
+# only if the whole CI stays green (.github/dependabot.yml).
 
 # ── The HUD, audio, Gemini Live ──────────────────────────────────────────────
-PyQt6
-PyQt6-WebEngine          # the HUD is a web page in Qt
-sounddevice
-numpy
-google-genai>=2.8.0
-websockets               # the HUD's link to JARVIS on Oracle
+PyQt6==6.11.0
+PyQt6-WebEngine==6.11.0  # the HUD is a web page in Qt
+sounddevice==0.5.6
+numpy==2.5.4
+google-genai==2.30.1
+websockets==16.1.1       # the HUD's link to JARVIS on Oracle
 
 # ── Web search & browser control ─────────────────────────────────────────────
-requests
-ddgs                     # formerly duckduckgo-search; web_search falls back to it
-playwright               # also the Code Studio's browser check of web projects
+requests==2.34.2
+ddgs==9.16.0             # formerly duckduckgo-search; web_search falls back to it
+playwright==1.64.0       # also the Code Studio's browser check of web projects
 
 # ── Code Studio: informative analyses (Python code, types) ──────────────────
-ruff
-pyright                  # fetches the Pyright engine (Node.js) on first use
+ruff==0.17.0
+pyright==1.1.414         # fetches the Pyright engine (Node.js) on first use
 
 # ── Automation / input control ───────────────────────────────────────────────
-pyautogui
-pyperclip
-pygetwindow
+pyautogui==0.9.54
+pyperclip==1.11.0
+pygetwindow==0.0.9
 
 # ── Vision & media ───────────────────────────────────────────────────────────
-pillow
-opencv-python
-mss
+pillow==12.3.0
+opencv-python==5.0.0.93
+mss==10.2.0
 
 # ── System, files & documents ────────────────────────────────────────────────
-psutil
-send2trash
-youtube-transcript-api
-python-pptx
-openpyxl
+psutil==7.2.2
+send2trash==2.1.0
+youtube-transcript-api==1.2.4
+python-pptx==1.0.2
+openpyxl==3.1.5
 
 # ── The dashboard JARVIS serves (phone, uploads, local mode's QR pairing) ────
-fastapi
-uvicorn[standard]
-cryptography
-python-multipart
-qrcode[pil]
+fastapi==0.143.1
+uvicorn[standard]==0.54.0
+cryptography==50.0.2
+python-multipart==0.0.32
+qrcode[pil]==8.2
 
 # ── Offline relay (offline/) and Agent Skills (extensions/) ─────────────────
-faster-whisper           # local speech-to-text when Gemini or Oracle is down
-pyyaml                   # SKILL.md front matter
+faster-whisper==1.2.1    # local speech-to-text when Gemini or Oracle is down
+pyyaml==6.0.3            # SKILL.md front matter
 # Offline voice: SAPI on Windows (pywin32 below), `sudo apt install espeak-ng`
 # on Linux, `say` on macOS. The brain is Ollama (https://ollama.com) with any
 # tool-capable model, e.g. `ollama pull qwen3:4b-instruct`. Optional, better
 # speech detection: `pip install webrtcvad-wheels`.
 
 # ── Windows-only (pip skips these automatically on macOS / Linux) ────────────
-comtypes;   sys_platform == "win32"
-pycaw;      sys_platform == "win32"
-win10toast; sys_platform == "win32"
-pywinauto;  sys_platform == "win32"
-pywin32;    sys_platform == "win32"
-wmi;        sys_platform == "win32"
+comtypes==1.4.17; sys_platform == "win32"
+pycaw==20260927; sys_platform == "win32"
+win10toast==0.9; sys_platform == "win32"
+pywinauto==0.6.9; sys_platform == "win32"
+pywin32==312; sys_platform == "win32"
+wmi==1.5.1; sys_platform == "win32"
 
 # ── Optional ─────────────────────────────────────────────────────────────────
 #

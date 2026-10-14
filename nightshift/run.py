@@ -36,6 +36,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nightshift import SCHEMA
+from nightshift import compare as C
 from nightshift import metrics as M
 from nightshift import report as R
 from nightshift.suites import Suite, by_name, platform_name
@@ -403,7 +404,7 @@ def load_previous(path: str | None) -> dict | None:
 # ── la nuit ──────────────────────────────────────────────────────────────────
 
 def night(suites: list[Suite], previous: dict | None, repo: Path = REPO, ruff: bool = True,
-          echo=print, output_dir: Path | None = None) -> dict:
+          echo=print, output_dir: Path | None = None, metrics: bool = True) -> dict:
     """Lance les suites et ruff, et renvoie le rapport complet (report.build)."""
     started = now()
     plat = platform_name()
@@ -415,7 +416,7 @@ def night(suites: list[Suite], previous: dict | None, repo: Path = REPO, ruff: b
         score = f"{r['passed']}/{r['total']}" if r["total"] is not None else "—"
         echo(f"  [{i:2}/{len(suites)}] {s.name:36} {score:>7}  {r['duration_s']:6.1f} s")
     lint = run_ruff(repo) if ruff else {"tool": "ruff", "available": False, "reason": "désactivé (--no-ruff)"}
-    measured = M.measure(repo) if ruff else None         # phase 4 : les indicateurs, avec ruff
+    measured = M.measure(repo) if ruff and metrics else None   # phase 4 : les indicateurs, avec ruff
     prev_commit = (previous or {}).get("commit_full") or (previous or {}).get("commit") or ""
     sus = suspects(repo, prev_commit, git["commit_full"]) if previous else None
     report = R.build(meta=run_meta(), git=git, env=environment(), started_at=started, finished_at=now(),
@@ -425,6 +426,29 @@ def night(suites: list[Suite], previous: dict | None, repo: Path = REPO, ruff: b
     for r in report["suites"]:   # l'état final, une fois comparé à la veille
         echo(f"  {r['status']:13} {r['name']:36}" + (f"  {r['reason']}" if r.get("reason") else ""))
     return report
+
+
+def strict_failures(report: dict) -> list[str]:
+    """Ce qui empêche la CI d'être verte : tout ce qui n'est pas « ok ».
+
+    Plus exigeant que la nuit : un échec « connu » compte, une suite ignorée
+    faute de dépendance compte (la CI installe tout), ruff absent ou bavard
+    compte. Seule une suite sans objet sur cette plateforme est admise."""
+    bad = []
+    for s in report.get("suites") or []:
+        out = C.outcome(s)
+        if out == "ok" or (out == "skipped" and str(s.get("reason", "")).startswith("sans objet")):
+            continue
+        detail = s.get("reason") or "; ".join(s.get("failures") or [])
+        bad.append(f"{s.get('name')} : {out}" + (f" — {detail}" if detail else ""))
+    lint = report.get("lint") or {}
+    if not lint.get("available"):
+        bad.append(f"ruff : {lint.get('reason') or 'non lancé'}")
+    elif lint.get("count"):
+        bad += [f"ruff : {f['path']}:{f['line']} {f['code']} {f['message']}" for f in lint.get("findings") or []]
+    if report.get("status") == "failed":
+        bad.append(f"banc : {report.get('summary', 'rapport en échec')}")
+    return bad
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -437,12 +461,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", help="dossier où écrire report.json et report.md")
     ap.add_argument("--previous", help="rapport précédent (baseline.json de la branche nightshift-data)")
     ap.add_argument("--suites", default="", help="noms séparés par des virgules (défaut : toutes)")
+    ap.add_argument("--except", dest="skip", default="", help="noms à ne pas lancer (la CI lance e2e à part, en strict)")
     ap.add_argument("--no-ruff", action="store_true", help="ne pas lancer ruff")
     ap.add_argument("--github-output", action="store_true",
                     help="écrire regression=… et status=… dans $GITHUB_OUTPUT")
     ap.add_argument("--fail-on-regression", action="store_true",
                     help="code de sortie 1 s'il y a une régression (run rouge, e-mail de GitHub)")
     ap.add_argument("--list", action="store_true", help="lister les suites et quitter")
+    ap.add_argument("--strict", action="store_true",
+                    help="la CI : code 1 si une suite n'est pas verte (échecs connus compris) ou si ruff remarque quoi que ce soit")
+    ap.add_argument("--no-metrics", action="store_true", help="ne pas mesurer les indicateurs (eval_lab, cognition, contexte)")
     args = ap.parse_args(argv)
 
     if args.list:
@@ -455,7 +483,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         names = [n.strip() for n in args.suites.split(",") if n.strip()]
-        selected = by_name(names)
+        skip = [n.strip() for n in args.skip.split(",") if n.strip()]
+        by_name(skip)                                # une faute de frappe lève, ici aussi
+        selected = [s for s in by_name(names) if s.name not in skip]
     except ValueError as e:
         print(f"nightshift.run : {e}", file=sys.stderr)
         return 2
@@ -465,7 +495,8 @@ def main(argv: list[str] | None = None) -> int:
           + ("" if previous else " — pas de rapport précédent"))
     try:
         report = night(selected, previous, ruff=not args.no_ruff,
-                       output_dir=Path(args.out) / "outputs" if args.out else None)
+                       output_dir=Path(args.out) / "outputs" if args.out else None,
+                       metrics=not args.no_metrics)
     except Exception as e:  # dernier filet : un rapport « failed » plutôt qu'un plantage
         report = R.failed(run_meta(), git_info(), f"banc : {type(e).__name__}: {e}", started_at=now())
     md = R.to_markdown(report)
@@ -480,6 +511,11 @@ def main(argv: list[str] | None = None) -> int:
         except OSError:
             pass
     print(f"\n{report['summary']}")
+    if args.strict:
+        bad = strict_failures(report)
+        print("\nCI : tout est vert." if not bad else "\nCI : rouge —\n" + "\n".join(f"  ✗ {b}" for b in bad))
+        if bad:
+            return 1
     if report["status"] == "failed":
         return 2
     return 1 if (args.fail_on_regression and report["regressions"]) else 0
