@@ -83,7 +83,6 @@ def mark_delivered(rid: str, how: str, path: Path = PATH) -> None:
         data = _load(path)
         if rid in data:
             data[rid]["delivered"] = f"{datetime.now().isoformat(timespec='seconds')} {how}"
-            _save(data, path)
 
 
 def upcoming(path: Path = PATH) -> list[tuple[str, dict]]:
