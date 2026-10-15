@@ -4,7 +4,6 @@ JARVIS on this PC, with the same HUD as JARVIS on Oracle.
 ```
 python main.py --local          the brain here (Gemini key in config/api_key.json or legacy api_keys.json)
 python main.py                  the brain on Oracle, this PC as its terminal
-python main.py --classic        the original window, unchanged
 ```
 
 ONE INTERFACE, TWO BRAINS

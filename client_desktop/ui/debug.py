@@ -1,15 +1,15 @@
 """
 Developer / Debug — deliberately a separate window.
 
-The brief asks for the technical surface to be somewhere other than the panel,
-and that is the right instinct for a reason worth writing down: the panel is
+The brief asks for the technical surface to be somewhere other than the HUD,
+and that is the right instinct for a reason worth writing down: the HUD is
 furniture the user glances at while working, and every number added to it makes
 the one thing it exists to show — *is JARVIS there, and is it listening* —
 slightly harder to read. Counters belong where someone has gone looking for
 them.
 
 This window is also the only place the client can be *configured*, which is why
-it is reachable from the panel and from the tray rather than hidden behind a
+it is reachable from the HUD and from the tray rather than hidden behind a
 flag: on a machine that has never been paired, this is the first-run screen.
 
 **The one number here that is not obvious.** `RX` and `PLAYED` are separate on

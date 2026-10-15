@@ -665,8 +665,7 @@ function frame(now) {
 
   // colour glides toward the state's colour
   V.color = mix(V.color, V.target, 1 - Math.exp(-dt * 4));
-  // the live level the state reacts to, smoothed like the panel's core
-  // (fast attack, slower release — `core_widget.py` uses the same taus)
+  // the live level the state reacts to, smoothed (fast attack, slower release)
   if (S) {
     const P = V.physics;
     const raw = P.react === 'voice' ? S.voice : P.react === 'mic' || S.gate ? S.mic : 0;

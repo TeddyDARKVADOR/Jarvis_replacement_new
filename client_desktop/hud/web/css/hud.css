@@ -4,8 +4,8 @@
    Tokens: --accent is the user's colour (palette popover). --sc is the colour
    of the CURRENT STATE and is set by main.js on <body>; everything that should
    say "what is JARVIS doing" uses --sc, everything decorative uses --accent.
-   The state colours are the panel's (`ui/panel.py::_STATE_COLOURS`) so both
-   clients read the same.
+   The state colours come from `client_desktop/ui/theme.py` (OK, WARN, ERROR,
+   MUTED), the palette the Android app shares.
    ───────────────────────────────────────────────────────────────────────── */
 :root {
   --bg: #03060B;

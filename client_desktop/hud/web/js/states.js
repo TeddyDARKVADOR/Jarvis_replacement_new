@@ -1,9 +1,9 @@
 /**
- * states.js — what each of the panel's eight states looks like and says.
+ * states.js — what each of JARVIS's eight states looks like and says.
  *
  * One table, read by every renderer, so the orb, the rings, the chip and the
  * caption can never disagree about what "THINKING" means. Colours are the
- * panel's (`ui/panel.py::_STATE_COLOURS`); `accent: true` means "the user's
+ * palette of `client_desktop/ui/theme.py`; `accent: true` means "the user's
  * chosen colour" instead of a fixed one.
  *
  * The physics columns drive the reactor:
