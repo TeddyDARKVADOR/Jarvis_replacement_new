@@ -1637,6 +1637,10 @@ def _evaluation():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> int:
+    try:
+        sys.stdout.reconfigure(errors="replace")   # a cp1252 pipe on Windows
+    except Exception:
+        pass
     width = max(len(n) for n, _, _ in _results)
     for name, ok, detail in _results:
         print(f"  [{'PASS' if ok else 'FAIL'}] {name:<{width}}  {detail}")

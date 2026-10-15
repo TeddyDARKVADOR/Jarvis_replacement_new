@@ -276,6 +276,10 @@ def _end_to_end():
 
 
 def main() -> int:
+    try:
+        sys.stdout.reconfigure(errors="replace")   # a cp1252 pipe on Windows
+    except Exception:
+        pass
     ok = sum(1 for _, passed, _ in _results if passed)
     for name, passed, info in _results:
         print(f"  {'OK ' if passed else 'ÉCHEC'} {name}" + (f" — {info}" if info else ""))
