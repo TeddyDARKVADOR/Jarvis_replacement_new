@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "studio",
   "title": "Jarvis Code Studio — son atelier de développement",
-  "updated": "2026-10-13",
+  "updated": "2026-10-15",
   "summary": "En mode local, un espace de travail dédié (C:\\Jarvis_Workspace par défaut, modifiable seulement depuis le HUD) où JARVIS planifie, écrit, lance les vrais tests, corrige un nombre limité de fois et rend un verdict mérité.",
   "replaces": [],
   "nodes": [
@@ -12,7 +12,7 @@
     {"id": "r.verdict", "label": "Un verdict mérité", "kind": "regle", "status": "ok", "summary": "Un critère (AC1, AC2…) n'est prouvé que si un test qui porte son nom (test_ac1_…) ou un parcours navigateur passe réellement.", "details": ["VALIDÉ · PARTIELLEMENT VÉRIFIÉ (un critère sans preuve, ou le programme plante) · NON VÉRIFIÉ (aucun contrôle fonctionnel : la syntaxe seule ne prouve rien) · PROBLÈME RESTANT.", "S'il manque des tests, une passe les ajoute dans tests/ uniquement, sans toucher au code."], "files": ["core/code_workspace/acceptance.py"]},
     {"id": "f.navigateur", "label": "Pages web testées dans un vrai navigateur", "kind": "fonction", "status": "ok", "summary": "Playwright et Chromium headless : erreurs JavaScript et console, fichiers manquants, parcours scriptés, capture. Internet bloqué : seul le serveur local du projet répond.", "files": ["core/code_workspace/webcheck.py"]},
     {"id": "f.apercu", "label": "Aperçu automatique", "kind": "fonction", "status": "ok", "summary": "Une page web validée s'ouvre dans une fenêtre d'aperçu isolée ; un script est lancé une fois et sa sortie s'affiche ; une application graphique n'est jamais lancée seule.", "files": ["client_desktop/hud/preview.py", "core/code_workspace/service.py"]},
-    {"id": "f.lint", "label": "Ruff et Pyright", "kind": "fonction", "status": "partiel", "summary": "Noms indéfinis, imports inutiles, erreurs de type affichés à titre informatif, jamais dans le verdict ; chaque remarque ouvre le fichier à la bonne ligne.", "details": ["Selftest #33 : Pyright n'analyse aucun fichier sous Linux."], "files": ["core/code_workspace/lint.py"]},
+    {"id": "f.lint", "label": "Ruff et Pyright", "kind": "fonction", "status": "ok", "summary": "Noms indéfinis, imports inutiles, erreurs de type affichés à titre informatif, jamais dans le verdict ; chaque remarque ouvre le fichier à la bonne ligne.", "details": ["Le binaire ruff est pris à côté du paquet installé, et Pyright reçoit le dossier où il a été trouvé (PYTHONPATH) : une installation pip --user marche même si APPDATA ou HOME sont réécrits.", "Ruff qui plante (sortie vide) donne « non lancée », jamais « aucune remarque ».", "Vérifié le 2026-10-15 : selftest n°29 et 33 verts sous Windows et sous Linux (Debian 12, Python 3.12)."], "files": ["core/code_workspace/lint.py"]},
     {"id": "f.retouches", "label": "Retouches depuis le HUD", "kind": "fonction", "status": "ok", "summary": "ÉDITER un fichier (Ctrl+S, enregistré par le Studio, annulable), puis TESTS pour relancer les tests du projet.", "graph": "hud", "files": ["client_desktop/hud/web/js/studio.js"]},
     {"id": "f.checkpoints", "label": "Points de sauvegarde", "kind": "fonction", "status": "ok", "summary": "Une copie du projet avant chaque série de changements, restaurable en un clic.", "files": ["core/code_workspace/checkpoints.py"]},
     {"id": "f.journal", "label": "Journal écrit par les outils", "kind": "fonction", "status": "ok", "summary": "Chaque ligne du suivi est écrite par l'outil qui a agi, jamais par le modèle.", "files": ["core/code_workspace/journal.py"]},

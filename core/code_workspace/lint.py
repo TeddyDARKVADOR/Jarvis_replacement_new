@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -30,11 +31,39 @@ RULES = "F,E9,PLE"
 _NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
+def _module_env(name: str) -> dict:
+    """The environment for `python -m <name>`, with the folder this process
+    found <name> in on PYTHONPATH.
+
+    A pip install --user lands under %APPDATA% on Windows (~/.local on Linux):
+    the child only sees it while that variable is intact. Passing the folder
+    explicitly makes the child find what this process found, whatever the
+    environment says (a sandboxed or tested environment rewrites APPDATA)."""
+    env = dict(os.environ)
+    spec = importlib.util.find_spec(name)
+    if spec is not None and spec.origin:
+        site = str(Path(spec.origin).resolve().parents[1])
+        env["PYTHONPATH"] = os.pathsep.join(p for p in (site, env.get("PYTHONPATH")) if p)
+    return env
+
+
 def _ruff() -> list[str] | None:
-    if importlib.util.find_spec("ruff") is not None:
-        return [sys.executable, "-m", "ruff"]
+    """The ruff binary itself when it can be found: `python -m ruff` only
+    re-locates it through the user's folders (%APPDATA%, ~/.local), which a
+    sandboxed environment may have rewritten."""
+    name = "ruff.exe" if sys.platform == "win32" else "ruff"
+    spec = importlib.util.find_spec("ruff")
+    if spec is not None and spec.origin:
+        site = Path(spec.origin).resolve().parents[1]
+        # site-packages → Scripts (Windows, --user too) or bin (venv, ~/.local)
+        for base in (site.parent, site.parent.parent, site.parent.parent.parent):
+            for sub in ("Scripts", "bin"):
+                if (base / sub / name).is_file():
+                    return [str(base / sub / name)]
     exe = shutil.which("ruff")
-    return [exe] if exe else None
+    if exe:
+        return [exe]
+    return [sys.executable, "-m", "ruff"] if spec is not None else None
 
 
 def run(project_dir: Path, timeout: int = 60) -> dict:
@@ -50,10 +79,16 @@ def run(project_dir: Path, timeout: int = 60) -> dict:
             "--exclude", "_deps,.studio,node_modules", "."]
     try:
         r = subprocess.run(argv, cwd=str(project_dir), capture_output=True, timeout=timeout,
-                           stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
+                           stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW, env=_module_env("ruff"))
     except (OSError, subprocess.TimeoutExpired) as e:
         return {"ok": None, "unavailable": f"Ruff n'a pas répondu ({type(e).__name__})", "count": 0,
                 "findings": []}
+    # 0 = clean, 1 = findings; anything else (2, "No module named ruff"…) is
+    # Ruff failing, and its empty output must not read as "no remark".
+    if r.returncode not in (0, 1) or (r.returncode == 1 and not r.stdout.strip()):
+        err = r.stderr.decode("utf-8", "replace").strip().splitlines()
+        return {"ok": None, "unavailable": f"Ruff a échoué ({err[-1][:120] if err else r.returncode})",
+                "count": 0, "findings": []}
     try:
         items = json.loads(r.stdout.decode("utf-8", "replace") or "[]")
     except ValueError:
@@ -113,7 +148,7 @@ def run_types(project_dir: Path, timeout: int = 180) -> dict:
         try:
             r = subprocess.run([*cmd, "--outputjson", "--level", "error", "--project", str(cfg), *files],
                                cwd=str(root), capture_output=True, timeout=timeout,
-                               stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW)
+                               stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW, env=_module_env("pyright"))
         except (OSError, subprocess.TimeoutExpired) as e:
             return {"ok": None, "unavailable": f"Pyright n'a pas répondu ({type(e).__name__})", "count": 0,
                     "findings": []}

@@ -1,6 +1,6 @@
 # JARVIS Night Shift — ce qui est fait, ce qu'il reste à faire
 
-> État au 2026-10-14. Le détail de chaque pièce vit dans le graphe
+> État au 2026-10-15. Le détail de chaque pièce vit dans le graphe
 > `capabilities/graphs/nightshift.json` ; les rapports de chaque nuit sur la
 > branche `nightshift-data`. Le plan d'origine (`meilleur.idee.v1.md`) et le
 > plan détaillé des phases (version 2 de ce fichier) sont dans l'historique Git.
@@ -72,28 +72,27 @@ Ollama et `gemma4:12b`, un résultat structuré par tâche, poussé sur
 
 ## Ce qu'il reste à faire
 
-1. **Dix nuits en dry run**, le dernier critère de la phase 2 : elles ont
-   commencé ; si elles se passent sans surprise, passer la variable
+1. **Dix nuits en dry run**, le dernier critère de la phase 2 : 1 sur 10.
+   La première planifiée sur main (2026-10-15, run 38689556451) : 15/15
+   suites vertes, aucune régression, correctif `eval_lab/mutate.py` validé, pas
+   de PR (dry run). Si les suivantes se passent sans surprise, passer la variable
    `NIGHTLY_DRY_RUN` à `false`. Les correctifs validés deviendront alors de
    vraies PR vers main, à relire et fusionner soi-même.
-2. **À vérifier au fil de ces nuits**, sur main : la mémoire (`state.json`
-   écrit et relu), la file du PC (`queue.json`), et le verdict « PR refusée »
-   sur une première vraie PR fermée.
+2. **À vérifier au fil de ces nuits**, sur main : `state.json` et
+   `queue.json` sont écrits depuis le 2026-10-15 ; restent la relecture de
+   `state.json` (une tâche déjà tentée n'est pas refaite au même commit), le
+   verdict « PR refusée » sur une première vraie PR fermée.
 3. **À voir dans le vrai JARVIS** : l'onglet NUIT dans le HUD (son rendu n'a
    été testé que hors HUD) et la phrase du briefing dans une session vocale.
 4. **Facultatif** : planifier le worker local sur le PC à RTX 3060 —
    `python -m nightshift.local_worker --install-help` donne les étapes (le
    portable, avec 4 Go de GPU, ne fait pas tenir `gemma4:12b`).
-5. **Défauts trouvés par la nuit, hors de sa zone — pour toi :**
-   - `core/code_workspace/selftest.py`, contrôle n°2 : sous Linux, son
-     nettoyage (`os.rmdir` sur un lien symbolique) échoue et masque le vrai
-     verdict de la sandbox ; correctif d'une ligne, dans le cœur.
-   - eval_lab : un échec réel, `NO_DELIVERY_WITHOUT_SINK` dans
-     `context/policy.py` — une notification part sans appareil joignable.
-   - ruff : `actions/code_helper.py:481` (F841),
-     `core/code_workspace/selftest.py:761` (F811) et `offline/selftest.py:217`
-     (F841) sont hors zone ; `eval_lab/mutate.py:97` (F841), la nuit s'en
-     chargera.
+5. **Défauts trouvés par la nuit, hors de sa zone** — corrigés à la main le
+   2026-10-15 : `NO_DELIVERY_WITHOUT_SINK` dans `context/policy.py` (une voix
+   sans sortie ni client est maintenant différée ; eval_lab legacy 77/77), le
+   nettoyage du contrôle n°2 de code_workspace, et les remarques ruff de
+   `actions/code_helper.py`, `core/code_workspace/selftest.py` et
+   `offline/selftest.py`. Reste `eval_lab/mutate.py:97` (F841), laissé à la nuit.
 
 **Plus tard, peut-être** : la phase 6 (orchestration multi-modèles), seulement
 après des semaines de fonctionnement et si un goulot précis la justifie. Ses

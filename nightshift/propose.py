@@ -69,7 +69,7 @@ def apply_check(diff: str, repo: Path) -> tuple[bool, str]:
     """git apply --check : le patch s'applique-t-il ? Ne modifie rien."""
     try:
         p = subprocess.run(["git", "apply", "--check", "--recount", "--whitespace=nowarn", "-"], cwd=str(repo),
-                           input=diff, capture_output=True, text=True, timeout=60)
+                           input=diff, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     except Exception as e:
         return False, f"git apply impossible : {type(e).__name__}"
     return p.returncode == 0, redact(p.stderr.strip())[:600]

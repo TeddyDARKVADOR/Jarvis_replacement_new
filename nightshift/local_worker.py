@@ -162,15 +162,15 @@ def write_atomic(path: Path, data: dict) -> None:
 def push(batch: dict, repo_dir: Path) -> str | None:
     """Pousse les résultats sur nightshift-data avec les identifiants git de ce PC. None, ou l'erreur."""
     origin = subprocess.run(["git", "remote", "get-url", "origin"], cwd=str(repo_dir), capture_output=True,
-                            text=True).stdout.strip()
+                            text=True, encoding="utf-8", errors="replace").stdout.strip()
     if not origin:
         return "pas de remote origin"
     tmp = Path(tempfile.mkdtemp(prefix="nightshift-local-"))
     try:
         def git(*args: str) -> subprocess.CompletedProcess:
-            return subprocess.run(["git", *args], cwd=str(tmp), capture_output=True, text=True, timeout=120)
+            return subprocess.run(["git", *args], cwd=str(tmp), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
         if subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", DATA_BRANCH, origin, str(tmp)],
-                          capture_output=True, text=True, timeout=180).returncode != 0:
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180).returncode != 0:
             return "branche nightshift-data inaccessible"
         day = batch["finished_at"][:10]
         write_atomic(tmp / "local" / "latest.json", batch)

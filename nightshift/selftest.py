@@ -652,7 +652,7 @@ def _workflow():
 def _ignored():
     rels = [state.PATH.relative_to(REPO).as_posix(), "memory/.nightshift-abc.tmp"]
     try:
-        p = subprocess.run(["git", "check-ignore", *rels], cwd=REPO, capture_output=True, text=True, timeout=20)
+        p = subprocess.run(["git", "check-ignore", *rels], cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
     except Exception as e:
         return f"skipped (git indisponible : {e})"
     ignored = set(p.stdout.split())
@@ -705,7 +705,7 @@ def _git_repo(name: str) -> Path | None:
 
 
 def _clean(d: Path) -> bool:
-    return subprocess.run(["git", "status", "--porcelain"], cwd=d, capture_output=True, text=True).stdout == ""
+    return subprocess.run(["git", "status", "--porcelain"], cwd=d, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout == ""
 
 
 @check("15 zone autorisée : main.py, cœur, tests, nightshift/, binaires… rejetés entiers")
@@ -944,7 +944,7 @@ def _validate():
     repo = _git_repo("validate")
     if repo is not None:
         ok, err = validate.apply_and_commit(_GOOD, repo, "Night Shift : test")
-        log = subprocess.run(["git", "log", "--oneline"], cwd=repo, capture_output=True, text=True).stdout
+        log = subprocess.run(["git", "log", "--oneline"], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
         assert ok and len(log.splitlines()) == 2 and _clean(repo), (ok, err, log)
         assert not validate.apply_and_commit(_BAD, repo, "x")[0], "un patch qui ne s'applique pas est refusé"
     body = validate.pr_body(task, {"attempts": [{"model": "fake/model"}]}, _after(["1"]), _after(),

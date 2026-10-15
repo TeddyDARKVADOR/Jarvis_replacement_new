@@ -89,14 +89,7 @@ SUITES: tuple[Suite, ...] = (
     Suite("cognition.selftest", ("-m", "cognition.selftest"), linux=f"{_MEASURED} : 64/64"),
     Suite("eval_lab.selftest", ("-m", "eval_lab.selftest"), linux=f"{_MEASURED} : 28/28"),
     Suite("core.code_workspace.selftest", ("-m", "core.code_workspace.selftest"), timeout_s=600,
-          known_failures=(
-              ("linux", "2", "le nettoyage du test appelle os.rmdir() sur un lien symbolique "
-                             "(NotADirectoryError sous Linux) : l'échec masque le vrai verdict "
-                             "de la sandbox — correctif d'une ligne dans core/, humain seulement"),
-              ("linux", "33", "Pyright, seulement s'il est installé : sans lui le contrôle "
-                              "passe (« non lancé »), et le workflow ne l'installe pas"),
-          ),
-          linux="33/34 le 2026-10-14 (Ubuntu 24.04, Python 3.12.3) : seul le n°2 échoue (connu)"),
+          linux="34/34 le 2026-10-15 (Debian 12, Python 3.12, hors root, Ruff et Pyright installés)"),
     Suite("reminders.selftest", ("-m", "reminders.selftest"), linux=f"{_MEASURED} : 4/4"),
     Suite("resilience.selftest", ("-m", "resilience.selftest"), linux=f"{_MEASURED} : 13/13"),
     Suite("extensions.selftest", ("-m", "extensions.selftest"), linux=f"{_MEASURED} : 11/11"),

@@ -230,12 +230,12 @@ def suspect_diff(repo: Path, commits: list[str], limit_tokens: int) -> str:
         return ""
     try:
         files = subprocess.run(["git", "show", "--name-only", "--format=", *shas], cwd=str(repo),
-                               capture_output=True, text=True, timeout=30).stdout.split()
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30).stdout.split()
         keep = sorted({f for f in files if zone.allowed(f)[0]})
         if not keep:
             return ""
         text = subprocess.run(["git", "show", "--format=commit %h %s", "--unified=3", *shas, "--", *keep],
-                              cwd=str(repo), capture_output=True, text=True, timeout=30).stdout
+                              cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30).stdout
     except Exception:
         return ""
     return _cut(redact(text), limit_tokens)
