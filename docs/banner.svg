@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-label="J.A.R.V.I.S — MARK LIII">
+  <defs>
+    <radialGradient id="bg" cx="24%" cy="50%" r="80%">
+      <stop offset="0" stop-color="#0B1A2A"/>
+      <stop offset="0.55" stop-color="#05070C"/>
+      <stop offset="1" stop-color="#03050A"/>
+    </radialGradient>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.25" stop-color="#BDEBFF"/>
+      <stop offset="0.6" stop-color="#38BDF8" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="title" x1="0" x2="1">
+      <stop offset="0" stop-color="#E0F4FF"/>
+      <stop offset="1" stop-color="#7DD3FC"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#7DD3FC" stroke-opacity="0.06"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .spin  { transform-origin: 300px 160px; animation: spin 18s linear infinite; }
+      .spinr { transform-origin: 300px 160px; animation: spin 26s linear infinite reverse; }
+      .fast  { transform-origin: 300px 160px; animation: spin 7s linear infinite; }
+      .pulse { transform-origin: 300px 160px; animation: pulse 3.2s ease-in-out infinite; }
+      .scan  { animation: scan 6s ease-in-out infinite; }
+      .blink { animation: blink 2.4s steps(1) infinite; }
+      @keyframes spin  { to { transform: rotate(360deg); } }
+      @keyframes pulse { 0%,100% { transform: scale(.92); opacity: .85; } 50% { transform: scale(1.08); opacity: 1; } }
+      @keyframes scan  { 0%,100% { transform: translateX(0); opacity: 0; } 10%,90% { opacity: .5; } 50% { transform: translateX(560px); } }
+      @keyframes blink { 50% { opacity: 0; } }
+      @media (prefers-reduced-motion: reduce) { .spin, .spinr, .fast, .pulse, .scan, .blink { animation: none; } }
+    </style>
+  </defs>
+
+  <rect width="1280" height="320" rx="18" fill="url(#bg)"/>
+  <rect width="1280" height="320" rx="18" fill="url(#grid)"/>
+
+  <!-- the reactor -->
+  <g fill="none" stroke="#7DD3FC">
+    <circle cx="300" cy="160" r="128" stroke-opacity=".12"/>
+    <g class="spinr"><circle cx="300" cy="160" r="116" stroke-opacity=".5" stroke-width="2" stroke-dasharray="4 10"/></g>
+    <g class="spin">
+      <circle cx="300" cy="160" r="98" stroke-opacity=".8" stroke-width="3" stroke-dasharray="120 40 30 40" filter="url(#glow)"/>
+    </g>
+    <g class="fast"><circle cx="300" cy="160" r="78" stroke-opacity=".55" stroke-width="1.5" stroke-dasharray="2 6"/></g>
+    <g class="spinr">
+      <path d="M300 96a64 64 0 0 1 55.4 32" stroke-width="5" stroke-linecap="round" stroke-opacity=".9" filter="url(#glow)"/>
+      <path d="M300 224a64 64 0 0 1-55.4-32" stroke-width="5" stroke-linecap="round" stroke-opacity=".9" filter="url(#glow)"/>
+    </g>
+  </g>
+  <g class="pulse"><circle cx="300" cy="160" r="54" fill="url(#core)"/></g>
+  <circle cx="300" cy="160" r="14" fill="#FFFFFF" filter="url(#glow)"/>
+
+  <!-- the name -->
+  <g font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+    <text x="470" y="150" font-size="76" font-weight="300" letter-spacing="18" fill="url(#title)" filter="url(#glow)">J.A.R.V.I.S</text>
+    <text x="474" y="196" font-size="20" letter-spacing="7" fill="#7DD3FC" fill-opacity=".85">MARK LIII · ASSISTANT VOCAL TEMPS RÉEL</text>
+    <text x="474" y="236" font-size="15" letter-spacing="2" fill="#6B7A93">entend · voit · se souvient · agit — 24 h/24, sur le PC et le téléphone</text>
+    <text x="1180" y="290" font-size="13" letter-spacing="3" fill="#6EE7B7" text-anchor="end">● EN LIGNE</text>
+    <rect x="1186" y="280" width="9" height="12" fill="#6EE7B7" class="blink"/>
+  </g>
+
+  <!-- a scan line across the text -->
+  <rect class="scan" x="470" y="100" width="2" height="150" fill="#7DD3FC"/>
+</svg>
