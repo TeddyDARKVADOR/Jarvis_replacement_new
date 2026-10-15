@@ -7,11 +7,11 @@
 
 ## Ce que fait la nuit, aujourd'hui
 
-Chaque nuit à 03 h 17 (heure de Paris), GitHub Actions lance les 15 suites du
-dépôt sous Linux et ruff, compare avec la dernière nuit mesurée, mesure si
-JARVIS s'améliore, choisit au plus une tâche, en demande le correctif à un
-modèle gratuit (Groq), le prouve par les suites et — hors dry run — ouvre une
-PR. Rien n'est jamais fusionné par une machine. Le matin, JARVIS dit une phrase
+Trois fois par nuit — 01 h 17, 03 h 17 et 05 h 17 (heure de Paris) —, GitHub
+Actions lance les 15 suites du dépôt sous Linux et ruff, compare avec la passe
+précédente, mesure si JARVIS s'améliore, choisit une tâche — à chaque passe un
+problème différent —, en demande le correctif à un modèle gratuit (Groq), le
+prouve par les suites et — hors dry run — ouvre une PR. Rien n'est jamais fusionné par une machine. Le matin, JARVIS dit une phrase
 au briefing quand il y a du nouveau ; le détail est dans l'onglet NUIT du
 panneau ESPRIT. Coût : zéro (dépôt public, quotas gratuits).
 
@@ -26,6 +26,24 @@ panneau ESPRIT. Coût : zéro (dépôt public, quotas gratuits).
 | 4 — Mesurer si JARVIS s'améliore | ✅ réalisée | indicateurs mesurés sur le vrai dépôt et dans chaque rapport |
 | 5 — PC réveillé, modèles locaux | ✅ réalisée, facultative | selftest n°29 et 30, worker lancé pour de vrai (Ollama arrêté) |
 | 6 — Orchestration multi-modèles | ⏸ pas commencée | voir « Plus tard » |
+| Trois passes par nuit | ✅ réalisée le 2026-10-15 | selftest n°32 ; première nuit à trois passes à confirmer sur GitHub |
+
+**Trois passes par nuit** (`nightshift/passes.py`). Le workflow se déclenche
+à 01 h 17, 03 h 17 et 05 h 17 ; chaque déclenchement est une passe complète,
+d'une tâche. La mémoire est poussée à la fin de chaque passe et relue au début
+de la suivante : l'idée déjà tentée au même commit, ou dont la PR attend sa
+relecture, est passée, donc chaque passe prend un problème différent. La passe
+se reconnaît à sa ligne cron, pas à l'heure réelle (GitHub démarre en retard :
+07 h 56 pour 03 h 17 le 2026-10-15). Deux heures d'écart couvrent la somme des
+délais des jobs (110 min). Le rapport de la dernière passe résume toute la
+nuit (« Cette nuit, passe par passe ») et le briefing annonce les correctifs
+de toutes les passes.
+
+| Ressource | Une passe (mesuré) | Plafond par passe | 3 passes au plafond | Limite gratuite |
+|---|---|---|---|---|
+| Tokens Groq | 1 161 (6 682 en 2 tentatives) | 60 000 | 180 000 | 200 000 / jour |
+| Appels au modèle | 1 à 2 | 12 | 36 | ~1 000 / jour |
+| Minutes Actions | 3,6 min | 110 min | ~11 min en pratique | illimitées (dépôt public) |
 
 **Phase 1 — le veilleur.** Le paquet `nightshift/` (racine, retirable : il
 n'importe rien de JARVIS) et le workflow `.github/workflows/nightly.yml`
@@ -72,7 +90,9 @@ Ollama et `gemma4:12b`, un résultat structuré par tâche, poussé sur
 
 ## Ce qu'il reste à faire
 
-1. **Dix nuits en dry run**, le dernier critère de la phase 2 : 1 sur 10.
+1. **Dix nuits en dry run**, le dernier critère de la phase 2 : 1 sur 10
+   (une nuit en compte désormais trois passes ; la première nuit à trois passes
+   dira si la passe 2 prend bien un autre problème sur GitHub).
    La première planifiée sur main (2026-10-15, run 38689556451) : 15/15
    suites vertes, aucune régression, correctif `eval_lab/mutate.py` validé, pas
    de PR (dry run). Si les suivantes se passent sans surprise, passer la variable
@@ -107,6 +127,7 @@ worker absent déclaré « indisponible ».
   donne le contrôle cassé et le commit suspect.
 - **Une PR Night Shift** : relire la preuve (tableau avant/après) et le diff ;
   fusionner si convaincu, sinon la fermer — elle ne sera plus reproposée.
+- **Moins de passes** : `NIGHTLY_PASSES=1` garde une seule passe, à 01 h 17.
 - **Arrêter** : `NIGHTLY_MAX_TASKS=0` garde le veilleur sans IA ;
   Actions → nightly → « Disable workflow » arrête tout.
 - **Garder la planification** : GitHub la désactive après 60 jours sans
@@ -115,8 +136,10 @@ worker absent déclaré « indisponible ».
 | Variable du dépôt | Défaut | Rôle |
 |---|---|---|
 | `NIGHTLY_DRY_RUN` | `true` | `true` : tout sauf la PR |
-| `NIGHTLY_MAX_TASKS` | `1` | tâches IA par nuit ; `0` coupe l'IA |
-| `NIGHTLY_MAX_LLM_CALLS` | `12` | appels au modèle par nuit |
-| `NIGHTLY_MAX_TOKENS` | `60000` | tokens par nuit (Groq : 200 000 par jour) |
-| `NIGHTLY_MAX_RUNTIME_MINUTES` | `45` | durée maximale d'une nuit |
+| `NIGHTLY_PASSES` | `3` | passes par nuit (1 à 3 : 01 h 17, 03 h 17, 05 h 17) |
+| `NIGHTLY_MAX_OPEN_PRS` | `3` | PR Night Shift ouvertes au plus ; au-delà, rien de publié |
+| `NIGHTLY_MAX_TASKS` | `1` | tâches IA par passe ; `0` coupe l'IA |
+| `NIGHTLY_MAX_LLM_CALLS` | `12` | appels au modèle par passe |
+| `NIGHTLY_MAX_TOKENS` | `60000` | tokens par passe (Groq : 200 000 par jour pour les trois) |
+| `NIGHTLY_MAX_RUNTIME_MINUTES` | `45` | durée maximale d'une passe |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` | premier modèle essayé |

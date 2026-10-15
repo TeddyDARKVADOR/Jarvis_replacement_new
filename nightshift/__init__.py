@@ -1,9 +1,9 @@
 """
 nightshift/ — le veilleur de nuit de JARVIS (phase 1 du plan Night Shift).
 
-Chaque nuit à 03 h 17 (heure de Paris), le workflow .github/workflows/nightly.yml
-lance les suites du dépôt testables sous Linux et ruff, compare avec la nuit
-précédente et pousse un rapport `jarvis.nightly/1` sur la branche orpheline
+Trois fois par nuit (01 h 17, 03 h 17, 05 h 17, heure de Paris — passes.py),
+le workflow .github/workflows/nightly.yml lance les suites du dépôt testables
+sous Linux et ruff, compare avec la passe précédente et pousse un rapport `jarvis.nightly/1` sur la branche orpheline
 `nightshift-data` — jamais sur main. Le matin, JARVIS lit ce rapport sans jeton
 (dépôt public) : une phrase au briefing quand il y a du nouveau, le détail
 dans l'onglet NUIT du panneau ESPRIT. Aucune IA en phase 1.

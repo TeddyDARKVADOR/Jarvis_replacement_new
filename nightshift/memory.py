@@ -9,7 +9,9 @@ L'ÉTAT — state.json sur la branche nightshift-data, écrit seulement par les 
   ideas   une entrée par idée de correctif (« check:<suite>:<n°> »,
           « ruff:<code>:<chemin>:<message> ») : ses tentatives (nuit, commit,
           empreinte du contexte, issue, raison, modèle, tokens) et sa PR ;
-  nights  les 60 dernières nuits : état, tâche, issue, consommation, PR.
+  nights  une entrée par passe (jusqu'à trois par nuit, passes.py) : date,
+          numéro de passe, état, tâche, issue, consommation, PR ; les 60
+          dernières nuits sont gardées.
 
 LES RÈGLES
   - même idée, même commit, même contexte : déjà tentée, pas réanalysée ;
@@ -34,6 +36,7 @@ from pathlib import Path
 SCHEMA = "jarvis.nightshift-state/1"
 PRIORITIES = Path(__file__).resolve().parent / "priorities.toml"
 MAX_NIGHTS = 60
+MAX_PASSES = MAX_NIGHTS * 3
 MAX_ATTEMPTS = 10
 FAILED = ("no_patch", "patch_rejected")
 
@@ -145,11 +148,13 @@ def update(state: dict, report: dict, task: dict | None, prs: list | None) -> di
     u = report.get("usage") or {}
     state["nights"].append({
         "date": str(report.get("started_at") or "")[:10], "run_id": report.get("run_id"),
+        "pass": int((report.get("pass") or {}).get("n") or 0),
         "status": report.get("status"), "task": t.get("id"), "outcome": t.get("outcome"),
+        "ref": {k: t[k] for k in ("source", "suite", "check", "code", "path") if t.get(k)},
         "llm_calls": int(u.get("llm_calls") or 0),
         "tokens": int(u.get("tokens_in") or 0) + int(u.get("tokens_out") or 0),
         "pr": report.get("pull_request_url")})
-    state["nights"] = state["nights"][-MAX_NIGHTS:]
+    state["nights"] = state["nights"][-MAX_PASSES:]
     state["updated"] = report.get("finished_at")
     return state
 
@@ -185,6 +190,13 @@ def diagnostics(state: dict) -> list[dict]:
     return out
 
 
+def tonight(state: dict, day: str) -> list[dict]:
+    """Les passes de la nuit `day` (AAAA-MM-JJ), dans l'ordre : ce que le
+    rapport de la dernière passe — celui que JARVIS lit le matin — résume."""
+    return [{k: n.get(k) for k in ("pass", "run_id", "status", "task", "outcome", "ref", "tokens", "pr")}
+            for n in state.get("nights") or [] if str(n.get("date") or "") == day]
+
+
 def week(state: dict, today: date) -> dict | None:
     """Le résumé des 7 dernières nuits — le dimanche seulement (heure de Paris)."""
     if today.weekday() != 6:
@@ -194,8 +206,11 @@ def week(state: dict, today: date) -> dict | None:
     tried = [n for n in nights if n.get("outcome") in FAILED + ("patch_validated",)]
     verdicts = [e.get("verdict") for e in (state.get("ideas") or {}).values()
                 if any(str(a.get("date") or "") >= since and a.get("pr") for a in e.get("attempts") or [])]
-    return {"from": since, "to": today.isoformat(), "nights": len(nights),
-            "green": sum(1 for n in nights if n.get("status") == "success"),
+    days = sorted({str(n.get("date")) for n in nights})
+    green_days = {str(n.get("date")) for n in nights} - {str(n.get("date")) for n in nights
+                                                         if n.get("status") != "success"}
+    return {"from": since, "to": today.isoformat(), "nights": len(days), "passes": len(nights),
+            "green": len(green_days),
             "tried": len(tried), "validated": sum(1 for n in tried if n.get("outcome") == "patch_validated"),
             "prs": sum(1 for n in nights if n.get("pr")), "accepted": verdicts.count("accepted"),
             "rejected": verdicts.count("rejected"), "tokens": sum(int(n.get("tokens") or 0) for n in nights)}

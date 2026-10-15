@@ -88,7 +88,10 @@ def sentence(r: dict) -> str:
     unref = [] if first else [x for x in r.get("unreferenced") or [] if isinstance(x, dict)]
     back_to_green = r.get("status") == "success" and r.get("green_streak") == 1 and not first
     task = r.get("task") if isinstance(r.get("task"), dict) else {}
-    fixed = task.get("outcome") == "patch_validated"
+    # Plusieurs passes cette nuit : leurs correctifs, pas seulement le dernier.
+    tonight = [x for x in r.get("tonight") or [] if isinstance(x, dict)]
+    night_fixes = [x for x in tonight if x.get("outcome") == "patch_validated" and isinstance(x.get("ref"), dict)]
+    fixed = bool(night_fixes) if len(tonight) > 1 else task.get("outcome") == "patch_validated"
     week = r.get("week") if isinstance(r.get("week"), dict) else None
     if not (regs or reps or broken or new_lint or unref or first or back_to_green or fixed or week):
         return ""
@@ -105,7 +108,12 @@ def sentence(r: dict) -> str:
         parts.append("réparé : " + _list([_ref(x) for x in reps]))
     if new_lint and isinstance(new_lint, list):
         parts.append(f"{len(new_lint)} nouvelle(s) remarque(s) ruff")
-    if fixed:
+    if fixed and len(tonight) > 1:
+        prs = sum(1 for x in night_fixes if x.get("pr"))
+        parts.append(f"{len(tonight)} passes, {len(night_fixes)} correctif(s) validé(s) : "
+                     + _list([_task(x["ref"]) for x in night_fixes], 3)
+                     + (f", {prs} PR à relire" if prs else ", sans PR (dry run)"))
+    elif fixed:
         parts.append(("une PR attend d'être relue : " if r.get("pull_request_url")
                       else "correctif validé, sans PR (dry run) : ") + _task(task)
                      + (", à relire de près : un indicateur a bougé" if task.get("review_closely") else ""))

@@ -97,7 +97,7 @@ SUITES: tuple[Suite, ...] = (
     Suite("core.token_usage_selftest", ("-m", "core.token_usage_selftest"), linux=f"{_MEASURED} : PASS"),
     Suite("actions.repository_review_selftest", ("-m", "actions.repository_review_selftest"),
           linux=f"{_MEASURED} : PASS"),
-    Suite("nightshift.selftest", ("-m", "nightshift.selftest"), linux="ok le 2026-10-14 (Ubuntu 24.04)"),
+    Suite("nightshift.selftest", ("-m", "nightshift.selftest"), linux="32/32 le 2026-10-15 (Debian 12, Python 3.12)"),
 )
 
 

@@ -26,7 +26,7 @@ flowchart TB
     web["🌐 <b>Tableau de bord</b><br/>appairage QR · fichiers"]
 
     live{{"⚡ <b>JARVIS · MARK LIII</b><br/>Gemini 3.1 Flash Live<br/>Oracle 24/7 ou ce PC"}}
-    night["🌙 <b>Night Shift</b><br/>tests et correctif chaque nuit"]
+    night["🌙 <b>Night Shift</b><br/>3 passes par nuit"]
 
     tools["🧰 <b>35 outils</b><br/>plugins · MCP · skills"]
     ctx["🎚️ <b>Contexte</b><br/>quand et comment parler"]
@@ -129,7 +129,7 @@ python setup.py            # les dépendances de votre OS, rien de plus
 ## 🧪 Vérifier
 
 Chaque paquet se prouve seul, sans clé ni réseau : `python -m capabilities.selftest`, `python -m context.selftest`, `python -m server.selftest`, …
-La liste complète est dans [`CLAUDE.md`](CLAUDE.md). Chaque nuit, **Night Shift** relance les 15 suites sous Linux, mesure si JARVIS s'améliore et propose au plus un correctif, à relire : rien n'est fusionné par une machine.
+La liste complète est dans [`CLAUDE.md`](CLAUDE.md). Trois fois par nuit, **Night Shift** relance les 15 suites sous Linux, mesure si JARVIS s'améliore et s'attaque à chaque passe à un problème différent : un correctif proposé, à relire, jamais fusionné par une machine.
 
 ## 📜 Licence
 

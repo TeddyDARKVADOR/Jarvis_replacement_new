@@ -20,6 +20,11 @@ verdicts des PR, la nuit elle-même, écrits dans state.json que le job
 porte les tâches passées par la mémoire, les dossiers de diagnostic des échecs
 persistants, le backlog du graphe et, le dimanche, le résumé de la semaine.
 
+PASSES — la nuit en compte jusqu'à trois (passes.py). Le rapport porte le
+numéro de sa passe et « tonight » : toutes les passes de la nuit lues dans la
+mémoire, pour que le rapport de la dernière — celui que JARVIS lit le matin —
+dise ce que la nuit entière a fait.
+
 PHASE 5 — il écrit aussi queue.json, la file du PC réveillé la nuit
 (local_worker.py) : des tâches d'avis seulement (résumer les échecs, trier les
 remarques ruff), tirées du rapport public. Et il reprend les derniers avis du
@@ -93,6 +98,10 @@ def task_section(choice: dict | None, proposal: dict | None, validation: dict | 
     if publish.get("reason") == "pr_already_open":
         task["publication"] = f"une PR Night Shift est déjà ouverte ({publish.get('url')}) : rien de publié"
         return task, None
+    if publish.get("reason") == "pr_limit":
+        task["publication"] = (f"{publish.get('open')} PR Night Shift attendent déjà leur relecture "
+                               f"(plafond NIGHTLY_MAX_OPEN_PRS) : rien de publié")
+        return task, None
     task["publication"] = f"publication impossible : {publish.get('reason') or '?'}"
     return task, None
 
@@ -139,6 +148,16 @@ def local_section(batch: dict | None) -> dict:
                       for t in (batch.get("tasks") or [])[:6] if isinstance(t, dict)]}
 
 
+def pass_info() -> dict:
+    """La passe de ce run, transmise par le workflow (job « passe »)."""
+    def num(name: str, default: int) -> int:
+        try:
+            return int(os.environ.get(name) or default)
+        except ValueError:
+            return default
+    return {"n": num("NIGHTSHIFT_PASS", 0), "of": num("NIGHTSHIFT_PASSES", 1)}
+
+
 def _night_date(report: dict):
     try:
         return datetime.fromisoformat(str(report.get("started_at"))).date()
@@ -165,10 +184,12 @@ def assemble(veille: Path, proposal: Path | None, validation: Path | None, publi
     report["budgets"] = R.budgets()
     report["dry_run"] = dry_run
     report["backlog"] = (choice or {}).get("backlog") or []
+    report["pass"] = pass_info()
     state = memory.update(memory.load(veille / "state.json"), report, (choice or {}).get("task"),
                           _load_list(veille / "prs.json"))
     report["diagnostics"] = memory.diagnostics(state)
     report["week"] = memory.week(state, _night_date(report))
+    report["tonight"] = memory.tonight(state, str(report.get("started_at") or "")[:10])
     report["local"] = local_section(_load(veille / "local.json"))
     report["summary"] = R.summarize(report)
     return report, state

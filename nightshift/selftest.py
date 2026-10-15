@@ -74,7 +74,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -619,7 +619,7 @@ def _workflow():
     assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in uses), f"non épinglées : {uses}"
     jobs = re.split(r"^  (?=[a-z_]+:\n)", wf.split("\njobs:\n", 1)[1], flags=re.MULTILINE)
     jobs = {j.split(":", 1)[0]: j for j in jobs if j.strip()}
-    assert set(jobs) == {"veille", "proposition", "validation", "publication", "assemblage", "rapport"}, sorted(jobs)
+    assert set(jobs) == {"passe", "veille", "proposition", "validation", "publication", "assemblage", "rapport"},         sorted(jobs)
     for name, body in jobs.items():
         assert "timeout-minutes:" in body, f"{name}: pas de timeout-minutes"
         assert "runs-on: ubuntu-24.04" in body, f"{name}: runner non épinglé (ubuntu-latest change en octobre 2026)"
@@ -633,17 +633,18 @@ def _workflow():
             assert not with_secret, f"{name}: secret hors du job proposition"
         write = "contents: write" in body or "pull-requests: write" in body
         assert write == (name in ("publication", "rapport")), f"{name}: droits d'écriture inattendus"
-        if name in ("veille", "proposition", "validation", "assemblage"):
+        if name in ("passe", "veille", "proposition", "validation", "assemblage"):
             assert "persist-credentials: false" in body, f"{name}: jeton conservé"
         if name in ("publication", "rapport"):
             assert "python" not in body.lower(), f"{name}: le job qui écrit n'exécute pas le code du dépôt"
     assert "actions/checkout" not in jobs["rapport"], "le rapport n'a pas besoin du code"
     pub = jobs["publication"]
     assert pub.index("gh pr list") < pub.index("gh pr create"), "vérifier la PR ouverte avant d'en créer une"
-    assert "sha256sum -c" in pub and "pr_already_open" in pub, "le patch publié est celui qui a été validé"
+    assert "sha256sum -c" in pub, "le patch publié est celui qui a été validé"
+    assert "pr_limit" in pub and "NIGHTLY_MAX_OPEN_PRS" in pub, "un plafond de PR ouvertes, pas de PR sans limite"
     assert "dry_run == 'false'" in pub and "validated == 'true'" in pub
     assert "if: always()" in jobs["rapport"] and "regressions" in jobs["rapport"]
-    return f"{len(SUITES)} suites ; {len(uses)} actions épinglées ; 6 jobs, clé dans 1 étape, écriture dans 2 jobs"
+    return f"{len(SUITES)} suites ; {len(uses)} actions épinglées ; 7 jobs, clé dans 1 étape, écriture dans 2 jobs"
 
 
 # ── 13. memory/ reste propre ─────────────────────────────────────────────────
@@ -1049,9 +1050,9 @@ def _memory():
     merged = memory.prs_by_url([{"url": url, "state": "MERGED", "mergedAt": "2026-10-16T08:00:00Z"}])
     assert memory.verdict(st2["ideas"][idea], merged) == "accepted"
     big = memory.empty()
-    for i in range(70):
+    for i in range(memory.MAX_PASSES + 10):
         big = memory.update(big, _mem_report(str(i), "c", "skipped"), None, [])
-    assert len(big["nights"]) == memory.MAX_NIGHTS
+    assert len(big["nights"]) == memory.MAX_PASSES == 3 * memory.MAX_NIGHTS, "60 nuits de 3 passes"
     return "déjà tentée, retentée au changement, persistant + dossier, force/forbid, PR ouverte/refusée/acceptée"
 
 
@@ -1332,6 +1333,54 @@ def _reanchor():
     assert out["outcome"] == "patch_proposed" and first["repair"] and first["response"], out
     assert _clean(repo), "le réancrage ne touche jamais au dépôt"
     return f"{len(cases)} diffs mal formés réparés ; introuvable, hors zone et ambigu refusés ; réponse gardée"
+
+
+@check("32 trois passes par nuit : cron reconnu, NIGHTLY_PASSES respecté, autre problème, nuit résumée")
+def _passes():
+    from nightshift import passes
+    wf = (REPO / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8")
+    crons = re.findall(r'^    - cron: "([^"]+)"', wf, re.MULTILINE)
+    assert tuple(crons) == passes.SCHEDULES, f"workflow et passes.py divergent : {crons}"
+    p = passes.resolve("17 3 * * *", None)
+    assert (p["n"], p["of"], p["enabled"], p["slot"]) == (2, 3, True, "03 h 17"), p
+    assert passes.resolve("17  5 * * *", "2")["enabled"] is False, "passe 3 avec NIGHTLY_PASSES=2"
+    assert passes.resolve("17 1 * * *", "1")["enabled"] is True
+    assert passes.resolve("", "1") == {"n": 0, "of": 1, "enabled": True, "slot": "manuel"}, "manuel toujours"
+    assert [passes.configured(v) for v in ("0", "9", "x", None, " 2 ")] == [1, 3, 3, 3, 2]
+    jobs = re.split(r"^  (?=[a-z_]+:\n)", wf.split("\njobs:\n", 1)[1], flags=re.MULTILINE)
+    jobs = {j.split(":", 1)[0]: j for j in jobs if j.strip()}
+    for job in ("veille", "assemblage", "rapport"):
+        assert "needs.passe.outputs.enabled == 'true'" in jobs[job], f"{job} tourne même hors NIGHTLY_PASSES"
+    # La passe 2 prend un autre problème : la 1re a laissé sa tentative dans la mémoire.
+    two = {"commit": "abc1234", "status": "partial_success",
+           "suites": [{"name": "reminders.selftest", "status": "ok"}],
+           "lint": {"findings": [{"code": "F841", "path": "reminders/__init__.py", "line": 1, "message": "a"},
+                                 {"code": "F841", "path": "eval_lab/mutate.py", "line": 2, "message": "b"}]}}
+    first = tasks.choose(two, 1, REPO)
+    assert first["task"], first
+    rep1 = {**two, "run_id": "1", "started_at": "2026-10-16T01:20:00+02:00", "pass": {"n": 1, "of": 3},
+            "usage": {"llm_calls": 1, "tokens_in": 900, "tokens_out": 100},
+            "task": {"id": first["task"]["id"], "source": "ruff", "code": "F841", "path": "reminders/__init__.py",
+                     "outcome": "patch_validated"}}
+    mem = memory.update(memory.empty(), rep1, first["task"], [])
+    second = tasks.choose(two, 1, REPO, mem)
+    assert second["task"] and second["task"]["id"] != first["task"]["id"], "la passe 2 refait la passe 1"
+    assert any("déjà tentée" in x["reason"] for x in second["skipped"])
+    rep2 = {**rep1, "run_id": "2", "pass": {"n": 2, "of": 3},
+            "task": {**rep1["task"], "id": second["task"]["id"], "outcome": "no_patch"}}
+    mem = memory.update(mem, rep2, second["task"], [])
+    night = memory.tonight(mem, "2026-10-16")
+    assert [x["pass"] for x in night] == [1, 2] and night[0]["ref"]["code"] == "F841", night
+    w = memory.week(mem, date(2026, 10, 18))
+    assert w["nights"] == 1 and w["passes"] == 2, f"une nuit, deux passes : {w}"
+    # Le rapport et le briefing parlent de toute la nuit.
+    rep = {**_night([_suite("a")]), "pass": {"n": 2, "of": 3}, "tonight": night,
+           "task": rep2["task"]}
+    md = report.to_markdown(rep)
+    assert "passe 2/3" in md and "Passe 1 : F841 reminders/__init__.py — correctif validé" in md, md
+    phrase = briefing.sentence(rep)
+    assert "2 passes, 1 correctif(s) validé(s) : F841 dans reminders/__init__.py" in phrase, phrase
+    return "3 crons ; NIGHTLY_PASSES borné ; passe 2 ≠ passe 1 ; rapport et briefing sur toute la nuit"
 
 
 def main() -> int:

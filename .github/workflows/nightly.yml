@@ -1,6 +1,10 @@
-# JARVIS Night Shift — le veilleur de nuit (phase 1) et une seule tâche IA par nuit (phase 2).
+# JARVIS Night Shift — le veilleur de nuit (phase 1), une tâche IA par passe (phase 2),
+# trois passes par nuit, chacune sur un problème différent (nightshift/passes.py).
 # La documentation est le graphe capabilities/graphs/nightshift.json (CLAUDE.md).
 #
+#   passe        quelle passe (01 h 17, 03 h 17, 05 h 17) et si elle tourne
+#                (NIGHTLY_PASSES, 1 à 3). La mémoire, poussée à la fin de chaque
+#                passe, fait prendre à la suivante un autre problème.
 #   veille       suites + ruff, comparées à la dernière nuit mesurée ; choisit la
 #                tâche et prépare son contexte. Aucun secret, lecture seule.
 #   proposition  demande UN correctif au modèle gratuit (Groq, secours Gemini).
@@ -18,12 +22,19 @@
 #                rend le run rouge, ici, une fois le rapport poussé.
 #
 # Arrêt immédiat : Actions → nightly → « Disable workflow ». Garder le veilleur
-# sans IA : variable NIGHTLY_MAX_TASKS=0.
+# sans IA : variable NIGHTLY_MAX_TASKS=0. Une seule passe : NIGHTLY_PASSES=1.
 name: nightly
 
 on:
+  # Trois passes, deux heures d'écart : la somme des délais des jobs (110 min)
+  # y tient même quand GitHub démarre en retard. Ces lignes doivent rester
+  # celles de nightshift/passes.py SCHEDULES (vérifié par nightshift.selftest).
   schedule:
+    - cron: "17 1 * * *"
+      timezone: "Europe/Paris"
     - cron: "17 3 * * *"
+      timezone: "Europe/Paris"
+    - cron: "17 5 * * *"
       timezone: "Europe/Paris"
   workflow_dispatch:
     inputs:
@@ -41,8 +52,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  passe:
+    name: Passe — laquelle, et tourne-t-elle ?
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      n: ${{ steps.pass.outputs.n }}
+      of: ${{ steps.pass.outputs.of }}
+      enabled: ${{ steps.pass.outputs.enabled }}
+    steps:
+      - name: Récupérer nightshift/ seulement
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: nightshift
+
+      - name: La passe (reconnue à sa ligne cron, pas à l'heure réelle)
+        id: pass
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          NIGHTLY_PASSES: ${{ vars.NIGHTLY_PASSES }}
+        run: python3 -m nightshift.passes --schedule "$SCHEDULE" --github-output | tee -a "$GITHUB_STEP_SUMMARY"
+
   veille:
     name: Veille — suites, ruff, tâche
+    needs: passe
+    if: needs.passe.outputs.enabled == 'true'
     # Épinglé : ubuntu-latest passe à Ubuntu 26.04 entre le 19 octobre et le
     # 19 novembre 2026. Un changement d'image passerait pour des régressions.
     runs-on: ubuntu-24.04
@@ -316,20 +353,24 @@ jobs:
         with:
           path: repo
 
-      - name: Ouvrir la PR (si aucune PR Night Shift n'est déjà ouverte)
+      - name: Ouvrir la PR (tant que moins de NIGHTLY_MAX_OPEN_PRS attendent leur relecture)
         env:
           GH_TOKEN: ${{ github.token }}
+          MAX_OPEN: ${{ vars.NIGHTLY_MAX_OPEN_PRS }}
         run: |
           set -euo pipefail
           # Le patch publié est exactement celui que la validation a prouvé.
           echo "$(jq -r .patch_sha256 validation/validation.json)  proposal/patch.diff" | sha256sum -c -
           TITLE="$(jq -r .title validation/validation.json)"
           cd repo
-          open="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json headRefName,url \
-            --jq '[.[] | select(.headRefName | startswith("automation/jarvis-nightly-"))][0].url // ""')"
-          if [ -n "$open" ]; then
-            jq -n --arg url "$open" '{published: false, reason: "pr_already_open", url: $url}' > ../publish.json
-            echo "Une PR Night Shift est déjà ouverte : $open — rien de publié." >> "$GITHUB_STEP_SUMMARY"
+          # Une PR par passe au plus, chacune sur une idée différente (la mémoire
+          # passe une idée dont la PR est ouverte) ; au-delà du plafond, rien.
+          case "${MAX_OPEN:-}" in ''|*[!0-9]*) MAX_OPEN=3 ;; esac
+          open="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("automation/jarvis-nightly-"))] | length')"
+          if [ "$open" -ge "$MAX_OPEN" ]; then
+            jq -n --argjson n "$open" '{published: false, reason: "pr_limit", open: $n}' > ../publish.json
+            echo "$open PR Night Shift attendent déjà leur relecture (plafond $MAX_OPEN) — rien de publié." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           BRANCH="automation/jarvis-nightly-$(TZ=Europe/Paris date +%F)"
@@ -360,9 +401,9 @@ jobs:
           if-no-files-found: warn
 
   assemblage:
-    name: Assemblage — un seul rapport pour la nuit
-    needs: [veille, proposition, validation, publication]
-    if: always()
+    name: Assemblage — un seul rapport pour la passe
+    needs: [passe, veille, proposition, validation, publication]
+    if: always() && needs.passe.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -391,6 +432,10 @@ jobs:
           NIGHTLY_MAX_LLM_CALLS: ${{ vars.NIGHTLY_MAX_LLM_CALLS }}
           NIGHTLY_MAX_TOKENS: ${{ vars.NIGHTLY_MAX_TOKENS }}
           NIGHTLY_MAX_RUNTIME_MINUTES: ${{ vars.NIGHTLY_MAX_RUNTIME_MINUTES }}
+          NIGHTLY_PASSES: ${{ vars.NIGHTLY_PASSES }}
+          NIGHTLY_MAX_OPEN_PRS: ${{ vars.NIGHTLY_MAX_OPEN_PRS }}
+          NIGHTSHIFT_PASS: ${{ needs.passe.outputs.n }}
+          NIGHTSHIFT_PASSES: ${{ needs.passe.outputs.of }}
           DRY_RUN: ${{ needs.veille.outputs.dry_run || 'true' }}
         run: >-
           python -m nightshift.assemble
@@ -416,8 +461,8 @@ jobs:
 
   rapport:
     name: Rapport — branche nightshift-data
-    needs: [veille, assemblage]
-    if: always()
+    needs: [passe, veille, assemblage]
+    if: always() && needs.passe.outputs.enabled == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -442,6 +487,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VEILLE: ${{ needs.veille.result }}
+          PASS: ${{ needs.passe.outputs.n }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
         run: |
           set -euo pipefail
@@ -502,7 +548,7 @@ jobs:
             fi
           fi
           git add -A
-          git commit -q -m "nightshift : $DAY, run $GITHUB_RUN_ID ($GITHUB_REF_NAME)"
+          git commit -q -m "nightshift : $DAY, passe ${PASS:-?}, run $GITHUB_RUN_ID ($GITHUB_REF_NAME)"
           for attempt in 1 2 3; do
             if git push -q origin HEAD:nightshift-data; then
               echo "Rapport poussé sur la branche nightshift-data." >> "$GITHUB_STEP_SUMMARY"

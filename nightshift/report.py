@@ -64,7 +64,8 @@ def budgets() -> dict:
     """Les plafonds de la nuit (variables du dépôt), tels que la nuit les a appliqués."""
     return {"max_tasks": _int_env("NIGHTLY_MAX_TASKS", 1), "max_llm_calls": _int_env("NIGHTLY_MAX_LLM_CALLS", 12),
             "max_tokens": _int_env("NIGHTLY_MAX_TOKENS", 60000),
-            "max_runtime_minutes": _int_env("NIGHTLY_MAX_RUNTIME_MINUTES", 45)}
+            "max_runtime_minutes": _int_env("NIGHTLY_MAX_RUNTIME_MINUTES", 45),
+            "passes": _int_env("NIGHTLY_PASSES", 3), "max_open_prs": _int_env("NIGHTLY_MAX_OPEN_PRS", 3)}
 
 
 OUTCOME_FR = {"patch_validated": "correctif validé", "patch_rejected": "correctif rejeté",
@@ -263,7 +264,9 @@ def _cell(text) -> str:
 def to_markdown(r: dict) -> str:
     day = str(r.get("started_at") or "")[:10]
     env = r.get("environment") or {}
-    lines = [f"## JARVIS Night Shift — {day}", "", f"**{_cell(r.get('summary'))}**", ""]
+    ps = r.get("pass") if isinstance(r.get("pass"), dict) else {}
+    title = f"## JARVIS Night Shift — {day}" + (f" · passe {ps.get('n')}/{ps.get('of')}" if ps.get("n") else "")
+    lines = [title, "", f"**{_cell(r.get('summary'))}**", ""]
     meta = [f"commit `{r.get('commit') or '?'}`"]
     if r.get("ref"):
         meta.append(f"branche `{r['ref']}`")
@@ -319,6 +322,16 @@ def to_markdown(r: dict) -> str:
         section("Tâche de la nuit", rows)
         section("Mémoire — tâches passées cette nuit", [
             f"- `{_cell(x.get('idea') or x.get('id'))}` — {_cell(x.get('reason'))}" for x in t.get("skipped") or []])
+    tonight = [x for x in r.get("tonight") or [] if isinstance(x, dict)]
+    if len(tonight) > 1:
+        rows = []
+        for x in tonight:
+            ref = x.get("ref") if isinstance(x.get("ref"), dict) else {}
+            what = task_ref(ref) if ref else "rien de tenté"
+            out = OUTCOME_FR.get(x.get("outcome"), x.get("outcome") or "—")
+            rows.append(f"- Passe {x.get('pass') or '?'} : {_cell(what)} — {_cell(out)}"
+                        + (f" · [PR]({x['pr']})" if x.get("pr") else "") + f" · {int(x.get('tokens') or 0)} tokens")
+        section("Cette nuit, passe par passe", rows)
     for d in r.get("diagnostics") or []:
         section(f"Échec persistant — {_cell(d.get('label') or d.get('idea'))}", [
             f"Idée `{_cell(d.get('idea'))}`, {d.get('attempts')} tentatives sur le même contexte.", "",

@@ -48,7 +48,7 @@ function render(r) {
   const env = rep.environment || {};
   const dur = rep.duration_s != null ? `${Math.floor(rep.duration_s / 60)} min ${String(Math.round(rep.duration_s % 60)).padStart(2, '0')} s` : '—';
   $('night-tiles').innerHTML = [
-    ['DERNIÈRE NUIT', when(rep.started_at), `commit ${rep.commit || '?'}${rep.ref ? ` · ${rep.ref}` : ''}`],
+    ['DERNIÈRE NUIT', when(rep.started_at), `${rep.pass && rep.pass.n ? `passe ${rep.pass.n}/${rep.pass.of} · ` : ''}commit ${rep.commit || '?'}${rep.ref ? ` · ${rep.ref}` : ''}`],
     ['RÉSULTAT', STATUS_FR[rep.status] || rep.status, rep.summary],
     ['SÉRIE VERTE', `${rep.green_streak ?? 0} nuit${(rep.green_streak ?? 0) > 1 ? 's' : ''}`, 'nuits vertes d’affilée, celle-ci comprise'],
     ['MACHINE', env.image || env.os || '—', `Python ${env.python || '?'} · ${dur}`],
@@ -69,6 +69,13 @@ function render(r) {
       (rep.pull_request_url || t.publication) ? row('PUBLICATION', rep.pull_request_url ? 'up' : '', rep.pull_request_url ? 'PR ouverte' : '', '', rep.pull_request_url || t.publication) : '',
       row('CONSOMMATION', '', `${u.llm_calls || 0} / ${b.max_llm_calls ?? '?'} appels`, `${(u.tokens_in || 0) + (u.tokens_out || 0)} / ${b.max_tokens ?? '?'} tokens`, t.model || ''),
       ...(t.out_of_zone || []).slice(0, 6).map((x) => row('HORS ZONE', '', x.id, '', x.reason)),
+      // Plusieurs passes cette nuit : chacune sur son problème.
+      ...((rep.tonight || []).length > 1 ? rep.tonight.map((x) => {
+        const [lab, c] = OUTCOME[x.outcome] || [x.outcome || '—', ''];
+        const r = x.ref || {};
+        return row(`PASSE ${x.pass || '?'}`, c, r.source === 'ruff' ? `${r.code} ${r.path}` : r.suite ? ref(r) : 'rien de tenté',
+          `${x.tokens || 0} tokens`, x.pr || lab);
+      }) : []),
     ].join('');
   }
 
