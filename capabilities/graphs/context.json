@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "context",
   "title": "Contexte et proactivité — quand parler, et par où",
-  "updated": "2026-10-13",
+  "updated": "2026-10-15",
   "summary": "Ce que JARVIS sait de votre situation (téléphone, poste local) et ce qu'il a le droit d'en faire : parler, notifier, différer ou se taire. Plus les sources de messages proactifs : check-ins, veille de sujets, alertes.",
   "replaces": ["context/README.md"],
   "nodes": [
@@ -10,7 +10,7 @@
     {"id": "m.model", "label": "model.py", "kind": "module", "status": "ok", "summary": "Le vocabulaire : Priority, Channel, Route, Situation, DeviceState, Decision. Aucune logique.", "files": ["context/model.py"]},
     {"id": "m.situation", "label": "situation.py", "kind": "module", "status": "ok", "summary": "Des faits bruts à UNE situation, avec le raisonnement gardé. Pur et testable.", "files": ["context/situation.py"]},
     {"id": "m.store", "label": "store.py", "kind": "module", "status": "ok", "summary": "Ce que le téléphone a dit, thread-safe, avec péremption (300 s).", "files": ["context/store.py"]},
-    {"id": "m.policy", "label": "policy.py", "kind": "module", "status": "ok", "summary": "Priorité × situation → canal de sortie ; et DeferralQueue, la file de ce qui est différé.", "files": ["context/policy.py"]},
+    {"id": "m.policy", "label": "policy.py", "kind": "module", "status": "ok", "summary": "Priorité × situation → canal de sortie ; et DeferralQueue, la file de ce qui est différé.", "details": ["Réalité (_enforce_reality) : sans sortie audio, la voix devient une notification ; sans client joignable non plus, elle est différée — jamais « livrée » avec la route NONE (décision D2026-09-23-4, corrigé le 2026-10-15, eval_lab legacy 77/77)."], "files": ["context/policy.py"]},
     {"id": "r.table", "label": "La table de décision", "kind": "regle", "status": "ok", "summary": "C'est la fonctionnalité : tout le reste l'alimente ou l'applique.", "details": ["DRIVING : CRITIQUE interrompre · IMPORTANT voix · UTILE plus tard · ANODIN rien.", "MEETING : notif sonore · notif muette · plus tard · rien.", "ASLEEP : interrompre (neutralisable par wake_for_critical=False) · plus tard · plus tard · rien.", "ACTIVE : interrompre · voix · notif muette · rien.", "IDLE : interrompre · notif sonore · notif muette · rien.", "UNKNOWN : interrompre · notif sonore le jour (différé aux heures calmes) · plus tard · rien.", "Le casque décide de la route (HEADSET / PHONE / DESKTOP / NONE), pas de la priorité."], "files": ["context/policy.py"]},
     {"id": "r.ordre", "label": "Ordre de déduction", "kind": "regle", "status": "ok", "summary": "DRIVING → ASLEEP → MEETING → ACTIVE → IDLE. L'observé prime sur le déduit, le déduit prime sur le réglage.", "details": ["ASLEEP demande trois signaux : heures calmes + écran éteint + inactivité ≥ 30 min.", "MEETING (Ne pas déranger) passe après le sommeil : beaucoup laissent DND la nuit.", "Données de plus de 5 min : périmées."], "files": ["context/situation.py"]},
     {"id": "f.deux_sources", "label": "Deux sources de contexte", "kind": "fonction", "status": "ok", "summary": "Le téléphone (batterie, casque, écran, DND, sonnerie, réseau) l'emporte toujours ; sans lui, le poste local dit depuis quand vous ne lui avez pas parlé (local_presence_s).", "details": ["Sans ce repli, toute installation sans téléphone perdrait sa proactivité (UNKNOWN + IMPORTANT est différé).", "Le repli local ne conclut jamais au sommeil : seulement ACTIVE ou IDLE."], "files": ["context/store.py", "context/situation.py"]},

@@ -132,12 +132,12 @@ def context_scenarios() -> list[dict]:
                   family="policy.wake_toggle", world={**asleep, "policy": {"wake_for_critical": False}},
                   stimulus={"priority": "CRITICAL"}, expected={"situation": "ASLEEP", "channel": "DEFER"}))
 
-    out.append(_L("policy", _ctx("no audio output -> notification instead of speech"),
+    out.append(_L("policy", _ctx("no audio output and no sink -> deferred, never delivered"),
                   family="policy.reality",
                   world={"phone": {**fresh, "screen_on": True},
                          "force": {"situation": "ACTIVE", "route": "NONE"}},
                   stimulus={"priority": "IMPORTANT"},
-                  expected={"channel": "NOTIFY", "reason": {"$contains": "sortie audio"}}))
+                  expected={"channel": "DEFER", "reason": {"$contains": "sortie audio"}}))
     out.append(_L("policy", _ctx("no reachable client -> deferred, not dropped"), family="policy.reality",
                   world={}, stimulus={"priority": "USEFUL"},
                   expected={"route": "NONE", "channel": "DEFER"}))

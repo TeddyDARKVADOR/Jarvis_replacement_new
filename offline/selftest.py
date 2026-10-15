@@ -215,6 +215,7 @@ def _ollama():
     first = time.monotonic() - t
     t = time.monotonic()
     again = b.ask("Et quel jour sommes-nous ?")
+    assert again, "pas de réponse au second tour"
     return f"{picked[0]} : « {reply} » ({first:.1f} s à froid, {time.monotonic() - t:.1f} s ensuite)"
 
 

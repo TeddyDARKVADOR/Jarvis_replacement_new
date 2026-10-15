@@ -292,10 +292,13 @@ def _decisions():
     cited = " ".join(p.source for p in REGISTRY.values())
     uncited = [d for d in DECISIONS if d not in cited]
     assert not uncited, f"decisions sans propriete : {uncited}"
-    # 4 : no sink, no delivery
-    no_sink = run_one(sc.make("policy", world={"force": {"situation": "ACTIVE", "route": "NONE"}},
-                              stimulus={"priority": "IMPORTANT"}, oracle="implicit"))
-    assert no_sink["verdict"] == "FAIL" and "NO_DELIVERY_WITHOUT_SINK" in str(no_sink["problems"])
+    # 4 : no sink, no delivery — the property catches a delivering channel with
+    # route NONE, and the real policy (fixed 2026-10-15) defers instead.
+    case = sc.make("policy", world={"force": {"situation": "ACTIVE", "route": "NONE"}},
+                   stimulus={"priority": "IMPORTANT"}, oracle="implicit")
+    assert REGISTRY["NO_DELIVERY_WITHOUT_SINK"].fn(case, {"route": "NONE", "channel": "NOTIFY"})
+    no_sink = run_one(case)
+    assert no_sink["verdict"] == "PASS", (no_sink["verdict"], no_sink["problems"])
     # 5 : the cooldown inversion found by the fuzzer is now a failure
     inv = run_one(sc.make("policy", world={"phone": {"age_s": 0, "screen_on": True, "headset": True},
                                            "delivered": [{"priority": "IMPORTANT", "ago_s": 60}]},
@@ -308,7 +311,7 @@ def _decisions():
                                                                 "[MONITOR_ALERT] b\nHeadline: y"]}],
                             oracle="implicit"))
     assert burst["verdict"] == "INCONCLUSIVE", (burst["verdict"], burst["problems"])
-    return "4 -> FAIL sans sink ; 5 -> inversion de priorite FAIL ; 6 -> rafale INCONCLUSIVE"
+    return "4 -> sans sink, propriete active et politique DEFER ; 5 -> inversion de priorite FAIL ; 6 -> rafale INCONCLUSIVE"
 
 
 @check("oracle operators mean what they say")

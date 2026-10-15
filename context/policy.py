@@ -218,8 +218,10 @@ class ProactivityPolicy:
         like a change of policy.
         """
         if channel in (Channel.VOICE, Channel.INTERRUPT) and route is Route.NONE:
+            # Falls through: the notification it becomes has no sink either
+            # (decision D2026-09-23-4 — never "delivered" with route NONE).
             why.append("aucune sortie audio disponible -> notification")
-            return Channel.NOTIFY, route, why
+            channel = Channel.NOTIFY
         if channel in (Channel.NOTIFY, Channel.NOTIFY_SILENT) and route is Route.NONE:
             why.append("aucun client joignable -> differe")
             return Channel.DEFER, route, why

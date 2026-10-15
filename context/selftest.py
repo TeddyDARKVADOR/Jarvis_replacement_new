@@ -266,15 +266,17 @@ def _wake_toggle():
 
 # ── 5. reality ───────────────────────────────────────────────────────────────
 
-@check("no audio output -> notification instead of speech")
+@check("no audio output and no sink -> deferred, never delivered")
 def _no_output():
+    # D2026-09-23-4: speech with no output falls back to a notification, and a
+    # notification with route NONE has nowhere to go either.
     policy = ProactivityPolicy()
     snap = derive(_fresh(screen_on=True), now=NOW)
     snap.situation, snap.route = Situation.ACTIVE, Route.NONE
     d = policy.decide(Priority.IMPORTANT, snap, now=NOW)
-    assert d.channel is Channel.NOTIFY, d.channel
-    assert "sortie audio" in d.reason, d.reason
-    return "VOICE degrade en NOTIFY, avec la raison"
+    assert d.channel is Channel.DEFER, d.channel
+    assert "sortie audio" in d.reason and "differe" in d.reason, d.reason
+    return "VOICE -> NOTIFY -> DEFER, avec les deux raisons"
 
 
 @check("no reachable client -> deferred, not dropped")
