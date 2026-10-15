@@ -1,0 +1,39 @@
+{
+ "schema": "jarvis.nightshift-queue/1",
+ "run_id": "38689556451",
+ "created": "2026-10-15T07:58:21+02:00",
+ "tasks": [
+  {
+   "id": "triage-38689556451",
+   "kind": "triage",
+   "input": {
+    "findings": [
+     {
+      "code": "F841",
+      "path": "actions/code_helper.py",
+      "line": 481,
+      "message": "Local variable `image_base64` is assigned to but never used"
+     },
+     {
+      "code": "F811",
+      "path": "core/code_workspace/selftest.py",
+      "line": 761,
+      "message": "Redefinition of unused `webcheck` from line 57: `webcheck` redefined here"
+     },
+     {
+      "code": "F841",
+      "path": "eval_lab/mutate.py",
+      "line": 97,
+      "message": "Local variable `stim` is assigned to but never used"
+     },
+     {
+      "code": "F841",
+      "path": "offline/selftest.py",
+      "line": 217,
+      "message": "Local variable `again` is assigned to but never used"
+     }
+    ]
+   }
+  }
+ ]
+}
