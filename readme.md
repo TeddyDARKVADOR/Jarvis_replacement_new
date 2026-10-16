@@ -163,6 +163,12 @@ temps du démarrage ; retirez la clé, rien ne reste.
 - **Responsivité clé USB** : pas de `.pyc` écrits sur la clé, `cognition.db` chiffrable
   (checkpoint WAL propre), multi-clés actif pour **tous** les appels (voix, réunion,
   briefing…).
+- **Continuité d'identité** : le même *moi* voyage avec la clé. Au branchement, récap
+  de reprise conscient de la machine — *« la dernière fois, sur le PC du bureau, on
+  finissait X ; ici nouvelle machine, sans GPU → Ollama »* (`resume`, `note`).
+- **Zéro-trace *prouvé*** : JARVIS mémorise les vrais dossiers de l'hôte avant de
+  rediriger, puis **démontre à l'arrêt que 0 fichier a été écrit hors de la clé**
+  (`audit`). Chiffrement clés **+ mémoire** par défaut.
 
 Tout le détail, avec l'état vérifié, est dans le graphe
 [`capabilities/graphs/deployment.json`](capabilities/graphs/deployment.json) (nœud *JARVIS portable*).

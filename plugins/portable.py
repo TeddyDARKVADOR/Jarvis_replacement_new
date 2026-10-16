@@ -38,7 +38,15 @@ PLUGIN = {
                                "eject : comment retirer la clé sans rien casser. "
                                "doctor : bilan du dispositif portable (Python, dépendances, "
                                "Ollama, coffre, modèle conseillé, vitesse de la clé, connexion). "
-                               "pair : comment appairer le téléphone (adresse locale, QR du HUD).",
+                               "pair : comment appairer le téléphone (adresse locale, QR du HUD). "
+                               "resume : le récap de reprise (dernière session, machine, fil en cours). "
+                               "audit : preuve que rien n'a été écrit hors de la clé sur ce PC. "
+                               "note : enregistrer ce sur quoi on travaille (passer `text`) pour la reprise.",
+            },
+            "text": {
+                "type": "STRING",
+                "description": "Pour action=note : la phrase décrivant le travail en cours "
+                               "(reprise à la prochaine session, même sur un autre PC).",
             },
         },
         "required": [],
@@ -170,8 +178,38 @@ def _pair() -> str:
             "la clé tourne ici (pour un accès de partout, il faut Oracle + Tailscale).")
 
 
+def _resume() -> str:
+    try:
+        from portable import continuity
+        return continuity.recap()
+    except Exception as e:
+        return f"Reprise indisponible : {e}"
+
+
+def _audit() -> str:
+    if not _is_portable():
+        return "La preuve zéro-trace ne vaut qu'en mode portable (lancé depuis la clé)."
+    try:
+        from portable import trace_audit
+        return trace_audit.verify()
+    except Exception as e:
+        return f"Audit zéro-trace indisponible : {e}"
+
+
+def _note(text: str) -> str:
+    if not text:
+        return "Dis-moi quoi noter, Sir (ce sur quoi on travaille)."
+    try:
+        from portable import continuity
+        continuity.set_focus(text)
+        return f"Noté. Je reprendrai là-dessus la prochaine fois : « {text} »."
+    except Exception as e:
+        return f"Impossible de noter : {e}"
+
+
 def run(parameters: dict, player=None, session_memory=None) -> str:
-    action = str((parameters or {}).get("action", "status")).strip().lower()
+    params = parameters or {}
+    action = str(params.get("action", "status")).strip().lower()
     try:
         if action in ("eject", "ejection", "éjection", "retirer"):
             result = _eject()
@@ -179,6 +217,12 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
             result = _doctor()
         elif action in ("pair", "appairer", "appairage", "telephone", "téléphone", "qr"):
             result = _pair()
+        elif action in ("resume", "reprise", "reprends", "recap", "récap"):
+            result = _resume()
+        elif action in ("audit", "preuve", "trace", "zero-trace", "zéro-trace"):
+            result = _audit()
+        elif action in ("note", "noter", "focus"):
+            result = _note(str(params.get("text", "")).strip())
         else:
             result = _status()
     except Exception as e:  # ne jamais lever : renvoyer une phrase d'erreur parlée

@@ -11,6 +11,7 @@
 [CmdletBinding()]
 param(
     [string]$Message = "JARVIS se retire — rien laissé sur ce PC.",
+    [string]$MessageFile,
     [string]$Accent = "#00E5FF",
     [switch]$ReduceMotion,
     [string]$SettingsFile,
@@ -19,6 +20,12 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
+if ($MessageFile -and (Test-Path $MessageFile)) {
+    try {
+        $m = (Get-Content -LiteralPath $MessageFile -Raw -Encoding UTF8).Trim()
+        if ($m) { $Message = $m }
+    } catch {}
+}
 if ($SettingsFile -and (Test-Path $SettingsFile)) {
     try { $s = Get-Content $SettingsFile -Raw | ConvertFrom-Json
           if ($s.accent) { $Accent = [string]$s.accent }

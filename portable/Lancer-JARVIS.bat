@@ -45,6 +45,12 @@ set "STATUS=%DATA%\tmp\boot-status.txt"
 echo Demarrage du boot portable de JARVIS...> "%STATUS%"
 start "" powershell -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "%APP%\portable\splash.ps1" -StatusFile "%STATUS%" -SettingsFile "%DATA%\portable.json"
 
+REM Preuve zero-trace : memoriser les VRAIS dossiers de l'hote AVANT de rediriger
+set "JARVIS_HOST_USERPROFILE=%USERPROFILE%"
+set "JARVIS_HOST_LOCALAPPDATA=%LOCALAPPDATA%"
+set "JARVIS_HOST_APPDATA=%APPDATA%"
+set "JARVIS_HOST_TEMP=%TEMP%"
+
 REM --- Redirection : tout ce que le code ecrit "chez l'utilisateur" va sur la cle
 set "JARVIS_PORTABLE=1"
 set "JARVIS_DATA_DIR=%DATA%"
@@ -94,6 +100,12 @@ if errorlevel 1 (
 echo ok> "%PYDIR%\.deps-ok"
 :have_deps
 
+REM --- 3a. Continuite d'identite + snapshot de la preuve zero-trace -----------
+"%PY%" "%APP%\portable\continuity.py" start
+"%PY%" "%APP%\portable\trace_audit.py" snapshot >nul 2>&1
+REM recap de reprise (conscient de la machine) affiche sur l'animation
+"%PY%" "%APP%\portable\continuity.py" recap --to "%STATUS%" >nul 2>&1
+
 REM --- 3. Ollama portable (cerveau local hors-ligne), si fourni --------------
 set "OLLAMA_EXE=%RUNTIME%\ollama\ollama.exe"
 if exist "%OLLAMA_EXE%" (
@@ -129,12 +141,14 @@ ping -n 2 127.0.0.1 >nul
 echo __READY__>> "%STATUS%"
 "%PY%" "%APP%\portable\eject_guard.py" --anchor "%~f0" -- "%PY%" "%APP%\main.py" --local
 
-REM --- 5. Fin de session : re-effacer le clair des secrets (le coffre demeure) -
+REM --- 5. Fin de session : continuite, preuve zero-trace, re-chiffrement -------
+"%PY%" "%APP%\portable\continuity.py" end >nul 2>&1
+"%PY%" "%APP%\portable\trace_audit.py" verify > "%DATA%\tmp\farewell.txt" 2>nul
 "%PY%" "%APP%\portable\vault.py" relock --dir "%APP%\config"
 
-REM --- 6. Animation de retrait --------------------------------------------------
+REM --- 6. Animation de retrait (montre le resultat de l'audit zero-trace) ------
 echo [JARVIS portable] JARVIS s'est arrete.
-powershell -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "%APP%\portable\farewell.ps1" -SettingsFile "%DATA%\portable.json"
+powershell -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "%APP%\portable\farewell.ps1" -SettingsFile "%DATA%\portable.json" -MessageFile "%DATA%\tmp\farewell.txt"
 endlocal
 exit /b 0
 

@@ -286,6 +286,12 @@ def _portable(tmp: Path) -> str:
         assert "éject" in ej.lower() or "retir" in ej.lower(), ej
         doc = p.run({"action": "doctor"})
         assert "bilan" in doc.lower(), doc
+        note = p.run({"action": "note", "text": "le script de déploiement"})
+        assert "not" in note.lower(), note
+        rez = p.run({"action": "resume"})
+        assert isinstance(rez, str) and len(rez) > 10, rez
+        aud = p.run({"action": "audit"})
+        assert isinstance(aud, str) and aud, aud
     finally:
         for k, v in saved.items():
             if v is None:

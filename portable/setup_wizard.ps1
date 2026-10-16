@@ -37,7 +37,7 @@ if (-not $ConfigDir) { $ConfigDir = Join-Path (Split-Path -Parent $PSScriptRoot)
              VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="13"
              Background="#07101A" Foreground="#Dff4ff" BorderBrush="#2A4A5E" Padding="8"/>
     <CheckBox Grid.Row="3" x:Name="enc" Margin="0,12,0,0" Foreground="#BFEAF6" FontFamily="Consolas"
-              Content="Chiffrer ces cles avec une phrase de passe (coffre)"/>
+              IsChecked="True" Content="Chiffrer clés + mémoire avec une phrase de passe (recommandé)"/>
     <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,10,0,0">
       <TextBlock Text="Thème :" Foreground="#9FDCEE" FontFamily="Consolas" VerticalAlignment="Center" Margin="0,0,8,0"/>
       <ComboBox x:Name="accent" Width="130" FontFamily="Consolas">
@@ -115,9 +115,14 @@ $save.Add_Click({
     $info.Text = "$($list.Count) cle(s) enregistree(s)."
     if ($enc.IsChecked) {
         $win.Hide()
-        $keyPy = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'runtime\python\python.exe'
+        $app = Split-Path -Parent $PSScriptRoot
+        # manifeste : cles + memoire (chiffrement total par defaut)
+        @{ protect = @('config/api_keys.json','memory/long_term.json',
+                       'memory/incidents.json','memory/cognition.db') } |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $ConfigDir 'vault.json') -Encoding UTF8
+        $keyPy = Join-Path (Split-Path -Parent $app) 'runtime\python\python.exe'
         $py = if (Test-Path $keyPy) { $keyPy } else { 'python' }
-        & $py (Join-Path $PSScriptRoot 'vault.py') lock --dir $ConfigDir
+        & $py (Join-Path $PSScriptRoot 'vault.py') lock --root $app
     }
     $win.Close()
 })
