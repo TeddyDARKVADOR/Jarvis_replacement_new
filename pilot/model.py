@@ -68,6 +68,7 @@ class Observation:
     image: bytes = b""                                # JPEG de la capture, réduite
     backend: str = ""
     notes: list[str] = field(default_factory=list)
+    locked: bool = False                              # session verrouillée : rien à voir, rien à faire
 
     def element(self, eid) -> Element | None:
         try:

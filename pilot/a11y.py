@@ -37,6 +37,12 @@ def observe(with_image: bool = True, retries: int = 3) -> Observation:
         name, mod = "", None
         notes.append(f"pas d'arbre d'accessibilité ({type(e).__name__})")
     win, raw, titles = Window(), [], []
+    if mod is not None and getattr(mod, "locked", None) is not None:
+        try:
+            if mod.locked():
+                return Observation(Window(), [], [], (0, 0, 0, 0), b"", name, ["écran verrouillé"], locked=True)
+        except Exception:
+            pass
     if mod is not None:
         for attempt in range(retries):
             try:

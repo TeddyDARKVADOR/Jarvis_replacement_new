@@ -82,6 +82,8 @@ class Agent:
             if self._stop.is_set():
                 return Result("stopped", "Arrêté à ta demande.", self.history, app)
             obs = self._observe()
+            if obs.locked:
+                return Result("fail", "L'écran est verrouillé : déverrouille-le et redemande-moi.", self.history, app)
             app = obs.window.app or app
             self.status = f"étape {n} — {obs.window.title[:60]}"
             body = B.build_request(task, self.history, obs.render(), obs.image, hints)

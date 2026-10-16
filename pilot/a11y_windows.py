@@ -59,6 +59,17 @@ def _process_name(pid: int) -> str:
         return ""
 
 
+def locked() -> bool:
+    """Session verrouillée (ou écran sécurisé de l'UAC) : aucun bureau d'entrée lisible, aucune fenêtre au
+    premier plan. Mesuré le 2026-10-16 : capture et arbre sont alors vides."""
+    user32 = ctypes.windll.user32
+    desk = user32.OpenInputDesktop(0, False, 0x0100)     # DESKTOP_SWITCHDESKTOP
+    if desk:
+        user32.CloseDesktop(desk)
+        return False
+    return user32.GetForegroundWindow() == 0
+
+
 def foreground() -> Window:
     user32 = ctypes.windll.user32
     hwnd = user32.GetForegroundWindow()

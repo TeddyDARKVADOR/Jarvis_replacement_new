@@ -240,7 +240,7 @@ def _no_replace():
     return "Ctrl+Fin puis frappe ; aucun SetValue"
 
 
-@check("8 HUD de JARVIS au premier plan : la fenêtre de travail repasse devant")
+@check("8 HUD de JARVIS au premier plan : la fenêtre de travail repasse devant ; écran verrouillé : arrêt")
 def _own_window():
     import os
     calls = []
@@ -252,7 +252,11 @@ def _own_window():
     ag.focus_window = lambda t: (calls.append(t), True)[1]
     ag.run("x")
     assert calls == ["Autre"], calls
-    return "focus sur « Autre » (la fenêtre sous le HUD)"
+    locked = Mo.Observation(Mo.Window(), [], [], (0, 0, 0, 0), b"", "fake", ["écran verrouillé"], locked=True)
+    ag, _ = _agent([("click", {"x": 1, "y": 1})], locked, [])
+    r = ag.run("x")
+    assert r.outcome == "fail" and "verrouillé" in r.message and not ag.history, "écran verrouillé : aucun appel au modèle"
+    return "focus sur « Autre » (la fenêtre sous le HUD) ; écran verrouillé : arrêt sans appel au modèle"
 
 
 @check("9 recettes : retrouvées par les mots, jamais le texte tapé")
