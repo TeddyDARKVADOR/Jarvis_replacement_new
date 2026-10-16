@@ -34,6 +34,7 @@ send2trash
 youtube-transcript-api
 python-pptx
 openpyxl
+pypdf                    # PDF text (file_processor), successor of PyPDF2
 
 # ── The dashboard JARVIS serves (phone, uploads, local mode's QR pairing) ────
 fastapi

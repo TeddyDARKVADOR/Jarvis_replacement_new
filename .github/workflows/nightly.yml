@@ -141,7 +141,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh pr list --repo "$GITHUB_REPOSITORY" --state all --limit 100 \
-            --json number,url,state,headRefName,mergedAt \
+            --json number,url,state,headRefName,mergedAt,labels \
             --jq '[.[] | select(.headRefName | startswith("automation/jarvis-nightly-"))]' \
             > "$RUNNER_TEMP/nightshift/prs.json" \
             || { echo "::warning::PR illisibles : la mémoire ne verra pas les verdicts cette nuit."; echo "[]" > "$RUNNER_TEMP/nightshift/prs.json"; }

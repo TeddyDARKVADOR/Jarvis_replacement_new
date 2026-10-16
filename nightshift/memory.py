@@ -17,7 +17,9 @@ LES RÈGLES
   - même idée, même commit, même contexte : déjà tentée, pas réanalysée ;
   - PR fermée sans fusion : refusée par l'humain, plus jamais reproposée
     (sauf « force » dans priorities.toml) ; fusionnée : acceptée ; ouverte :
-    on attend sa relecture ;
+    on attend sa relecture ; fermée avec l'étiquette nightshift-expiree (le
+    nettoyage, après 7 jours sans relecture) : expirée, pas refusée — l'idée
+    peut revenir ;
   - deux échecs (pas de patch, ou patch rejeté par les suites) sur un contexte
     inchangé : échec persistant — un dossier de diagnostic au rapport, et
     l'idée attend que le code change ;
@@ -83,8 +85,11 @@ def prs_by_url(prs: list | None) -> dict[str, dict]:
     return {p["url"]: p for p in prs or [] if isinstance(p, dict) and p.get("url")}
 
 
+EXPIRED_LABEL = "nightshift-expiree"      # posée par .github/workflows/nightshift-cleanup.yml
+
+
 def verdict(entry: dict | None, prs: dict[str, dict]) -> str | None:
-    """accepted · rejected · open · None — selon la PR la plus récente de l'idée."""
+    """accepted · rejected · expired · open · None — selon la PR la plus récente de l'idée."""
     url = next((a.get("pr") for a in reversed((entry or {}).get("attempts") or []) if a.get("pr")), None)
     pr = prs.get(url) if url else None
     if pr is None:
@@ -92,7 +97,10 @@ def verdict(entry: dict | None, prs: dict[str, dict]) -> str | None:
     state = str(pr.get("state", "")).upper()
     if state == "MERGED" or pr.get("mergedAt"):
         return "accepted"
-    return "rejected" if state == "CLOSED" else "open"
+    if state == "CLOSED":
+        labels = {(x.get("name") if isinstance(x, dict) else x) for x in pr.get("labels") or []}
+        return "expired" if EXPIRED_LABEL in labels else "rejected"
+    return "open"
 
 
 def _failures(entry: dict | None, fp: str) -> list[dict]:
@@ -213,7 +221,7 @@ def week(state: dict, today: date) -> dict | None:
             "green": len(green_days),
             "tried": len(tried), "validated": sum(1 for n in tried if n.get("outcome") == "patch_validated"),
             "prs": sum(1 for n in nights if n.get("pr")), "accepted": verdicts.count("accepted"),
-            "rejected": verdicts.count("rejected"), "tokens": sum(int(n.get("tokens") or 0) for n in nights)}
+            "rejected": verdicts.count("rejected"), "expired": verdicts.count("expired"), "tokens": sum(int(n.get("tokens") or 0) for n in nights)}
 
 
 def today_paris() -> date:

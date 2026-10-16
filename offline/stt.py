@@ -79,8 +79,11 @@ class Whisper:
             return self._run(audio)
 
     def _run(self, audio) -> str:
+        # vad_filter : Silero (livré avec faster-whisper) retire le bruit autour de la
+        # phrase avant Whisper. Essai du 2026-10-16 (voix SAPI dans du bruit) : texte
+        # un peu plus juste, « Stop. » gardé, silence écarté sans décoder.
         segments, _info = self._model.transcribe(audio, language=self.language, beam_size=1,
-                                                 vad_filter=False, condition_on_previous_text=False,
+                                                 vad_filter=True, condition_on_previous_text=False,
                                                  initial_prompt=self.prompt)
         kept = [s.text.strip() for s in segments
                 if s.no_speech_prob < NO_SPEECH_MAX and not _HALLUCINATIONS.search(s.text)]

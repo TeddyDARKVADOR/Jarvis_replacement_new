@@ -41,7 +41,7 @@ ddgs
 # ── OPTIONAL: only if you want that specific action on the server ────────────
 #
 # send2trash            file_controller's "move to trash" (falls back without it)
-# PyPDF2 pdfplumber     file_processor: reading PDFs
+# pypdf pdfplumber      file_processor: reading PDFs (pypdf replaces PyPDF2)
 # python-docx           file_processor: .docx
 # python-pptx openpyxl  file_processor: .pptx / .xlsx
 # pillow                file_processor: images
@@ -50,7 +50,7 @@ ddgs
 # Uncomment what you need. Each is lazily imported, so a missing one costs that
 # one capability and nothing else.
 # send2trash
-# PyPDF2
+# pypdf
 # pdfplumber
 # python-docx
 # python-pptx

@@ -1066,6 +1066,12 @@ def _memory():
     assert "PR refusée" in memory.skip_reason(t4, "c6", "fp6", st3, {}, none), "le verdict reste, même si la PR n'est plus listée"
     merged = memory.prs_by_url([{"url": url, "state": "MERGED", "mergedAt": "2026-10-16T08:00:00Z"}])
     assert memory.verdict(st2["ideas"][idea], merged) == "accepted"
+    # Fermée par le nettoyage après 7 jours sans relecture : expirée, l'idée peut revenir.
+    expired = [{"url": url, "state": "CLOSED", "labels": [{"name": memory.EXPIRED_LABEL}]}]
+    st4 = memory.update(st2, _mem_report("5", "c5", "skipped"), None, expired)
+    assert st4["ideas"][idea]["verdict"] == "expired"
+    assert memory.skip_reason(t4, "c7", "fp7", st4, memory.prs_by_url(expired), none) is None, "expirée ≠ refusée"
+    assert memory.skip_reason(t4, "c7", "fp7", st4, {}, none) is None, "même quand la PR n'est plus listée"
     big = memory.empty()
     for i in range(memory.MAX_PASSES + 10):
         big = memory.update(big, _mem_report(str(i), "c", "skipped"), None, [])
@@ -1409,6 +1415,25 @@ def _passes():
     phrase = briefing.sentence(rep)
     assert "2 passes, 1 correctif(s) validé(s) : F841 dans reminders/__init__.py" in phrase, phrase
     return "3 crons ; NIGHTLY_PASSES borné ; passe 2 ≠ passe 1 ; rapport et briefing sur toute la nuit"
+
+
+@check("33 ménage : runs, PR expirées, branches et vieux rapports ; mémoire et références jamais touchées")
+def _cleanup():
+    wf = _src(".github/workflows/nightshift-cleanup.yml")
+    assert re.search(r'cron:\s*"17 14 \* \* \*"', wf), "le ménage tourne l'après-midi, loin des passes"
+    assert re.search(r"^permissions:\n  contents: read\n", wf, re.MULTILINE), "permissions par défaut"
+    assert "group: nightshift-cleanup" in wf, "pas le groupe nightshift : il annulerait une passe en attente"
+    assert "python" not in wf.lower() and "actions/checkout" not in wf and "uses:" not in wf, \
+        "le ménage, qui écrit, n'exécute aucun code du dépôt"
+    assert "timeout-minutes:" in wf and "runs-on: ubuntu-24.04" in wf
+    assert 'default: "true"' in wf, "lancé à la main : dry run par défaut"
+    assert "nightshift-expiree" in wf and memory.EXPIRED_LABEL == "nightshift-expiree", "étiquette et mémoire alignées"
+    assert "GITHUB_RUN_ID" in wf and 'select(.status == "completed")' in wf, "ni le run courant ni un run en cours"
+    assert 'startswith(\\"automation/jarvis-nightly-\\")' in wf, "seulement les PR Night Shift"
+    assert '"OPEN" ]; then continue' in wf, "la branche d'une PR ouverte reste"
+    assert "'runs/*.json' 'local/runs/*.json'" in wf and "rien n'est poussé" in wf, \
+        "seuls les rapports datés partent ; la garde arrête le reste"
+    return "quotidien, sans code du dépôt, dry run à la main ; expirée ≠ refusée ; garde sur nightshift-data"
 
 
 def main() -> int:

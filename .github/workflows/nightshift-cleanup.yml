@@ -1,0 +1,158 @@
+# JARVIS Night Shift — le ménage, chaque jour à 14 h 17 (heure de Paris).
+# La documentation est le graphe capabilities/graphs/nightshift.json (CLAUDE.md).
+#
+# Après NIGHTLY_CLEANUP_DAYS jours (variable, défaut 7) :
+#   exécutions   les runs des workflows nightly et nightshift-cleanup, terminés,
+#                sont supprimés (le rapport de chaque passe reste sur nightshift-data
+#                et dans state.json) ;
+#   PR           une PR Night Shift ouverte sans aucune activité depuis ce délai
+#                est fermée avec l'étiquette nightshift-expiree et sa branche
+#                supprimée. La mémoire la compte « expirée », pas « refusée » :
+#                l'idée peut revenir (nightshift/memory.py). Un commentaire suffit
+#                à la garder ouverte une semaine de plus ;
+#   branches     automation/jarvis-nightly-* : supprimée dès que sa PR est fusionnée
+#                ou fermée ; sans PR, après le délai ;
+#   rapports     runs/*.json et local/runs/*.json de nightshift-data, datés par leur
+#                nom. Jamais state.json, baseline.json, latest.*, queue.json ni
+#                local/latest.json.
+#
+# Aucun code du dépôt n'est exécuté : gh, jq et git seulement, comme les jobs qui
+# écrivent dans nightly.yml. Essai sans rien supprimer : Actions → nightshift-cleanup
+# → Run workflow → dry_run = true.
+name: nightshift-cleanup
+
+on:
+  schedule:
+    - cron: "17 14 * * *"
+      timezone: "Europe/Paris"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true : seulement dire ce qui serait supprimé"
+        type: choice
+        options: ["true", "false"]
+        default: "true"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightshift-cleanup
+  cancel-in-progress: false
+
+jobs:
+  menage:
+    name: Ménage — runs, PR, branches et rapports de plus d'une semaine
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: write          # supprimer des runs
+      contents: write         # supprimer des branches, pousser sur nightshift-data
+      pull-requests: write    # fermer une PR expirée
+    steps:
+      - name: Ménage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DAYS: ${{ vars.NIGHTLY_CLEANUP_DAYS }}
+          DRY: ${{ inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          case "${DAYS:-}" in ''|*[!0-9]*) DAYS=7 ;; esac
+          [ "$DAYS" -ge 1 ] || DAYS=7
+          CUTOFF_DAY="$(date -u -d "$DAYS days ago" +%F)"
+          CUTOFF="$(date -u -d "$DAYS days ago" +%FT%TZ)"
+          do_it() { if [ "$DRY" = "true" ]; then echo "  (dry run) $*"; else "$@"; fi; }
+          say() { echo "$*" | tee -a "$GITHUB_STEP_SUMMARY"; }
+          if [ "$DRY" = "true" ]; then GONE="à supprimer"; SHUT="à fermer"; else GONE="supprimée(s)"; SHUT="fermée(s)"; fi
+          say "## Ménage Night Shift — plus de $DAYS jours (avant le $CUTOFF_DAY)$( [ "$DRY" = "true" ] && echo ' · dry run')"
+          say ""
+
+          # 1. Les exécutions terminées.
+          runs=0
+          for wf in nightly.yml nightshift-cleanup.yml; do
+            ids="$(gh api --paginate "repos/$REPO/actions/workflows/$wf/runs?per_page=100&created=<$CUTOFF_DAY" \
+                    --jq '.workflow_runs[] | select(.status == "completed") | .id' 2>/dev/null || true)"
+            for id in $ids; do
+              [ "$id" = "$GITHUB_RUN_ID" ] && continue
+              do_it gh api -X DELETE "repos/$REPO/actions/runs/$id" --silent
+              runs=$((runs + 1))
+            done
+          done
+          say "- $runs exécution(s) $GONE"
+
+          # 2. Les PR ouvertes sans activité : fermées comme « expirées », pas refusées.
+          expired=0
+          do_it gh label create nightshift-expiree --repo "$REPO" --color BFBFBF \
+            --description "Fermée par le ménage : pas de relecture en une semaine (pas un refus)" 2>/dev/null || true
+          stale="$(gh pr list --repo "$REPO" --state open --limit 100 --json number,headRefName,updatedAt \
+                    --jq "[.[] | select(.headRefName | startswith(\"automation/jarvis-nightly-\"))
+                               | select(.updatedAt < \"$CUTOFF\") | .number] | .[]")"
+          for n in $stale; do
+            do_it gh pr edit "$n" --repo "$REPO" --add-label nightshift-expiree
+            do_it gh pr close "$n" --repo "$REPO" --delete-branch --comment \
+              "Fermée par le ménage de Night Shift : aucune relecture depuis $DAYS jours. Ce n'est pas un refus — l'idée pourra être reproposée. Rouvrir la PR la garde."
+            expired=$((expired + 1))
+          done
+          say "- $expired PR expirée(s) $SHUT (étiquette nightshift-expiree)"
+
+          # 3. Les branches : PR fusionnée ou fermée → supprimée ; sans PR → après le délai.
+          branches=0
+          refs="$(gh api --paginate "repos/$REPO/git/matching-refs/heads/automation/jarvis-nightly-" --jq '.[].ref' || true)"
+          for ref in $refs; do
+            b="${ref#refs/heads/}"
+            state="$(gh pr list --repo "$REPO" --head "$b" --state all --limit 1 --json state --jq '.[0].state // ""')"
+            if [ "$state" = "OPEN" ]; then continue; fi
+            if [ -z "$state" ]; then
+              when="$(gh api "repos/$REPO/commits/$ref" --jq '.commit.committer.date' 2>/dev/null || echo "")"
+              [ -n "$when" ] && [[ "$when" < "$CUTOFF" ]] || continue
+            fi
+            do_it gh api -X DELETE "repos/$REPO/git/refs/heads/$b" --silent
+            branches=$((branches + 1))
+          done
+          say "- $branches branche(s) automation/jarvis-nightly-* $GONE"
+
+          # 4. Les vieux rapports de nightshift-data (la mémoire et les références restent).
+          git init -q data
+          cd data
+          git config user.name "jarvis-nightshift"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          echo "::add-mask::$AUTH"
+          git config http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH"
+          git remote add origin "${REMOTE_URL:-https://github.com/$REPO.git}"
+          if ! git fetch -q origin nightshift-data; then
+            say "- pas de branche nightshift-data : aucun rapport à supprimer"
+            exit 0
+          fi
+          git checkout -q -b nightshift-data FETCH_HEAD
+          old="$(git ls-files 'runs/*.json' 'local/runs/*.json' | while read -r f; do
+                   d="$(basename "$f" | cut -c1-10)"
+                   if [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && [[ "$d" < "$CUTOFF_DAY" ]]; then echo "$f"; fi
+                 done)"
+          count="$(printf '%s' "$old" | grep -c . || true)"
+          if [ "$count" -eq 0 ]; then
+            say "- 0 rapport supprimé de nightshift-data"
+            exit 0
+          fi
+          printf '%s\n' "$old" | xargs git rm -q --
+          # Garde : rien d'autre que des rapports datés ne part (ni state.json, ni baseline.json…).
+          if git diff --cached --name-only | grep -vE '^(local/)?runs/[0-9]{4}-[0-9]{2}-[0-9]{2}[^/]*\.json$'; then
+            echo "::error::Le ménage allait toucher autre chose que des rapports : rien n'est poussé."
+            exit 1
+          fi
+          git commit -q -m "nightshift : ménage, $count rapport(s) d'avant le $CUTOFF_DAY"
+          if [ "$DRY" = "true" ]; then
+            say "- (dry run) $count rapport(s) seraient supprimés de nightshift-data"
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            if git push -q origin HEAD:nightshift-data; then
+              say "- $count rapport(s) supprimé(s) de nightshift-data"
+              exit 0
+            fi
+            sleep $((attempt * 5))
+            git fetch -q origin nightshift-data && git rebase -q FETCH_HEAD
+          done
+          echo "::error::Impossible de pousser sur nightshift-data."
+          exit 1

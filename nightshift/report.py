@@ -342,7 +342,8 @@ def to_markdown(r: dict) -> str:
         section("La semaine", [
             f"- {w.get('nights')} nuit(s) du {w.get('from')} au {w.get('to')}, dont {w.get('green')} verte(s)",
             f"- {w.get('tried')} tâche(s) tentée(s), {w.get('validated')} correctif(s) validé(s)",
-            f"- {w.get('prs')} PR ouverte(s) : {w.get('accepted')} acceptée(s), {w.get('rejected')} refusée(s)",
+            f"- {w.get('prs')} PR ouverte(s) : {w.get('accepted')} acceptée(s), {w.get('rejected')} refusée(s)"
+            + (f", {w['expired']} expirée(s) sans relecture" if w.get("expired") else ""),
             f"- {w.get('tokens')} tokens consommés"])
     m = r.get("metrics") or {}
     if m:
