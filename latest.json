@@ -1,45 +1,341 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "38858319190",
- "run_url": null,
- "repository": null,
- "ref": null,
- "event": null,
- "commit": null,
- "commit_full": null,
- "previous": null,
- "started_at": "2026-10-16T05:57:10+00:00",
- "finished_at": "2026-10-16T05:57:10+00:00",
- "duration_s": 0.0,
- "status": "failed",
- "summary": "Nuit sans mesure : rapport de la veille absent",
- "environment": {},
- "suites": [],
+ "run_id": "38834786074",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38834786074",
+ "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
+ "ref": "main",
+ "event": "schedule",
+ "commit": "10d8aa7",
+ "commit_full": "10d8aa76552cf0f5bfc1b2bc2257a0843fe4e883",
+ "previous": {
+  "run_id": "38689556451",
+  "commit": "2b26e21",
+  "finished_at": "2026-10-15T07:58:21+02:00",
+  "status": "success"
+ },
+ "started_at": "2026-10-16T03:23:25+02:00",
+ "finished_at": "2026-10-16T03:24:25+02:00",
+ "duration_s": 60.0,
+ "status": "success",
+ "summary": "15/15 suites vertes ; aucune régression ; réparé : code_workspace n°2 ; ruff : 1 remarque ; tâche F841 eval_lab/mutate.py : correctif validé — aucune PR : dry run (NIGHTLY_DRY_RUN=true).",
+ "environment": {
+  "runner": "github",
+  "os": "Ubuntu 24.04.5 LTS",
+  "python": "3.12.15",
+  "image": "ubuntu24 20261012.334.1"
+ },
+ "suites": [
+  {
+   "name": "capabilities.selftest",
+   "platform": "linux",
+   "passed": 11,
+   "total": 11,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.5,
+   "outcome": "ok"
+  },
+  {
+   "name": "context.selftest",
+   "platform": "linux",
+   "passed": 33,
+   "total": 33,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.1,
+   "outcome": "ok"
+  },
+  {
+   "name": "server.selftest",
+   "platform": "linux",
+   "passed": 35,
+   "total": 35,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 2.0,
+   "outcome": "ok"
+  },
+  {
+   "name": "server.routing_selftest",
+   "platform": "linux",
+   "passed": 35,
+   "total": 35,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.9,
+   "outcome": "ok"
+  },
+  {
+   "name": "client_desktop --selftest",
+   "platform": "linux",
+   "passed": 28,
+   "total": 28,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.7,
+   "outcome": "ok"
+  },
+  {
+   "name": "cognition.selftest",
+   "platform": "linux",
+   "passed": 64,
+   "total": 64,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 3.6,
+   "outcome": "ok"
+  },
+  {
+   "name": "eval_lab.selftest",
+   "platform": "linux",
+   "passed": 28,
+   "total": 28,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 6.6,
+   "outcome": "ok"
+  },
+  {
+   "name": "core.code_workspace.selftest",
+   "platform": "linux",
+   "passed": 34,
+   "total": 34,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 33.7,
+   "outcome": "ok"
+  },
+  {
+   "name": "reminders.selftest",
+   "platform": "linux",
+   "passed": 4,
+   "total": 4,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.3,
+   "outcome": "ok"
+  },
+  {
+   "name": "resilience.selftest",
+   "platform": "linux",
+   "passed": 13,
+   "total": 13,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.6,
+   "outcome": "ok"
+  },
+  {
+   "name": "extensions.selftest",
+   "platform": "linux",
+   "passed": 11,
+   "total": 11,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.8,
+   "outcome": "ok"
+  },
+  {
+   "name": "offline.selftest",
+   "platform": "linux",
+   "passed": 10,
+   "total": 10,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 1.3,
+   "outcome": "ok"
+  },
+  {
+   "name": "core.token_usage_selftest",
+   "platform": "linux",
+   "passed": 1,
+   "total": 1,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.0,
+   "outcome": "ok"
+  },
+  {
+   "name": "actions.repository_review_selftest",
+   "platform": "linux",
+   "passed": 1,
+   "total": 1,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.0,
+   "outcome": "ok"
+  },
+  {
+   "name": "nightshift.selftest",
+   "platform": "linux",
+   "passed": 32,
+   "total": 32,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 6.2,
+   "outcome": "ok"
+  }
+ ],
  "regressions": [],
- "repaired": [],
+ "repaired": [
+  {
+   "suite": "core.code_workspace.selftest",
+   "check": "2",
+   "label": "une jonction ou un lien dans le projet n'ouvre pas de porte",
+   "was_known": false
+  }
+ ],
  "preexisting": [],
  "unreferenced": [],
  "lint": {
   "tool": "ruff",
-  "available": false
+  "available": true,
+  "version": "0.17.0",
+  "count": 1,
+  "findings": [
+   {
+    "code": "F841",
+    "path": "eval_lab/mutate.py",
+    "line": 97,
+    "message": "Local variable `stim` is assigned to but never used"
+   }
+  ],
+  "new": []
  },
- "green_streak": 0,
+ "metrics": {
+  "eval_lab": {
+   "available": true,
+   "corpora": {
+    "legacy": {
+     "available": true,
+     "total": 77,
+     "pass": 77,
+     "rate": 1.0,
+     "by_verdict": {
+      "PASS": 77
+     },
+     "causes": {},
+     "by_surface": {
+      "policy": {
+       "pass": 32,
+       "total": 32
+      },
+      "routing": {
+       "pass": 23,
+       "total": 23
+      },
+      "sequence": {
+       "pass": 5,
+       "total": 5
+      },
+      "situation": {
+       "pass": 17,
+       "total": 17
+      }
+     }
+    },
+    "regressions": {
+     "available": true,
+     "total": 9,
+     "pass": 9,
+     "rate": 1.0,
+     "by_verdict": {
+      "PASS": 9
+     },
+     "causes": {},
+     "by_surface": {
+      "policy": {
+       "pass": 3,
+       "total": 3
+      },
+      "router": {
+       "pass": 2,
+       "total": 2
+      },
+      "sequence": {
+       "pass": 4,
+       "total": 4
+      }
+     }
+    }
+   }
+  },
+  "cognition": {
+   "available": true,
+   "values": {
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · questions justes": "6/6",
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · faux souvenirs devenus des faits": "0/4",
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · mise à jour Lyon → Bordeaux": "historisée",
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · suppression (« oublie ma sœur »)": "complète",
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · persistance après 2 redémarrages": "oui",
+    "Rappel (5 paires ancien/récent) · Park (récence+importance+pertinence)": "5/5 : le souvenir récent et important arrive en tête",
+    "Rappel (5 paires ancien/récent) · pertinence seule": "0/5 : le souvenir récent et important arrive en tête",
+    "Émotions (agent simulé qui suit les consignes) · essais avant de changer d'approche": "3",
+    "Émotions (agent simulé qui suit les consignes) · fausse alerte sur 10 succès": "non",
+    "Calibration (300 appels, réussites vraies connues) · Brier du modèle de soi": "0.163",
+    "Calibration (300 appels, réussites vraies connues) · Brier « toujours 50 % » (référence)": "0.25",
+    "Calibration (300 appels, réussites vraies connues) · ECE du modèle de soi": "0.025",
+    "Autonomie (vérification des propositions) · propositions dangereuses ou invalides refusées": "22/22",
+    "Autonomie (vérification des propositions) · propositions légitimes acceptées (pas de sur-blocage)": "8/8"
+   }
+  },
+  "context": {
+   "available": true,
+   "server": {
+    "tools": 33,
+    "chars": 22284
+   },
+   "local": {
+    "tools": 34,
+    "chars": 23520
+   },
+   "system_prompt_chars": 3540,
+   "estimated_tokens_local": 7731
+  }
+ },
+ "metrics_changes": [],
+ "green_streak": 2,
  "task": {
-  "id": null,
-  "source": null,
-  "files": [],
-  "attempts": 0,
-  "outcome": "skipped",
-  "reason": "sélection absente (la veille a-t-elle échoué ?)",
+  "id": "ruff-F841-eval_lab-mutate.py-10d8aa7",
+  "source": "ruff",
+  "code": "F841",
+  "path": "eval_lab/mutate.py",
+  "line": 97,
+  "files": [
+   "eval_lab/mutate.py"
+  ],
+  "attempts": 1,
   "out_of_zone": [],
+  "model": "groq/openai/gpt-oss-120b",
+  "outcome": "patch_validated",
+  "reason": "la remarque a disparu",
+  "review_closely": [],
+  "publication": "aucune PR : dry run (NIGHTLY_DRY_RUN=true)",
   "skipped": []
  },
  "pull_request_url": null,
  "usage": {
-  "llm_calls": 0,
-  "tokens_in": 0,
-  "tokens_out": 0,
-  "providers": {}
+  "llm_calls": 1,
+  "tokens_in": 1010,
+  "tokens_out": 150,
+  "providers": {
+   "groq/openai/gpt-oss-120b": 1
+  }
  },
  "budgets": {
   "max_tasks": 1,
@@ -49,26 +345,170 @@
   "passes": 3,
   "max_open_prs": 3
  },
- "limitations": [
-  "rapport de la veille absent"
- ],
+ "limitations": [],
  "dry_run": true,
- "backlog": [],
+ "backlog": [
+  {
+   "graph": "context",
+   "node": "l.voiture",
+   "label": "Détection de la voiture",
+   "status": "partiel",
+   "summary": "Sans ACTIVITY_RECOGNITION ni localisation (refusées par le manifeste), DRIVING ne se déclenche que par le nom Bluetooth de l'autoradio, déclaré côté serveur dans car_bluetooth_names.",
+   "files": [
+    "context/situation.py"
+   ],
+   "zone": true,
+   "owner": "humain (aucun contrôle ne le prouverait)"
+  },
+  {
+   "graph": "general",
+   "node": "tool.weather_report",
+   "label": "weather_report",
+   "status": "partiel",
+   "summary": "Météo de votre ville (lue dans la mémoire) : une phrase, et le navigateur s'ouvre.",
+   "files": [
+    "actions/weather_report.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "tool.youtube_video",
+   "label": "youtube_video",
+   "status": "partiel",
+   "summary": "YouTube : lire une vidéo, la résumer, ses infos, les tendances.",
+   "files": [
+    "actions/youtube_video.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "nightshift",
+   "node": "nightshift",
+   "label": "nightshift/ — le veilleur de nuit",
+   "status": "partiel",
+   "summary": "Phases 1 à 5 du plan Night Shift (meilleur.idee.md) : chaque nuit, GitHub Actions lance les suites testables sous Linux et ruff, compare avec la passe précédente, choisit à chaque passe une tâche diff",
+   "files": [
+    "nightshift/__init__.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "preprod",
+   "node": "t.audio",
+   "label": "audio",
+   "status": "partiel",
+   "summary": "Ce qui est déterministe ; le reste sort en PHYSICAL_ONLY.",
+   "files": [
+    "jarvis-preprod/tests/audio/test_audio.sh"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "server",
+   "node": "l.barge_in",
+   "label": "Interruption à la voix (option)",
+   "status": "partiel",
+   "summary": "phone_barge_in: true dans config/api_keys.json : l'audio du téléphone continue d'aller à Gemini pendant que JARVIS parle, et sa détection de voix peut l'interrompre. Désactivé par défaut.",
+   "files": [
+    "main.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "f.nightshift",
+   "label": "Veilleur de nuit (Night Shift)",
+   "status": "partiel",
+   "summary": "Trois passes par nuit (01 h 17, 03 h 17, 05 h 17) : GitHub Actions lance les suites testables sous Linux et ruff, compare avec la passe précédente, choisit à chaque passe une tâche différente dans la ",
+   "files": [
+    "nightshift/__init__.py",
+    ".github/workflows/nightly.yml"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "tool.reminder",
+   "label": "reminder · rappels",
+   "status": "partiel",
+   "summary": "Rappel à une date et une heure : tâche planifiée du système (filet quand JARVIS est fermé) et, quand il tourne, livraison par JARVIS lui-même (HUD, téléphone, voix).",
+   "files": [
+    "actions/reminder.py",
+    "reminders/__init__.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "tool.system_status",
+   "label": "system_status",
+   "status": "partiel",
+   "summary": "CPU, RAM, GPU, température, temps de fonctionnement, nombre de processus.",
+   "files": [
+    "main.py",
+    "actions/system_monitor.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "android",
+   "node": "m.matrice",
+   "label": "Ce qui arrive sur Android",
+   "status": "partiel",
+   "summary": "Depuis le téléphone, tout ce qui n'est pas open_app s'exécute sur Oracle : parfait pour le réseau et la réflexion, inutile pour ce qui touche un écran.",
+   "files": [],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "cognition",
+   "node": "l.local",
+   "label": "Mode local seulement",
+   "status": "partiel",
+   "summary": "Ni la cognition ni ESPRIT ne tournent sur Oracle : l'usage quotidien en ligne n'en profite pas.",
+   "files": [],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "deployment",
+   "node": "l.dependances",
+   "label": "Ce qui dépend d'autre chose que ce PC",
+   "status": "partiel",
+   "summary": "Oracle lui-même (secrets et sauvegardes sur la même VM) ; le compte Tailscale (sinon IP publique et une clé SSH absente de ce PC) ; la clé de signature Android.",
+   "files": [],
+   "zone": false,
+   "owner": "humain"
+  }
+ ],
  "pass": {
-  "n": 2,
+  "n": 1,
   "of": 3
  },
  "diagnostics": [],
  "week": null,
  "tonight": [
   {
-   "pass": 2,
-   "run_id": "38858319190",
-   "status": "failed",
-   "task": null,
-   "outcome": "skipped",
-   "ref": {},
-   "tokens": 0,
+   "pass": 1,
+   "run_id": "38834786074",
+   "status": "success",
+   "task": "ruff-F841-eval_lab-mutate.py-10d8aa7",
+   "outcome": "patch_validated",
+   "ref": {
+    "source": "ruff",
+    "code": "F841",
+    "path": "eval_lab/mutate.py"
+   },
+   "tokens": 1160,
    "pr": null
   }
  ],
