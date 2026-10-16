@@ -100,6 +100,14 @@ if errorlevel 1 (
 echo ok> "%PYDIR%\.deps-ok"
 :have_deps
 
+REM --- 3z. Auto-verification : une dependance cassee -> on la reinstalle -------
+"%PY%" "%APP%\portable\selfcheck.py" check >nul 2>&1
+if errorlevel 1 (
+  echo Verification : des dependances manquent, reparation...>> "%STATUS%"
+  "%PY%" "%APP%\portable\selfcheck.py" repair >nul 2>&1
+  "%PY%" -m pip install -r "%APP%\requirements.txt"
+)
+
 REM --- 3a. Continuite d'identite + snapshot de la preuve zero-trace -----------
 "%PY%" "%APP%\portable\continuity.py" start
 "%PY%" "%APP%\portable\trace_audit.py" snapshot >nul 2>&1

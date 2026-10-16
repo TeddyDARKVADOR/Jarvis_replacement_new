@@ -83,6 +83,18 @@ def disk_write_mbps(target: Path) -> float:
             pass
 
 
+def battery() -> dict:
+    """État batterie : sur secteur ou non, pourcentage. {} si pas de batterie."""
+    try:
+        import psutil
+        b = psutil.sensors_battery()
+        if b is None:
+            return {}
+        return {"on_battery": not b.power_plugged, "percent": round(b.percent)}
+    except Exception:
+        return {}
+
+
 def is_online(timeout: float = 2.5) -> bool:
     """Internet joignable ? (pour la bascule Gemini/cloud ↔ Ollama local.)"""
     import socket
@@ -132,6 +144,7 @@ def profile(measure_disk: bool = True) -> dict:
         "key_write_mbps": mbps,
         "key_slow": 0 < mbps < 12,     # USB 2.0 typique : on previent
         "online": is_online(),
+        "battery": battery(),
     }
 
 

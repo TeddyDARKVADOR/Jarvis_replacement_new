@@ -153,7 +153,8 @@
         "Look & accessibilité (2026-10-17) : splash et farewell enrichis (grille HUD, arcs multiples, particules en orbite, balayage radar, cœur à bloom, barre de progression ; extinction en power-down avec flash et onde de choc). Thème d'accent (cyan/or/vert/violet/rouge) et mode « mouvement réduit » (accessibilité) lus dans data/portable.json, écrits par setup_wizard.ps1. Le Oui/Non au branchement passe par portable/ask_launch.ps1 (fenêtre élégante, cœur pulsé, Entrée=oui/Échap=non, code de sortie) au lieu d'une MessageBox. Chargement XAML des 3 fenêtres prouvé (-ValidateOnly) et affichage réel vérifié.",
         "Responsivité sur clé USB : le lanceur pose PYTHONDONTWRITEBYTECODE=1 (pas de .pyc écrits sur la clé lente) et PYTHONUTF8=1 ; host_profile mesure le débit d'écriture de la clé (key_write_mbps, key_slow si < 12 Mo/s) et la connectivité (online) ; l'action doctor les affiche. Chiffrement de cognition.db : le coffre fait un PRAGMA wal_checkpoint(TRUNCATE) avant de chiffrer (aucune écriture WAL perdue) — round-trip SQLite prouvé. Multi-clés étendu à TOUS les appels : memory/config_manager.load_api_keys() renvoie la clé active du pool, donc réunion, briefing, daily, offline, pilot tournent aussi (prouvé). Appairage téléphone : action pair (adresses LAN + QR du HUD). Auto Gemini↔Ollama : la bascule hors-ligne reste réactive (on_live_down) ; doctor dit si on est hors-ligne.",
         "Continuité d'identité (2026-10-17) : un journal de sessions sur la clé (data/continuity.json) retient quand/sur quelle machine/quel modèle. Au démarrage, portable/continuity.py compose un récap de reprise CONSCIENT DE LA MACHINE (« Rebonjour, la dernière fois il y a 3 h sur le PC du bureau ; ici c'est une nouvelle machine, sans GPU → Ollama »), affiché sur l'animation et récupérable par l'outil portable action resume ; action note enregistre le fil en cours, repris même sur un autre PC. Le même « moi » voyage avec la clé.",
-        "Preuve du zéro-trace (2026-10-17) : le lanceur mémorise les VRAIS dossiers de l'hôte (JARVIS_HOST_USERPROFILE/_LOCALAPPDATA/_APPDATA/_TEMP) AVANT la redirection ; portable/trace_audit.py fait un snapshot au boot puis, à l'arrêt, prouve que 0 fichier a été écrit hors de la clé (toute fuite par chemin absolu serait listée). Le résultat s'affiche dans l'animation de retrait, et l'outil portable action audit le donne à la demande. Chiffrement total par défaut : le wizard coche « clés + mémoire » et protège config/api_keys.json, memory/long_term.json, memory/incidents.json et memory/cognition.db (checkpoint WAL). Tout prouvé par des tests directs."
+        "Preuve du zéro-trace (2026-10-17) : le lanceur mémorise les VRAIS dossiers de l'hôte (JARVIS_HOST_USERPROFILE/_LOCALAPPDATA/_APPDATA/_TEMP) AVANT la redirection ; portable/trace_audit.py fait un snapshot au boot puis, à l'arrêt, prouve que 0 fichier a été écrit hors de la clé (toute fuite par chemin absolu serait listée). Le résultat s'affiche dans l'animation de retrait, et l'outil portable action audit le donne à la demande. Chiffrement total par défaut : le wizard coche « clés + mémoire » et protège config/api_keys.json, memory/long_term.json, memory/incidents.json et memory/cognition.db (checkpoint WAL). Tout prouvé par des tests directs.",
+        "Increvable + pratique (2026-10-17) : portable/selfcheck.py vérifie au boot que les dépendances critiques s'importent (sinon le lanceur réinstalle tout seul) et contrôle l'intégrité de la clé contre un manifeste de hash posé par sync_to_key.ps1 (détecte corruption/altération ; action check). Conscience batterie (host_profile : sur secteur/batterie %, doctor évite les gros modèles sur batterie). Action history : où et quand JARVIS a tourné (journal de continuité). portable/eject.ps1 + menu du veilleur : éjection en sécurité (flush + démontage) sans admin."
       ],
       "files": [
         "main.py",
@@ -164,12 +165,14 @@
         "portable/ask_launch.ps1",
         "portable/autostart_watcher.ps1",
         "portable/continuity.py",
+        "portable/eject.ps1",
         "portable/eject_guard.py",
         "portable/farewell.ps1",
         "portable/host_profile.py",
         "portable/install_autostart.ps1",
         "portable/lancer-jarvis.sh",
         "portable/secure_key.ps1",
+        "portable/selfcheck.py",
         "portable/setup_wizard.ps1",
         "portable/splash.ps1",
         "portable/sync_to_key.ps1",

@@ -169,6 +169,10 @@ temps du démarrage ; retirez la clé, rien ne reste.
 - **Zéro-trace *prouvé*** : JARVIS mémorise les vrais dossiers de l'hôte avant de
   rediriger, puis **démontre à l'arrêt que 0 fichier a été écrit hors de la clé**
   (`audit`). Chiffrement clés **+ mémoire** par défaut.
+- **Increvable** : auto-vérification au boot (dépendance cassée → réinstallée
+  seule) et contrôle d'**intégrité** de la clé (manifeste de hash) — action `check`.
+- **Pratique** : conscience **batterie** (évite les gros modèles sur batterie),
+  `history` (où/quand il a tourné), **éjection en sécurité** depuis l'icône du veilleur.
 
 Tout le détail, avec l'état vérifié, est dans le graphe
 [`capabilities/graphs/deployment.json`](capabilities/graphs/deployment.json) (nœud *JARVIS portable*).

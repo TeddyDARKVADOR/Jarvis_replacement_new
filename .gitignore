@@ -102,3 +102,6 @@ config/mcp.json
 
 # Extensions installées par l'utilisateur (extensions/manager.py) : hors dépôt
 user_plugins/
+
+# Manifeste d'intégrité propre à chaque clé (généré par sync_to_key.ps1)
+portable/integrity.json

@@ -41,7 +41,9 @@ PLUGIN = {
                                "pair : comment appairer le téléphone (adresse locale, QR du HUD). "
                                "resume : le récap de reprise (dernière session, machine, fil en cours). "
                                "audit : preuve que rien n'a été écrit hors de la clé sur ce PC. "
-                               "note : enregistrer ce sur quoi on travaille (passer `text`) pour la reprise.",
+                               "note : enregistrer ce sur quoi on travaille (passer `text`) pour la reprise. "
+                               "check : auto-vérification (dépendances + intégrité de la clé). "
+                               "history : où et quand JARVIS a tourné (les dernières sessions).",
             },
             "text": {
                 "type": "STRING",
@@ -140,6 +142,10 @@ def _doctor() -> str:
         lines.append(f"  ce PC : {gpu}, {p['ram_gb']} Go RAM → modèle conseillé {p['recommended_model']}")
         net = "en ligne (Gemini dispo)" if p.get("online") else "hors-ligne (JARVIS passe sur Ollama local)"
         lines.append(f"  connexion : {net}")
+        bat = p.get("battery") or {}
+        if bat:
+            src = f"sur batterie {bat.get('percent')}%" if bat.get("on_battery") else "sur secteur"
+            lines.append(f"  alimentation : {src}" + (" — j'évite les gros modèles" if bat.get("on_battery") else ""))
         if p.get("key_write_mbps"):
             warn = " — clé lente (USB 2.0), c'est normal que ce soit plus posé" if p.get("key_slow") else ""
             lines.append(f"  vitesse d'écriture de la clé : {p['key_write_mbps']} Mo/s{warn}")
@@ -196,6 +202,32 @@ def _audit() -> str:
         return f"Audit zéro-trace indisponible : {e}"
 
 
+def _check() -> str:
+    try:
+        from portable import selfcheck
+        return "Auto-vérification — " + selfcheck.summary()
+    except Exception as e:
+        return f"Auto-vérification indisponible : {e}"
+
+
+def _history() -> str:
+    try:
+        from portable import continuity
+        import time
+        data = continuity._load()
+        sessions = [s for s in data.get("sessions", []) if s.get("start")][-6:]
+        if not sessions:
+            return "Aucune session enregistrée pour l'instant, Sir."
+        out = ["Là où j'ai tourné récemment :"]
+        for s in reversed(sessions):
+            when = time.strftime("%d/%m %H:%M", time.localtime(s["start"]))
+            lbl = s.get("label", s.get("host_id", "?"))
+            out.append(f"  {when} — {lbl}" + (f" ({s['focus']})" if s.get("focus") else ""))
+        return "\n".join(out)
+    except Exception as e:
+        return f"Historique indisponible : {e}"
+
+
 def _note(text: str) -> str:
     if not text:
         return "Dis-moi quoi noter, Sir (ce sur quoi on travaille)."
@@ -223,6 +255,10 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
             result = _audit()
         elif action in ("note", "noter", "focus"):
             result = _note(str(params.get("text", "")).strip())
+        elif action in ("check", "verif", "vérif", "selfcheck", "integrite", "intégrité", "repair", "reparer"):
+            result = _check()
+        elif action in ("history", "historique", "ou", "où"):
+            result = _history()
         else:
             result = _status()
     except Exception as e:  # ne jamais lever : renvoyer une phrase d'erreur parlée

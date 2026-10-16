@@ -76,6 +76,16 @@ function Ask-On-Insert {
 $miLaunch = $menu.Items.Add("Lancer JARVIS maintenant")
 $miLaunch.add_Click({ $k = Find-Keys | Select-Object -First 1; if ($k) { Launch-Key $k.DeviceID } else {
     $notify.ShowBalloonTip(3000,"JARVIS portable","Aucune cle JARVIS branchee.",[System.Windows.Forms.ToolTipIcon]::Warning) } })
+$ejectScript = Join-Path $PSScriptRoot 'eject.ps1'
+$miEject = $menu.Items.Add("Ejecter la cle en securite")
+$miEject.add_Click({
+    $k = Find-Keys | Select-Object -First 1
+    if ($k -and (Test-Path $ejectScript)) {
+        Start-Process powershell -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$ejectScript`"",'-Drive',$k.DeviceID)
+    } else {
+        $notify.ShowBalloonTip(3000,"JARVIS portable","Aucune cle JARVIS a ejecter.",[System.Windows.Forms.ToolTipIcon]::Warning)
+    }
+})
 $miQuit = $menu.Items.Add("Quitter")
 $miQuit.add_Click({ $notify.Visible = $false; [System.Windows.Forms.Application]::Exit() })
 $notify.ContextMenuStrip = $menu

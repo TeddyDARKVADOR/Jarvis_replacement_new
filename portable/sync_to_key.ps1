@@ -53,6 +53,14 @@ foreach ($d in @('data', 'data\home', 'data\tmp', 'data\hf', 'data\logs',
     New-Item -ItemType Directory -Force -Path (Join-Path $KeyRoot $d) | Out-Null
 }
 
+# Manifeste d'integrite de la cle (hash des .py) pour l'auto-verification au boot
+$kpy = Join-Path $KeyRoot 'runtime\python\python.exe'
+$genPy = if (Test-Path $kpy) { $kpy } else { (Get-Command py, python -ErrorAction SilentlyContinue | Select-Object -First 1).Source }
+if ($genPy) {
+    & $genPy (Join-Path $app 'portable\selfcheck.py') manifest | Out-Null
+    Write-Host "[sync] Manifeste d'integrite ecrit."
+}
+
 $free = (Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$($drive)'").FreeSpace
 Write-Host ""
 Write-Host "[sync] Termine. Espace libre sur $drive : $([math]::Round($free/1GB,1)) Go"
