@@ -39,10 +39,45 @@ def load_api_keys() -> dict:
     if not CONFIG_FILE.exists():
         return {}
     try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
+        cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
     except Exception as e:
         print(f"❌ Failed to load {CONFIG_FILE.name}: {e}")
         return {}
+    return _apply_key_pool(cfg)
+
+
+def _apply_key_pool(cfg: dict) -> dict:
+    """Plusieurs comptes Gemini → une clé active qui tourne sur quota.
+
+    Construit le pool depuis `gemini_api_keys` (liste), `gemini_api_key` (clé
+    unique) et l'env `JARVIS_GEMINI_KEYS` (clés de l'hôte, séparées par des
+    virgules), le confie à resilience/, et pose `gemini_api_key` = la clé active.
+    Ainsi TOUS les appels qui lisent load_api_keys() (réunion, briefing, daily,
+    offline, pilot…) tournent eux aussi. Avec une seule clé : rien ne change.
+    """
+    try:
+        import os as _os
+        pool: list[str] = []
+        many = cfg.get("gemini_api_keys")
+        if isinstance(many, list):
+            pool += [str(k).strip() for k in many if str(k).strip()]
+        single = str(cfg.get("gemini_api_key") or "").strip()
+        if single:
+            pool.append(single)
+        for k in _os.environ.get("JARVIS_GEMINI_KEYS", "").split(","):
+            if k.strip():
+                pool.append(k.strip())
+        if len(dict.fromkeys(pool)) <= 1:
+            return cfg                       # une seule clé (ou aucune) : inchangé
+        import resilience
+        resilience.set_gemini_keys(pool)
+        active = resilience.current_gemini_key()
+        if active:
+            cfg = dict(cfg)
+            cfg["gemini_api_key"] = active
+    except Exception:
+        pass
+    return cfg
 
 def get_gemini_key() -> str | None:
     return load_api_keys().get("gemini_api_key")

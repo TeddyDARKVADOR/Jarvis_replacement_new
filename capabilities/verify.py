@@ -264,6 +264,40 @@ def _extensions(tmp: Path) -> str:
     return f"examen sans exécution : « shell » non déclaré repéré ; {tool.run({'action': 'list'})[:60]}"
 
 
+def _portable(tmp: Path) -> str:
+    import os
+    p = importlib.import_module("plugins.portable")
+    # Hors mode portable : l'outil le dit sans se tromper.
+    saved = {k: os.environ.get(k) for k in ("JARVIS_PORTABLE", "JARVIS_DATA_DIR", "USERPROFILE")}
+    for k in ("JARVIS_PORTABLE", "JARVIS_DATA_DIR"):
+        os.environ.pop(k, None)
+    try:
+        off = p.run({"action": "status"})
+        assert "pas" in off.lower() or "portable" in off.lower(), off
+        # Mode portable simulé : les données doivent pointer sur la clé (ici tmp).
+        data = tmp / "data"
+        data.mkdir(parents=True, exist_ok=True)
+        os.environ["JARVIS_PORTABLE"] = "1"
+        os.environ["JARVIS_DATA_DIR"] = str(data)
+        os.environ["USERPROFILE"] = str(data / "home")
+        on = p.run({"action": "status"})
+        assert str(data) in on and "portable" in on.lower(), on
+        ej = p.run({"action": "eject"})
+        assert "éject" in ej.lower() or "retir" in ej.lower(), ej
+        doc = p.run({"action": "doctor"})
+        assert "bilan" in doc.lower(), doc
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    # Le gardien d'éjection : sans commande, il est sans effet (sort en 0).
+    guard = importlib.import_module("portable.eject_guard")
+    assert guard.main([]) == 0
+    return "mode portable détecté, données sur la clé, éjection expliquée ; gardien à vide inerte"
+
+
 def _dry(module: str, *deps: str):
     def probe(tmp: Path) -> str:
         importlib.import_module(module)
@@ -312,6 +346,7 @@ PROBES = {
     "briefing": ("reel", _briefing),
     "incidents": ("reel", _incidents),
     "extensions": ("reel", _extensions),
+    "portable": ("reel", _portable),
     "weather_report": ("vide", _dry("actions.weather_report")),
     "flight_finder": ("vide", _dry("actions.flight_finder")),
     "save_memory": ("vide", _dry("memory.memory_manager")),

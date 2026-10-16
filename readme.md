@@ -126,6 +126,47 @@ python setup.py            # les dépendances de votre OS, rien de plus
 
 **Il faut :** Python 3.11 ou 3.12, un micro, des haut-parleurs. Le mot d'éveil, Ollama et le serveur sont facultatifs.
 
+## 🔌 Nomade — JARVIS sur clé USB
+
+JARVIS tient sur une clé USB et tourne depuis **n'importe quel PC Windows** (ou
+Linux) **sans rien installer ni laisser sur l'hôte**. Branchez la clé, une fenêtre
+demande *« Lancer JARVIS sur ce PC ? »*, et un **réacteur ARC animé** s'affiche le
+temps du démarrage ; retirez la clé, rien ne reste.
+
+```
+<clé>\JARVIS\
+  Lancer-JARVIS.bat     double-clic : déploie et lance (anime le boot)
+  app\                  le dépôt (copié par portable\sync_to_key.ps1)
+  data\                 TOUT vit ici : home, caches, mémoire, modèles
+  runtime\              Python portable + Ollama optionnel
+```
+
+- **Zéro trace, cœur intact** : le lanceur redirige `USERPROFILE`/`LOCALAPPDATA`/
+  `APPDATA`/`TEMP`/`HF_HOME`/`OLLAMA_MODELS`… vers la clé avant de démarrer Python.
+  Aucun fichier de `core/` n'est touché (contrat V2).
+- **Plusieurs clés Gemini** : listez-les (`gemini_api_keys`) ou laissez le PC hôte
+  injecter la sienne (`JARVIS_GEMINI_KEYS`) — JARVIS bascule quand l'une épuise son
+  quota du jour. Plusieurs comptes ≈ plus de quota.
+- **Coffre** : `portable\secure_key.ps1 -Action lock` chiffre vos clés (et votre
+  mémoire) avec une phrase ; clé perdue = données illisibles. Compatible Ventoy.
+- **100 % hors-ligne** : `portable\add_ollama.ps1` pose Ollama + un modèle outillé
+  sur la clé ; JARVIS marche alors sans internet ni Gemini.
+- **Lancement au branchement** : `portable\autostart_watcher.ps1` (icône barre des
+  tâches, sans trace) demande l'autorisation par une fenêtre élégante *Oui / Non* ;
+  `install_autostart.ps1` l'automatise au logon sur vos PC de confiance.
+- **Look & accessibilité** : réacteur ARC animé au boot (grille HUD, anneaux,
+  particules, balayage radar) et extinction *power-down* au retrait ; thème d'accent
+  au choix et mode **mouvement réduit** (`data\portable.json`, réglés par le wizard).
+- **S'adapte au PC** : `host_profile.py` détecte GPU/RAM et choisit le modèle Ollama
+  (RTX → `qwen3:8b`), mesure la vitesse de la clé, et bascule sur Ollama hors-ligne.
+  Demandez *« fais le bilan portable »* → l'action `doctor` de l'outil `portable`.
+- **Responsivité clé USB** : pas de `.pyc` écrits sur la clé, `cognition.db` chiffrable
+  (checkpoint WAL propre), multi-clés actif pour **tous** les appels (voix, réunion,
+  briefing…).
+
+Tout le détail, avec l'état vérifié, est dans le graphe
+[`capabilities/graphs/deployment.json`](capabilities/graphs/deployment.json) (nœud *JARVIS portable*).
+
 ## 🧪 Vérifier
 
 Chaque paquet se prouve seul, sans clé ni réseau : `python -m capabilities.selftest`, `python -m context.selftest`, `python -m server.selftest`, …

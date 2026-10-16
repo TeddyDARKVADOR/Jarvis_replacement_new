@@ -151,8 +151,38 @@ def _pcm_level(samples) -> float:
 
 
 def _get_api_key() -> str:
+    """La clé Gemini à utiliser maintenant.
+
+    Plusieurs comptes → plusieurs clés : `gemini_api_keys` (liste) dans la config,
+    `gemini_api_key` (clé unique, historique), et des clés injectées par le PC hôte
+    via l'env `JARVIS_GEMINI_KEYS` (séparées par des virgules — utile en portable :
+    la clé de la machine s'ajoute à celles de la clé USB). Le pool est confié à
+    resilience/, qui bascule de clé quand l'une épuise son quota du jour. Avec une
+    seule clé, comportement identique à avant.
+    """
+    import os
     with open(API_CONFIG_PATH, "r", encoding="utf-8-sig") as f:
-        return json.load(f)["gemini_api_key"]
+        cfg = json.load(f)
+    pool: list[str] = []
+    many = cfg.get("gemini_api_keys")
+    if isinstance(many, list):
+        pool += [str(k).strip() for k in many if str(k).strip()]
+    single = str(cfg.get("gemini_api_key") or "").strip()
+    if single:
+        pool.append(single)
+    for k in os.environ.get("JARVIS_GEMINI_KEYS", "").split(","):
+        if k.strip():
+            pool.append(k.strip())
+    try:
+        import resilience
+        resilience.set_gemini_keys(pool)
+        active = resilience.current_gemini_key()
+        if active:
+            return active
+    except Exception:
+        pass
+    # Repli : la clé unique, ou — si rien n'est configuré — l'erreur d'avant.
+    return single or cfg["gemini_api_key"]
 
 
 def _load_system_prompt() -> str:

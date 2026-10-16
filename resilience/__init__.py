@@ -82,6 +82,69 @@ _lock = threading.Lock()
 _installed = False
 _log = print                     # remplacé par le journal du HUD dans attach()
 
+# ── plusieurs clés Gemini : multiplier le quota en basculant de clé ───────────
+# Plusieurs comptes Gemini → plusieurs clés. Quand une clé épuise son quota du
+# jour (429 « PerDay »), on la met au repos jusqu'à minuit (Pacifique) et on
+# passe à la suivante. Les repos de modèles (_cooldown) étant nommés par modèle
+# et non par clé, on les efface au changement de clé : la nouvelle clé repart
+# avec tous ses modèles. Avec une seule clé, rien ne change (V1 intacte).
+_gemini_keys: list[str] = []
+_key_cooldown: dict[str, float] = {}
+_current_key: str | None = None
+
+
+def set_gemini_keys(keys: list[str]) -> None:
+    """Déclare le pool ordonné de clés (sans doublon ni vide). Rejouée à chaque
+    connexion depuis main._get_api_key : un ajout de clé est pris à chaud."""
+    global _gemini_keys
+    clean: list[str] = []
+    for k in keys or []:
+        k = str(k or "").strip()
+        if k and k not in clean:
+            clean.append(k)
+    with _lock:
+        _gemini_keys = clean
+        for dead in [k for k in _key_cooldown if k not in clean]:
+            _key_cooldown.pop(dead, None)
+
+
+def current_gemini_key() -> str | None:
+    """La clé active : la première qui ne se repose pas. Si toutes se reposent,
+    celle dont le repos finit le plus tôt (on tente quand même). Au changement
+    de clé, les repos de modèles sont effacés (ils valaient pour l'ancienne)."""
+    global _current_key
+    with _lock:
+        if not _gemini_keys:
+            return None
+        now = time.monotonic()
+        fresh = [k for k in _gemini_keys if _key_cooldown.get(k, 0.0) <= now]
+        chosen = fresh[0] if fresh else min(_gemini_keys, key=lambda k: _key_cooldown.get(k, 0.0))
+        if chosen != _current_key:
+            _current_key = chosen
+            _cooldown.clear()
+        return chosen
+
+
+def rest_gemini_key(seconds: float, key: str | None = None) -> None:
+    """Met une clé (la courante par défaut) au repos pour `seconds`."""
+    with _lock:
+        k = key or _current_key
+        if k:
+            _key_cooldown[k] = time.monotonic() + seconds
+
+
+def gemini_keys_status() -> list[dict]:
+    """Pour l'affichage : chaque clé masquée, si elle se repose et jusqu'à quand."""
+    now = time.monotonic()
+    out = []
+    with _lock:
+        for k in _gemini_keys:
+            until = _key_cooldown.get(k, 0.0)
+            tail = k[-4:] if len(k) >= 4 else k
+            out.append({"key": f"…{tail}", "active": k == _current_key,
+                        "resting": until > now, "in_s": max(0.0, until - now)})
+    return out
+
 
 # ── classement des erreurs ───────────────────────────────────────────────────
 
@@ -332,6 +395,11 @@ def note_live_failure(model: str, err: str) -> bool:
     modèle, et changer de modèle ne ferait que heurter le même mur."""
     if is_quota_error(err):
         rest(model, quota_rest(err))
+        # Mur du jour (429 PerDay) : la clé courante est épuisée jusqu'à minuit.
+        # Avec plusieurs clés, on la met au repos pour basculer sur la suivante.
+        if "PerDay" in err and len(_gemini_keys) > 1:
+            rest_gemini_key(seconds_until_pacific_midnight())
+            _log("SYS: quota du jour atteint sur cette clé Gemini — bascule sur une autre clé.")
     elif is_gone_error(err) and "API key" not in err:
         rest(model, GONE_REST_S)
     else:

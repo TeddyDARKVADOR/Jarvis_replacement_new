@@ -223,6 +223,35 @@ def _attach():
     assert j._live_model("models/x") == "models/x" and callable(j._note_live_failure)
 
 
+@check("14 plusieurs clés Gemini : bascule au mur du jour, intacte à une seule clé")
+def _multikey():
+    perday = "1011 RESOURCE_EXHAUSTED: GenerateRequestsPerDayPerProjectPerModel-FreeTier quota"
+    perminute = "429 RESOURCE_EXHAUSTED: GenerateRequestsPerMinute quota"
+    m = R.LIVE_MODELS[0]
+    # déduplication + vides
+    R._key_cooldown.clear(); R._current_key = None
+    R.set_gemini_keys(["A", "A", "", "B", "  C  "])
+    assert R._gemini_keys == ["A", "B", "C"], R._gemini_keys
+    assert R.current_gemini_key() == "A"
+    # mur du jour sur A → on bascule sur B, A au repos
+    R.note_live_failure(m, perday)
+    assert R.current_gemini_key() == "B", R.gemini_keys_status()
+    st = {d["key"]: d for d in R.gemini_keys_status()}
+    assert st["…A"]["resting"] and st["…B"]["active"]
+    # un quota de la minute ne doit PAS brûler une clé
+    R._key_cooldown.clear(); R._current_key = None
+    R.set_gemini_keys(["X", "Y"])
+    assert R.current_gemini_key() == "X"
+    R.note_live_failure(m, perminute)
+    assert R.current_gemini_key() == "X", "une clé ne doit pas tomber sur un quota minute"
+    # une seule clé : le mur du jour ne la fait pas disparaître
+    R._key_cooldown.clear(); R._current_key = None
+    R.set_gemini_keys(["solo"])
+    R.note_live_failure(m, perday)
+    assert R.current_gemini_key() == "solo"
+    R.set_gemini_keys([]); R._key_cooldown.clear(); R._current_key = None
+
+
 def main() -> int:
     ok = sum(1 for _, passed, _ in _results if passed)
     for name, passed, info in _results:
