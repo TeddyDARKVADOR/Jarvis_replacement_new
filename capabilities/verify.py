@@ -248,8 +248,8 @@ def _briefing(tmp: Path) -> str:
 def _incidents(tmp: Path) -> str:
     importlib.import_module("plugins.incidents")
     import incidents
-    out = incidents.generic(r"open C:\Users\x\secret.txt key AIza" + "x" * 30)
-    assert "secret" not in out and "AIza" not in out, out
+    out = incidents.generic(r"open C:\Users\x\confidentiel.txt key AIza" + "x" * 30)
+    assert "confidentiel" not in out and "AIza" not in out, out
     return f"anonymisation vérifiée ; {incidents.summary().splitlines()[0]}"
 
 
