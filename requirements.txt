@@ -25,7 +25,7 @@ pygetwindow
 
 # ── Vision & media ───────────────────────────────────────────────────────────
 pillow
-opencv-python
+opencv-python-headless   # same cv2 API, without the Qt it bundles (no clash with PyQt6)
 mss
 
 # ── System, files & documents ────────────────────────────────────────────────
