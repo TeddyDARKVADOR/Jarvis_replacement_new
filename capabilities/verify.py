@@ -245,6 +245,14 @@ def _briefing(tmp: Path) -> str:
     return f"briefing composé (sans réseau) : {b.text().splitlines()[0]}"
 
 
+def _incidents(tmp: Path) -> str:
+    importlib.import_module("plugins.incidents")
+    import incidents
+    out = incidents.generic(r"open C:\Users\x\secret.txt key AIza" + "x" * 30)
+    assert "secret" not in out and "AIza" not in out, out
+    return f"anonymisation vérifiée ; {incidents.summary().splitlines()[0]}"
+
+
 def _dry(module: str, *deps: str):
     def probe(tmp: Path) -> str:
         importlib.import_module(module)
@@ -291,6 +299,7 @@ PROBES = {
     "pilot": ("reel", _pilot),
     "quotas": ("reel", _quotas),
     "briefing": ("reel", _briefing),
+    "incidents": ("reel", _incidents),
     "weather_report": ("vide", _dry("actions.weather_report")),
     "flight_finder": ("vide", _dry("actions.flight_finder")),
     "save_memory": ("vide", _dry("memory.memory_manager")),

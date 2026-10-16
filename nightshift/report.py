@@ -374,6 +374,15 @@ def to_markdown(r: dict) -> str:
         else:
             section("Modèle local", [f"- indisponible : {_cell(loc.get('reason'))}"])
 
+    inc = r.get("incidents")
+    if isinstance(inc, dict) and inc.get("available"):
+        rows = [f"- **{x.get('count')}×** sur {x.get('days')} jour(s) — `{_cell(x.get('exc') or x.get('kind'))}`"
+                + (f" `{_cell(x.get('where'))}`" if x.get("where") else "") + f" : {_cell(x.get('message'))}"
+                for x in inc.get("top") or []] or ["- aucune erreur comptée"]
+        if inc.get("stale"):
+            rows.append(f"- ⚠️ {_cell(inc['stale'])}")
+        section(f"Incidents réels — {inc.get('since')} → {inc.get('until')} (affichés, jamais confiés au modèle)", rows)
+
     bl = r.get("backlog") or []
     section(f"Backlog du graphe — {len(bl)} nœud(s) bug ou partiel", [
         f"- {b.get('status')} · `{_cell(b.get('graph'))}/{_cell(b.get('node'))}` — {_cell(b.get('label'))} · "

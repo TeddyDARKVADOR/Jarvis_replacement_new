@@ -666,6 +666,13 @@ class JarvisLive:
         except Exception:
             pass
 
+        # ── incidents/ (optionnel) : les erreurs réelles, comptées ─────────────
+        try:
+            import incidents
+            incidents.attach(self)
+        except Exception:
+            pass
+
         # ── daily/ (optionnel) : le briefing quotidien personnalisé ─────────────
         try:
             import daily

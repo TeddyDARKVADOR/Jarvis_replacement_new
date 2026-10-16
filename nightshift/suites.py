@@ -108,6 +108,8 @@ SUITES: tuple[Suite, ...] = (
     Suite("daily.selftest", ("-m", "daily.selftest"),
           linux="à mesurer sur GitHub (icalendar et recurring-ical-events dans requirements-server.txt) ; "
                 "sans réseau, le n°7 se déclare sans objet"),
+    Suite("incidents.selftest", ("-m", "incidents.selftest"),
+          linux="à mesurer sur GitHub (bibliothèque standard et git seulement)"),
 )
 
 

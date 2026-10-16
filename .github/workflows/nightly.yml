@@ -132,6 +132,8 @@ jobs:
               || echo "Pas encore de mémoire (state.json) : elle commence cette nuit."
             git show FETCH_HEAD:local/latest.json > "$RUNNER_TEMP/nightshift/local.json" 2>/dev/null \
               || echo "Pas d'avis du PC (phase 5, facultative) : « indisponible »."
+            git show FETCH_HEAD:incidents/latest.json > "$RUNNER_TEMP/nightshift/incidents.json" 2>/dev/null \
+              || echo "Pas d'incidents partagés (incidents_share désactivé) : section absente."
           else
             echo "Pas encore de branche nightshift-data : première nuit."
           fi
@@ -196,6 +198,7 @@ jobs:
             ${{ runner.temp }}/nightshift/state.json
             ${{ runner.temp }}/nightshift/prs.json
             ${{ runner.temp }}/nightshift/local.json
+            ${{ runner.temp }}/nightshift/incidents.json
             ${{ runner.temp }}/nightshift/outputs/
           retention-days: 14
           if-no-files-found: warn

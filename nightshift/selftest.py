@@ -1436,6 +1436,26 @@ def _cleanup():
     return "quotidien, sans code du dépôt, dry run à la main ; expirée ≠ refusée ; garde sur nightshift-data"
 
 
+@check("34 incidents réels : lus sur nightshift-data, classés par fréquence, affichés, jamais confiés au modèle")
+def _incidents():
+    wf = _src(".github/workflows/nightly.yml")
+    assert "FETCH_HEAD:incidents/latest.json" in wf and "nightshift/incidents.json" in wf, "le workflow lit et transmet le résumé"
+    digest = {"schema": "jarvis.incidents/1", "since": "2026-10-10", "until": "2026-10-16", "incidents": [
+        {"signature": "a", "kind": "log", "exc": "", "where": "", "message": "ERR: tts failed", "count": 2, "days": 1},
+        {"signature": "b", "kind": "thread", "exc": "RuntimeError", "where": "meeting/transcribe.py:_run",
+         "message": "segfault", "count": 9, "days": 4}]}
+    sec = assemble.incidents_section(digest, today=date(2026, 10, 16))
+    assert sec["available"] and [x["signature"] for x in sec["top"]] == ["b", "a"] and "stale" not in sec
+    old = assemble.incidents_section(digest, today=date(2026, 10, 25))
+    assert "vieux de 9 jours" in old["stale"]
+    assert assemble.incidents_section(None) == {"available": False, "reason": assemble.incidents_section(None)["reason"]}
+    md = report.to_markdown({**_night([_suite("a")]), "incidents": sec})
+    assert "### Incidents réels" in md and "**9×** sur 4 jour(s) — `RuntimeError` `meeting/transcribe.py:_run`" in md, md
+    candidates, _ = tasks.candidates({**_night([_suite("a")]), "incidents": sec, "lint": {}}, REPO)
+    assert not [c for c in candidates if c.get("source") == "incident"], "principe n°3 : pas de tâche sans contrôle"
+    return "le plus fréquent d'abord ; résumé périmé signalé ; absent → rien d'inventé ; aucune tâche au modèle"
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")

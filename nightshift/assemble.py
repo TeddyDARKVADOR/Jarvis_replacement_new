@@ -148,6 +148,29 @@ def local_section(batch: dict | None) -> dict:
                       for t in (batch.get("tasks") or [])[:6] if isinstance(t, dict)]}
 
 
+INCIDENTS_SCHEMA = "jarvis.incidents/1"
+INCIDENTS_STALE_DAYS = 3
+
+
+def incidents_section(digest: dict | None, today=None) -> dict:
+    """Les erreurs réelles partagées par JARVIS (paquet incidents/), les plus fréquentes d'abord. Affichées,
+    jamais confiées au modèle : aucun contrôle ne prouverait le correctif (principe n°3). Pur."""
+    if not isinstance(digest, dict) or digest.get("schema") != INCIDENTS_SCHEMA:
+        return {"available": False, "reason": "pas de résumé partagé (incidents_share désactivé, ou JARVIS pas lancé)"}
+    rows = [r for r in digest.get("incidents") or [] if isinstance(r, dict)]
+    rows.sort(key=lambda r: (int(r.get("count") or 0), int(r.get("days") or 0)), reverse=True)
+    out = {"available": True, "since": digest.get("since"), "until": digest.get("until"), "total": len(rows),
+           "top": [{k: r.get(k) for k in ("signature", "kind", "exc", "where", "message", "count", "days", "last")}
+                   for r in rows[:8]]}
+    try:
+        age = ((today or memory.today_paris()) - datetime.fromisoformat(str(digest.get("until"))).date()).days
+    except (TypeError, ValueError):
+        age = None
+    if age is not None and age > INCIDENTS_STALE_DAYS:
+        out["stale"] = f"résumé vieux de {age} jours (JARVIS n'a pas tourné, ou le partage échoue)"
+    return out
+
+
 def pass_info() -> dict:
     """La passe de ce run, transmise par le workflow (job « passe »)."""
     def num(name: str, default: int) -> int:
@@ -196,6 +219,7 @@ def assemble(veille: Path, proposal: Path | None, validation: Path | None, publi
     report["week"] = memory.week(state, _night_date(report))
     report["tonight"] = memory.tonight(state, str(report.get("started_at") or "")[:10])
     report["local"] = local_section(_load(veille / "local.json"))
+    report["incidents"] = incidents_section(_load(veille / "incidents.json"))
     report["summary"] = R.summarize(report)
     return report, state if measured else None
 

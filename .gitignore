@@ -92,6 +92,8 @@ memory/pilot_recipes.json
 memory/quota.json
 memory/daily.json
 memory/.daily-*.tmp
+memory/incidents.json
+memory/.incidents-*.tmp
 memory/.quota-*.tmp
 memory/.nightshift-*.tmp
 
