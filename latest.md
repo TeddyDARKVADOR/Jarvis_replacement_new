@@ -1,33 +1,36 @@
-## JARVIS Night Shift — 2026-10-16 · passe 1/3
+## JARVIS Night Shift — 2026-10-16 · passe 3/3
 
-**15/15 suites vertes ; aucune régression ; réparé : code_workspace n°2 ; ruff : 1 remarque ; tâche F841 eval_lab/mutate.py : correctif validé — aucune PR : dry run (NIGHTLY_DRY_RUN=true).**
+**15/15 suites vertes ; aucune régression ; ruff : 0 remarque ; rien à corriger.**
 
-commit `10d8aa7` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 00 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38834786074)
+commit `0534773` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 00 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38871469222)
 
 | Suite | Score | État | Durée |
 |---|---:|---|---:|
 | capabilities.selftest | 11/11 | ✅ vert | 0.5 s |
 | context.selftest | 33/33 | ✅ vert | 0.1 s |
 | server.selftest | 35/35 | ✅ vert | 2.0 s |
-| server.routing_selftest | 35/35 | ✅ vert | 0.9 s |
+| server.routing_selftest | 35/35 | ✅ vert | 0.7 s |
 | client_desktop --selftest | 28/28 | ✅ vert | 0.7 s |
 | cognition.selftest | 64/64 | ✅ vert | 3.6 s |
-| eval_lab.selftest | 28/28 | ✅ vert | 6.6 s |
+| eval_lab.selftest | 28/28 | ✅ vert | 6.8 s |
 | core.code_workspace.selftest | 34/34 | ✅ vert | 33.7 s |
 | reminders.selftest | 4/4 | ✅ vert | 0.3 s |
-| resilience.selftest | 13/13 | ✅ vert | 0.6 s |
+| resilience.selftest | 13/13 | ✅ vert | 0.7 s |
 | extensions.selftest | 11/11 | ✅ vert | 0.8 s |
 | offline.selftest | 10/10 | ✅ vert | 1.3 s |
 | core.token_usage_selftest | 1/1 | ✅ vert | 0.0 s |
 | actions.repository_review_selftest | 1/1 | ✅ vert | 0.0 s |
-| nightshift.selftest | 32/32 | ✅ vert | 6.2 s |
+| nightshift.selftest | 32/32 | ✅ vert | 6.4 s |
 
 ### Tâche de la nuit
 
-- **F841 eval_lab/mutate.py** (ruff) — correctif validé : la remarque a disparu
-- Publication : aucune PR : dry run (NIGHTLY_DRY_RUN=true)
-- 1 fichier(s) : `eval_lab/mutate.py` · 1 tentative(s) · groq/openai/gpt-oss-120b
-- Consommation : 1 appel(s) sur 12 · 1160 tokens sur 60000
+- rien à corriger
+- Consommation : 0 appel(s) sur 12 · 0 tokens sur 60000
+
+### Cette nuit, passe par passe
+
+- Passe 1 : F841 eval_lab/mutate.py — correctif validé · 1160 tokens
+- Passe 3 : rien de tenté — rien de tenté · 0 tokens
 
 ### Indicateurs — JARVIS s'améliore-t-il ?
 
@@ -54,11 +57,3 @@ commit `10d8aa7` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 
 - partiel · `android/m.matrice` — Ce qui arrive sur Android · hors zone
 - partiel · `cognition/l.local` — Mode local seulement · hors zone
 - partiel · `deployment/l.dependances` — Ce qui dépend d'autre chose que ce PC · hors zone
-
-### Réparé
-
-- code_workspace n°2 — une jonction ou un lien dans le projet n'ouvre pas de porte
-
-### ruff 0.17.0 — 1 remarque(s)
-
-- `eval_lab/mutate.py:97` F841 Local variable `stim` is assigned to but never used

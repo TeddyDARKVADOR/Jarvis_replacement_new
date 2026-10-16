@@ -1,23 +1,23 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "38834786074",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38834786074",
+ "run_id": "38871469222",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38871469222",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
- "commit": "10d8aa7",
- "commit_full": "10d8aa76552cf0f5bfc1b2bc2257a0843fe4e883",
+ "commit": "0534773",
+ "commit_full": "053477377290161fa1eb108407878ef56a5c9528",
  "previous": {
-  "run_id": "38689556451",
-  "commit": "2b26e21",
-  "finished_at": "2026-10-15T07:58:21+02:00",
+  "run_id": "38834786074",
+  "commit": "10d8aa7",
+  "finished_at": "2026-10-16T03:24:25+02:00",
   "status": "success"
  },
- "started_at": "2026-10-16T03:23:25+02:00",
- "finished_at": "2026-10-16T03:24:25+02:00",
+ "started_at": "2026-10-16T10:07:03+02:00",
+ "finished_at": "2026-10-16T10:08:03+02:00",
  "duration_s": 60.0,
  "status": "success",
- "summary": "15/15 suites vertes ; aucune régression ; réparé : code_workspace n°2 ; ruff : 1 remarque ; tâche F841 eval_lab/mutate.py : correctif validé — aucune PR : dry run (NIGHTLY_DRY_RUN=true).",
+ "summary": "15/15 suites vertes ; aucune régression ; ruff : 0 remarque ; rien à corriger.",
  "environment": {
   "runner": "github",
   "os": "Ubuntu 24.04.5 LTS",
@@ -66,7 +66,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.9,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -99,7 +99,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.6,
+   "duration_s": 6.8,
    "outcome": "ok"
   },
   {
@@ -132,7 +132,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.6,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -187,34 +187,20 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.2,
+   "duration_s": 6.4,
    "outcome": "ok"
   }
  ],
  "regressions": [],
- "repaired": [
-  {
-   "suite": "core.code_workspace.selftest",
-   "check": "2",
-   "label": "une jonction ou un lien dans le projet n'ouvre pas de porte",
-   "was_known": false
-  }
- ],
+ "repaired": [],
  "preexisting": [],
  "unreferenced": [],
  "lint": {
   "tool": "ruff",
   "available": true,
   "version": "0.17.0",
-  "count": 1,
-  "findings": [
-   {
-    "code": "F841",
-    "path": "eval_lab/mutate.py",
-    "line": 97,
-    "message": "Local variable `stim` is assigned to but never used"
-   }
-  ],
+  "count": 0,
+  "findings": [],
   "new": []
  },
  "metrics": {
@@ -309,33 +295,23 @@
   }
  },
  "metrics_changes": [],
- "green_streak": 2,
+ "green_streak": 3,
  "task": {
-  "id": "ruff-F841-eval_lab-mutate.py-10d8aa7",
-  "source": "ruff",
-  "code": "F841",
-  "path": "eval_lab/mutate.py",
-  "line": 97,
-  "files": [
-   "eval_lab/mutate.py"
-  ],
-  "attempts": 1,
+  "id": null,
+  "source": null,
+  "files": [],
+  "attempts": 0,
+  "outcome": "skipped",
+  "reason": "rien à corriger",
   "out_of_zone": [],
-  "model": "groq/openai/gpt-oss-120b",
-  "outcome": "patch_validated",
-  "reason": "la remarque a disparu",
-  "review_closely": [],
-  "publication": "aucune PR : dry run (NIGHTLY_DRY_RUN=true)",
   "skipped": []
  },
  "pull_request_url": null,
  "usage": {
-  "llm_calls": 1,
-  "tokens_in": 1010,
-  "tokens_out": 150,
-  "providers": {
-   "groq/openai/gpt-oss-120b": 1
-  }
+  "llm_calls": 0,
+  "tokens_in": 0,
+  "tokens_out": 0,
+  "providers": {}
  },
  "budgets": {
   "max_tasks": 1,
@@ -491,7 +467,7 @@
   }
  ],
  "pass": {
-  "n": 1,
+  "n": 3,
   "of": 3
  },
  "diagnostics": [],
@@ -509,6 +485,16 @@
     "path": "eval_lab/mutate.py"
    },
    "tokens": 1160,
+   "pr": null
+  },
+  {
+   "pass": 3,
+   "run_id": "38871469222",
+   "status": "success",
+   "task": null,
+   "outcome": "skipped",
+   "ref": {},
+   "tokens": 0,
    "pr": null
   }
  ],
