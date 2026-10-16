@@ -121,7 +121,8 @@ def attach(dashboard, get_jarvis: Callable[[], object], log=print) -> None:
             cfg = _keys()
             first = str(cfg.get("pilot_model") or "").strip()
             models = (first,) + tuple(m for m in brain.MODELS if m != first) if first else brain.MODELS
-            return brain.call(body["body"], str(cfg.get("gemini_api_key") or ""), models)
+            return brain.step(body["body"], str(cfg.get("gemini_api_key") or ""),
+                              str(cfg.get("groq_api_key") or ""), models)
 
         try:
             return JSONResponse(await asyncio.to_thread(work))

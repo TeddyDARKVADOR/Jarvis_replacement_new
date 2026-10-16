@@ -104,6 +104,7 @@ SUITES: tuple[Suite, ...] = (
     Suite("pilot.selftest", ("-m", "pilot.selftest"),
           linux="13/13 le 2026-10-16 (Debian 12, Xvfb + Openbox + AT-SPI, application GTK) ; sans bureau, "
                 "les n°12 et 13 se déclarent sans objet"),
+    Suite("quota.selftest", ("-m", "quota.selftest"), linux="7/7 le 2026-10-16 (bibliothèque standard seulement)"),
 )
 
 

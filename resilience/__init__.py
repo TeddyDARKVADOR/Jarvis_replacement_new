@@ -192,8 +192,17 @@ def ladder_for(model: str, config=None) -> list[str]:
         return [model]
     want = _bare(model)
     order = [model] + [m for m in LADDERS[tier] if m != want]
-    awake = [m for m in order if not resting(m)]
+    awake = [m for m in order if not resting(m) and _quota("allowed", m) is not False]
     return awake or order
+
+
+def _quota(fn: str, *args):
+    """Le registre commun des quotas (quota/), s'il est là ; None sinon — resilience garde alors ses repos seuls."""
+    try:
+        import quota
+        return getattr(quota, fn)(*args)
+    except Exception:
+        return None
 
 
 def _is_long(contents) -> bool:
@@ -249,6 +258,7 @@ def _prepare(self, model, contents, config):
 def _failed(model: str, e: Exception, remaining: int) -> bool:
     """Journalise un échec ; True s'il faut passer à l'échelon suivant."""
     reason = classify(model, f"{type(e).__name__}: {e}")    # ReadTimeout a parfois un str() vide
+    _quota("note_error", _bare(model), str(e))
     if reason is None or remaining == 0:
         return False
     _log(f"SYS: Gemini {_bare(model)} — {reason}, j'essaie le suivant.")
@@ -261,7 +271,9 @@ def wrap_sync(original):
         ladder, config = _prepare(self, model, contents, config)
         for i, m in enumerate(ladder):
             try:
-                return original(self, model=m, contents=contents, config=config, **kw)
+                out = original(self, model=m, contents=contents, config=config, **kw)
+                _quota("note_ok", _bare(m))
+                return out
             except Exception as e:
                 if not _failed(m, e, len(ladder) - i - 1):
                     raise
@@ -275,7 +287,9 @@ def wrap_async(original):
         ladder, config = _prepare(self, model, contents, config)
         for i, m in enumerate(ladder):
             try:
-                return await original(self, model=m, contents=contents, config=config, **kw)
+                out = await original(self, model=m, contents=contents, config=config, **kw)
+                _quota("note_ok", _bare(m))
+                return out
             except Exception as e:
                 if not _failed(m, e, len(ladder) - i - 1):
                     raise

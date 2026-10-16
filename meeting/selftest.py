@@ -26,6 +26,14 @@ import meeting as M
 from meeting import brain, capture, detect, summarize, transcribe, watcher
 
 ROOT = Path(__file__).resolve().parent
+
+# Le registre commun des quotas (quota/) dans un dossier jetable : les faux 429
+# du test ne doivent jamais toucher memory/quota.json.
+try:
+    import quota as _Q
+    _Q.reset_for_tests(Path(tempfile.mkdtemp(prefix="jarvis-quota-")) / "quota.json")
+except Exception:
+    _Q = None
 _results: list[tuple[str, bool, str]] = []
 
 
@@ -216,29 +224,43 @@ def _summarize():
     return f"{len(parts)} morceaux puis fusion ; JSON en bloc de code lu ; réponse libre gardée"
 
 
-@check("8 cerveau : ordre, fournisseur sans clé sauté, panne → suivant, clé jamais dans l'erreur")
+@check("8 cerveau : Flash-Lite tour à tour, épuisés sautés, Groq, puis Ollama natif (16k, sans <think>)")
 def _brain():
     key = "gsk_" + "s" * 40
-    cfg = {"gemini_api_key": "", "groq_api_key": key, "meeting_brain_order": ["gemini", "groq", "local"]}
+    gkey = "AIza" + "g" * 35
     calls = []
 
     def transport(url, headers, body, timeout):
-        calls.append((url, headers.get("Authorization", "")))
+        sent = json.loads(body) if body else {}
+        calls.append((url, headers.get("Authorization", ""), sent.get("model"), sent.get("options")))
+        if "googleapis" in url:
+            return 429, b'{"error": {"details": [{"violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier", "quotaValue": "500"}]}]}}'
         if "groq" in url:
             return 429, b'{"error": "rate"}'
-        return 200, json.dumps({"choices": [{"message": {"content": "résumé local"}}]}).encode()
+        if url.endswith("/api/tags"):
+            return 200, json.dumps({"models": [{"name": "nomic-embed-text"}, {"name": "qwen2.5:14b"}, {"name": "qwen3:8b"}]}).encode()
+        return 200, json.dumps({"message": {"content": "<think>je réfléchis</think>résumé local"}}).encode()
 
+    cfg = {"gemini_api_key": gkey, "groq_api_key": key, "meeting_brain_order": ["gemini", "cloud", "groq", "local"]}
     b = brain.Brain(cfg, transport=transport)
-    assert [p[0] for p in b.providers()] == ["groq", "local"], "Gemini sans clé : sauté"
-    assert b.complete("s", "u") == "résumé local" and b.used.startswith("local/")
-    assert calls[0][1] == f"Bearer {key}" and calls[1][1] == "", "la clé part dans l'en-tête, et à Groq seulement"
+    assert [p for p in b.providers()][:3] == [("gemini", m) for m in brain.GEMINI_MODELS]
+    assert b.complete("s", "u") == "résumé local" and b.used == "local/qwen3:8b", b.used
+    gem = [c for c in calls if "googleapis" in c[0]]
+    assert [c[2] for c in gem] == list(brain.GEMINI_MODELS), "chaque Flash-Lite essayé (compteurs séparés)"
+    chat = next(c for c in calls if c[0].endswith("/api/chat"))
+    assert chat[3]["num_ctx"] == brain.LOCAL_CTX and chat[1] == "", "Ollama : contexte 16k, aucune clé"
+    calls.clear()
+    brain.Brain(cfg, transport=transport).complete("s", "u")
+    assert not [c for c in calls if "googleapis" in c[0]], "les Flash-Lite épuisés du jour ne sont plus appelés"
+    assert brain.pick_local(["llava:7b", "phi4:latest"]) == "phi4:latest"
+    assert brain.pick_local(["qwen3:8b", "mistral:7b"], "mistral:7b") == "mistral:7b", "offline_model respecté"
     try:
         brain.Brain({"groq_api_key": key, "meeting_brain_order": ["groq"]},
                     transport=lambda *a: (500, f"echo {key}".encode())).complete("s", "u")
         raise AssertionError("une panne acceptée")
     except brain.BrainError as e:
         assert key not in str(e) and "HTTP 500" in str(e)
-    return "Groq en 429 → Ollama local ; erreur sans clé"
+    return "3 Flash-Lite épuisés (registre) → Ollama Cloud absent → Groq 429 → qwen3:8b local, <think> retiré"
 
 
 class _Rec:

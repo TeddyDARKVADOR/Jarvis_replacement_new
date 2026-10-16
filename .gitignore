@@ -89,6 +89,8 @@ memory/reminders.json
 # non ignoré ici les ferait échouer)
 memory/nightshift.json
 memory/pilot_recipes.json
+memory/quota.json
+memory/.quota-*.tmp
 memory/.nightshift-*.tmp
 
 # MCP servers (extensions/mcp.py) — their env often carries access tokens

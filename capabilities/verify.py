@@ -232,6 +232,12 @@ def _pilot(tmp: Path) -> str:
             f"{len(obs.elements)} éléments ; {len(discover.all_schemes())} schémas d'URL")
 
 
+def _quotas(tmp: Path) -> str:
+    text = importlib.import_module("plugins.quotas").run({})
+    assert "Remise à zéro" in text, text
+    return text.splitlines()[-1]
+
+
 def _dry(module: str, *deps: str):
     def probe(tmp: Path) -> str:
         importlib.import_module(module)
@@ -276,6 +282,7 @@ PROBES = {
     "reminder": ("vide", _dry("actions.reminder")),
     "meeting": ("reel", _meeting),
     "pilot": ("reel", _pilot),
+    "quotas": ("reel", _quotas),
     "weather_report": ("vide", _dry("actions.weather_report")),
     "flight_finder": ("vide", _dry("actions.flight_finder")),
     "save_memory": ("vide", _dry("memory.memory_manager")),

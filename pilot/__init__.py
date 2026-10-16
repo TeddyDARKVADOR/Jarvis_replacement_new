@@ -165,7 +165,9 @@ def attach(jarvis) -> None:
         cfg = settings()
         first = str(cfg.get("pilot_model") or "").strip()
         models = (first,) + tuple(m for m in MODELS if m != first) if first else MODELS
-        return LocalBrain(str(cfg.get("gemini_api_key") or ""), models)
+        from pilot.brain import OLLAMA_VISION
+        return LocalBrain(str(cfg.get("gemini_api_key") or ""), models, groq_key=str(cfg.get("groq_api_key") or ""),
+                          ollama_model=str(cfg.get("pilot_ollama_model", OLLAMA_VISION) or ""))
 
     def say(text: str) -> None:
         if getattr(jarvis, "session", None):

@@ -149,6 +149,15 @@ def _until_pacific_midnight() -> float:
     return max(60.0, (nxt - now).total_seconds())
 
 
+def _quota(fn: str, *args):
+    """Le registre commun des quotas (quota/) s'il est là ; None sinon."""
+    try:
+        import quota
+        return getattr(quota, fn)(*args)
+    except Exception:
+        return None
+
+
 def retry_delay(raw: bytes) -> float | None:
     """Le « retryDelay » d'une erreur 429 de Google (« 37s »), en secondes. Pur."""
     m = re.search(rb'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"', raw or b"")
@@ -162,8 +171,8 @@ def call(body: dict, key: str, models: tuple[str, ...] = MODELS, timeout: float 
     req = json.dumps(body).encode("utf-8")
     headers = {"Content-Type": "application/json", "x-goog-api-key": key}
     for model in models:
-        if _spent.get(model, 0) > time.time():
-            errors.append(f"{model} : quota du jour épuisé")
+        if _spent.get(model, 0) > time.time() or _quota("allowed", model) is False:
+            errors.append(f"{model} : quota épuisé (registre)")
             continue
         for attempt, pause in enumerate(RETRY_PAUSES):
             try:
@@ -174,6 +183,7 @@ def call(body: dict, key: str, models: tuple[str, ...] = MODELS, timeout: float 
             if status == 200:
                 data = json.loads(raw.decode("utf-8"))
                 data["_model"] = model
+                _quota("note_ok", model)
                 return data
             if status in (400, 401, 403):        # requête ou clé refusée : ni un autre essai ni un autre modèle
                 raise BrainError(f"{model} : HTTP {status} {raw[:200].decode('utf-8', 'replace')}")
@@ -181,14 +191,23 @@ def call(body: dict, key: str, models: tuple[str, ...] = MODELS, timeout: float 
                 # Quota du JOUR (20 requêtes pour gemini-3.5-flash, mesuré) : ni attendre ni réessayer — le
                 # modèle est écarté jusqu'à minuit, heure du Pacifique, et le suivant prend la main.
                 _spent[model] = time.time() + _until_pacific_midnight()
+                _quota("note_error", model, raw.decode("utf-8", "replace"))
                 errors.append(f"{model} : quota du jour épuisé")
                 break
+            if status == 429 and model != models[-1]:
+                # Quota de la minute : un autre modèle a son propre compteur — on y passe tout de suite
+                # plutôt que d'attendre ; le registre garde ce modèle au repos une minute.
+                _quota("note_error", model, raw.decode("utf-8", "replace"))
+                errors.append(f"{model} : quota de la minute")
+                break
             if status in (429, 500, 502, 503, 504) and attempt < len(RETRY_PAUSES) - 1:
-                # Surcharge passagère (503 mesurés le 2026-10-16) : on réessaie. Un 429 dit combien attendre
-                # (retryDelay) : jusqu'à une minute, on attend ce délai plutôt que de griller le modèle suivant.
+                # Surcharge passagère (503 mesurés le 2026-10-16) : on réessaie. Dernier modèle en 429 : on
+                # attend le délai demandé (retryDelay), jusqu'à une minute.
                 wait = retry_delay(raw) if status == 429 else None
                 sleep(wait if wait is not None and wait <= 60 else pause)
                 continue
+            if status == 429:
+                _quota("note_error", model, raw.decode("utf-8", "replace"))
             errors.append(f"{model} : HTTP {status}")
             break
     raise BrainError(" ; ".join(errors) or "aucun modèle")
@@ -203,16 +222,121 @@ def _post(url: str, headers: dict, body: bytes, timeout: float) -> tuple[int, by
         return e.code, e.read()
 
 
-class LocalBrain:
-    """Mode local : la clé Gemini de config/api_keys.json."""
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "openai/gpt-oss-120b"
+_TYPES = {"OBJECT": "object", "STRING": "string", "INTEGER": "integer", "NUMBER": "number", "BOOLEAN": "boolean"}
 
-    def __init__(self, key: str, models: tuple[str, ...] = MODELS, transport=None):
-        self.key, self.models, self.transport = key, models, transport
+
+def _schema(s: dict) -> dict:
+    """Le schéma des fonctions au format Gemini → JSON Schema (OpenAI, Groq). Pur."""
+    out = {k: v for k, v in s.items() if k not in ("type", "properties")}
+    out["type"] = _TYPES.get(str(s.get("type", "OBJECT")).upper(), "string")
+    if "properties" in s:
+        out["properties"] = {k: _schema(v) for k, v in s["properties"].items()}
+    return out
+
+
+def to_openai(body: dict) -> dict:
+    """La requête du pilote pour un modèle sans vision (Groq) : même consigne, même écran en texte, pas
+    d'image — il travaille sur la liste des éléments d'accessibilité. Pur."""
+    text = "\n".join(p.get("text", "") for p in body["contents"][0]["parts"] if "text" in p)
+    text += "\n\n(No screenshot in this step: rely on the numbered UI elements; use coordinates only from them.)"
+    tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
+                                                "parameters": _schema(t["parameters"])}}
+             for t in body["tools"][0]["function_declarations"]]
+    return {"model": GROQ_MODEL, "temperature": 0.1, "tool_choice": "required", "tools": tools,
+            "messages": [{"role": "system", "content": body["system_instruction"]["parts"][0]["text"]},
+                         {"role": "user", "content": text}]}
+
+
+def call_groq(body: dict, key: str, timeout: float = 60.0, transport=None) -> dict:
+    """Le secours sans vision, rendu au format Gemini pour que parse() le lise."""
+    status, raw = (transport or _post)(GROQ_URL, {"Content-Type": "application/json", "Authorization": f"Bearer {key}",
+                                                  "User-Agent": "jarvis-pilot/1"},  # urllib par défaut : 403 (Cloudflare)
+                                       json.dumps(to_openai(body)).encode("utf-8"), timeout)
+    if status != 200:
+        raise BrainError(f"groq : HTTP {status}")
+    msg = json.loads(raw.decode("utf-8"))["choices"][0]["message"]
+    calls = msg.get("tool_calls") or []
+    if not calls:
+        raise BrainError(f"groq : aucune action ({(msg.get('content') or '')[:120]})")
+    fn = calls[0]["function"]
+    args = json.loads(fn.get("arguments") or "{}")
+    return {"candidates": [{"content": {"parts": [{"functionCall": {"name": fn["name"], "args": args}}]}}],
+            "_model": f"groq/{GROQ_MODEL}"}
+
+
+OLLAMA_CHAT = "http://127.0.0.1:11434/api/chat"
+#: Ollama Cloud (modèles « -cloud », servis par Ollama, appelés par l'Ollama local de l'utilisateur) : plan
+#: gratuit à crédits mensuels, une requête à la fois. Mesuré le 2026-10-16 sur une étape réelle : gemma4:31b
+#: (vision et outils) a choisi la bonne action en 0,5 s.
+OLLAMA_VISION = "gemma4:31b-cloud"
+
+
+def call_ollama(body: dict, model: str = OLLAMA_VISION, timeout: float = 90.0, transport=None) -> dict:
+    """Le secours avec vision par l'Ollama local (son nuage). Rendu au format Gemini pour parse()."""
+    oa = to_openai(body)
+    user = {"role": "user", "content": oa["messages"][1]["content"]}
+    image = next((p["inline_data"]["data"] for p in body["contents"][0]["parts"] if "inline_data" in p), None)
+    if image:
+        user["images"] = [image]
+        user["content"] = user["content"].replace("(No screenshot in this step: rely on the numbered UI elements; "
+                                                  "use coordinates only from them.)", "")
+    req = {"model": model, "messages": [oa["messages"][0], user], "tools": oa["tools"], "stream": False,
+           "options": {"temperature": 0.1}}
+    status, raw = (transport or _post)(OLLAMA_CHAT, {"Content-Type": "application/json"},
+                                       json.dumps(req).encode("utf-8"), timeout)
+    if status != 200:
+        raise BrainError(f"ollama {model} : HTTP {status} {raw[:120].decode('utf-8', 'replace')}")
+    msg = json.loads(raw.decode("utf-8")).get("message") or {}
+    calls = msg.get("tool_calls") or []
+    if not calls:
+        raise BrainError(f"ollama {model} : aucune action")
+    fn = calls[0]["function"]
+    args = fn.get("arguments") or {}
+    if isinstance(args, str):
+        args = json.loads(args or "{}")
+    return {"candidates": [{"content": {"parts": [{"functionCall": {"name": fn["name"], "args": args}}]}}],
+            "_model": f"ollama/{model}"}
+
+
+def step(body: dict, gemini_key: str, groq_key: str = "", models: tuple[str, ...] = MODELS, transport=None,
+         ollama_model: str = OLLAMA_VISION) -> dict:
+    """Gemini (vision) ; épuisé ou en panne → Ollama Cloud (vision) → Groq (l'écran en texte). En local et sur
+    Oracle (où Ollama est absent : le refus de connexion est immédiat)."""
+    errors = []
+    try:
+        if not gemini_key:
+            raise BrainError("pas de clé Gemini (gemini_api_key)")
+        return call(body, gemini_key, models, transport=transport)
+    except BrainError as e:
+        if " HTTP 400" in str(e) or "HTTP 401" in str(e) or "HTTP 403" in str(e):
+            raise
+        errors.append(str(e))
+    if ollama_model:
+        try:
+            return call_ollama(body, ollama_model, transport=transport)
+        except Exception as e:
+            errors.append(f"ollama : {type(e).__name__}: {e}"[:200])
+    if groq_key:
+        try:
+            return call_groq(body, groq_key, transport=transport)
+        except Exception as e:
+            errors.append(f"{e}"[:200])
+    raise BrainError(" ; ".join(errors))
+
+
+class LocalBrain:
+    """Mode local : les clés de config/api_keys.json — Gemini, et Groq en secours sans vision."""
+
+    def __init__(self, key: str, models: tuple[str, ...] = MODELS, transport=None, groq_key: str = "",
+                 ollama_model: str = OLLAMA_VISION):
+        self.key, self.models, self.transport, self.groq_key = key, models, transport, groq_key
+        self.ollama_model = ollama_model
 
     def step(self, body: dict) -> dict:
-        if not self.key:
-            raise BrainError("pas de clé Gemini (gemini_api_key)")
-        return call(body, self.key, self.models, transport=self.transport)
+        return step(body, self.key, self.groq_key, self.models, transport=self.transport,
+                    ollama_model=self.ollama_model)
 
 
 class RemoteBrain:

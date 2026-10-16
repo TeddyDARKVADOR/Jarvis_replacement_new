@@ -19,10 +19,28 @@ import resilience as R
 
 _results: list[tuple[str, bool, str]] = []
 
+# Le registre commun des quotas (quota/) dans un dossier jetable : les faux 429
+# de ce test ne doivent jamais marquer de vrais modèles comme épuisés (vu le
+# 2026-10-16 : memory/quota.json pollué par le selftest).
+try:
+    import tempfile
+
+    import quota as _Q
+    _QTMP = tempfile.mkdtemp(prefix="jarvis-quota-")
+    _Q.reset_for_tests(Path(_QTMP) / "quota.json")
+except Exception:
+    _Q = None
+
 
 def check(name: str):
     def deco(fn):
         R._cooldown.clear()
+        if _Q is not None:
+            _Q.reset_for_tests()
+            try:
+                _Q.PATH.unlink()
+            except OSError:
+                pass
         try:
             _results.append((name, True, str(fn() or "")))
         except AssertionError as e:

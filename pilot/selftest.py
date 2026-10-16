@@ -28,6 +28,14 @@ from pilot import recipes as R
 from pilot import screen as S
 
 ROOT = Path(__file__).resolve().parent
+
+# Le registre commun des quotas (quota/) dans un dossier jetable : les faux 429
+# du test ne doivent jamais toucher memory/quota.json.
+try:
+    import quota as _Q
+    _Q.reset_for_tests(Path(tempfile.mkdtemp(prefix="jarvis-quota-")) / "quota.json")
+except Exception:
+    _Q = None
 _results: list[tuple[str, bool, str]] = []
 
 
@@ -128,7 +136,12 @@ def _brain():
         return 200, json.dumps({"candidates": [{"content": {"parts": [{"functionCall": {"name": "done", "args": {}}}]}}]}).encode()
 
     out = B.call(body, "k", ("m1", "m2"), transport=transport, sleep=slept.append)
-    assert out["_model"] == "m1" and slept == [12.0, 5.0], (calls, slept)
+    assert out["_model"] == "m2" and calls == ["m1", "m2", "m2"] and slept == [2.0], (calls, slept)
+    # Dernier modèle en 429 de la minute : là seulement on attend le délai demandé.
+    calls.clear()
+    slept.clear()
+    out = B.call(body, "k", ("m3",), transport=transport, sleep=slept.append)
+    assert out["_model"] == "m3" and slept == [12.0, 5.0], (calls, slept)
     day = b'{"error": {"details": [{"violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}}'
     seen, slept2 = [], []
 
@@ -151,7 +164,7 @@ def _brain():
         raise AssertionError("clé refusée acceptée")
     except B.BrainError as e:
         assert "403" in str(e)
-    return "429 minute : attendu 12 s ; 429 jour : modèle écarté jusqu à minuit, sans attente ; 403 : arrêt"
+    return "429 minute : modèle suivant tout de suite (attente seulement sur le dernier) ; 429 jour : écarté jusqu à minuit ; 403 : arrêt"
 
 
 class _Inputs:
