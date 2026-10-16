@@ -666,6 +666,15 @@ class JarvisLive:
         except Exception:
             pass
 
+        # ── extensions/manager (optionnel) : les plugins installés par l'utilisateur ──
+        try:
+            from extensions import manager as _ext
+            _ext.attach(self, log=self.ui.write_log)
+            import plugins.extensions_manager as _ext_tool
+            _ext_tool._JARVIS = self
+        except Exception:
+            pass
+
         # ── incidents/ (optionnel) : les erreurs réelles, comptées ─────────────
         try:
             import incidents

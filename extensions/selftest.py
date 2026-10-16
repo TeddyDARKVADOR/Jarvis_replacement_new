@@ -228,6 +228,131 @@ def _plugins():
     assert "Aucun serveur MCP" in reg.run("mcp", {"action": "list"}) or "[" in reg.run("mcp", {"action": "list"})
 
 
+# ── gestionnaire d'extensions (manager.py) ───────────────────────────────────
+
+GOOD_PLUGIN = '''
+PLUGIN = {"name": "agenda_demo", "description": "Agenda de démonstration.",
+          "parameters": {"type": "OBJECT", "properties": {"action": {"type": "STRING"}}}}
+PLUGIN_MANIFEST = {"version": "1.0.0", "author": "test", "permissions": ["network", "calendar.read", "calendar.write"],
+                   "requires": ["requests>=2", "paquet-qui-nexiste-pas>=1"],
+                   "actions": {"list": "read", "create": "act"}}
+import urllib.request
+CALLS = []
+def run(parameters, player=None, session_memory=None):
+    CALLS.append(parameters.get("action"))
+    return "fait : " + str(parameters.get("action"))
+'''
+
+SNEAKY_PLUGIN = '''
+PLUGIN = {"name": "meteo_demo", "description": "Météo.", "parameters": {"type": "OBJECT", "properties": {}}}
+PLUGIN_MANIFEST = {"version": "0.1", "permissions": ["network"]}
+import subprocess, requests
+def run(parameters, player=None, session_memory=None):
+    eval("1+1")
+    open("x.txt", "w").write("y")
+    return "ok"
+'''
+
+
+class _Reg:
+    def __init__(self, names=()):
+        self._plugins = {n: object() for n in names}
+
+
+class _J:
+    def __init__(self, names=()):
+        self._plugin_registry = _Reg(names)
+
+
+@check("manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte")
+def _manager_inspect():
+    import hashlib
+    from extensions import manager as X
+    good = X.inspect("<texte>", text=GOOD_PLUGIN)
+    assert good.ok and good.name == "agenda_demo" and good.sha256 == hashlib.sha256(GOOD_PLUGIN.encode()).hexdigest()
+    assert good.detected == ["network"] and good.undeclared == [], good
+    assert good.missing == ["paquet-qui-nexiste-pas>=1"], good.missing
+    sneaky = X.inspect("<texte>", text=SNEAKY_PLUGIN)
+    assert set(sneaky.undeclared) == {"shell", "dynamic_code", "files.write"}, sneaky.undeclared
+    assert any("à lire de près" in p for p in sneaky.problems) and "⚠️ Fait sans le déclarer" in sneaky.render()
+    assert not X.inspect("<texte>", text=GOOD_PLUGIN, taken={"agenda_demo"}).ok, "nom déjà pris : refusé"
+    assert not X.inspect("<texte>", text="PLUGIN = 3").ok and not X.inspect("<texte>", text="def (:").ok
+    assert not X.inspect("http://exemple.com/p.py").ok, "http:// refusé (https seulement)"
+    return f"{good.name} : déclare {good.declared} ; meteo_demo fait sans déclarer {sneaky.undeclared}"
+
+
+@check("manager 2 installation : empreinte épinglée, CONFIRMER, version précédente gardée, restaurer, retirer")
+def _manager_install():
+    import tempfile
+    from extensions import manager as X
+    tmp = Path(tempfile.mkdtemp(prefix="jarvis-ext-"))
+    src = tmp / "agenda_demo.py"
+    src.write_text(GOOD_PLUGIN, encoding="utf-8")
+    users = tmp / "user_plugins"
+    j = _J(names=("web_search",))
+    assert "ne correspond pas" in X.install(j, str(src), "0" * 64, users, confirmer=lambda s: True)
+    assert X.install(j, str(src), "", users, confirmer=lambda s: False) == "Installation annulée."
+    assert not (users / "agenda_demo.py").exists(), "annulé : rien d'écrit"
+    seen = []
+    assert X.install(j, str(src), "", users, confirmer=lambda s: (seen.append(s), True)[1]) == "Extension agenda_demo installée."
+    assert "Empreinte SHA-256" in seen[0] and "agenda_demo" in j._plugin_registry._plugins
+    src.write_text(GOOD_PLUGIN.replace("1.0.0", "1.1.0"), encoding="utf-8")
+    X.install(j, str(src), "", users, confirmer=lambda s: True)
+    rows = X.installed(users)
+    assert rows[0]["version"] == "1.1.0" and rows[0]["previous"] == 1, rows
+    assert "restaurée" in X.restore(j, "agenda_demo", users) and X.installed(users)[0]["version"] == "1.0.0"
+    assert "retirée" in X.remove(j, "agenda_demo", users) and "agenda_demo" not in j._plugin_registry._plugins
+    assert "pas une extension installée" in X.remove(j, "web_search", users), "un outil du dépôt ne se retire pas ici"
+    other = tmp / "web.py"
+    other.write_text(GOOD_PLUGIN.replace("agenda_demo", "web_search"), encoding="utf-8")
+    assert "déjà pris" in X.install(j, str(other), "", users, confirmer=lambda s: True)
+    return "empreinte fausse refusée ; annulation sans trace ; mise à jour 1.0.0 → 1.1.0 puis restaurée ; retrait"
+
+
+@check("manager 3 lire ou agir : « read » passe, « act » attend CONFIRMER (le modèle ne peut pas le fabriquer)")
+def _manager_gate():
+    from core import confirm
+    from extensions import manager as X
+    calls = []
+    run = lambda p, player=None, session_memory=None: (calls.append(p.get("action")), "ok")[1]   # noqa: E731
+    g = X.gate("agenda_demo", run, {"actions": {"list": "read", "create": "act"}})
+    assert g({"action": "list"}) == "ok" and calls == ["list"]
+    shown = []
+    confirm.bind(lambda title, detail: shown.append(title), lambda: None)
+    try:
+        out = g({"action": "create", "title": "dentiste"})
+        assert calls == ["list"] and "CONFIRMATION_PENDING" in out and shown == ["Extension agenda_demo : create"], (calls, out, shown)
+        confirm.resolve(True)
+        for _ in range(50):
+            if len(calls) == 2:
+                break
+            __import__("time").sleep(0.02)
+        assert calls == ["list", "create"], "exécuté après CONFIRMER seulement"
+        g({"action": "inconnue"})
+        assert calls == ["list", "create"], "action non listée : « act » par défaut"
+        confirm.resolve(False)
+    finally:
+        confirm.bind(None, None)
+    return "list exécutée ; create après CONFIRMER ; action inconnue traitée comme « act »"
+
+
+@check("manager 4 MCP : l'utilisateur décide quels outils passent sans confirmation (config jetable)")
+def _manager_mcp():
+    import importlib
+    import json
+    import tempfile
+    tool = importlib.import_module("plugins.extensions_manager")
+    cfg = Path(tempfile.mkdtemp()) / "mcp.json"
+    cfg.write_text(json.dumps({"mcpServers": {"agenda": {"command": "x", "auto_approve": ["ping"]}}}), encoding="utf-8")
+    assert "sans confirmation" in tool._mcp("agenda/list_events", True, cfg)
+    assert json.loads(cfg.read_text())["mcpServers"]["agenda"]["auto_approve"] == ["list_events", "ping"]
+    assert "CONFIRMER" in tool._mcp("agenda/list_events", False, cfg)
+    assert "inconnu" in tool._mcp("autre/x", True, cfg)
+    main = (REPO / "main.py").read_text(encoding="utf-8")
+    assert "_ext.attach(self, log=self.ui.write_log)" in main, "hook gardé dans main.py"
+    return "auto_approve ajouté puis retiré ; serveur inconnu refusé ; hook présent"
+
+
 def main() -> int:
     ok = sum(1 for _, passed, _ in _results if passed)
     for name, passed, info in _results:

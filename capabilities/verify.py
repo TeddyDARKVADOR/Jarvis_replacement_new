@@ -253,6 +253,17 @@ def _incidents(tmp: Path) -> str:
     return f"anonymisation vérifiée ; {incidents.summary().splitlines()[0]}"
 
 
+def _extensions(tmp: Path) -> str:
+    tool = importlib.import_module("plugins.extensions_manager")
+    from extensions import manager
+    f = tmp / "demo.py"
+    f.write_text("\n".join(["PLUGIN = {'name': 'demo', 'description': 'd', 'parameters': {'type': 'OBJECT'}}",
+                            "import subprocess", "def run(p, **k):", "    return 'ok'", ""]), encoding="utf-8")
+    rep = manager.inspect(str(f))
+    assert rep.ok and rep.undeclared == ["shell"], rep
+    return f"examen sans exécution : « shell » non déclaré repéré ; {tool.run({'action': 'list'})[:60]}"
+
+
 def _dry(module: str, *deps: str):
     def probe(tmp: Path) -> str:
         importlib.import_module(module)
@@ -300,6 +311,7 @@ PROBES = {
     "quotas": ("reel", _quotas),
     "briefing": ("reel", _briefing),
     "incidents": ("reel", _incidents),
+    "extensions": ("reel", _extensions),
     "weather_report": ("vide", _dry("actions.weather_report")),
     "flight_finder": ("vide", _dry("actions.flight_finder")),
     "save_memory": ("vide", _dry("memory.memory_manager")),

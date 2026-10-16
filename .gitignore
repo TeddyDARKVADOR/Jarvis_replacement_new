@@ -99,3 +99,6 @@ memory/.nightshift-*.tmp
 
 # MCP servers (extensions/mcp.py) — their env often carries access tokens
 config/mcp.json
+
+# Extensions installées par l'utilisateur (extensions/manager.py) : hors dépôt
+user_plugins/
