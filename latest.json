@@ -1,23 +1,23 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "38689556451",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38689556451",
+ "run_id": "38834786074",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38834786074",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
- "commit": "2b26e21",
- "commit_full": "2b26e211259ad96c1c5ec562b31240316b2a4ca7",
+ "commit": "10d8aa7",
+ "commit_full": "10d8aa76552cf0f5bfc1b2bc2257a0843fe4e883",
  "previous": {
-  "run_id": "38535001267",
-  "commit": "dd5f268",
-  "finished_at": "2026-10-14T10:27:01+02:00",
-  "status": "partial_success"
+  "run_id": "38689556451",
+  "commit": "2b26e21",
+  "finished_at": "2026-10-15T07:58:21+02:00",
+  "status": "success"
  },
- "started_at": "2026-10-15T07:57:22+02:00",
- "finished_at": "2026-10-15T07:58:21+02:00",
- "duration_s": 59.0,
+ "started_at": "2026-10-16T03:23:25+02:00",
+ "finished_at": "2026-10-16T03:24:25+02:00",
+ "duration_s": 60.0,
  "status": "success",
- "summary": "15/15 suites vertes ; aucune régression ; réparé : client_desktop n°25 ; ruff : 4 remarques ; tâche F841 eval_lab/mutate.py : correctif validé — aucune PR : dry run (NIGHTLY_DRY_RUN=true).",
+ "summary": "15/15 suites vertes ; aucune régression ; réparé : code_workspace n°2 ; ruff : 1 remarque ; tâche F841 eval_lab/mutate.py : correctif validé — aucune PR : dry run (NIGHTLY_DRY_RUN=true).",
  "environment": {
   "runner": "github",
   "os": "Ubuntu 24.04.5 LTS",
@@ -66,7 +66,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.9,
    "outcome": "ok"
   },
   {
@@ -88,7 +88,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 3.7,
+   "duration_s": 3.6,
    "outcome": "ok"
   },
   {
@@ -105,23 +105,13 @@
   {
    "name": "core.code_workspace.selftest",
    "platform": "linux",
-   "passed": 33,
+   "passed": 34,
    "total": 34,
-   "status": "known_failure",
-   "failures": [
-    "2 une jonction ou un lien dans le projet n'ouvre pas de porte"
-   ],
-   "failed": [
-    {
-     "id": "2",
-     "label": "une jonction ou un lien dans le projet n'ouvre pas de porte",
-     "detail": "NotADirectoryError: [Errno 20] Not a directory: '/tmp/jarvis-studio-test-xv4pm85w/ws/demo/door'",
-     "class": "known",
-     "known_reason": "le nettoyage du test appelle os.rmdir() sur un lien symbolique (NotADirectoryError sous Linux) : l'échec masque le vrai verdict de la sandbox — correctif d'une ligne dans core/, humain seulement"
-    }
-   ],
+   "status": "ok",
+   "failures": [],
+   "failed": [],
    "duration_s": 33.7,
-   "outcome": "failing"
+   "outcome": "ok"
   },
   {
    "name": "reminders.selftest",
@@ -192,21 +182,21 @@
   {
    "name": "nightshift.selftest",
    "platform": "linux",
-   "passed": 31,
-   "total": 31,
+   "passed": 32,
+   "total": 32,
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.1,
+   "duration_s": 6.2,
    "outcome": "ok"
   }
  ],
  "regressions": [],
  "repaired": [
   {
-   "suite": "client_desktop --selftest",
-   "check": "25",
-   "label": "every one of the 26 HUD members the two hosts use exists",
+   "suite": "core.code_workspace.selftest",
+   "check": "2",
+   "label": "une jonction ou un lien dans le projet n'ouvre pas de porte",
    "was_known": false
   }
  ],
@@ -216,31 +206,13 @@
   "tool": "ruff",
   "available": true,
   "version": "0.17.0",
-  "count": 4,
+  "count": 1,
   "findings": [
-   {
-    "code": "F841",
-    "path": "actions/code_helper.py",
-    "line": 481,
-    "message": "Local variable `image_base64` is assigned to but never used"
-   },
-   {
-    "code": "F811",
-    "path": "core/code_workspace/selftest.py",
-    "line": 761,
-    "message": "Redefinition of unused `webcheck` from line 57: `webcheck` redefined here"
-   },
    {
     "code": "F841",
     "path": "eval_lab/mutate.py",
     "line": 97,
     "message": "Local variable `stim` is assigned to but never used"
-   },
-   {
-    "code": "F841",
-    "path": "offline/selftest.py",
-    "line": 217,
-    "message": "Local variable `again` is assigned to but never used"
    }
   ],
   "new": []
@@ -252,18 +224,15 @@
     "legacy": {
      "available": true,
      "total": 77,
-     "pass": 76,
-     "rate": 0.987,
+     "pass": 77,
+     "rate": 1.0,
      "by_verdict": {
-      "PASS": 76,
-      "FAIL": 1
+      "PASS": 77
      },
-     "causes": {
-      "NO_DELIVERY_WITHOUT_SINK": 1
-     },
+     "causes": {},
      "by_surface": {
       "policy": {
-       "pass": 31,
+       "pass": 32,
        "total": 32
       },
       "routing": {
@@ -340,9 +309,9 @@
   }
  },
  "metrics_changes": [],
- "green_streak": 1,
+ "green_streak": 2,
  "task": {
-  "id": "ruff-F841-eval_lab-mutate.py-2b26e21",
+  "id": "ruff-F841-eval_lab-mutate.py-10d8aa7",
   "source": "ruff",
   "code": "F841",
   "path": "eval_lab/mutate.py",
@@ -351,23 +320,7 @@
    "eval_lab/mutate.py"
   ],
   "attempts": 1,
-  "out_of_zone": [
-   {
-    "id": "ruff-F841-actions-code_helper.py-2b26e21",
-    "source": "ruff",
-    "reason": "zone refusée (actions/) : actions/code_helper.py"
-   },
-   {
-    "id": "ruff-F811-core-code_workspace-selftest.py-2b26e21",
-    "source": "ruff",
-    "reason": "zone refusée (core/) : core/code_workspace/selftest.py"
-   },
-   {
-    "id": "ruff-F841-offline-selftest.py-2b26e21",
-    "source": "ruff",
-    "reason": "fichier de test (la preuve ne se réécrit pas) : offline/selftest.py"
-   }
-  ],
+  "out_of_zone": [],
   "model": "groq/openai/gpt-oss-120b",
   "outcome": "patch_validated",
   "reason": "la remarque a disparu",
@@ -379,7 +332,7 @@
  "usage": {
   "llm_calls": 1,
   "tokens_in": 1010,
-  "tokens_out": 151,
+  "tokens_out": 150,
   "providers": {
    "groq/openai/gpt-oss-120b": 1
   }
@@ -388,25 +341,13 @@
   "max_tasks": 1,
   "max_llm_calls": 12,
   "max_tokens": 60000,
-  "max_runtime_minutes": 45
+  "max_runtime_minutes": 45,
+  "passes": 3,
+  "max_open_prs": 3
  },
- "limitations": [
-  "code_workspace n°2 : échec connu sur linux"
- ],
+ "limitations": [],
  "dry_run": true,
  "backlog": [
-  {
-   "graph": "nightshift",
-   "node": "l.cw2",
-   "label": "code_workspace n°2 sous Linux",
-   "status": "bug",
-   "summary": "Le contrôle échoue sous Linux à cause de son nettoyage : os.rmdir() sur un lien symbolique lève NotADirectoryError. L'échec masque donc le vrai verdict de la sandbox face à un lien symbolique.",
-   "files": [
-    "core/code_workspace/selftest.py"
-   ],
-   "zone": false,
-   "owner": "humain"
-  },
   {
    "graph": "context",
    "node": "l.voiture",
@@ -448,7 +389,7 @@
    "node": "nightshift",
    "label": "nightshift/ — le veilleur de nuit",
    "status": "partiel",
-   "summary": "Phases 1 à 5 du plan Night Shift (meilleur.idee.md) : chaque nuit, GitHub Actions lance les suites testables sous Linux et ruff, compare avec la nuit précédente, choisit au plus une tâche, en demande ",
+   "summary": "Phases 1 à 5 du plan Night Shift (meilleur.idee.md) : chaque nuit, GitHub Actions lance les suites testables sous Linux et ruff, compare avec la passe précédente, choisit à chaque passe une tâche diff",
    "files": [
     "nightshift/__init__.py"
    ],
@@ -480,23 +421,11 @@
    "owner": "humain"
   },
   {
-   "graph": "studio",
-   "node": "f.lint",
-   "label": "Ruff et Pyright",
-   "status": "partiel",
-   "summary": "Noms indéfinis, imports inutiles, erreurs de type affichés à titre informatif, jamais dans le verdict ; chaque remarque ouvre le fichier à la bonne ligne.",
-   "files": [
-    "core/code_workspace/lint.py"
-   ],
-   "zone": false,
-   "owner": "humain"
-  },
-  {
    "graph": "general",
    "node": "f.nightshift",
    "label": "Veilleur de nuit (Night Shift)",
    "status": "partiel",
-   "summary": "Chaque nuit à 03 h 17, GitHub Actions lance les suites testables sous Linux et ruff, compare avec la nuit précédente, choisit au plus une tâche dans la zone autorisée, en demande le correctif à un mod",
+   "summary": "Trois passes par nuit (01 h 17, 03 h 17, 05 h 17) : GitHub Actions lance les suites testables sous Linux et ruff, compare avec la passe précédente, choisit à chaque passe une tâche différente dans la ",
    "files": [
     "nightshift/__init__.py",
     ".github/workflows/nightly.yml"
@@ -526,20 +455,6 @@
    "files": [
     "main.py",
     "actions/system_monitor.py"
-   ],
-   "zone": false,
-   "owner": "humain"
-  },
-  {
-   "graph": "eval_lab",
-   "node": "m.legacy",
-   "label": "Corpus legacy",
-   "status": "partiel",
-   "summary": "Les tests de context/selftest.py et du routage, transcrits en scénarios.",
-   "files": [
-    "eval_lab/legacy.py",
-    "eval_lab/corpus/legacy/context.jsonl",
-    "eval_lab/corpus/legacy/routing.jsonl"
    ],
    "zone": false,
    "owner": "humain"
@@ -575,8 +490,28 @@
    "owner": "humain"
   }
  ],
+ "pass": {
+  "n": 1,
+  "of": 3
+ },
  "diagnostics": [],
  "week": null,
+ "tonight": [
+  {
+   "pass": 1,
+   "run_id": "38834786074",
+   "status": "success",
+   "task": "ruff-F841-eval_lab-mutate.py-10d8aa7",
+   "outcome": "patch_validated",
+   "ref": {
+    "source": "ruff",
+    "code": "F841",
+    "path": "eval_lab/mutate.py"
+   },
+   "tokens": 1160,
+   "pr": null
+  }
+ ],
  "local": {
   "available": false,
   "reason": "aucun avis local : PC éteint, ou worker non installé (phase 5, facultative)"
