@@ -8,6 +8,10 @@ le serveur »). Quand il a fait sa part — écouter une réunion, regarder son
     POST /api/meeting/summary   {transcript, started, duration_s, where}
          → {result, delivered}  compte rendu (meeting/summarize.py), puis
            livraison par Oracle : HUD, rappels, objectifs proposés, voix.
+    POST /api/pilot/step        {body}  → la réponse du modèle (pilot/brain.py)
+    POST /api/pilot/confirm     {title} → {confirmed} : le bandeau CONFIRMER de
+           core/confirm.py sur le HUD et le téléphone, attendu jusqu'à 95 s
+    POST /api/pilot/report      {outcome, message} → la voix d'Oracle l'annonce
 
 Autorité : le même jeton porteur que /api/command, qui exécute déjà n'importe
 quelle commande ; résumer un texte est strictement moins. Le texte est borné
@@ -22,6 +26,7 @@ from datetime import datetime
 from typing import Callable
 
 MAX_TRANSCRIPT = 2_000_000
+MAX_PILOT_BODY = 8_000_000          # une capture JPEG en base64 et le texte de l'écran
 
 
 def attach(dashboard, get_jarvis: Callable[[], object], log=print) -> None:
@@ -80,3 +85,86 @@ def attach(dashboard, get_jarvis: Callable[[], object], log=print) -> None:
         return JSONResponse(out)
 
     app.add_api_route("/api/meeting/summary", meeting_summary, methods=["POST"])
+
+    # ── le pilote (pilot/) : le PC regarde et agit, Oracle choisit, confirme, annonce ──
+
+    def _keys() -> dict:
+        try:
+            from memory.config_manager import load_api_keys
+            return load_api_keys() or {}
+        except Exception:
+            return {}
+
+    async def _body(req: Request):
+        if not _authorised(req):
+            return None, JSONResponse({"error": "Unauthorized"}, status_code=401)
+        raw = await req.body()
+        if len(raw) > MAX_PILOT_BODY:
+            return None, JSONResponse({"error": "requête trop grande"}, status_code=413)
+        try:
+            body = await req.json()
+        except Exception:
+            body = None
+        if not isinstance(body, dict):
+            return None, JSONResponse({"error": "JSON attendu"}, status_code=400)
+        return body, None
+
+    async def pilot_step(req: Request) -> JSONResponse:
+        body, err = await _body(req)
+        if err:
+            return err
+        if not isinstance(body.get("body"), dict):
+            return JSONResponse({"error": "body manquant"}, status_code=400)
+
+        def work() -> dict:
+            from pilot import brain
+            cfg = _keys()
+            first = str(cfg.get("pilot_model") or "").strip()
+            models = (first,) + tuple(m for m in brain.MODELS if m != first) if first else brain.MODELS
+            return brain.call(body["body"], str(cfg.get("gemini_api_key") or ""), models)
+
+        try:
+            return JSONResponse(await asyncio.to_thread(work))
+        except Exception as e:
+            return JSONResponse({"error": f"{type(e).__name__}: {e}"[:300]}, status_code=502)
+
+    async def pilot_confirm(req: Request) -> JSONResponse:
+        body, err = await _body(req)
+        if err:
+            return err
+        title = str(body.get("title") or "")[:400]
+        if not title:
+            return JSONResponse({"error": "title manquant"}, status_code=400)
+        jarvis = get_jarvis()
+
+        def say(text: str) -> None:
+            if jarvis is not None and getattr(jarvis, "session", None):
+                jarvis.plugin_say(text)
+
+        def work() -> bool:
+            import pilot
+            return pilot.confirm_on_hud(title, say=say)
+
+        confirmed = await asyncio.to_thread(work)
+        log(f"[Assist] pilote : « {title[:80]} » → {'confirmé' if confirmed else 'refusé'}")
+        return JSONResponse({"confirmed": bool(confirmed)})
+
+    async def pilot_report(req: Request) -> JSONResponse:
+        body, err = await _body(req)
+        if err:
+            return err
+        import pilot
+        outcome, message = str(body.get("outcome") or "done")[:20], str(body.get("message") or "")[:1500]
+        jarvis = get_jarvis()
+        if jarvis is not None:
+            try:
+                jarvis.ui.write_log(f"SYS: Pilote (PC) — {outcome} : {message[:200]}")
+                if getattr(jarvis, "session", None):
+                    jarvis.plugin_say(pilot.spoken(outcome, message))
+            except Exception:
+                pass
+        return JSONResponse({"ok": True})
+
+    app.add_api_route("/api/pilot/step", pilot_step, methods=["POST"])
+    app.add_api_route("/api/pilot/confirm", pilot_confirm, methods=["POST"])
+    app.add_api_route("/api/pilot/report", pilot_report, methods=["POST"])

@@ -666,6 +666,13 @@ class JarvisLive:
         except Exception:
             pass
 
+        # ── pilot/ (optionnel, mode local) : JARVIS prend la main sur le PC ────
+        try:
+            import pilot
+            pilot.attach(self)
+        except Exception:
+            pass
+
     # ── Wake word: state machine ─────────────────────────────────────────────
 
     def _wake_state(self) -> dict:

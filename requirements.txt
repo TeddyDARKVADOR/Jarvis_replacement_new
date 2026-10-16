@@ -56,6 +56,15 @@ soundcard                # the computer's own sound (WASAPI loopback, PulseAudio
                          # PipeWire monitor) + the mic. Linux: needs PulseAudio or
                          # pipewire-pulse running. macOS: mic only (no loopback).
 
+# ── Pilot (pilot/): JARVIS operates any app ──────────────────────────────────
+# Windows: nothing more (UI Automation via comtypes, pyautogui, mss, pillow above).
+# Linux: the accessibility tree comes from the system, not pip:
+#   sudo apt install python3-gi gir1.2-atspi-2.0 at-spi2-core
+#   (and on Wayland: wdotool, or ydotool + wtype, to click and type;
+#    grim / gnome-screenshot / spectacle for screenshots).
+# macOS: pip install pyobjc-framework-ApplicationServices pyobjc-framework-Cocoa,
+#   then allow JARVIS in Settings → Privacy & Security → Accessibility.
+
 # ── Windows-only (pip skips these automatically on macOS / Linux) ────────────
 comtypes;   sys_platform == "win32"
 pycaw;      sys_platform == "win32"

@@ -224,6 +224,14 @@ def _meeting(tmp: Path) -> str:
         (f" — {usage.error}" if usage.error else "")
 
 
+def _pilot(tmp: Path) -> str:
+    importlib.import_module("plugins.pilot")
+    from pilot import a11y, discover
+    obs = a11y.observe(with_image=False)              # lecture seule : rien n'est cliqué ni tapé
+    return (f"plugin chargé ; {obs.backend or 'pas d arbre'} : « {obs.window.title[:30]} », "
+            f"{len(obs.elements)} éléments ; {len(discover.all_schemes())} schémas d'URL")
+
+
 def _dry(module: str, *deps: str):
     def probe(tmp: Path) -> str:
         importlib.import_module(module)
@@ -267,6 +275,7 @@ PROBES = {
     "send_message": ("vide", _dry("actions.send_message", "pyautogui")),
     "reminder": ("vide", _dry("actions.reminder")),
     "meeting": ("reel", _meeting),
+    "pilot": ("reel", _pilot),
     "weather_report": ("vide", _dry("actions.weather_report")),
     "flight_finder": ("vide", _dry("actions.flight_finder")),
     "save_memory": ("vide", _dry("memory.memory_manager")),

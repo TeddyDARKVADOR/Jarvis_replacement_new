@@ -55,6 +55,7 @@ python -m core.code_workspace.selftest
 python -m reminders.selftest
 python -m nightshift.selftest
 python -m meeting.selftest
+python -m pilot.selftest
 python -m capabilities.verify --quick   # sondes réelles des outils
 ```
 

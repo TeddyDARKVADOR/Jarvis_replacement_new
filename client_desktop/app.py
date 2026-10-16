@@ -201,6 +201,15 @@ class JarvisDesktop(QObject):
         except Exception as exc:
             self.store.log(f"Copilote de réunion indisponible : {exc}")
 
+        # pilot/ (optionnel) : JARVIS prend la main sur ce PC ; Oracle choisit
+        # chaque action, confirme et annonce (server/assist.py).
+        try:
+            import pilot.client
+            from .config import settings_dir
+            pilot.client.start(self.store.log, self.worker.http_session, settings_dir())
+        except Exception as exc:
+            self.store.log(f"Pilote indisponible : {exc}")
+
         self.store.set_wake_word(self.wake.NAME if engine_available() else "")
         if self.settings.wake_word_enabled and engine_available():
             if self.wake.start():

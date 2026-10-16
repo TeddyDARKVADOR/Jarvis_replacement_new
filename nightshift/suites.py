@@ -101,6 +101,9 @@ SUITES: tuple[Suite, ...] = (
     Suite("meeting.selftest", ("-m", "meeting.selftest"),
           linux="15/15 le 2026-10-16 (Debian 12, Python 3.12, hors root, PulseAudio) ; sans soundcard, "
                 "le n°15 se déclare sans objet"),
+    Suite("pilot.selftest", ("-m", "pilot.selftest"),
+          linux="13/13 le 2026-10-16 (Debian 12, Xvfb + Openbox + AT-SPI, application GTK) ; sans bureau, "
+                "les n°12 et 13 se déclarent sans objet"),
 )
 
 

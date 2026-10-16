@@ -88,6 +88,7 @@ memory/reminders.json
 # déjà annoncé (memory/ est surveillé par les selftests du cœur : un fichier
 # non ignoré ici les ferait échouer)
 memory/nightshift.json
+memory/pilot_recipes.json
 memory/.nightshift-*.tmp
 
 # MCP servers (extensions/mcp.py) — their env often carries access tokens
