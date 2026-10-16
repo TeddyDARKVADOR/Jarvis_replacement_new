@@ -345,11 +345,17 @@ def run() -> bool:  # noqa: C901
         ).names()
     except Exception:
         real_actions = set()
+    # Plugins d'appareil (PLUGIN_DEVICE) : prouvés de la même façon, par un
+    # import réel de leur module, et pas par une liste écrite à la main.
+    from client_desktop.device import discover_device_plugins
+
+    device_plugins = set(discover_device_plugins(lambda _l: None))
+    real = set(real_actions) | device_plugins
 
     report.check(
         "16 toute capacite declaree est une action reelle et chargee",
-        declared <= real_actions and declared <= set(DEVICE_BOUND_ACTIONS),
-        f"declarees={sorted(declared)} inconnues={sorted(declared - real_actions)}",
+        declared <= real and declared <= set(DEVICE_BOUND_ACTIONS) | device_plugins,
+        f"declarees={sorted(declared)} inconnues={sorted(declared - real)}",
     )
 
     # Network-only actions must never be device capabilities: declaring
