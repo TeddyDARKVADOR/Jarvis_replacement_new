@@ -1,21 +1,6 @@
 {
  "schema": "jarvis.nightshift-queue/1",
- "run_id": "38834786074",
- "created": "2026-10-16T03:24:25+02:00",
- "tasks": [
-  {
-   "id": "triage-38834786074",
-   "kind": "triage",
-   "input": {
-    "findings": [
-     {
-      "code": "F841",
-      "path": "eval_lab/mutate.py",
-      "line": 97,
-      "message": "Local variable `stim` is assigned to but never used"
-     }
-    ]
-   }
-  }
- ]
+ "run_id": "38858319190",
+ "created": "2026-10-16T05:57:10+00:00",
+ "tasks": []
 }
