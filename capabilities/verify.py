@@ -238,6 +238,13 @@ def _quotas(tmp: Path) -> str:
     return text.splitlines()[-1]
 
 
+def _briefing(tmp: Path) -> str:
+    importlib.import_module("plugins.briefing")
+    import daily
+    b = daily.compose({}, topics=lambda: [], reminders_of=lambda d: [], meeting_of=lambda n: None, state={})
+    return f"briefing composé (sans réseau) : {b.text().splitlines()[0]}"
+
+
 def _dry(module: str, *deps: str):
     def probe(tmp: Path) -> str:
         importlib.import_module(module)
@@ -283,6 +290,7 @@ PROBES = {
     "meeting": ("reel", _meeting),
     "pilot": ("reel", _pilot),
     "quotas": ("reel", _quotas),
+    "briefing": ("reel", _briefing),
     "weather_report": ("vide", _dry("actions.weather_report")),
     "flight_finder": ("vide", _dry("actions.flight_finder")),
     "save_memory": ("vide", _dry("memory.memory_manager")),

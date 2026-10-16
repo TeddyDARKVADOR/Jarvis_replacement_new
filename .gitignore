@@ -90,6 +90,8 @@ memory/reminders.json
 memory/nightshift.json
 memory/pilot_recipes.json
 memory/quota.json
+memory/daily.json
+memory/.daily-*.tmp
 memory/.quota-*.tmp
 memory/.nightshift-*.tmp
 

@@ -105,6 +105,9 @@ SUITES: tuple[Suite, ...] = (
           linux="13/13 le 2026-10-16 (Debian 12, Xvfb + Openbox + AT-SPI, application GTK) ; sans bureau, "
                 "les n°12 et 13 se déclarent sans objet"),
     Suite("quota.selftest", ("-m", "quota.selftest"), linux="7/7 le 2026-10-16 (bibliothèque standard seulement)"),
+    Suite("daily.selftest", ("-m", "daily.selftest"),
+          linux="à mesurer sur GitHub (icalendar et recurring-ical-events dans requirements-server.txt) ; "
+                "sans réseau, le n°7 se déclare sans objet"),
 )
 
 

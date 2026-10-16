@@ -666,6 +666,13 @@ class JarvisLive:
         except Exception:
             pass
 
+        # ── daily/ (optionnel) : le briefing quotidien personnalisé ─────────────
+        try:
+            import daily
+            daily.attach(self)
+        except Exception:
+            pass
+
         # ── pilot/ (optionnel, mode local) : JARVIS prend la main sur le PC ────
         try:
             import pilot
@@ -1558,6 +1565,7 @@ class JarvisLive:
                 f" Also briefly and naturally mention that {_when}: {last['summary']}"
             )
         session_clause += await asyncio.to_thread(getattr(self, "_night_clause", str))  # nightshift/
+        session_clause += await asyncio.to_thread(getattr(self, "_daily_clause", str))  # daily/
 
         p1 = (
             f"Greet the user warmly, mention it is {time_str}, and say you are fetching today's news now.{session_clause} "

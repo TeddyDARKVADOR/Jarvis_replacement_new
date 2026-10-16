@@ -57,6 +57,7 @@ python -m nightshift.selftest
 python -m meeting.selftest
 python -m pilot.selftest
 python -m quota.selftest
+python -m daily.selftest
 python -m capabilities.verify --quick   # sondes réelles des outils
 ```
 

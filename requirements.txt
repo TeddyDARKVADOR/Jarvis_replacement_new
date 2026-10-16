@@ -51,6 +51,10 @@ pyyaml                   # SKILL.md front matter
 # tool-capable model, e.g. `ollama pull qwen3:4b-instruct`. Optional, better
 # speech detection: `pip install webrtcvad-wheels`.
 
+# ── Daily briefing (daily/) ──────────────────────────────────────────────────
+icalendar                # the user's iCal calendar links…
+recurring-ical-events    # …with recurrences, exceptions and time zones done right
+
 # ── Meeting copilot (meeting/) ───────────────────────────────────────────────
 soundcard                # the computer's own sound (WASAPI loopback, PulseAudio/
                          # PipeWire monitor) + the mic. Linux: needs PulseAudio or
