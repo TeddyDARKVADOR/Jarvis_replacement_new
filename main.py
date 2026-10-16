@@ -659,6 +659,13 @@ class JarvisLive:
         except Exception:
             pass
 
+        # ── meeting/ (optionnel, mode local) : le copilote de réunion ───────────
+        try:
+            import meeting
+            meeting.attach(self)
+        except Exception:
+            pass
+
     # ── Wake word: state machine ─────────────────────────────────────────────
 
     def _wake_state(self) -> dict:

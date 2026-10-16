@@ -297,6 +297,12 @@ class JarvisStore:
             )
         self._emit("log", stamped)
 
+    def notice(self, title: str, text: str) -> None:
+        """A notification raised by a background service (meeting/), from any
+        thread: logged, then shown by the app on the GUI thread."""
+        self.log(f"{title} : {text.splitlines()[0] if text else ''}")
+        self._emit("notice", (title, text))
+
     # ── counters ─────────────────────────────────────────────────────────────
 
     def count_sent(self, byte_count: int) -> None:

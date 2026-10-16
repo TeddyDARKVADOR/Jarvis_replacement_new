@@ -51,6 +51,11 @@ pyyaml                   # SKILL.md front matter
 # tool-capable model, e.g. `ollama pull qwen3:4b-instruct`. Optional, better
 # speech detection: `pip install webrtcvad-wheels`.
 
+# ── Meeting copilot (meeting/) ───────────────────────────────────────────────
+soundcard                # the computer's own sound (WASAPI loopback, PulseAudio/
+                         # PipeWire monitor) + the mic. Linux: needs PulseAudio or
+                         # pipewire-pulse running. macOS: mic only (no loopback).
+
 # ── Windows-only (pip skips these automatically on macOS / Linux) ────────────
 comtypes;   sys_platform == "win32"
 pycaw;      sys_platform == "win32"

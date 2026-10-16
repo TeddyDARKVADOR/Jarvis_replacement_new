@@ -98,6 +98,9 @@ SUITES: tuple[Suite, ...] = (
     Suite("actions.repository_review_selftest", ("-m", "actions.repository_review_selftest"),
           linux=f"{_MEASURED} : PASS"),
     Suite("nightshift.selftest", ("-m", "nightshift.selftest"), linux="32/32 le 2026-10-15 (Debian 12, Python 3.12)"),
+    Suite("meeting.selftest", ("-m", "meeting.selftest"),
+          linux="15/15 le 2026-10-16 (Debian 12, Python 3.12, hors root, PulseAudio) ; sans soundcard, "
+                "le n°15 se déclare sans objet"),
 )
 
 

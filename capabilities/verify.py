@@ -216,6 +216,14 @@ def _itinerary(tmp: Path) -> str:
     return "URL d'itinéraire construite (le navigateur n'est pas ouvert)"
 
 
+def _meeting(tmp: Path) -> str:
+    importlib.import_module("plugins.meeting")
+    from meeting import detect
+    usage = detect.in_use()
+    return f"plugin chargé ; détection ({usage.source}) : {usage.describe()}" + \
+        (f" — {usage.error}" if usage.error else "")
+
+
 def _dry(module: str, *deps: str):
     def probe(tmp: Path) -> str:
         importlib.import_module(module)
@@ -258,6 +266,7 @@ PROBES = {
     "computer_settings": ("vide", _dry("actions.computer_settings", "pyautogui")),
     "send_message": ("vide", _dry("actions.send_message", "pyautogui")),
     "reminder": ("vide", _dry("actions.reminder")),
+    "meeting": ("reel", _meeting),
     "weather_report": ("vide", _dry("actions.weather_report")),
     "flight_finder": ("vide", _dry("actions.flight_finder")),
     "save_memory": ("vide", _dry("memory.memory_manager")),

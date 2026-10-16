@@ -123,6 +123,10 @@ class JarvisDesktop(QObject):
         except Exception:
             pass
 
+        # meeting/ (optionnel) : le copilote de réunion écoute les visios de ce PC ;
+        # Oracle fait le compte rendu (server/assist.py). Démarré dans start().
+        self._meeting = None
+
         self._bridge = _Bridge()
         self._bridge.event.connect(self._on_store_event)
         self.store.subscribe(lambda kind, payload: self._bridge.event.emit(kind, payload))
@@ -187,6 +191,15 @@ class JarvisDesktop(QObject):
             f"Appareil : {self.settings.device_name} ({self.settings.device_id})"
         )
         self._probe.start(self._on_capabilities)
+
+        try:
+            import meeting.client
+            from .config import settings_dir
+            self._meeting = meeting.client.start(
+                self.store.log, self.worker.http_session,
+                lambda _kind, text: self.store.notice("JARVIS — réunion", text), settings_dir())
+        except Exception as exc:
+            self.store.log(f"Copilote de réunion indisponible : {exc}")
 
         self.store.set_wake_word(self.wake.NAME if engine_available() else "")
         if self.settings.wake_word_enabled and engine_available():
@@ -361,6 +374,11 @@ class JarvisDesktop(QObject):
         if not self.settings.notifications:
             return
         snapshot: Snapshot = self.store.snapshot()
+
+        if kind == "notice" and isinstance(payload, tuple):
+            title, text = payload
+            self.tray.notify(title, (text or "")[:240])
+            return
 
         if kind == "confirm":
             # This one is raised whatever the HUD is doing: the request dies

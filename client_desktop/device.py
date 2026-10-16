@@ -92,6 +92,59 @@ def new_device_id() -> str:
     return f"pc-{uuid.uuid4().hex[:12]}"
 
 
+def _device_plugin_manifest(path: Path) -> tuple[str, tuple[str, ...]] | None:
+    """(nom, dépendances) d'un plugins/*.py qui déclare PLUGIN_DEVICE — lu dans
+    le texte, sans importer le fichier : les autres plugins (cognition…) n'ont
+    rien à faire sur ce poste."""
+    import ast
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return None
+    name, needs = None, None
+    for node in tree.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+            continue
+        target = node.targets[0].id
+        try:
+            value = ast.literal_eval(node.value)
+        except (ValueError, SyntaxError):
+            continue
+        if target == "PLUGIN_DEVICE" and isinstance(value, (tuple, list)):
+            needs = tuple(str(x) for x in value)
+        elif target == "PLUGIN" and isinstance(value, dict):
+            name = value.get("name")
+    return (str(name), needs) if name and needs is not None else None
+
+
+def discover_device_plugins(logger: Callable[[str], None] = print) -> dict[str, object]:
+    """Les plugins qui s'exécutent là où est l'utilisateur (PLUGIN_DEVICE),
+    importés seulement si leurs dépendances le sont : {nom: module}."""
+    import importlib.util
+    found: dict[str, object] = {}
+    for path in sorted((_REPO_ROOT / "plugins").glob("*.py")):
+        if path.name.startswith("_"):
+            continue
+        manifest = _device_plugin_manifest(path)
+        if manifest is None:
+            continue
+        name, needs = manifest
+        absent = [m for m in needs if not _importable(m)]
+        if absent:
+            logger(f"Capacité écartée : {name} (manque {', '.join(absent)})")
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"plugins.{path.stem}", path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)  # type: ignore[union-attr]
+        except Exception as exc:
+            logger(f"Capacité écartée : {name} (import : {exc})")
+            continue
+        if callable(getattr(module, "run", None)):
+            found[name] = module
+    return found
+
+
 def discover_capabilities(logger: Callable[[str], None] = print) -> list[str]:
     """The device-bound actions this machine can actually run, proven.
 
@@ -124,6 +177,12 @@ def discover_capabilities(logger: Callable[[str], None] = print) -> list[str]:
             missing.append(f"{action} (manque {', '.join(absent)})")
             continue
         capabilities.append(action)
+
+    # Les plugins d'appareil (PLUGIN_DEVICE) : copilote de réunion, pilote…
+    try:
+        capabilities += [n for n in discover_device_plugins(logger) if n not in capabilities]
+    except Exception as exc:
+        logger(f"Capacités : plugins d'appareil illisibles — {exc}")
 
     logger(f"Capacités déclarées : {len(capabilities)} — {', '.join(capabilities)}")
     if missing:
@@ -193,6 +252,7 @@ class LocalExecutor:
         self._allowed = set(allowed)
         self._logger = logger
         self._registry = None
+        self._plugins: dict[str, object] | None = None
         self._lock = threading.Lock()
 
     def _ensure_registry(self):
@@ -204,6 +264,16 @@ class LocalExecutor:
                     _REPO_ROOT / "actions", logger=lambda _l: None
                 )
             return self._registry
+
+    def _device_plugin(self, action: str):
+        """Le module d'un plugin d'appareil (PLUGIN_DEVICE), chargé une fois."""
+        with self._lock:
+            if self._plugins is None:
+                try:
+                    self._plugins = discover_device_plugins(lambda _l: None)
+                except Exception:
+                    self._plugins = {}
+            return self._plugins.get(action)
 
     def execute(self, action: str, parameters: dict,
                 target_device_id: str = "") -> str:
@@ -224,6 +294,14 @@ class LocalExecutor:
             # and the safe reading of that is to do nothing.
             self._logger(f"Commande refusée : « {action} » n'est pas déclarée ici.")
             return f"Refusé : « {action} » ne fait pas partie des capacités de cet appareil."
+
+        plugin = self._device_plugin(action)
+        if plugin is not None:
+            self._logger(f"Exécution locale : {action} {parameters}")
+            try:
+                return str(plugin.run(dict(parameters or {}), player=None) or "Fait.")
+            except Exception as exc:
+                return f"« {action} » a échoué : {exc}"
 
         try:
             registry = self._ensure_registry()

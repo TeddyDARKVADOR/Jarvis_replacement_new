@@ -170,6 +170,15 @@ def build(echo: bool = True, allow_firewall: bool = False):
                              log=lambda m: print(m, flush=True))
         except Exception as exc:
             print(f"[Assistant] route non montee : {exc}", flush=True)
+        # What a paired device asks of the brain it has no key for: meeting
+        # minutes today (server/assist.py). JarvisLive does not exist yet at
+        # this point, hence the getter.
+        try:
+            from server import assist
+            assist.attach(dash, lambda: _BUILT[0] if _BUILT else None,
+                          log=lambda m: print(m, flush=True))
+        except Exception as exc:
+            print(f"[Assist] route non montee : {exc}", flush=True)
         # The two client→server capabilities the headless host adds. Both bind a
         # remote button to a function that already existed — no second command
         # path, no second authority. `main.py` is untouched: it has already put
