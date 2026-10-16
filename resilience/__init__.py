@@ -21,7 +21,8 @@ CE QUE FAIT L'ENVELOPPE
      10 s, le minimum que l'API accepte).
   2. Échelle : le modèle demandé d'abord, puis ceux de son échelon (rapide,
      raisonnement, recherche ancrée), dans l'ordre mesuré sur notre clé.
-  3. Repos : quota épuisé (429) → 5 min ; ne répond pas (503, 504, délai
+  3. Repos : quota du jour épuisé (429 « PerDay ») → jusqu'à minuit, heure du
+     Pacifique ; de la minute → 1 min ; autre 429 → 5 min ; ne répond pas (503, 504, délai
      dépassé) → 30 min ; absent ou interdit à cette clé (404, 403) → 6 h. Un
      modèle au repos n'est pas réessayé à chaque appel : c'est là que le temps
      se perdait.
@@ -100,6 +101,32 @@ def is_gone_error(err: str) -> bool:
             or "is not supported" in low or "permission" in low)
 
 
+def seconds_until_pacific_midnight(now=None) -> float:
+    """Les quotas journaliers de Gemini repartent à minuit, heure du Pacifique."""
+    from datetime import datetime, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/Los_Angeles")
+    except Exception:                                  # sans base de fuseaux : UTC−8, au pire une heure trop tard
+        from datetime import timezone
+        tz = timezone(timedelta(hours=-8))
+    now = now or datetime.now(tz)
+    nxt = (now + timedelta(days=1)).replace(hour=0, minute=1, second=0, microsecond=0)
+    return max(60.0, (nxt - now).total_seconds())
+
+
+def quota_rest(err: str) -> float:
+    """Combien de temps laisser un modèle au repos après un 429. Le corps de l'erreur nomme le quota
+    (« GenerateRequestsPerDayPerProjectPerModel-FreeTier », valeur 20 pour gemini-3.5-flash, mesuré le
+    2026-10-16) : un quota du jour ne revient qu'à minuit (Pacifique) — le réessayer toutes les 5 min ne
+    faisait que perdre du temps ; un quota de la minute revient en une minute."""
+    if "PerDay" in err:
+        return seconds_until_pacific_midnight()
+    if "PerMinute" in err:
+        return 60.0
+    return QUOTA_REST_S
+
+
 def _bare(model: str) -> str:
     return str(model or "").removeprefix("models/")
 
@@ -122,7 +149,7 @@ def classify(model: str, err: str) -> str | None:
     """Met le modèle au repos selon l'erreur. Renvoie la raison, ou None quand
     l'erreur tient à la requête et qu'un autre modèle n'y changerait rien."""
     if is_quota_error(err):
-        rest(model, QUOTA_REST_S)
+        rest(model, quota_rest(err))
         return "quota"
     if is_gone_error(err):
         rest(model, GONE_REST_S)
@@ -290,7 +317,7 @@ def note_live_failure(model: str, err: str) -> bool:
     font avancer : une clé refusée ou un réseau coupé ne sont pas la faute du
     modèle, et changer de modèle ne ferait que heurter le même mur."""
     if is_quota_error(err):
-        rest(model, QUOTA_REST_S)
+        rest(model, quota_rest(err))
     elif is_gone_error(err) and "API key" not in err:
         rest(model, GONE_REST_S)
     else:

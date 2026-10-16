@@ -7,12 +7,14 @@ UN appel de fonction (mode ANY). Sans état, la requête se sérialise telle
 quelle : sur un PC relié, Oracle l'exécute avec sa clé (server/assist.py,
 POST /api/pilot/step) — le PC n'en a pas.
 
-Gemini (REST, bibliothèque standard) : gemini-3.5-flash par défaut — vision,
-appels de fonction, et l'outil Computer Use de Google en mode bureau répond
-avec la clé gratuite (vérifié le 2026-10-16). On n'utilise pas ce dernier :
-nos propres fonctions désignent les éléments de l'arbre d'accessibilité par
-leur numéro, ce qui est plus sûr que des coordonnées, et marche avec tout
-modèle multimodal. Repli : gemini-3.5-flash-lite sur 429/5xx.
+Gemini (REST, bibliothèque standard), dans l'ordre de MODELS : les Flash-Lite
+d'abord (500 requêtes gratuites par jour et par modèle), le Flash à 20 par
+jour en dernier. Un 429 « PerDay » écarte le modèle jusqu'à minuit (heure du
+Pacifique) sans attendre ; 429 de la minute et 503 : réessayés. L'outil
+Computer Use de Google répond aussi avec la clé gratuite (vérifié le
+2026-10-16), mais nos propres fonctions désignent les éléments de l'arbre
+d'accessibilité par leur numéro, plus sûr que des coordonnées, et valables
+pour tout modèle multimodal.
 """
 from __future__ import annotations
 
@@ -24,7 +26,13 @@ import urllib.error
 import urllib.request
 
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-MODELS = ("gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
+# Ordre fixé par le quota gratuit, lu dans les erreurs 429 de Google le 2026-10-16 : chaque modèle a son
+# propre compteur par jour — gemini-3.5-flash (et 3.6/3.7/3.8, 3-flash-preview) : 20 requêtes ; les
+# Flash-Lite : 500. Sur une étape réelle du pilote (capture d'une messagerie), 2.5-flash-lite et 2.5-flash
+# ont choisi la bonne action en 1 à 3 s, 3.5-flash-lite aussi (et demande confirmation avant d'envoyer),
+# 3.1-flash-lite juste mais lent (12-20 s, 503 fréquents). Le modèle à 20 par jour vient en dernier.
+MODELS = ("gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-3.1-flash-lite",
+          "gemini-3.5-flash")
 
 SYSTEM = """You operate this computer for the user, like a careful human assistant, one action at a time.
 Each step you get: the task, what you already did, the foreground window, the list of UI elements of that
@@ -126,6 +134,19 @@ def parse(response: dict) -> tuple[str, dict]:
 
 
 RETRY_PAUSES = (2.0, 5.0, 0.0)
+_spent: dict[str, float] = {}          # modèle → fin du repos (quota du jour épuisé)
+
+
+def _until_pacific_midnight() -> float:
+    from datetime import datetime, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    except Exception:
+        from datetime import timezone
+        now = datetime.now(timezone(timedelta(hours=-8)))
+    nxt = (now + timedelta(days=1)).replace(hour=0, minute=1, second=0, microsecond=0)
+    return max(60.0, (nxt - now).total_seconds())
 
 
 def retry_delay(raw: bytes) -> float | None:
@@ -141,6 +162,9 @@ def call(body: dict, key: str, models: tuple[str, ...] = MODELS, timeout: float 
     req = json.dumps(body).encode("utf-8")
     headers = {"Content-Type": "application/json", "x-goog-api-key": key}
     for model in models:
+        if _spent.get(model, 0) > time.time():
+            errors.append(f"{model} : quota du jour épuisé")
+            continue
         for attempt, pause in enumerate(RETRY_PAUSES):
             try:
                 status, raw = (transport or _post)(URL.format(model=model), headers, req, timeout)
@@ -153,6 +177,12 @@ def call(body: dict, key: str, models: tuple[str, ...] = MODELS, timeout: float 
                 return data
             if status in (400, 401, 403):        # requête ou clé refusée : ni un autre essai ni un autre modèle
                 raise BrainError(f"{model} : HTTP {status} {raw[:200].decode('utf-8', 'replace')}")
+            if status == 429 and b"PerDay" in (raw or b""):
+                # Quota du JOUR (20 requêtes pour gemini-3.5-flash, mesuré) : ni attendre ni réessayer — le
+                # modèle est écarté jusqu'à minuit, heure du Pacifique, et le suivant prend la main.
+                _spent[model] = time.time() + _until_pacific_midnight()
+                errors.append(f"{model} : quota du jour épuisé")
+                break
             if status in (429, 500, 502, 503, 504) and attempt < len(RETRY_PAUSES) - 1:
                 # Surcharge passagère (503 mesurés le 2026-10-16) : on réessaie. Un 429 dit combien attendre
                 # (retryDelay) : jusqu'à une minute, on attend ce délai plutôt que de griller le modèle suivant.

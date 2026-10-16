@@ -129,12 +129,29 @@ def _brain():
 
     out = B.call(body, "k", ("m1", "m2"), transport=transport, sleep=slept.append)
     assert out["_model"] == "m1" and slept == [12.0, 5.0], (calls, slept)
+    day = b'{"error": {"details": [{"violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}}'
+    seen, slept2 = [], []
+
+    def daily(url, headers, req, timeout):
+        m = url.split("/models/")[1].split(":")[0]
+        seen.append(m)
+        if m == "d1":
+            return 429, day
+        return 200, json.dumps({"candidates": [{"content": {"parts": [{"functionCall": {"name": "done", "args": {}}}]}}]}).encode()
+
+    assert B.call(body, "k", ("d1", "d2"), transport=daily, sleep=slept2.append)["_model"] == "d2"
+    assert seen == ["d1", "d2"] and slept2 == [], "quota du jour : modèle suivant tout de suite, sans attendre"
+    seen.clear()
+    B.call(body, "k", ("d1", "d2"), transport=daily, sleep=slept2.append)
+    assert seen == ["d2"], "le modèle épuisé n'est plus appelé de la journée"
+    B._spent.pop("d1", None)
+    assert B.MODELS[0].endswith("flash-lite") and B.MODELS[-1] == "gemini-3.5-flash", "le modèle à 20/jour en dernier"
     try:
         B.call(body, "k", ("m1", "m2"), transport=lambda *a: (403, b"denied"), sleep=slept.append)
         raise AssertionError("clé refusée acceptée")
     except B.BrainError as e:
         assert "403" in str(e)
-    return "429 : attendu 12 s comme demandé ; 503 : réessayé ; 403 : arrêt sans autre modèle"
+    return "429 minute : attendu 12 s ; 429 jour : modèle écarté jusqu à minuit, sans attente ; 403 : arrêt"
 
 
 class _Inputs:

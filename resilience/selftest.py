@@ -79,6 +79,24 @@ def _quota():
     assert [m for m, _ in f.calls] == [R.LADDERS[R.FAST][0]], "le modèle au repos a été réessayé"
 
 
+@check("2b quota du jour : repos jusqu'à minuit (Pacifique) ; quota de la minute : 1 min")
+def _daily_quota():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    day = ("429 RESOURCE_EXHAUSTED {'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', "
+           "'quotaValue': '20'}")
+    minute = "429 RESOURCE_EXHAUSTED {'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier'}"
+    assert R.quota_rest(minute) == 60.0
+    assert R.quota_rest("429 RESOURCE_EXHAUSTED") == R.QUOTA_REST_S
+    at_22h = datetime(2026, 10, 16, 22, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
+    assert abs(R.seconds_until_pacific_midnight(at_22h) - (2 * 3600 + 60)) < 1
+    f = _Fake({"gemini-3.5-flash": day})
+    f.generate_content(model="gemini-3.5-flash", contents="x")
+    t = {d["model"]: d["rest_s"] for d in R.status()}
+    assert t["gemini-3.5-flash"] > 15 * 60 or R.seconds_until_pacific_midnight() <= 15 * 60, t
+    return f"gemini-3.5-flash au repos {round(t['gemini-3.5-flash'] / 3600, 1)} h (jusqu'à minuit Pacifique)"
+
+
 @check("3 503 puis 404 : deux repos de durées différentes")
 def _rests():
     f = _Fake({"gemini-2.5-flash": "503 UNAVAILABLE", "gemini-3-flash-preview": "404 NOT_FOUND"})
