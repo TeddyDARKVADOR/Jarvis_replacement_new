@@ -166,9 +166,14 @@ def _night_date(report: dict):
 
 
 def assemble(veille: Path, proposal: Path | None, validation: Path | None, publish: Path | None,
-             dry_run: bool) -> tuple[dict, dict]:
-    """(le rapport de la nuit, la mémoire après la nuit)."""
+             dry_run: bool) -> tuple[dict, dict | None]:
+    """(le rapport de la nuit, la mémoire après la nuit).
+
+    Sans rapport de la veille, la mémoire vaut None : elle voyage avec la veille,
+    donc elle n'a pas été lue, et la réécrire depuis une mémoire vide effacerait
+    les nuits et les idées déjà tentées. nightshift-data garde l'ancienne."""
     report = _load(veille / "report.json")
+    measured = report is not None
     if report is None:
         report = R.failed({"run_id": os.environ.get("GITHUB_RUN_ID")}, {}, "rapport de la veille absent")
     choice = _load(veille / "task.json")
@@ -192,7 +197,7 @@ def assemble(veille: Path, proposal: Path | None, validation: Path | None, publi
     report["tonight"] = memory.tonight(state, str(report.get("started_at") or "")[:10])
     report["local"] = local_section(_load(veille / "local.json"))
     report["summary"] = R.summarize(report)
-    return report, state
+    return report, state if measured else None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -209,8 +214,10 @@ def main(argv: list[str] | None = None) -> int:
                              args.dry_run != "false")
     md = R.to_markdown(report)
     R.write(report, md, Path(args.out))
-    R._atomic_write(Path(args.out) / "state.json", json.dumps(state, ensure_ascii=False, indent=1) + "\n")
-    R._atomic_write(Path(args.out) / "queue.json", json.dumps(queue_for(report), ensure_ascii=False, indent=1) + "\n")
+    if state is not None:   # sans state.json, le job « rapport » ne touche pas à la mémoire
+        R._atomic_write(Path(args.out) / "state.json", json.dumps(state, ensure_ascii=False, indent=1) + "\n")
+        R._atomic_write(Path(args.out) / "queue.json",
+                        json.dumps(queue_for(report), ensure_ascii=False, indent=1) + "\n")
     R.step_summary(md)
     print(report["summary"])
     return 0

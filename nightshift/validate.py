@@ -42,10 +42,11 @@ REPO = Path(__file__).resolve().parent.parent
 def apply_and_commit(diff: str, repo: Path, message: str, files: list[str] | None = None) -> tuple[bool, str]:
     """git apply puis commit local des seuls fichiers du patch. (ok, erreur)."""
     try:
-        p = subprocess.run(["git", "apply", "--recount", "--whitespace=nowarn", "-"], cwd=str(repo), input=diff,
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        # En octets, comme propose.apply_check : le mode texte de Windows mettrait du CRLF.
+        p = subprocess.run(["git", "apply", "--recount", "--whitespace=nowarn", "-"], cwd=str(repo),
+                           input=diff.encode("utf-8"), capture_output=True, timeout=60)
         if p.returncode != 0:
-            return False, f"git apply : {run.redact(p.stderr.strip())[:300]}"
+            return False, f"git apply : {run.redact(p.stderr.decode('utf-8', 'replace').strip())[:300]}"
         subprocess.run(["git", "add", "-A", "--", *(files or ["."])], cwd=str(repo), capture_output=True,
                        timeout=60, check=True)
         p = subprocess.run(["git", "-c", "user.name=jarvis-nightshift", "-c", "user.email=nightshift@localhost",

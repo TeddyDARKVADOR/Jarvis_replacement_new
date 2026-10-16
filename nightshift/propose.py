@@ -68,11 +68,13 @@ def extract_diff(text: str) -> tuple[str | None, str]:
 def apply_check(diff: str, repo: Path) -> tuple[bool, str]:
     """git apply --check : le patch s'applique-t-il ? Ne modifie rien."""
     try:
+        # En octets : en mode texte, Windows écrit chaque fin de ligne du patch en
+        # CRLF, et git ne retrouve plus aucune ligne du fichier.
         p = subprocess.run(["git", "apply", "--check", "--recount", "--whitespace=nowarn", "-"], cwd=str(repo),
-                           input=diff, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+                           input=diff.encode("utf-8"), capture_output=True, timeout=60)
     except Exception as e:
         return False, f"git apply impossible : {type(e).__name__}"
-    return p.returncode == 0, redact(p.stderr.strip())[:600]
+    return p.returncode == 0, redact(p.stderr.decode("utf-8", "replace").strip())[:600]
 
 
 def _feedback(reason: str) -> dict:

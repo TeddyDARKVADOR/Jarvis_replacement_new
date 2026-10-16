@@ -8,10 +8,14 @@ Pourquoi pas cognition/providers.py : nightshift n'importe rien de JARVIS
 (contrat V2), et cognition.selftest n°2 fige la liste de ceux qui importent
 cognition. Ce client fait moins, en bibliothèque standard :
 
-  CHAÎNE   groq : GROQ_MODEL s'il est défini, puis openai/gpt-oss-120b,
-           qwen/qwen3.8-27b (en « preview » chez Groq : peut disparaître) et
-           openai/gpt-oss-20b ; puis gemini : GEMINI_MODEL, sinon
-           gemini-3.1-flash-lite. Un fournisseur sans clé est sauté.
+  CHAÎNE   groq : GROQ_MODEL s'il est défini, puis openai/gpt-oss-120b et
+           qwen/qwen3.8-27b (en « preview » chez Groq : peut disparaître) ;
+           puis gemini : GEMINI_MODEL, sinon gemini-3.5-flash-lite puis
+           gemini-3.1-flash-lite ; en dernier recours openai/gpt-oss-20b.
+           Ordre tiré du banc du 2026-10-16 (3 tâches réelles, patch appliqué
+           et suites relancées) : gpt-oss-120b 3/3, gemini-3.5-flash-lite 3/3,
+           qwen 2/3, gemini-3.1-flash-lite 1/3 (et des 503), gpt-oss-20b 0/3.
+           Un fournisseur sans clé est sauté.
   RYTHME   8 000 tokens par minute et par modèle (Groq gratuit, confirmé le
            2026-10-14) : avant chaque appel, le client attend que la fenêtre
            glissante d'une minute ait la place, ou passe au modèle suivant.
@@ -41,7 +45,8 @@ from nightshift.run import redact
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 GROQ_MODELS = ("openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b")
-GEMINI_MODEL = "gemini-3.1-flash-lite"
+GROQ_LAST = ("openai/gpt-oss-20b",)          # après Gemini, sauf choisi par GROQ_MODEL
+GEMINI_MODELS = ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
 TPM = 8000
 SHORT_RETRY_S = 30
 CHARS_PER_TOKEN = 3.2
@@ -136,8 +141,12 @@ class Chain:
         env = dict(os.environ if env is None else env)
         first = (env.get("GROQ_MODEL") or "").strip()
         groq = [first] + [m for m in GROQ_MODELS if m != first] if first else list(GROQ_MODELS)
-        models = [Model("groq", m, GROQ_URL, "GROQ_API_KEY") for m in groq]
-        models.append(Model("gemini", (env.get("GEMINI_MODEL") or GEMINI_MODEL).strip(), GEMINI_URL, "GEMINI_API_KEY"))
+        gfirst = (env.get("GEMINI_MODEL") or "").strip()
+        gemini = [gfirst] + [m for m in GEMINI_MODELS if m != gfirst] if gfirst else list(GEMINI_MODELS)
+        last = [m for m in groq if m in GROQ_LAST and m != first]
+        models = [Model("groq", m, GROQ_URL, "GROQ_API_KEY") for m in groq if m not in last]
+        models += [Model("gemini", m, GEMINI_URL, "GEMINI_API_KEY") for m in gemini]
+        models += [Model("groq", m, GROQ_URL, "GROQ_API_KEY") for m in last]
         return cls(models, env, budget or Budget(), **kw)
 
     def available(self) -> list[Model]:

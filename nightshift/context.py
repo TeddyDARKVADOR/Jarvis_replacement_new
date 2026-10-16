@@ -178,7 +178,19 @@ def definitions(repo: Path, pkg: str, names: set[str]) -> list[tuple[str, int, i
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in names:
                 start = node.decorator_list[0].lineno if node.decorator_list else node.lineno
-                out.append((rel, start, node.end_lineno, _segment(lines, start, node.end_lineno)))
+                methods = [m for m in node.body if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef))] \
+                    if isinstance(node, ast.ClassDef) else []
+                if methods:
+                    # Une classe entière dépasse le budget et la coupe cache justement
+                    # ses méthodes : son en-tête et ses champs, puis la liste des
+                    # méthodes ; celles qui servent viennent par leur nom.
+                    first = methods[0].decorator_list[0].lineno if methods[0].decorator_list else methods[0].lineno
+                    end = max(start, first - 1)
+                    text = _segment(lines, start, end).rstrip() + \
+                        f"\n    # methods: {', '.join(m.name for m in methods)}"
+                    out.append((rel, start, end, text))
+                else:
+                    out.append((rel, start, node.end_lineno, _segment(lines, start, node.end_lineno)))
     return out
 
 
@@ -313,9 +325,21 @@ def build(task: dict, repo: Path, outputs_dir: Path | None = None, budget: int =
                                    suspect_diff(repo, task["suspects"], 1200), "diff"), 1200)
         pkg = package_dir(task.get("suite", ""), repo)
         if pkg and snippet:
-            defs = definitions(repo, pkg, called_names(snippet))
+            first = called_names(snippet)
+            defs = definitions(repo, pkg, first)
+            # Le bug est souvent un niveau plus bas : ce que ces fonctions appellent
+            # (banc du 2026-10-16 : sans _in_quiet_hours ni _apply_cooldown sous les
+            # yeux, tous les modèles ont renoncé ou inventé le code). Les plus
+            # courtes d'abord : ce sont les petites fonctions qu'on corrige.
+            shown = {name for name in first}
+            deeper = set().union(*(called_names(text) for _, _, _, text in defs[:6])) - shown if defs else set()
+            files = {d[0] for d in defs[:6]}
+            more = sorted(definitions(repo, pkg, deeper), key=lambda d: (d[0] not in files, d[2] - d[1]))
             for rel, a, b, text in defs[:6]:
                 add(f"def:{rel}:{a}", _block(f"{rel}, lines {a}-{b}", text, "python"), 900)
+            for rel, a, b, text in more[:6]:
+                add(f"def2:{rel}:{a}", _block(f"{rel}, lines {a}-{b} (called by the code above)", text, "python"),
+                    500)
             if defs:
                 add("plan", _block(f"Outline of {defs[0][0]}", outline(repo, defs[0][0])), 400)
 

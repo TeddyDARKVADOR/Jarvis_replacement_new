@@ -837,7 +837,12 @@ def _llm():
     ch, _ = chain([TimeoutError("lent"), _resp("suivant")])
     assert ch.complete(msgs, 200).model == "groq/qwen/qwen3.8-27b", "délai dépassé : modèle suivant"
     ch, _ = chain([_resp(status=401), _resp("gemini")])
-    assert ch.complete(msgs, 200).model == "gemini/gemini-3.1-flash-lite", "clé refusée : fournisseur écarté"
+    assert ch.complete(msgs, 200).model == "gemini/gemini-3.5-flash-lite", "clé refusée : fournisseur écarté"
+    order = [m.label for m in llm.Chain.from_env(env).models]
+    assert order == ["groq/openai/gpt-oss-120b", "groq/qwen/qwen3.8-27b", "gemini/gemini-3.5-flash-lite",
+                     "gemini/gemini-3.1-flash-lite", "groq/openai/gpt-oss-20b"], order
+    picked = llm.Chain.from_env({**env, "GEMINI_MODEL": "gemini-3.1-flash-lite"}).models[2].label
+    assert picked == "gemini/gemini-3.1-flash-lite", "GEMINI_MODEL passe en tête de Gemini"
     ch, _ = chain([_resp(status=404, headers={}, text="")[:2] + (b'{"error":{"code":"model_not_found"}}',),
                    _resp("qwen")])
     assert ch.complete(msgs, 200).model == "groq/qwen/qwen3.8-27b", "modèle disparu : écarté"
@@ -993,7 +998,19 @@ def _assemble():
     assert final["task"]["outcome"] == "patch_validated" and final["usage"]["llm_calls"] == 1
     assert "tâche reminders n°1 : correctif validé" in final["summary"], final["summary"]
     assert "### Tâche de la nuit" in report.to_markdown(final) and fetch.valid(final)
-    return f"{len(cases)} issues possibles ; « {final['summary'][-60:]} »"
+    # Veille introuvable (passe 2 du 2026-10-16) : un rapport « sans mesure », et la
+    # mémoire n'est pas réécrite depuis une mémoire vide.
+    out = TMP / "assemble-absent"
+    assert assemble.main(["--veille", str(TMP / "nulle-part"), "--out", str(out)]) == 0
+    lost = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    assert "rapport de la veille absent" in lost["summary"], lost["summary"]
+    assert not (out / "state.json").exists(), "veille absente : la mémoire de nightshift-data doit rester"
+    wf = _src(".github/workflows/nightly.yml")
+    asm = wf.split("\n  assemblage:\n", 1)[1].split("\n  rapport:\n", 1)[0]
+    assert "pattern:" not in asm, "un motif qui ne trouve qu'un artefact le dépose sans sous-dossier"
+    for part in ("veille", "proposal", "validation", "publish"):
+        assert f"name: nightshift-{part}\n          path: ${{{{ runner.temp }}}}/parts/nightshift-{part}" in asm, part
+    return f"{len(cases)} issues possibles ; veille absente : mémoire intacte ; « {final['summary'][-50:]} »"
 
 
 @check("22 briefing : un correctif validé ou une PR ouverte est annoncé")
@@ -1332,7 +1349,18 @@ def _reanchor():
     first = out["attempts"][0]
     assert out["outcome"] == "patch_proposed" and first["repair"] and first["response"], out
     assert _clean(repo), "le réancrage ne touche jamais au dépôt"
-    return f"{len(cases)} diffs mal formés réparés ; introuvable, hors zone et ambigu refusés ; réponse gardée"
+    # Un dépôt en LF (ce que donne un clone avec core.autocrlf=input) : le patch
+    # arrive à git tel quel. En mode texte, Windows le passait en CRLF et toute
+    # proposition était refusée (banc des modèles, 2026-10-16).
+    lf = TMP / "reanchor-lf"
+    (lf / "reminders").mkdir(parents=True)
+    (lf / "reminders" / "x.py").write_bytes(b"def f(s):\n    a, b = s\n    return a\n\n\ndef g():\n    return 1\n")
+    subprocess.run(["git", "init", "-q"], cwd=lf, capture_output=True, timeout=30)
+    minimal = "--- a/reminders/x.py\n+++ b/reminders/x.py\n@@\n def f(s):\n-    a, b = s\n+    a = s[0]\n"
+    fixed, _ = reanchor.repair(minimal, lf)
+    ok, err = propose.apply_check(fixed or "", lf)
+    assert ok, f"patch LF valide refusé par git apply : {err}"
+    return f"{len(cases)} diffs mal formés réparés ; introuvable, hors zone et ambigu refusés ; réponse gardée ; LF intact"
 
 
 @check("32 trois passes par nuit : cron reconnu, NIGHTLY_PASSES respecté, autre problème, nuit résumée")

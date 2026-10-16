@@ -419,12 +419,37 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Récupérer ce que chaque job a laissé
+      # Un artefact par étape, chacun par son nom : avec « pattern », un motif
+      # qui n'en trouve qu'un seul le dépose sans sous-dossier (passe 2 du
+      # 2026-10-16 : veille seule, « rapport de la veille absent », mémoire
+      # effacée). Un job sauté n'a pas d'artefact : l'étape échoue sans effet.
+      - name: Récupérer la veille
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: nightshift-*
-          path: ${{ runner.temp }}/parts
+          name: nightshift-veille
+          path: ${{ runner.temp }}/parts/nightshift-veille
+
+      - name: Récupérer la proposition
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightshift-proposal
+          path: ${{ runner.temp }}/parts/nightshift-proposal
+
+      - name: Récupérer la validation
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightshift-validation
+          path: ${{ runner.temp }}/parts/nightshift-validation
+
+      - name: Récupérer la publication
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightshift-publish
+          path: ${{ runner.temp }}/parts/nightshift-publish
 
       - name: Assembler
         env:
