@@ -1385,13 +1385,14 @@
       "kind": "outil",
       "tool": "portable",
       "status": "a_tester",
-      "summary": "status (suis-je en mode portable, où sont mes données, espace libre sur la clé), eject (comment retirer la clé sans rien casser). Lecture seule : ne déploie ni n'efface rien.",
+      "summary": "Mode portable (JARVIS sur clé USB). Actions : status, eject, doctor (bilan : Python, deps, Ollama, coffre, modèle conseillé, vitesse clé, connexion, batterie), pair (appairage téléphone), resume (récap de reprise conscient de la machine), note (fil en cours repris ailleurs), audit (preuve zéro-trace), check (auto-vérif deps + intégrité clé), history (où/quand il a tourné). Lecture seule : ne déploie ni n'efface rien.",
       "files": [
         "plugins/portable.py"
       ],
       "details": [
         "Le déploiement et le lancement se font par portable/Lancer-JARVIS.bat posé sur la clé, pas par cet outil. Détail dans le graphe deployment (nœud f.portable)."
-      ]
+      ],
+      "updated": "2026-10-17"
     }
   ],
   "edges": [
