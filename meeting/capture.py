@@ -91,12 +91,69 @@ class Chunker:
         self._emit(len(self.blocks))
 
 
+UTT_MIN_S = 1.0
+UTT_MAX_S = 12.0
+UTT_END_BLOCKS = 2            # 1 s de silence clôt une phrase
+UTT_FLOOR = 2e-5              # en dessous : silence, quel que soit le niveau de la phrase (son du poste, numérique)
+#: Le micro porte le bruit de la pièce (RMS 0,00009 mesuré au repos, la voix 0,01 à 0,1) : un seuil plus haut,
+#: sinon le souffle formerait des « phrases » de 12 s que Whisper décoderait pour rien.
+UTT_FLOOR_BY_STREAM = {"moi": 1e-3}
+#: Le micro en morceaux plus courts : aucun décodage du micro ne doit retenir longtemps une question.
+UTT_MAX_BY_STREAM = {"moi": 6.0}
+
+
+class UtteranceChunker:
+    """Blocs → une phrase dès qu'elle finit (mode direct de l'assistant) : la question d'un participant
+    arrive à Whisper une seconde après sa fin, pas 30 s plus tard. Le silence seul n'est jamais envoyé.
+    Le seuil est relatif au niveau de la phrase en cours : le son du poste suit le volume de Windows
+    (capture.py), et un seuil fixe raterait une réunion écoutée bas. Sans E/S : testable."""
+
+    def __init__(self, stream: str, on_chunk: Callable[[str, float, np.ndarray], None]):
+        self.stream, self.on_chunk = stream, on_chunk
+        self.floor = UTT_FLOOR_BY_STREAM.get(stream, UTT_FLOOR)
+        self.max_s = UTT_MAX_BY_STREAM.get(stream, UTT_MAX_S)
+        self.blocks: list[np.ndarray] = []
+        self.t0: float | None = None
+        self.peak = 0.0
+        self.quiet_run = 0
+
+    def feed(self, block: np.ndarray, t: float) -> None:
+        level = float(np.sqrt(np.mean(block ** 2))) if block.size else 0.0
+        if not self.blocks:
+            if level <= self.floor:
+                return                                   # silence avant la phrase : rien à garder
+            self.t0, self.peak, self.quiet_run = t, level, 0
+        self.blocks.append(block)
+        self.peak = max(self.peak, level)
+        self.quiet_run = self.quiet_run + 1 if level < max(self.floor, 0.12 * self.peak) else 0
+        dur = len(self.blocks) * BLOCK_S
+        speech = dur - self.quiet_run * BLOCK_S
+        if self.quiet_run >= UTT_END_BLOCKS:
+            if speech >= UTT_MIN_S:
+                self._emit(len(self.blocks) - self.quiet_run + 1)
+            else:
+                self.blocks, self.t0 = [], None         # un bruit bref : jeté
+        elif dur >= self.max_s:
+            self._emit(len(self.blocks))
+
+    def _emit(self, n: int) -> None:
+        head, t0 = self.blocks[:n], self.t0 or 0.0
+        self.blocks, self.t0, self.quiet_run, self.peak = [], None, 0, 0.0
+        self.on_chunk(self.stream, t0, np.concatenate(head))
+
+    def flush(self) -> None:
+        if self.blocks and (len(self.blocks) - self.quiet_run) * BLOCK_S >= UTT_MIN_S:
+            self._emit(len(self.blocks))
+
+
 class Capture:
-    """Les deux flux, chacun dans son fil. `status` dit ce qui est réellement capté."""
+    """Les deux flux, chacun dans son fil. `status` dit ce qui est réellement capté. Les flux de `live`
+    sont découpés à la phrase (UtteranceChunker) pour l'assistant en direct ; les autres en morceaux."""
 
     def __init__(self, on_chunk: Callable[[str, float, np.ndarray], None], log: Callable[[str], None] = print,
-                 mic: bool = True, system: bool = True):
+                 mic: bool = True, system: bool = True, live: tuple[str, ...] = ()):
         self.on_chunk, self.log = on_chunk, log
+        self.live = set(live)
         self.want = {"moi": mic, "participants": system}
         self.status: dict[str, str] = {}
         self._stop = threading.Event()
@@ -133,7 +190,7 @@ class Capture:
             self.status[stream] = f"indisponible : soundcard ({type(e).__name__})"
             self.log(f"SYS: réunion — {stream} non capté : {e}")
             return
-        chunker = Chunker(stream, self.on_chunk)
+        chunker = (UtteranceChunker if stream in self.live else Chunker)(stream, self.on_chunk)
         frames = int(RATE * BLOCK_S)
         silent_since = None
         while not self._stop.is_set():

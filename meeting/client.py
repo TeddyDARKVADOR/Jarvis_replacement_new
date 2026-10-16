@@ -55,6 +55,18 @@ def remote_summary(http_session: Callable[[], tuple[str, str] | None], transcrip
     return result
 
 
+def remote_answer(http_session, system: str, user: str, timeout: float = 20.0, opener=urllib.request.urlopen) -> str:
+    sess = http_session()
+    if not sess:
+        raise ConnectionError("Oracle n'est pas joignable")
+    base, bearer = sess
+    req = urllib.request.Request(f"{base.rstrip('/')}/api/meeting/assist", method="POST",
+                                 data=json.dumps({"system": system, "user": user}).encode("utf-8"),
+                                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {bearer}"})
+    with opener(req, timeout=timeout) as r:
+        return str(json.loads(r.read().decode("utf-8")).get("text") or "")
+
+
 def start(log: Callable[[str], None], http_session: Callable[[], tuple[str, str] | None],
           notify: Callable[[str, str], None], config_dir: Path) -> "M.Copilot":
     path = Path(config_dir) / "meeting.json"
@@ -76,7 +88,7 @@ def start(log: Callable[[str], None], http_session: Callable[[], tuple[str, str]
             log(f"SYS: réunion — Oracle indisponible pour le compte rendu ({e}) : Ollama sur ce poste.")
             from meeting.brain import Brain
             from meeting.summarize import summarize as local
-            return local(transcript, Brain({**settings(), "meeting_brain_order": ["local"]}), started, duration)
+            return local(transcript, Brain({**settings(), "meeting_brain_order": ["cloud", "local"]}), started, duration)
 
     def deliver(result: dict, saved: Path | None, md: str) -> None:
         where = f" — {saved}" if saved else ""
@@ -85,7 +97,17 @@ def start(log: Callable[[str], None], http_session: Callable[[], tuple[str, str]
         else:
             notify("summary", f"Compte rendu « {result.get('title')} » (sur ce poste){where}\n\n{M.summary_text(result)}")
 
-    cop = M.Copilot(settings, summarize, deliver, notify, log=log, save_setting=save_setting)
+    def answer(system: str, user: str) -> str:
+        """L'aide en direct : Oracle (Groq, Ollama Cloud, Gemini) ; injoignable → Ollama Cloud de ce poste."""
+        try:
+            return remote_answer(http_session, system, user)
+        except Exception:
+            from meeting.brain import Brain
+            return Brain({**settings(), "meeting_brain_order": ["cloud"]}, timeout=15.0).complete(system, user, 700)
+
+    from meeting.overlay import Overlay
+    cop = M.Copilot(settings, summarize, deliver, notify, log=log, save_setting=save_setting,
+                    answer=answer, overlay=Overlay())
     M.install(cop)
     cop.watch()
     return cop

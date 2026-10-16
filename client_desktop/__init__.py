@@ -48,3 +48,14 @@ python -m client_desktop --debug      # panel + the developer window open
 __all__ = ["__version__"]
 
 __version__ = "1.0.0"
+
+# ctranslate2 (le moteur de faster-whisper : relais hors-ligne, copilote de
+# réunion) AVANT Qt. PyQt6 embarque ses propres msvcp140.dll, plus anciens ;
+# chargés en premier, ctranslate2 plante le processus (segfault) à son premier
+# usage — mesuré le 2026-10-16 : Qt puis ctranslate2 → code 139 ; l'inverse
+# → aucun souci. Les deux points d'entrée Qt (python -m client_desktop et
+# local_hud.py) passent par ce paquet avant d'importer PyQt6.
+try:
+    import ctranslate2  # noqa: F401
+except Exception:
+    pass

@@ -439,6 +439,141 @@ def _hooks():
     return "hook gardé dans main.py et app.py ; inerte sur Oracle ; outil meeting routé vers le PC"
 
 
+@check("16 aide en direct : la règle repère une question qui te vise, pas les autres")
+def _candidate():
+    from meeting import live
+    names = ("moi", "Teddy")
+    yes = ["Teddy, tu te souviens de la date de livraison ?", "Vous avez le budget en tête ?",
+           "T'as pu regarder le devis ?", "Teddy, est-ce que tu peux envoyer le devis avant vendredi ?",
+           "Can you share your screen?"]
+    no = ["Il reste une question : est-ce qu'on fait la version mobile ?", "Bonjour à tous.",
+          "Le budget est fixé à 8 000 euros.", "Paul, ça avance ?", "Ok ?"]
+    bad = [t for t in yes if not live.candidate(t, names)] + [t for t in no if live.candidate(t, names)]
+    assert not bad, bad
+    assert live.parse('```json {"for_user": true, "answer": "Le 15 novembre."}```') == {"for_user": True, "answer": "Le 15 novembre."}
+    assert live.parse("je ne sais pas") is None
+    return f"{len(yes)} questions pour toi repérées, {len(no)} autres ignorées"
+
+
+@check("17 assistant : contexte des 3 min, une question à la fois (la plus récente gagne), pas de doublon")
+def _assistant():
+    import threading
+    from meeting import live
+    gate, shown, asked = threading.Event(), [], []
+
+    def answer(system, user):
+        asked.append(user)
+        gate.wait(5)
+        return '{"for_user": true, "answer": "Le 15 novembre, annoncé au début."}'
+
+    a = live.Assistant(answer, lambda t, x: shown.append((t, x)), ("moi", "Teddy"), log=lambda m: None)
+    L = transcribe.Line
+    a.on_line(L(1, "participants", "La livraison est prévue le 15 novembre."))
+    a.on_line(L(5, "participants", "Teddy, tu as la date de livraison ?"))
+    a.on_line(L(6, "participants", "Teddy, tu as le budget ?"))          # pendant que la 1re est traitée
+    a.on_line(L(7, "participants", "Teddy, tu as la date de livraison ?"))  # doublon : ignoré
+    a.on_line(L(8, "participants", "Teddy, et la maquette, tu l'as ?"))    # remplace « le budget » en attente
+    gate.set()
+    for _ in range(100):
+        if len(shown) >= 2 and not a._busy:
+            break
+        __import__("time").sleep(0.02)
+    assert len(asked) == 2, asked
+    assert "15 novembre" in asked[0] and "« Teddy, tu as la date de livraison ? »" in asked[0], "contexte fourni"
+    assert "maquette" in asked[1] and "budget ?" not in asked[1].split("Last line")[1], "la plus récente a gagné"
+    assert shown[0][1].startswith("Le 15 novembre")
+    shown.clear()
+    no = live.Assistant(lambda s, u: '{"for_user": false, "answer": "x"}', lambda t, x: shown.append(t),
+                        ("moi", "Teddy"), log=lambda m: None)
+    no.on_line(L(1, "participants", "Teddy, tu peux répéter ?"))
+    __import__("time").sleep(0.2)
+    assert shown == [], "le modèle dit « pas pour toi » : rien n'est affiché"
+    return "2 appels pour 4 questions (doublon ignoré, attente remplacée) ; « pas pour toi » : rien"
+
+
+@check("18 découpage à la phrase : silence jeté, fin après 1 s, micro plus exigeant, durée bornée")
+def _utterances():
+    got = []
+    ch = capture.UtteranceChunker("participants", lambda s, t0, x: got.append((round(t0, 1), len(x) / capture.RATE)))
+    n = int(capture.RATE * capture.BLOCK_S)
+    voice, silence = np.full(n, 0.002, dtype=np.float32), np.zeros(n, dtype=np.float32)
+    seq = [silence] * 4 + [voice] * 4 + [silence] * 3 + [voice] * 1 + [silence] * 3 + [voice] * 30
+    for i, b in enumerate(seq):
+        ch.feed(b, i * capture.BLOCK_S)
+    ch.flush()
+    assert got[0] == (2.0, 2.5), got           # 2 s de voix + 0,5 s de fin ; le silence d'avant jeté
+    assert all(d <= capture.UTT_MAX_S for _, d in got) and len(got) == 3, got   # le bruit de 0,5 s jeté
+    mic = []
+    m = capture.UtteranceChunker("moi", lambda s, t0, x: mic.append(len(x) / capture.RATE))
+    for b in [np.full(n, 0.0005, dtype=np.float32)] * 20:   # souffle de la pièce
+        m.feed(b, 0)
+    m.flush()
+    assert mic == [], "le souffle du micro n'est pas une phrase"
+    for b in [np.full(n, 0.05, dtype=np.float32)] * 20:
+        m.feed(b, 0)
+    assert mic and max(mic) <= capture.UTT_MAX_BY_STREAM["moi"], mic
+    return f"phrases {got} ; micro : souffle ignoré, morceaux ≤ {capture.UTT_MAX_BY_STREAM['moi']} s"
+
+
+@check("19 transcription : les phrases des participants passent devant le micro ; modèle chargé d'avance")
+def _priority():
+    order = []
+
+    class _W:
+        def transcribe(self, samples, **kw):
+            order.append(round(float(samples[0]), 1))
+            assert kw.get("temperature") == 0.0, "pas de repli en température"
+            return iter([]), None
+
+    loaded = []
+    tr = transcribe.Transcriber(whisper_factory=lambda n: (loaded.append(n), _W())[1], log=lambda m: None,
+                                priority=("participants",))
+    tr.warm()
+    tr.submit("moi", 0, np.full(10, 0.1, dtype=np.float32))
+    tr.submit("moi", 1, np.full(10, 0.2, dtype=np.float32))
+    tr.submit("participants", 2, np.full(10, 0.3, dtype=np.float32))
+    tr.start()
+    tr.finish(timeout=5)
+    assert loaded == ["small"] and order[0] == 0.5, (loaded, order)     # 0.3 normalisé à 0,5 : servi en premier
+    return f"modèle chargé avant tout ; ordre de décodage {order}"
+
+
+@check("20 petite fenêtre et raccourci : exclue des captures (Windows), sans écran → repli ; Ctrl+Alt+J")
+def _overlay():
+    from meeting import hotkey, overlay
+    ov = overlay.Overlay()
+    try:
+        from PyQt6.QtWidgets import QApplication
+        has_app = QApplication.instance() is not None
+    except Exception:
+        has_app = False
+    if not has_app:
+        assert ov.show("t", "x") is False and ov.available is False, "sans QApplication : faux, l'appelant se rabat"
+    notes = []
+    cop = M.Copilot(lambda: {}, lambda *a: {}, lambda *a: None, lambda k, t: notes.append((k, t)), log=lambda m: None,
+                    overlay=ov)
+    cop._show("« Teddy ? »", "Le 15 novembre.")
+    assert notes == [("assist", "« Teddy ? » — Le 15 novembre.")], notes
+    if sys.platform != "win32":
+        return "sans écran Qt : repli par notification ; raccourci et exclusion vérifiés sous Windows seulement"
+    h = hotkey.Hotkey(lambda: None, log=lambda m: None)
+    ok = h.start()
+    h.stop()
+    return f"repli par notification ; Ctrl+Alt+J {'enregistré puis libéré' if ok else 'déjà pris par une autre application'}"
+
+
+@check("21 JARVIS ne plante plus quand Whisper tourne dans le HUD : ctranslate2 chargé avant Qt")
+def _preload():
+    src = (ROOT.parent / "client_desktop" / "__init__.py").read_text(encoding="utf-8")
+    assert "import ctranslate2" in src, "le préchargement a disparu"
+    import client_desktop  # noqa: F401
+    loaded = list(sys.modules)
+    if "ctranslate2" not in loaded:
+        return "ctranslate2 absent ici : rien à précharger"
+    assert loaded.index("ctranslate2") < loaded.index("PyQt6") if "PyQt6" in loaded else True, "Qt chargé avant"
+    return "client_desktop charge ctranslate2 avant PyQt6 (segfault 139 sinon, mesuré)"
+
+
 @check("14 réel : la détection répond sur ce poste, sans lever")
 def _real_detect():
     u = detect.in_use()

@@ -27,7 +27,8 @@
     {"id": "f.debug", "label": "Fenêtre développeur", "kind": "fonction", "status": "ok", "summary": "Compteurs et journal brut, dans une fenêtre séparée (--debug).", "files": ["client_desktop/ui/debug.py"]},
     {"id": "f.local", "label": "Mode local (local_hud.py)", "kind": "fonction", "status": "ok", "summary": "Le cerveau sur ce PC avec le même HUD : LocalUI dérive de HeadlessUI et pousse tout dans le même store. C'est local_hud qui importe main, pas ce paquet.", "details": ["En local, le micro démarre fermé : rien ne part vers Gemini avant que vous l'ouvriez.", "Seuls modes où ESPRIT et STUDIO sont disponibles."], "files": ["local_hud.py"]},
     {"id": "l.a_tester", "label": "Pas encore vérifié", "kind": "limite", "status": "a_tester", "summary": "Mot d'éveil avec une vraie voix ; voix montante réelle en ligne ; démarrage auto à l'ouverture de session ; reconnexion après redémarrage d'Oracle ; veille/reprise du portable ; /api/assistant contre le vrai Oracle.", "details": ["Tailscale : si tailscaled reste en NoState, c'est que tailscale-ipn.exe n'est pas lancé ; redémarrer le service n'y fait rien."]},
-    {"id": "f.plugins_appareil", "label": "Plugins d'appareil (PLUGIN_DEVICE)", "kind": "fonction", "status": "partiel", "summary": "Un plugin qui déclare PLUGIN_DEVICE = (dépendances) s'exécute là où est l'utilisateur : le client le lit dans le texte (sans importer les autres plugins), vérifie ses dépendances, le déclare comme capacité et l'exécute ; le serveur le route vers le PC sans rien changer au routage.", "details": ["Deux : meeting (copilote de réunion) et pilot (prendre la main) ; démarrés par app.py ; notifications par JarvisStore.notice.", "Vérifié : découverte et exécution par LocalExecutor (2026-10-16) ; pas encore routé par un vrai Oracle."], "files": ["client_desktop/device.py", "client_desktop/app.py", "client_desktop/state.py"]}
+    {"id": "f.plugins_appareil", "label": "Plugins d'appareil (PLUGIN_DEVICE)", "kind": "fonction", "status": "partiel", "summary": "Un plugin qui déclare PLUGIN_DEVICE = (dépendances) s'exécute là où est l'utilisateur : le client le lit dans le texte (sans importer les autres plugins), vérifie ses dépendances, le déclare comme capacité et l'exécute ; le serveur le route vers le PC sans rien changer au routage.", "details": ["Deux : meeting (copilote de réunion) et pilot (prendre la main) ; démarrés par app.py ; notifications par JarvisStore.notice.", "Vérifié : découverte et exécution par LocalExecutor (2026-10-16) ; pas encore routé par un vrai Oracle."], "files": ["client_desktop/device.py", "client_desktop/app.py", "client_desktop/state.py"]},
+    {"id": "r.ordre_dll", "label": "ctranslate2 avant Qt", "kind": "regle", "status": "ok", "summary": "PyQt6 embarque ses propres msvcp140.dll, plus anciens : chargés avant ctranslate2 (faster-whisper), ils font planter le processus au premier décodage (code 139). Le paquet précharge ctranslate2 avant tout import de Qt.", "details": ["Mesuré le 2026-10-16 : Qt puis ctranslate2 → segfault ; l'inverse → aucun souci ; vérifié par le chemin d'import de python -m client_desktop et de local_hud.py. Contrôlé par meeting.selftest n°21."], "files": ["client_desktop/__init__.py"]}
   ],
   "edges": [
     ["client_desktop", "r.pas_de_second_cerveau", "contient"],
@@ -61,6 +62,7 @@
     ["f.appairage", "m.config", "alimente"],
     ["f.local", "m.state", "alimente"],
     ["r.pas_de_second_cerveau", "client_desktop", "protege"],
-    ["client_desktop", "f.plugins_appareil", "contient"]
+    ["client_desktop", "f.plugins_appareil", "contient"],
+    ["client_desktop", "r.ordre_dll", "contient"]
   ]
 }

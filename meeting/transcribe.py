@@ -93,12 +93,16 @@ class Transcriber:
     """Un fil qui décode ; `lines` grandit pendant la réunion."""
 
     def __init__(self, model: str = "small", language: str | None = None, log: Callable[[str], None] = print,
-                 whisper_factory: Callable[[str], object] | None = None):
+                 whisper_factory: Callable[[str], object] | None = None,
+                 on_line: Callable[[Line], None] | None = None, priority: tuple[str, ...] = ()):
         self.model_name, self.language, self.log = model, language, log
         self._factory = whisper_factory or _load_whisper
         self._model = None
         self.lines: list[Line] = []
-        self._q: queue.Queue = queue.Queue()
+        self.on_line = on_line                    # l'assistant en direct, à chaque nouvelle réplique
+        self.priority = set(priority)             # ces flux passent devant (les phrases des participants)
+        self._seq = 0
+        self._q: queue.PriorityQueue = queue.PriorityQueue()
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self.decoded_s = 0.0
@@ -108,15 +112,22 @@ class Transcriber:
         self._thread = threading.Thread(target=self._run, name="meeting-whisper", daemon=True)
         self._thread.start()
 
+    def warm(self) -> None:
+        """Charge le modèle tout de suite, dans le fil de décodage (la première question n'attend pas)."""
+        self._seq += 1
+        self._q.put((0, self._seq, ("warm", 0.0, np.zeros(1600, dtype=np.float32), time.monotonic())))
+
     def submit(self, stream: str, t0: float, samples: np.ndarray) -> None:
-        self._q.put((stream, t0, samples, time.monotonic()))
+        self._seq += 1
+        self._q.put((0 if stream in self.priority else 1, self._seq, (stream, t0, samples, time.monotonic())))
 
     def backlog_s(self) -> float:
-        return sum(len(item[2]) for item in list(self._q.queue) if item is not None) / 16_000   # None : la fin
+        return sum(len(item[2][2]) for item in list(self._q.queue) if item[2] is not None) / 16_000   # None : la fin
 
     def finish(self, timeout: float = 1800) -> list[Line]:
         """Attend la fin du décodage (ce qui reste dans la file), puis rend la transcription sans écho."""
-        self._q.put(None)
+        self._seq += 1
+        self._q.put((2, self._seq, None))         # après tout ce qui attend encore
         if self._thread:
             self._thread.join(timeout=timeout)
         with self._lock:
@@ -124,23 +135,40 @@ class Transcriber:
 
     def _run(self) -> None:
         while True:
-            item = self._q.get()
+            item = self._q.get()[2]
             if item is None:
                 return
             stream, t0, samples, _queued = item
+            if stream == "warm":
+                try:
+                    if self._model is None:
+                        self._model = self._factory(self.model_name)
+                except Exception as e:
+                    self.error = f"{type(e).__name__}: {e}"[:200]
+                continue
             try:
                 if self._model is None or (self.backlog_s() > BACKLOG_DOWNGRADE_S and self.model_name in SMALLER):
                     if self._model is not None:
                         self.model_name = SMALLER[self.model_name]
                         self.log(f"SYS: réunion — transcription en retard, modèle plus léger : {self.model_name}")
                     self._model = self._factory(self.model_name)
+                # temperature=0 sans repli : sur un son douteux (le haut-parleur entendu par le micro), le repli
+                # de Whisper recommence jusqu'à 6 fois — 18,4 s pour 12 s d'audio mesurés le 2026-10-16, et
+                # la question d'un participant attendait derrière.
                 segments, _ = self._model.transcribe(normalize(samples, stream), language=self.language, beam_size=1,
-                                                     vad_filter=True, condition_on_previous_text=False)
+                                                     vad_filter=True, condition_on_previous_text=False,
+                                                     temperature=0.0)
                 for s in segments:
                     text = s.text.strip()
                     if text and confident(s) and not _HALLUCINATIONS.search(text):
+                        line = Line(t0 + float(s.start), stream, text)
                         with self._lock:
-                            self.lines.append(Line(t0 + float(s.start), stream, text))
+                            self.lines.append(line)
+                        if self.on_line:
+                            try:
+                                self.on_line(line)
+                            except Exception:
+                                pass               # l'assistant ne doit jamais arrêter la transcription
                 self.decoded_s += len(samples) / 16_000
             except Exception as e:     # un morceau perdu ne doit pas arrêter la réunion
                 self.error = f"{type(e).__name__}: {e}"[:200]

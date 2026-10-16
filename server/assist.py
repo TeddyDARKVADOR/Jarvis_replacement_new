@@ -86,6 +86,36 @@ def attach(dashboard, get_jarvis: Callable[[], object], log=print) -> None:
 
     app.add_api_route("/api/meeting/summary", meeting_summary, methods=["POST"])
 
+    async def meeting_assist(req: Request) -> JSONResponse:
+        """L'aide en direct d'un PC relié : une suggestion en une seconde (Groq, Ollama Cloud, Gemini)."""
+        if not _authorised(req):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        try:
+            body = await req.json()
+        except Exception:
+            body = None
+        if not isinstance(body, dict) or not body.get("system") or not body.get("user"):
+            return JSONResponse({"error": "system et user attendus"}, status_code=400)
+        system, user = str(body["system"])[:4000], str(body["user"])[:20000]
+
+        def work() -> str:
+            import meeting
+            try:
+                from memory.config_manager import load_api_keys
+                cfg = load_api_keys() or {}
+            except Exception:
+                cfg = {}
+            name = str(cfg.get("user_name") or "").strip()
+            prefix = f"The user is called {name}.\n" if name and "The user is called" not in user else ""
+            return meeting.fast_answer(cfg, system, prefix + user)
+
+        try:
+            return JSONResponse({"text": await asyncio.to_thread(work)})
+        except Exception as e:
+            return JSONResponse({"error": f"{type(e).__name__}: {e}"[:300]}, status_code=502)
+
+    app.add_api_route("/api/meeting/assist", meeting_assist, methods=["POST"])
+
     # ── le pilote (pilot/) : le PC regarde et agit, Oracle choisit, confirme, annonce ──
 
     def _keys() -> dict:

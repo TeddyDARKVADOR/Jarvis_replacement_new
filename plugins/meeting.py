@@ -15,13 +15,15 @@ PLUGIN = {
         "reminders and proposed goals. It starts BY ITSELF when another app takes the mic or camera. Actions: "
         "start (« je suis en réunion », « prends des notes ») · stop (« arrête les notes », « la réunion est "
         "finie ») · status (« où en est la réunion ? ») · recent (what was just said) · last (the last minutes) · "
-        "mode with value auto|ask|off. Do NOT use reminder or goals for this."
+        "mode with value auto|ask|off · help (« aide-moi » : what to say now, shown small on screen) · assist with "
+        "value on|off (live help: when someone asks the user a question in the call, a short suggested answer "
+        "appears discreetly, hidden from screen sharing). Do NOT use reminder or goals for this."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "action": {"type": "STRING", "description": "start | stop | status | recent | last | mode"},
-            "value": {"type": "STRING", "description": "For mode: auto | ask | off"},
+            "action": {"type": "STRING", "description": "start | stop | status | recent | last | mode | help | assist"},
+            "value": {"type": "STRING", "description": "For mode: auto | ask | off ; for assist: on | off"},
         },
         "required": ["action"],
     },
@@ -54,6 +56,16 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
                 return "Aucun compte rendu depuis le démarrage de JARVIS."
             return (f"Dernière réunion ({last['started']}, {last['minutes']} min), fichier : {last['path']}\n\n"
                     + meeting.summary_text(last["result"]))
+        if action == "help":
+            return cop.help()
+        if action == "assist":
+            value = str(parameters.get("value") or "").strip().lower()
+            if value not in ("on", "off"):
+                return "Aide en direct : on ou off."
+            if cop.save_setting:
+                cop.save_setting("meeting_assist", value)
+            return ("D'accord : pendant les réunions, je t'afficherai discrètement une réponse quand on te pose une "
+                    "question." if value == "on" else "D'accord : plus d'aide en direct pendant les réunions.")
         if action == "mode":
             value = str(parameters.get("value") or "").strip().lower()
             if value not in ("auto", "ask", "off"):

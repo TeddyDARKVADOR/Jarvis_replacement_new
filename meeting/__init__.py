@@ -77,9 +77,13 @@ class Copilot:
                  deliver: Callable[[dict, Path | None, str], None], notify: Callable[[str, str], None],
                  log: Callable[[str], None] = print, detect_fn=detect.in_use, capture_factory=None,
                  transcriber_factory=None, poll_s: float = POLL_S, clock=time.monotonic,
-                 save_setting: Callable[[str, str], None] | None = None):
+                 save_setting: Callable[[str, str], None] | None = None,
+                 answer: Callable[[str, str], str] | None = None, overlay=None, hotkeys: bool = True):
         self.settings, self._summarize, self._deliver, self._notify, self.log = settings, summarize, deliver, notify, log
         self.save_setting = save_setting
+        self.answer, self.overlay, self._hotkeys = answer, overlay, hotkeys   # aide en direct (live.py)
+        self.assistant = None
+        self.hotkey = None
         self.mode_override = ""
         self._detect = detect_fn
         self._capture_factory = capture_factory
@@ -144,14 +148,37 @@ class Copilot:
             cfg = self._cfg()
             from meeting.capture import Capture
             from meeting.transcribe import Transcriber
+            # L'aide en direct : les phrases des participants découpées à leur fin et transcrites en priorité
+            # par Whisper base (2,5 s pour une question de 5 s sur un portable sans GPU, mesuré) ; un seul
+            # Whisper pour l'aide et le compte rendu, pour ne pas transcrire deux fois.
+            assist = self.answer is not None and str(cfg.get("meeting_assist") or "on") != "off"
+            # Les deux flux à la phrase : un long morceau du micro (30 s = ~15 s de décodage) bloquait la
+            # question qui arrivait derrière lui — 20,7 s de délai mesurés le 2026-10-16.
+            live = ("participants", "moi") if assist else ()
+            model = (str(cfg.get("meeting_live_model") or "base") if assist
+                     else str(cfg.get("meeting_whisper_model") or "small"))
+            self.assistant = None
+            if assist:
+                from meeting.live import Assistant
+                self.assistant = Assistant(self.answer, self._show, user_names(cfg), log=self.log)
             tr = (self._transcriber_factory or Transcriber)(
-                model=str(cfg.get("meeting_whisper_model") or "small"),
-                language=(cfg.get("meeting_language") or None), log=self.log)
-            cap = (self._capture_factory or Capture)(on_chunk=tr.submit, log=self.log)
+                model=model, language=(cfg.get("meeting_language") or None), log=self.log,
+                **({"on_line": self.assistant.on_line, "priority": ("participants",)} if assist else {}))
+            cap = (self._capture_factory or Capture)(on_chunk=tr.submit, log=self.log,
+                                                     **({"live": live} if assist else {}))
             tr.start()
+            if assist and hasattr(tr, "warm"):
+                tr.warm()                          # le modèle chargé avant la première question, pas pendant
             cap.start()
             self.session = Session(manual, reason, cap, tr)
             self.watcher.begin(self.clock(), manual)
+            if assist and self._hotkeys:
+                try:
+                    from meeting.hotkey import Hotkey
+                    self.hotkey = Hotkey(self.assistant.help, log=self.log)
+                    self.hotkey.start()
+                except Exception:
+                    self.hotkey = None
         self._notify("start", f"Je prends des notes ({reason}) : son du poste et micro, transcrits ici. "
                               "Le son n'est pas enregistré. Dis « arrête les notes » pour arrêter.")
         return "C'est parti : je prends des notes de la réunion."
@@ -164,6 +191,11 @@ class Copilot:
             self.session = None
             self.watcher.end()
             self.finalizing = True
+        if self.hotkey is not None:
+            self.hotkey.stop()
+            self.hotkey = None
+        if self.overlay is not None:
+            self.overlay.hide()
         s.capture.stop()
         s.ended = time.monotonic()
         self._notify("stop", f"Réunion terminée ({reason}, {round(s.duration() / 60)} min) : je prépare le compte rendu.")
@@ -201,6 +233,16 @@ class Copilot:
         except OSError as e:
             self.log(f"SYS: réunion — compte rendu non écrit ({e})")
             return None
+
+    def _show(self, title: str, text: str) -> None:
+        """La suggestion en petit (overlay.py) ; sans écran Qt, par la notification habituelle."""
+        if self.overlay is None or not self.overlay.show(title, text):
+            self._notify("assist", f"{title} — {text}")
+
+    def help(self) -> str:
+        if self.session is None or self.assistant is None:
+            return "L'aide en direct ne sert que pendant une réunion où je prends des notes."
+        return self.assistant.help()
 
     def status(self) -> str:
         s = self.session
@@ -342,10 +384,20 @@ def attach(jarvis) -> None:
         from memory.config_manager import _patch_config
         _patch_config(**{key: value})
 
+    from meeting.overlay import Overlay
     _copilot = Copilot(settings, summarize_local,
                        lambda result, path, md: deliver(jarvis, result, str(path or ""), user_names(settings())),
-                       notify, log=lambda m: _log(jarvis, m), save_setting=save_setting)
+                       notify, log=lambda m: _log(jarvis, m), save_setting=save_setting,
+                       answer=lambda system, user: fast_answer(settings(), system, user), overlay=Overlay())
     _copilot.watch()
+
+
+def fast_answer(cfg: dict, system: str, user: str) -> str:
+    """L'aide en direct veut une réponse en une seconde : Groq (0,5 s mesuré), Ollama Cloud, puis Gemini
+    Flash-Lite. Réglable : « meeting_assist_order ». Pour le mode local et pour Oracle (server/assist.py)."""
+    from meeting.brain import Brain
+    order = cfg.get("meeting_assist_order") or ["groq", "cloud", "gemini"]
+    return Brain({**cfg, "meeting_brain_order": order}, timeout=15.0).complete(system, user, max_tokens=700)
 
 
 def _log(jarvis, message: str) -> None:
