@@ -1,23 +1,23 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "39007110701",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39007110701",
+ "run_id": "39014726044",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39014726044",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
  "commit": "47a5308",
  "commit_full": "47a5308f6864cd4f243caf67dc0905fa1645a143",
  "previous": {
-  "run_id": "38990394367",
+  "run_id": "39007110701",
   "commit": "47a5308",
-  "finished_at": "2026-10-17T03:22:02+02:00",
+  "finished_at": "2026-10-17T07:42:23+02:00",
   "status": "partial_success"
  },
- "started_at": "2026-10-17T07:41:04+02:00",
- "finished_at": "2026-10-17T07:42:23+02:00",
- "duration_s": 79.0,
+ "started_at": "2026-10-17T09:44:35+02:00",
+ "finished_at": "2026-10-17T09:45:45+02:00",
+ "duration_s": 70.0,
  "status": "partial_success",
- "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; tâche extensions « manager 1 examen sans exécution : déclaré, réellem » : correctif rejeté (le n°manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empr).",
+ "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
  "environment": {
   "runner": "github",
   "os": "Ubuntu 24.04.5 LTS",
@@ -33,7 +33,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.6,
+   "duration_s": 0.3,
    "outcome": "ok"
   },
   {
@@ -55,7 +55,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 2.3,
+   "duration_s": 1.5,
    "outcome": "ok"
   },
   {
@@ -66,7 +66,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.4,
    "outcome": "ok"
   },
   {
@@ -77,7 +77,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.5,
    "outcome": "ok"
   },
   {
@@ -88,7 +88,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 3.6,
+   "duration_s": 3.2,
    "outcome": "ok"
   },
   {
@@ -99,7 +99,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 7.0,
+   "duration_s": 4.0,
    "outcome": "ok"
   },
   {
@@ -110,7 +110,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 33.7,
+   "duration_s": 33.9,
    "outcome": "ok"
   },
   {
@@ -121,7 +121,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.3,
+   "duration_s": 0.2,
    "outcome": "ok"
   },
   {
@@ -132,7 +132,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.3,
    "outcome": "ok"
   },
   {
@@ -152,7 +152,7 @@
      "class": "preexisting"
     }
    ],
-   "duration_s": 0.8,
+   "duration_s": 0.7,
    "outcome": "failing"
   },
   {
@@ -163,7 +163,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.3,
+   "duration_s": 1.2,
    "outcome": "ok"
   },
   {
@@ -196,7 +196,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.5,
+   "duration_s": 5.0,
    "outcome": "ok"
   },
   {
@@ -207,7 +207,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.0,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -218,7 +218,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.7,
+   "duration_s": 1.6,
    "outcome": "ok"
   },
   {
@@ -229,7 +229,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.1,
+   "duration_s": 0.0,
    "outcome": "ok"
   },
   {
@@ -249,7 +249,7 @@
      "class": "preexisting"
     }
    ],
-   "duration_s": 15.2,
+   "duration_s": 15.1,
    "outcome": "failing"
   },
   {
@@ -381,15 +381,12 @@
  "metrics_changes": [],
  "green_streak": 0,
  "task": {
-  "id": "fail-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-47a5308",
-  "source": "failing_check",
-  "suite": "extensions.selftest",
-  "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-  "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-  "files": [
-   "extensions/manager.py"
-  ],
-  "attempts": 1,
+  "id": null,
+  "source": null,
+  "files": [],
+  "attempts": 0,
+  "outcome": "skipped",
+  "reason": "rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant",
   "out_of_zone": [
    {
     "id": "fail-daily-2-47a5308",
@@ -397,19 +394,20 @@
     "reason": "hors de la liste blanche : daily/__init__.py"
    }
   ],
-  "model": "groq/openai/gpt-oss-120b",
-  "outcome": "patch_rejected",
-  "reason": "le n°manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte échoue encore",
-  "skipped": []
+  "skipped": [
+   {
+    "id": "fail-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-47a5308",
+    "idea": "check:extensions.selftest:manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
+    "reason": "déjà tentée au commit 47a5308 avec le même contexte"
+   }
+  ]
  },
  "pull_request_url": null,
  "usage": {
-  "llm_calls": 1,
-  "tokens_in": 3072,
-  "tokens_out": 568,
-  "providers": {
-   "groq/openai/gpt-oss-120b": 1
-  }
+  "llm_calls": 0,
+  "tokens_in": 0,
+  "tokens_out": 0,
+  "providers": {}
  },
  "budgets": {
   "max_tasks": 1,
@@ -649,7 +647,7 @@
   }
  ],
  "pass": {
-  "n": 2,
+  "n": 3,
   "of": 3
  },
  "diagnostics": [],
@@ -681,6 +679,16 @@
     "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
    },
    "tokens": 3640,
+   "pr": null
+  },
+  {
+   "pass": 3,
+   "run_id": "39014726044",
+   "status": "partial_success",
+   "task": null,
+   "outcome": "skipped",
+   "ref": {},
+   "tokens": 0,
    "pr": null
   }
  ],

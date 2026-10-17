@@ -1,13 +1,13 @@
 {
  "schema": "jarvis.nightshift-queue/1",
- "run_id": "39007110701",
- "created": "2026-10-17T07:42:23+02:00",
+ "run_id": "39014726044",
+ "created": "2026-10-17T09:45:45+02:00",
  "tasks": [
   {
-   "id": "resume-39007110701",
+   "id": "resume-39014726044",
    "kind": "resume",
    "input": {
-    "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; tâche extensions « manager 1 examen sans exécution : déclaré, réellem » : correctif rejeté (le n°manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empr).",
+    "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
     "red": [
      {
       "suite": "extensions.selftest",
