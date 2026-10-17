@@ -1,23 +1,23 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "38990394367",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/38990394367",
+ "run_id": "39007110701",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39007110701",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
  "commit": "47a5308",
  "commit_full": "47a5308f6864cd4f243caf67dc0905fa1645a143",
  "previous": {
-  "run_id": "38871469222",
-  "commit": "0534773",
-  "finished_at": "2026-10-16T10:08:03+02:00",
-  "status": "success"
+  "run_id": "38990394367",
+  "commit": "47a5308",
+  "finished_at": "2026-10-17T03:22:02+02:00",
+  "status": "partial_success"
  },
- "started_at": "2026-10-17T03:20:48+02:00",
- "finished_at": "2026-10-17T03:22:02+02:00",
- "duration_s": 74.0,
+ "started_at": "2026-10-17T07:41:04+02:00",
+ "finished_at": "2026-10-17T07:42:23+02:00",
+ "duration_s": 79.0,
  "status": "partial_success",
- "summary": "18/20 suites vertes ; 1 régression (extensions « manager 1 examen sans exécution : déclaré, réellem ») ; 1 échec sans référence (daily n°2) ; ruff : 0 remarque ; indicateurs : 2 changements à relire (coût en contexte (server)) ; tâche extensions « manager 1 examen sans exécution : déclaré, réellem » : correctif rejeté (le n°manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empr).",
+ "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; tâche extensions « manager 1 examen sans exécution : déclaré, réellem » : correctif rejeté (le n°manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empr).",
  "environment": {
   "runner": "github",
   "os": "Ubuntu 24.04.5 LTS",
@@ -33,7 +33,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.3,
+   "duration_s": 0.6,
    "outcome": "ok"
   },
   {
@@ -66,7 +66,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.8,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -77,7 +77,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.5,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -88,7 +88,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 4.5,
+   "duration_s": 3.6,
    "outcome": "ok"
   },
   {
@@ -99,7 +99,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 4.2,
+   "duration_s": 7.0,
    "outcome": "ok"
   },
   {
@@ -110,7 +110,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 34.1,
+   "duration_s": 33.7,
    "outcome": "ok"
   },
   {
@@ -121,7 +121,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.2,
+   "duration_s": 0.3,
    "outcome": "ok"
   },
   {
@@ -132,7 +132,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.4,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -140,7 +140,7 @@
    "platform": "linux",
    "passed": 14,
    "total": 15,
-   "status": "regression",
+   "status": "failing",
    "failures": [
     "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
    ],
@@ -149,7 +149,7 @@
      "id": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
      "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
      "detail": "[]",
-     "class": "regression"
+     "class": "preexisting"
     }
    ],
    "duration_s": 0.8,
@@ -163,7 +163,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.2,
+   "duration_s": 1.3,
    "outcome": "ok"
   },
   {
@@ -196,7 +196,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 5.3,
+   "duration_s": 6.5,
    "outcome": "ok"
   },
   {
@@ -207,7 +207,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.8,
+   "duration_s": 1.0,
    "outcome": "ok"
   },
   {
@@ -218,7 +218,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.6,
+   "duration_s": 1.7,
    "outcome": "ok"
   },
   {
@@ -229,7 +229,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.0,
+   "duration_s": 0.1,
    "outcome": "ok"
   },
   {
@@ -246,7 +246,7 @@
      "id": "2",
      "label": "agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau",
      "detail": "[('jour', \"Salon de l'emploi\"), ('07:00', 'Cours CDA'), ('15:00', 'Appel client New York')]",
-     "class": "unreferenced"
+     "class": "preexisting"
     }
    ],
    "duration_s": 15.2,
@@ -264,36 +264,21 @@
    "outcome": "ok"
   }
  ],
- "regressions": [
+ "regressions": [],
+ "repaired": [],
+ "preexisting": [
   {
    "suite": "extensions.selftest",
    "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-   "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-   "since_commit": "47a5308",
-   "last_green_commit": "0534773",
-   "suspects": [
-    "47a5308 Graphe : tool.portable liste ses nouvelles actions (resume, audit, check, history…)",
-    "90c6b90 Portable : auto-réparation, intégrité, batterie, historique, éjection sûre",
-    "4d46285 Portable : continuité d'identité + preuve du zéro-trace",
-    "20f56c9 JARVIS portable : clé USB nomade, zéro-trace, animée, multi-clés",
-    "5f92715 Sonde incidents : vérifier l'effacement d'un vrai nom de fichier, pas du marqueur",
-    "7cc00a2 Extensions : installer, examiner, restaurer des plugins en sachant ce qu'ils font",
-    "6046507 Incidents réels : JARVIS compte ses vraies erreurs, Night Shift les affiche",
-    "9c65903 Briefing quotidien : agenda, rappels, sujets suivis sans doublon, à l'heure choisie",
-    "dc34768 Allègement : opencv-python-headless (même cv2, sans le Qt embarqué)",
-    "11af386 Réunion : l'aide en direct affiche une réponse quand on te pose une question"
-   ]
-  }
- ],
- "repaired": [],
- "preexisting": [],
- "unreferenced": [
+   "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
+  },
   {
    "suite": "daily.selftest",
    "check": "2",
    "label": "agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau"
   }
  ],
+ "unreferenced": [],
  "lint": {
   "tool": "ruff",
   "available": true,
@@ -393,26 +378,11 @@
    "estimated_tokens_local": 9552
   }
  },
- "metrics_changes": [
-  {
-   "metric": "coût en contexte (server)",
-   "verdict": "hausse",
-   "before": 22284,
-   "now": 28658,
-   "detail": "+6374 caractères (+28.6%) envoyés à chaque connexion"
-  },
-  {
-   "metric": "coût en contexte (local)",
-   "verdict": "hausse",
-   "before": 23520,
-   "now": 29894,
-   "detail": "+6374 caractères (+27.1%) envoyés à chaque connexion"
-  }
- ],
+ "metrics_changes": [],
  "green_streak": 0,
  "task": {
-  "id": "reg-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-47a5308",
-  "source": "regression",
+  "id": "fail-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-47a5308",
+  "source": "failing_check",
   "suite": "extensions.selftest",
   "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
   "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
@@ -435,8 +405,8 @@
  "pull_request_url": null,
  "usage": {
   "llm_calls": 1,
-  "tokens_in": 3424,
-  "tokens_out": 658,
+  "tokens_in": 3072,
+  "tokens_out": 568,
   "providers": {
    "groq/openai/gpt-oss-120b": 1
   }
@@ -679,7 +649,7 @@
   }
  ],
  "pass": {
-  "n": 1,
+  "n": 2,
   "of": 3
  },
  "diagnostics": [],
@@ -697,6 +667,20 @@
     "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
    },
    "tokens": 4082,
+   "pr": null
+  },
+  {
+   "pass": 2,
+   "run_id": "39007110701",
+   "status": "partial_success",
+   "task": "fail-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-47a5308",
+   "outcome": "patch_rejected",
+   "ref": {
+    "source": "failing_check",
+    "suite": "extensions.selftest",
+    "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
+   },
+   "tokens": 3640,
    "pr": null
   }
  ],
