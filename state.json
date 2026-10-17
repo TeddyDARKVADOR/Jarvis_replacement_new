@@ -1,6 +1,6 @@
 {
  "schema": "jarvis.nightshift-state/1",
- "updated": "2026-10-16T10:08:03+02:00",
+ "updated": "2026-10-17T03:22:02+02:00",
  "ideas": {
   "ruff:F841:eval_lab/mutate.py:Local variable `stim` is assigned to but never used": {
    "source": "ruff",
@@ -29,6 +29,23 @@
     }
    ],
    "label": "Local variable `stim` is assigned to but never used"
+  },
+  "check:extensions.selftest:manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte": {
+   "source": "regression",
+   "attempts": [
+    {
+     "run_id": "38990394367",
+     "date": "2026-10-17",
+     "commit": "47a5308",
+     "fingerprint": "4e55c465a6f9dc96",
+     "outcome": "patch_rejected",
+     "reason": "le n°manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte échoue encore",
+     "model": "groq/openai/gpt-oss-120b",
+     "tokens": 4082,
+     "pr": null
+    }
+   ],
+   "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
   }
  },
  "nights": [
@@ -68,6 +85,22 @@
    "ref": {},
    "llm_calls": 0,
    "tokens": 0,
+   "pr": null
+  },
+  {
+   "date": "2026-10-17",
+   "run_id": "38990394367",
+   "pass": 1,
+   "status": "partial_success",
+   "task": "reg-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-47a5308",
+   "outcome": "patch_rejected",
+   "ref": {
+    "source": "regression",
+    "suite": "extensions.selftest",
+    "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
+   },
+   "llm_calls": 1,
+   "tokens": 4082,
    "pr": null
   }
  ]
