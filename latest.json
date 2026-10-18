@@ -1,21 +1,21 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "39014726044",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39014726044",
+ "run_id": "39085120876",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39085120876",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
  "commit": "47a5308",
  "commit_full": "47a5308f6864cd4f243caf67dc0905fa1645a143",
  "previous": {
-  "run_id": "39007110701",
+  "run_id": "39014726044",
   "commit": "47a5308",
-  "finished_at": "2026-10-17T07:42:23+02:00",
+  "finished_at": "2026-10-17T09:45:45+02:00",
   "status": "partial_success"
  },
- "started_at": "2026-10-17T09:44:35+02:00",
- "finished_at": "2026-10-17T09:45:45+02:00",
- "duration_s": 70.0,
+ "started_at": "2026-10-18T03:05:08+02:00",
+ "finished_at": "2026-10-18T03:06:26+02:00",
+ "duration_s": 78.0,
  "status": "partial_success",
  "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
  "environment": {
@@ -33,7 +33,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.3,
+   "duration_s": 0.6,
    "outcome": "ok"
   },
   {
@@ -55,7 +55,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.5,
+   "duration_s": 2.0,
    "outcome": "ok"
   },
   {
@@ -66,7 +66,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.4,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -77,7 +77,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.5,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -88,7 +88,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 3.2,
+   "duration_s": 3.5,
    "outcome": "ok"
   },
   {
@@ -99,7 +99,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 4.0,
+   "duration_s": 6.7,
    "outcome": "ok"
   },
   {
@@ -110,7 +110,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 33.9,
+   "duration_s": 33.7,
    "outcome": "ok"
   },
   {
@@ -121,7 +121,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.2,
+   "duration_s": 0.3,
    "outcome": "ok"
   },
   {
@@ -132,7 +132,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.3,
+   "duration_s": 0.6,
    "outcome": "ok"
   },
   {
@@ -152,7 +152,7 @@
      "class": "preexisting"
     }
    ],
-   "duration_s": 0.7,
+   "duration_s": 0.8,
    "outcome": "failing"
   },
   {
@@ -163,7 +163,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.2,
+   "duration_s": 1.3,
    "outcome": "ok"
   },
   {
@@ -196,7 +196,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 5.0,
+   "duration_s": 6.4,
    "outcome": "ok"
   },
   {
@@ -207,7 +207,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 1.0,
    "outcome": "ok"
   },
   {
@@ -218,7 +218,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.6,
+   "duration_s": 1.7,
    "outcome": "ok"
   },
   {
@@ -249,7 +249,7 @@
      "class": "preexisting"
     }
    ],
-   "duration_s": 15.1,
+   "duration_s": 15.2,
    "outcome": "failing"
   },
   {
@@ -647,43 +647,28 @@
   }
  ],
  "pass": {
-  "n": 3,
+  "n": 1,
   "of": 3
  },
  "diagnostics": [],
- "week": null,
+ "week": {
+  "from": "2026-10-12",
+  "to": "2026-10-18",
+  "nights": 4,
+  "passes": 7,
+  "green": 2,
+  "tried": 4,
+  "validated": 2,
+  "prs": 0,
+  "accepted": 0,
+  "rejected": 0,
+  "expired": 0,
+  "tokens": 10043
+ },
  "tonight": [
   {
    "pass": 1,
-   "run_id": "38990394367",
-   "status": "partial_success",
-   "task": "reg-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-47a5308",
-   "outcome": "patch_rejected",
-   "ref": {
-    "source": "regression",
-    "suite": "extensions.selftest",
-    "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
-   },
-   "tokens": 4082,
-   "pr": null
-  },
-  {
-   "pass": 2,
-   "run_id": "39007110701",
-   "status": "partial_success",
-   "task": "fail-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-47a5308",
-   "outcome": "patch_rejected",
-   "ref": {
-    "source": "failing_check",
-    "suite": "extensions.selftest",
-    "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
-   },
-   "tokens": 3640,
-   "pr": null
-  },
-  {
-   "pass": 3,
-   "run_id": "39014726044",
+   "run_id": "39085120876",
    "status": "partial_success",
    "task": null,
    "outcome": "skipped",
