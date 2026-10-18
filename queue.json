@@ -1,10 +1,10 @@
 {
  "schema": "jarvis.nightshift-queue/1",
- "run_id": "39102572830",
- "created": "2026-10-18T08:03:26+02:00",
+ "run_id": "39109652061",
+ "created": "2026-10-18T10:00:29+02:00",
  "tasks": [
   {
-   "id": "resume-39102572830",
+   "id": "resume-39109652061",
    "kind": "resume",
    "input": {
     "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
