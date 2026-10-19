@@ -1,20 +1,20 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "39109652061",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39109652061",
+ "run_id": "39184696395",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39184696395",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
  "commit": "47a5308",
  "commit_full": "47a5308f6864cd4f243caf67dc0905fa1645a143",
  "previous": {
-  "run_id": "39102572830",
+  "run_id": "39109652061",
   "commit": "47a5308",
-  "finished_at": "2026-10-18T08:03:26+02:00",
+  "finished_at": "2026-10-18T10:00:29+02:00",
   "status": "partial_success"
  },
- "started_at": "2026-10-18T09:59:10+02:00",
- "finished_at": "2026-10-18T10:00:29+02:00",
+ "started_at": "2026-10-19T03:18:34+02:00",
+ "finished_at": "2026-10-19T03:19:53+02:00",
  "duration_s": 79.0,
  "status": "partial_success",
  "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
@@ -55,7 +55,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 2.4,
+   "duration_s": 2.2,
    "outcome": "ok"
   },
   {
@@ -66,7 +66,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.8,
    "outcome": "ok"
   },
   {
@@ -99,7 +99,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.8,
+   "duration_s": 7.2,
    "outcome": "ok"
   },
   {
@@ -110,7 +110,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 33.8,
+   "duration_s": 33.7,
    "outcome": "ok"
   },
   {
@@ -132,7 +132,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.6,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -196,7 +196,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.4,
+   "duration_s": 6.5,
    "outcome": "ok"
   },
   {
@@ -229,7 +229,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.0,
+   "duration_s": 0.1,
    "outcome": "ok"
   },
   {
@@ -647,48 +647,15 @@
   }
  ],
  "pass": {
-  "n": 3,
+  "n": 1,
   "of": 3
  },
  "diagnostics": [],
- "week": {
-  "from": "2026-10-12",
-  "to": "2026-10-18",
-  "nights": 4,
-  "passes": 9,
-  "green": 2,
-  "tried": 4,
-  "validated": 2,
-  "prs": 0,
-  "accepted": 0,
-  "rejected": 0,
-  "expired": 0,
-  "tokens": 10043
- },
+ "week": null,
  "tonight": [
   {
    "pass": 1,
-   "run_id": "39085120876",
-   "status": "partial_success",
-   "task": null,
-   "outcome": "skipped",
-   "ref": {},
-   "tokens": 0,
-   "pr": null
-  },
-  {
-   "pass": 2,
-   "run_id": "39102572830",
-   "status": "partial_success",
-   "task": null,
-   "outcome": "skipped",
-   "ref": {},
-   "tokens": 0,
-   "pr": null
-  },
-  {
-   "pass": 3,
-   "run_id": "39109652061",
+   "run_id": "39184696395",
    "status": "partial_success",
    "task": null,
    "outcome": "skipped",
