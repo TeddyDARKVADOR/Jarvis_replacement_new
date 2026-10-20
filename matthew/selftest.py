@@ -1033,6 +1033,67 @@ def _hud():
     return "Gemini / Matthew / hors-ligne"
 
 
+@check("vitrine : frise (appris le…), avant / après (réponses nettoyées), compteurs, anglais")
+def _vitrine_more():
+    from matthew import vitrine as V
+    assert V.public_answer("Je suis JARVIS, ton assistant.") == "Je suis Matthew, ton assistant."
+    assert V.public_answer("écris-moi à bob@ex.fr") is None, "une réponse avec une adresse ne sort pas"
+    assert V.public_answer("<think>hmm</think> Salut !") == "Salut !"
+    root = TMP / "vitrine"
+    import time as _t
+    with (root / "synthetic" / "records.jsonl").open("a", encoding="utf-8") as f:
+        for i, (kind, q) in enumerate([("__chat__", "salut, ça va ?"), ("__none__", "commande une pizza"),
+                                        ("__none__", "appelle un vrai taxi")]):
+            f.write(json.dumps({"episode": f"syn-talk{i}", "target": kind, "status": "ok", "synthetic": True,
+                                "teacher": "gpt-oss-120b", "license": "apache-2.0", "ts": _t.time(), "tools": [],
+                                "messages": [{"role": "system", "content": "s"}, {"role": "user", "content": q},
+                                             {"role": "assistant", "content": "ok"}]}, ensure_ascii=False) + "\n")
+    sc = V.showcase(root)
+    assert any(s["target"] in V.NO_TOOL for s in sc), "conversation et refus dans l'examen"
+
+    class Talky:
+        model = "m"
+        def chat(self, messages, tools=None, **k):
+            q = messages[-1]["content"]
+            if "pizza" in q or "salut" in q or "merci" in q or "taxi" in q:
+                return {"content": "Je ne peux pas faire ça, désolé.", "_latency": 0.2}
+            return smart_teacher({"messages": messages})
+    V.replay(Talky(), root=root, day="2026-10-21")
+    data = V.gather(root)
+    V.check_public(data, root)
+    talk = [s for s in data["showcase"] if s["target"] in V.NO_TOOL]
+    assert talk and talk[0]["results"]["2026-10-21"]["answer"] == "Je ne peux pas faire ça, désolé."
+    assert talk[0]["results"]["2026-10-21"]["ok"] is True
+    assert all(t["label_en"] for t in data["tools"]) and any(t["learned_on"] for t in data["tools"])
+    c = data["counters"]
+    assert set(c) == {"tokens", "gpu_hours", "nights", "streak"} and c["nights"] >= 1 and c["streak"] >= 1, c
+    bad = json.loads(json.dumps(data))
+    bad["showcase"][0]["results"]["2026-10-21"]["answer"] = "Je suis Jarvis"
+    try:
+        V.check_public(bad, root)
+        raise AssertionError("une réponse nommant l'hôte est passée")
+    except V.PrivacyError:
+        pass
+    V.BROWSERS, saved = [], V.BROWSERS
+    try:
+        import shutil as _sh
+        if not (_sh.which("msedge") or _sh.which("chrome")):
+            assert V.og_screenshot(TMP) is False, "sans navigateur : la carte texte reste"
+    finally:
+        V.BROWSERS = saved
+    js = (REPO / "matthew" / "vitrine_site" / "app.js").read_text(encoding="utf-8")
+    for key in ("fillBeforeAfter", "startTimeline", "fillCounters", "flyToTool", "setDay", "I18N", "OG"):
+        assert key in js, key
+    site = TMP / "vitrine-site"
+    V.build(site, root)
+    html = (site / "index.html").read_text(encoding="utf-8")
+    tags = V.bust_cache(site)                      # deux fois de suite : pas de « ?v=…?v=… »
+    assert f'href="style.css?v={tags["style.css"]}"' in html and f'src="app.js?v={tags["app.js"]}"' in html, \
+        "CSS et JS appelés avec l'empreinte de leur contenu (cache de GitHub Pages)"
+    assert (site / "index.html").read_text(encoding="utf-8") == html
+    return f"{len(talk)} conversations / refus, compteurs {c}"
+
+
 @check("contrat V2 : trois hooks gardés, données ignorées par Git")
 def _contract():
     rt = (REPO / "cognition" / "runtime.py").read_text(encoding="utf-8")

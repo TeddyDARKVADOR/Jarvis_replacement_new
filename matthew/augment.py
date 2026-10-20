@@ -39,6 +39,7 @@ IRRELEVANT_REPLIES = [
 IRRELEVANCE_SHARE = 0.10
 MASK_SHARE = 0.15
 DUP_COSINE = 0.93
+NO_TOOL_CAP = 40
 
 
 def _h(text: str, salt: str) -> float:
@@ -54,9 +55,13 @@ def _called(row: dict) -> list[str]:
 
 
 def target(row: dict) -> str:
-    """L'outil visé par l'exemple, ou « __chat__ »."""
+    """L'outil visé, ou la catégorie sans outil : « __none__ » (refus) n'est pas « __chat__ »
+    (conversation). Les confondre plafonnait les deux ensemble à 30 (constaté le 2026-10-21 :
+    61 exemples de conversation et de refus écartés)."""
     called = _called(row)
-    return called[0] if called else "__chat__"
+    if called:
+        return called[0]
+    return row.get("target") if str(row.get("target", "")).startswith("__") else "__chat__"
 
 
 def irrelevance(rows: list[dict], share: float = IRRELEVANCE_SHARE) -> list[dict]:
@@ -149,8 +154,10 @@ def balance(rows: list[dict], factor: float = 3.0, floor: int = 30) -> tuple[lis
         return rows, 0
     cap = max(floor, int(factor * statistics.median(len(v) for v in by.values())))
     out, dropped = [], 0
-    for v in by.values():
-        keep = sorted(v, key=lambda r: (r["origin"] != "human", _h(_user(r), "bal")))[:cap]
+    for t, v in by.items():
+        # Conversation et refus : peu d'outils les concernent mais ils comptent pour chaque tour.
+        c = max(cap, NO_TOOL_CAP) if t.startswith("__") else cap
+        keep = sorted(v, key=lambda r: (r["origin"] != "human", _h(_user(r), "bal")))[:c]
         dropped += len(v) - len(keep)
         out += keep
     out.sort(key=lambda r: r["ts"])

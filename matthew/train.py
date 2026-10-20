@@ -115,6 +115,7 @@ tok.save_pretrained(str(HERE / "lora"))
 model.save_pretrained_gguf(str(HERE / "gguf"), tok, quantization_method=H["quant"])
 (HERE / "result.json").write_text(json.dumps({
     "train_loss": stats.training_loss, "best_eval_loss": trainer.state.best_metric,
+    "train_runtime": stats.metrics.get("train_runtime"),
     "log": [h for h in trainer.state.log_history if "eval_loss" in h]}), encoding="utf-8")
 print("MATTHEW_TRAIN_OK", stats.training_loss)
 '''
@@ -146,6 +147,9 @@ def train_env(cfg: dict | None = None) -> dict:
     if hf:
         env["HF_HOME"] = hf
     env["PYTHONIOENCODING"] = "utf-8"
+    # Sortie non tamponnée : sinon les pertes n'arrivent au direct que par blocs de 8 Ko
+    # (constaté au deuxième cycle réel, 2026-10-21).
+    env["PYTHONUNBUFFERED"] = "1"
     return env
 
 

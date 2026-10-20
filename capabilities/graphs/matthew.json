@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "matthew",
   "title": "Matthew — notre propre modèle",
-  "updated": "2026-10-20",
+  "updated": "2026-10-21",
   "summary": "La transition vers un cerveau à nous : collecte dans tous les modes, amorçage vérifié par un second modèle ouvert, routeur par le sens, données augmentées, LoRA de Qwen3.5-4B sur la RTX 3060, juge par outil, promotion et changement de base automatiques, chaque nuit. Gemini reste en service pendant ce temps.",
   "replaces": [],
   "nodes": [
@@ -15,13 +15,14 @@
         "Paquet racine (contrat V2) : retirer matthew/, plugins/matthew.py et les hooks d'une ligne (cognition/runtime.py, cognition/providers.py, offline/llm.py) rend JARVIS identique à avant.",
         "Données personnelles dans memory/matthew/ (ignoré par Git), ou <JARVIS_DATA_DIR>/matthew sur la clé portable.",
         "Premier cycle réel de la boucle (2026-10-20) : champion promu le 2026-10-20 à 20 h 52 — 116 exemples amorcés (23 outils) + augmentations, 3 époques sur la RTX 3060 (meilleure : la 2e, perte d'éval 0,125), GGUF Q5_K_M 3,2 Go ; éval sur 18 exemples : composite 0,85, bon outil 100 %, arguments 79 %, JSON 100 %, refus quand aucun outil ne convient 50 %, 1,1 s ; servi par Ollama, choisi par le mode hors-ligne et placé en tête de la cognition.",
+        "Deuxième cycle réel (2026-10-21, 00 h 52 → 01 h 39) : nouveau champion — 193 exemples d'entraînement / 56 d'éval (dont conversation et refus), 3 époques en 38 min (meilleure : la 2e, perte d'éval 0,366) ; composite 0,90 (avant 0,85), bon outil 97 %, arguments 79 %, réponses sans outil 94 % (avant 50 %), refus justes 91 % (avant 50 %), 1,0 s. Point faible : file_processor (transcription audio : répond au lieu d'appeler l'outil). Deux exemples amorcés mal étiquetés (« surveille les actualités » → manage_monitor, qui gère les écrans) : à corriger dans l'amorçage.",
         "Tokens : python -m matthew.gateway (clés par appareil, budgets, limites) ; comptés sur la vitrine."
       ],
       "files": [
         "matthew/__init__.py"
       ],
       "status": "partiel",
-      "verified": "2026-10-20 — matthew.selftest : 25/25",
+      "verified": "2026-10-21 — matthew.selftest : 35/35",
       "test": "python -m matthew.selftest"
     },
     {
@@ -130,17 +131,18 @@
       "id": "m.augment",
       "label": "augment.py — données plus instructives",
       "kind": "module",
-      "summary": "Sans un appel de plus : ~10 % d'exemples « aucun outil ne convient » (bon outil retiré, réponse sans appel), ~15 % d'exemples masqués (noms d'outils et de paramètres aléatoires, descriptions gardées), doublons retirés par le sens (cosinus ≥ 0,93), aucun outil au-delà de 3 × la médiane.",
+      "summary": "Sans un appel de plus : ~10 % d'exemples « aucun outil ne convient » (bon outil retiré, réponse sans appel), ~15 % d'exemples masqués (noms d'outils et de paramètres aléatoires, descriptions gardées), doublons retirés par le sens (cosinus ≥ 0,93), aucun outil au-delà de 3 × la médiane. Conversation (« __chat__ ») et refus (« __none__ ») sont deux catégories distinctes, plafonnées à 40 au moins chacune.",
       "details": [
         "Hammer (arXiv 2410.04587) : masquage des fonctions §4.1 ; données d'impertinence §4.2, ~10 % = meilleur compromis §5.6 ; masquage élevé = apprentissage ralenti §5.5.",
         "Dédoublonnage : POLLUX, MergeIT (ACL 2026) — la diversité compte plus que le volume.",
-        "L'évaluation reçoit les exemples d'impertinence (mesurés à part), jamais les masqués."
+        "L'évaluation reçoit les exemples d'impertinence (mesurés à part), jamais les masqués.",
+        "Bug corrigé le 2026-10-21 : les deux catégories sans outil étaient confondues et plafonnées ensemble à 30 — 61 exemples de conversation et de refus écartés."
       ],
       "files": [
         "matthew/augment.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 25/25"
+      "verified": "2026-10-21 — matthew.selftest : 35/35"
     },
     {
       "id": "m.dataset",
@@ -165,13 +167,14 @@
         "Essai réel 2026-10-20 sur la RTX 3060 : 3 pas en 166 s, GGUF, import Ollama avec la capacité tools ; le modèle appelle system_status et close_camera, éval 0,92 sur 4 exemples.",
         "Pièges trouvés et corrigés : le gabarit Qwen3.5 veut les arguments d'outil en dict (pas en JSON texte) ; Arrow ne sait pas unifier des schémas d'outils variés (texte rendu en Python) ; Unsloth écrit le GGUF dans gguf_gguf/.",
         "Mémoire vidéo : 11,9 Go sur 12 pendant l'entraînement — tout autre modèle chargé fait déborder.",
-        "Lu ligne par ligne (parse_progress) : chaque perte part à la vitrine en direct pendant l'entraînement."
+        "Lu ligne par ligne (parse_progress) : chaque perte part à la vitrine en direct pendant l'entraînement.",
+        "2026-10-21 : sortie non tamponnée (PYTHONUNBUFFERED) — sinon les pertes n'arrivaient au direct que par blocs de 8 Ko ; train_runtime écrit dans result.json (heures de GPU de la vitrine)."
       ],
       "files": [
         "matthew/train.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 34/34"
+      "verified": "2026-10-21 — matthew.selftest : 35/35 ; cycle réel de 38 min"
     },
     {
       "id": "r.reglages",
@@ -214,13 +217,14 @@
       "summary": "Amorçage → école → données → seuil → entraînement → ollama create → évaluation contre le champion → promotion → vitrine publique. Change aussi de modèle de base : des challengers sous licence ouverte sont essayés sur les mêmes données, et celui qui gagne devient la base.",
       "details": [
         "Premier cycle réel : champion promu le 2026-10-20 à 20 h 52 — 116 exemples amorcés (23 outils) + augmentations, 3 époques sur la RTX 3060 (meilleure : la 2e, perte d'éval 0,125), GGUF Q5_K_M 3,2 Go ; éval sur 18 exemples : composite 0,85, bon outil 100 %, arguments 79 %, JSON 100 %, refus quand aucun outil ne convient 50 %, 1,1 s ; servi par Ollama, choisi par le mode hors-ligne et placé en tête de la cognition.",
+        "Deuxième cycle réel (2026-10-21, 00 h 52 → 01 h 39) : nouveau champion — 193 exemples d'entraînement / 56 d'éval (dont conversation et refus), 3 époques en 38 min (meilleure : la 2e, perte d'éval 0,366) ; composite 0,90 (avant 0,85), bon outil 97 %, arguments 79 %, réponses sans outil 94 % (avant 50 %), refus justes 91 % (avant 50 %), 1,0 s. Point faible : file_processor (transcription audio : répond au lieu d'appeler l'outil). Deux exemples amorcés mal étiquetés (« surveille les actualités » → manage_monitor, qui gère les écrans) : à corriger dans l'amorçage.",
         "Tâche planifiée Windows « Matthew flywheel », chaque nuit à 02 h 30 (posée le 2026-10-20) : memory/matthew/flywheel.cmd, journal memory/matthew/flywheel.log."
       ],
       "files": [
         "matthew/flywheel.py"
       ],
       "status": "partiel",
-      "verified": "2026-10-20 — matthew.selftest : 25/25",
+      "verified": "2026-10-21 — matthew.selftest : 35/35 ; cycle réel, nouveau champion",
       "test": "python -m matthew.flywheel --status"
     },
     {
@@ -331,7 +335,7 @@
       "id": "v.vitrine",
       "label": "La vitrine publique — voir Matthew apprendre",
       "kind": "fonction",
-      "summary": "En ligne : https://teddydarkvador.github.io/matthew-vitrine/ (dépôt public séparé, GitHub Pages). Une base spatiale sous un vrai ciel de nuit : Matthew au centre, un bâtiment par domaine, un module et une balise par outil, l'examen du jour rejoué en faisceaux ; puis la courbe des nuits, la précision par outil, l'examen jour par jour et le journal des améliorations. Ne nomme jamais l'assistant hôte. Se met à jour d'elle-même dès qu'une amélioration arrive (drapeau).",
+      "summary": "En ligne : https://teddydarkvador.github.io/matthew-vitrine/ (dépôt public séparé, GitHub Pages). Un récit qui défile par-dessus une scène 3D plein écran : Matthew dans sa base sur la Lune, la Terre et les planètes au loin, un bâtiment par domaine et une lumière par outil ; chapitres (sa maison, ses savoir-faire, ses nuits, son examen, ses progrès) avec vol de caméra, frise des nuits, avant / après des réponses, compteurs vivants, français / anglais. Ne nomme jamais l'assistant hôte. Se met à jour d'elle-même dès qu'une amélioration arrive (drapeau).",
       "details": [
         "DÉCOR (trouvé en ligne, 2026-10-20) : Space Kit de Kenney (27 modèles glTF, CC0, 408 Ko) et ciel « Qwantani Night Pure Sky » de Poly Haven (HDR 1k, CC0) ; luminance médiane mesurée 0,48 ramenée à ~0,02 pour une vraie nuit ; modèles recentrés (origine en coin chez Kenney). Crédités en pied de page.",
         "DRAPEAU : tout ce qui améliore lève memory/matthew/vitrine/FLAG — commit et fusion (crochets Git post-commit / post-merge, `python -m matthew.vitrine hooks`), cycle de la boucle de nuit, correctif de Night Shift une fois fusionné. `run` publie si le drapeau est levé (au plus toutes les 5 min, verrou), le baisse après un push réussi ; la tâche Windows « Matthew vitrine » rattrape toutes les 30 min.",
@@ -342,16 +346,25 @@
         "Vérifiée en local (Edge sans interface, 1440 px et 390 px) et publiée une première fois par l'utilisateur (`python -m matthew.vitrine setup`).",
         "Page par outil : clic sur une balise 3D ou une ligne → fiche (précision, courbe des examens, scénarios) ; adresse partageable …/#outil-<id>.",
         "Entraînement en direct : bandeau « époque n/3 » et courbe de perte, Matthew pulse plus vite ; publié sans rejouer l'examen (la carte est prise).",
-        "Flux Atom des améliorations et des promotions : feed.xml."
+        "Flux Atom des améliorations et des promotions : feed.xml.",
+        "RÉCIT (2026-10-21) : chaque chapitre a son plan de caméra (data-shot) ; toucher une lumière ou un bâtiment y fait voler la caméra (flyToTool) ; détails (courbe, tableau d'examen, journal) en bas de page.",
+        "FRISE DES NUITS : un curseur rejoue l'allumage de la base nuit après nuit — chaque outil s'allume à sa date « appris le » (learned_on, premier exemple vérifié).",
+        "AVANT / APRÈS : l'examen contient aussi 4 conversations et 4 demandes à refuser ; leurs réponses sont comparées d'une nuit à l'autre, publiées seulement via public_answer (réflexion retirée, 220 caractères, sans secret, « JARVIS » → « Matthew », refus si une marque reste).",
+        "COMPTEURS : tokens servis par Matthew et la passerelle, heures de GPU d'entraînement (train_runtime des journaux), nuits, série de nuits d'affilée.",
+        "ANGLAIS : bouton EN / FR, dictionnaire I18N dans app.js, libellés d'outils traduits (label_en).",
+        "IMAGE DE PARTAGE : og.png = capture de la vraie scène du jour (Edge ou Chrome sans interface, rendu logiciel, page ?og=1), sinon la carte texte d'avant. Vérifiée en local le 2026-10-21.",
+        "DÉCOR SPATIAL : textures Lune, Terre (+ nuages), Mars, Jupiter, Saturne (+ anneau), Neptune et Voie lactée de Solar System Scope (CC BY 4.0, créditées dans LICENSES.txt et en pied de page), 4,3 Mo.",
+        "CACHE (2026-10-21) : GitHub Pages autorise 10 min de cache ; une page neuve avec l'ancien style.css / app.js s'affichait sans décor ni scène. bust_cache appelle désormais style.css et app.js avec l'empreinte de leur contenu (?v=…). Vérifié en ligne avec un profil de navigateur vierge, puis republié."
       ],
       "files": [
         "matthew/vitrine.py",
         "matthew/vitrine_site/index.html",
         "matthew/vitrine_site/app.js",
+        "matthew/vitrine_site/style.css",
         "matthew/vitrine_site/assets/LICENSES.txt"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 34/34"
+      "verified": "2026-10-21 — matthew.selftest : 35/35 ; rendu local (Edge sans interface) et publiée"
     },
     {
       "id": "l.outils",

@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "general",
   "title": "JARVIS — toutes les fonctionnalités",
-  "updated": "2026-10-20",
+  "updated": "2026-10-21",
   "summary": "Ce que JARVIS sait faire, domaine par domaine. Chaque domaine ouvre un sous-graphe quand il en a un. Les outils sont ceux que Gemini peut appeler : le selftest vérifie qu'il n'en manque aucun.",
   "replaces": [],
   "nodes": [
@@ -1399,13 +1399,13 @@
       "label": "Matthew — notre propre modèle",
       "kind": "domaine",
       "status": "partiel",
-      "summary": "Le futur cerveau : un modèle ouvert entraîné sur nos échanges et sur des exemples vérifiés par des modèles ouverts (jamais Gemini ni Claude), évalué outil par outil, promu et ré-basé automatiquement chaque nuit, servi par Ollama avec ses propres tokens.",
+      "summary": "Le futur cerveau : un modèle ouvert entraîné sur nos échanges et sur des exemples vérifiés par des modèles ouverts (jamais Gemini ni Claude), évalué outil par outil, promu et ré-basé automatiquement chaque nuit, servi par Ollama avec ses propres tokens. Vitrine publique : un récit sur la Lune, en français et en anglais. Champion du 2026-10-21 : 0,90 à l'examen.",
       "graph": "matthew",
       "files": [
         "matthew/__init__.py"
       ],
       "test": "python -m matthew.selftest",
-      "verified": "2026-10-20 — matthew.selftest : 25/25"
+      "verified": "2026-10-21 — matthew.selftest : 35/35 ; deuxième cycle réel, nouveau champion"
     },
     {
       "id": "tool.matthew",
@@ -1418,7 +1418,7 @@
         "plugins/matthew.py"
       ],
       "graph": "matthew",
-      "verified": "2026-10-20 — sonde réelle (capabilities.verify) ; 2026-10-20 — matthew.selftest : 25/25"
+      "verified": "2026-10-20 — sonde réelle (capabilities.verify) ; 2026-10-21 — matthew.selftest : 35/35"
     }
   ],
   "edges": [

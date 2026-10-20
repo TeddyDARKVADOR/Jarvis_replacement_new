@@ -78,6 +78,22 @@ TOOLS = {
     "matthew": ("Apprendre", "Noyau"),
 }
 DOMAINS = ["Système", "Bureau", "Infos", "Communication", "Mémoire", "Code", "Noyau", "Autres"]
+TOOLS_EN = {
+    "system_status": "PC status", "manage_monitor": "Displays", "computer_settings": "PC settings",
+    "local_health_check": "Diagnostics", "shutdown_jarvis": "Shut down", "close_camera": "Close camera",
+    "screen_process": "Read the screen", "game_updater": "Game updates", "open_app": "Open an app",
+    "desktop_control": "Windows desktop", "computer_control": "Mouse and keyboard", "browser_control": "Browser",
+    "file_controller": "Files", "file_processor": "Read a document", "undo": "Undo", "pilot": "PC pilot",
+    "web_search": "Web search", "weather_report": "Weather", "youtube_video": "YouTube", "flight_finder": "Flights",
+    "open_itinerary": "Directions", "briefing": "Morning briefing", "send_message": "Send a message",
+    "reminder": "Reminders", "meeting": "Meetings", "save_memory": "Remember", "recall_memory": "Recall",
+    "recall_episodes": "Past conversations", "forget_about": "Forget", "goals": "Goals", "self_state": "Inner state",
+    "code_helper": "Code helper", "code_studio": "Code Studio", "repository_review": "Repo review",
+    "capabilities": "Its capabilities", "usage_report": "Usage", "quotas": "Quotas", "incidents": "Incidents",
+    "extensions": "Extensions", "mcp": "MCP connectors", "skills": "Skills", "portable": "USB-stick mode",
+    "matthew": "Learning",
+}
+NO_TOOL = ("__chat__", "__none__")
 #: Identifiants publics : aucun ne doit trahir l'assistant hôte.
 PUBLIC_IDS = {"shutdown_jarvis": "shutdown"}
 
@@ -133,8 +149,30 @@ def showcase(root: Path | None = None) -> list[dict]:
         r = min(by_tool[t], key=lambda r: (not held(r), hashlib.sha1(r["episode"].encode()).hexdigest()))
         cur.append({"id": hashlib.sha1(r["episode"].encode()).hexdigest()[:8], "target": t,
                     "request": r["messages"][1]["content"], "tools": r["tools"], "heldout": held(r)})
+    # Conversation et refus : 4 de chaque, pour comparer les RÉPONSES d'une nuit à l'autre.
+    for kind in NO_TOOL:
+        taken = {s["request"] for s in cur}
+        pool = [r for r in synthetic_records(root) if r.get("target") == kind
+                and r["messages"][1]["content"] not in taken
+                and scrub(r["messages"][1]["content"]) == r["messages"][1]["content"]
+                and not BRAND.search(r["messages"][1]["content"])]
+        pool.sort(key=lambda r: (not _held_out(r["messages"][1]["content"], cfg["eval_share"]),
+                                 hashlib.sha1(r["episode"].encode()).hexdigest()))
+        for r in pool[:max(0, 4 - sum(1 for s in cur if s["target"] == kind))]:
+            cur.append({"id": hashlib.sha1(r["episode"].encode()).hexdigest()[:8], "target": kind,
+                        "request": r["messages"][1]["content"], "tools": r["tools"],
+                        "heldout": _held_out(r["messages"][1]["content"], cfg["eval_share"])})
     path.write_text(json.dumps(cur, ensure_ascii=False, indent=1), encoding="utf-8")
     return cur
+
+
+def public_answer(text: str) -> str | None:
+    """Une réponse de Matthew publiable : courte, sans secret, sans le nom de l'hôte."""
+    t = re.sub(r"\s+", " ", re.sub(r"<think>.*?</think>", "", text or "", flags=re.S)).strip()
+    t = re.sub(r"(?i)\bjarvis\b", "Matthew", t)[:220]
+    if not t or scrub(t) != t or BRAND.search(t):
+        return None
+    return t
 
 
 def replay(client: Client | None = None, root: Path | None = None, day: str | None = None) -> dict:
@@ -156,8 +194,11 @@ def replay(client: Client | None = None, root: Path | None = None, day: str | No
         except ClientError:
             continue
         calls = [(c.get("function") or {}).get("name") for c in msg.get("tool_calls") or []]
-        out[s["id"]] = {"chosen": calls[0] if calls else None, "ok": calls[:1] == [s["target"]],
-                        "ms": int(msg.get("_latency", 0) * 1000)}
+        no_tool = s["target"] in NO_TOOL
+        ok = (not calls and bool((msg.get("content") or "").strip())) if no_tool else calls[:1] == [s["target"]]
+        out[s["id"]] = {"chosen": calls[0] if calls else None, "ok": ok, "ms": int(msg.get("_latency", 0) * 1000)}
+        if no_tool and not calls:
+            out[s["id"]]["answer"] = public_answer(msg.get("content", ""))
     if out:
         d = root / "vitrine" / "days"
         d.mkdir(parents=True, exist_ok=True)
@@ -241,15 +282,20 @@ def gather(root: Path | None = None) -> dict:
     decls = [d["name"] for d in j.tools()]
     syn = [r for r in synthetic_records(root) if not r.get("target", "").startswith("__")]
     per_ex: dict[str, int] = {}
+    learned_on: dict[str, str] = {}
     for r in syn:
         per_ex[r["target"]] = per_ex.get(r["target"], 0) + 1
+        d = datetime.fromtimestamp(float(r.get("ts", 0))).strftime("%Y-%m-%d")
+        if r["target"] not in learned_on or d < learned_on[r["target"]]:
+            learned_on[r["target"]] = d
     last = _read(root / "last_eval.json", {})
     per_tool = last.get("per_tool") or {}
     tools = []
     for name in decls:
         label, dom = TOOLS.get(name, (name.replace("_", " "), "Autres"))
         acc = per_tool.get(name)
-        tools.append({"id": pub(name), "label": label, "domain": dom, "examples": per_ex.get(name, 0),
+        tools.append({"id": pub(name), "label": label, "label_en": TOOLS_EN.get(name, label), "domain": dom,
+                      "learned_on": learned_on.get(name), "examples": per_ex.get(name, 0),
                       "accuracy": round(float(acc), 3) if isinstance(acc, (int, float)) else None})
     history, cycles = [], []
     for f in sorted((root / "reports").glob("*.json")):
@@ -275,7 +321,8 @@ def gather(root: Path | None = None) -> dict:
         show.append({"id": s["id"], "request": s["request"], "target": pub(s["target"]),
                      "heldout": bool(s.get("heldout")),
                      "results": {d: {"chosen": pub(v[s["id"]]["chosen"]), "ok": bool(v[s["id"]]["ok"]),
-                                     "ms": int(v[s["id"]].get("ms", 0))}
+                                     "ms": int(v[s["id"]].get("ms", 0)),
+                                     "answer": public_answer(v[s["id"]].get("answer") or "")}
                                  for d, v in days.items() if s["id"] in v}})
     toks = usage_summary(root)
     live = _read(root / "vitrine" / "live.json", None)
@@ -298,25 +345,50 @@ def gather(root: Path | None = None) -> dict:
         "showcase": show,
         "changes": changes(),
         "live": live,
+        "counters": counters(root, cycles, toks),
     }
+
+
+def counters(root: Path, cycles: list[dict], toks: dict) -> dict:
+    """Les compteurs vivants : tokens de Matthew, heures de GPU d'entraînement, nuits."""
+    secs = 0.0
+    for log in list((root / "runs").glob("*/train.log")) + list((root / "runs").glob("*/smoke.log")):
+        try:
+            m = re.findall(r"'train_runtime': '?([\d.]+)", log.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        if m:
+            secs += float(m[-1])
+    nights = sorted({c["date"] for c in cycles})
+    streak = 0
+    if nights:
+        from datetime import date, timedelta
+        day = date.fromisoformat(nights[-1])
+        have = set(nights)
+        while day.isoformat() in have:
+            streak += 1
+            day -= timedelta(days=1)
+    return {"tokens": int(sum(v["in"] + v["out"] for k, v in toks.items() if k == "matthew" or k.startswith("gateway:"))),
+            "gpu_hours": round(secs / 3600, 2), "nights": len(nights), "streak": streak}
 
 
 # ── Le garde-fou ─────────────────────────────────────────────────────────────
 
 ALLOWED = {
     "": {"schema", "name", "generated", "champion", "coverage", "tools", "domains", "history", "cycles",
-         "tokens", "showcase", "changes", "live"},
+         "tokens", "showcase", "changes", "live", "counters"},
     "live": {"phase", "epoch", "epochs", "losses", "since"},
     "champion": {"since", "base", "score"},
     "score": {"composite", "tool_name", "tool_args", "irrelevance", "valid", "latency_p50"},
     "coverage": {"tools_total", "tools_covered", "examples"},
-    "tools[]": {"id", "label", "domain", "examples", "accuracy"},
+    "tools[]": {"id", "label", "label_en", "domain", "learned_on", "examples", "accuracy"},
+    "counters": {"tokens", "gpu_hours", "nights", "streak"},
     "history[]": {"date", "score", "promoted", "examples", "per_tool"},
     "cycles[]": {"date", "outcome"},
     "changes[]": {"date", "title", "area"},
     "tokens": {"matthew", "school"},
     "showcase[]": {"id", "request", "target", "heldout", "results"},
-    "result": {"chosen", "ok", "ms"},
+    "result": {"chosen", "ok", "ms", "answer"},
 }
 _SAFE = re.compile(r"^[\w .:/+'’«»()\-éèêàâîïôûùçÉÀ%,]{0,80}$")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$")
@@ -341,7 +413,7 @@ def check_public(data: dict, root: Path | None = None) -> int:
     présente telle quelle dans l'amorçage synthétique."""
     root = root or data_dir()
     j = Journal(root)
-    known = {pub(n) for n in {d["name"] for d in j.tools()} | set(TOOLS)}
+    known = {pub(n) for n in {d["name"] for d in j.tools()} | set(TOOLS)} | set(NO_TOOL)
     synthetic = {r["messages"][1]["content"] for r in synthetic_records(root)}
     private = set()
     for r in j.records():
@@ -390,9 +462,9 @@ def check_public(data: dict, root: Path | None = None) -> int:
                 child = {"tools": "tools[]", "history": "history[]", "cycles": "cycles[]", "changes": "changes[]",
                          "showcase": "showcase[]", "results": "results", "score": "score",
                          "champion": "champion", "coverage": "coverage", "tokens": "tokens",
-                         "live": "live", "per_tool": "per_tool"}.get(k, "leaf")
+                         "live": "live", "per_tool": "per_tool", "counters": "counters"}.get(k, "leaf")
                 walk(x, f"{path}.{k}", child if isinstance(x, (dict, list)) else
-                     ("request" if k == "request" else "leaf"))
+                     ("request" if k in ("request", "answer") else "leaf"))
         elif isinstance(v, list):
             for i, x in enumerate(v):
                 walk(x, f"{path}[{i}]", ctx)
@@ -407,7 +479,8 @@ def check_public(data: dict, root: Path | None = None) -> int:
     for d in (data.get("generated", ""), (data.get("champion") or {}).get("since", ""),
               (data.get("live") or {}).get("since", ""),
               *[h["date"] for h in data["history"]], *[c["date"] for c in data["cycles"]],
-              *[c["date"] for c in data.get("changes", [])]):
+              *[c["date"] for c in data.get("changes", [])],
+              *[t.get("learned_on") or "" for t in data["tools"]]):
         if d and not _DATE.match(d):
             fail("vitrine", f"date mal formée {d!r}")
     for c in data.get("changes", []):
@@ -490,6 +563,61 @@ def og_image(data: dict, path: Path) -> bool:
     return True
 
 
+BROWSERS = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe"]
+
+
+def og_screenshot(out: Path, timeout: float = 120) -> bool:
+    """og.png = une capture de la scène 3D du jour (Edge ou Chrome sans interface, rendu
+    logiciel), servie depuis un petit serveur local le temps de la photo. Sinon la carte texte."""
+    import functools
+    import shutil as sh
+    import tempfile
+    import threading
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+    exe = next((b for b in BROWSERS if Path(b).exists()), None) or sh.which("msedge") or sh.which("chrome")
+    if not exe:
+        return False
+
+    class Quiet(SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(out)))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    shot = Path(tempfile.mkdtemp(prefix="matthew-og-")) / "og.png"
+    try:
+        subprocess.run([exe, "--headless=new", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
+                        "--hide-scrollbars", f"--user-data-dir={shot.parent / 'profil'}", "--window-size=1200,630",
+                        "--virtual-time-budget=25000", f"--screenshot={shot}",
+                        f"http://127.0.0.1:{httpd.server_address[1]}/?og=1"],
+                       capture_output=True, timeout=timeout)
+        if not shot.exists() or shot.stat().st_size < 30_000:
+            return False
+        from PIL import Image
+        Image.open(shot).convert("RGB").save(out / "og.png", optimize=True)
+        return True
+    except (OSError, subprocess.TimeoutExpired, ImportError):
+        return False
+    finally:
+        httpd.shutdown()
+        sh.rmtree(shot.parent, ignore_errors=True)
+
+
+def bust_cache(out: Path) -> dict:
+    """style.css et app.js appelés avec l'empreinte de leur contenu (?v=…) : GitHub Pages
+    autorise 10 min de cache, et une page neuve avec l'ancien CSS / JS s'affichait sans
+    décor ni scène (constaté le 2026-10-21)."""
+    page = out / "index.html"
+    html = page.read_text(encoding="utf-8")
+    tags = {}
+    for name, attr in (("style.css", "href"), ("app.js", "src")):
+        tags[name] = hashlib.sha1((out / name).read_bytes()).hexdigest()[:10]
+        html = re.sub(rf'{attr}="{re.escape(name)}(\?v=\w+)?"', f'{attr}="{name}?v={tags[name]}"', html)
+    page.write_text(html, encoding="utf-8")
+    return tags
+
+
 def build(out: Path, root: Path | None = None) -> dict:
     """Écrit le site complet dans `out`. Rien n'est écrit si le garde-fou refuse."""
     root = root or data_dir()
@@ -502,6 +630,7 @@ def build(out: Path, root: Path | None = None) -> dict:
             shutil.copy2(f, out / f.name)
         elif f.is_dir():                                 # assets/ : modèles et ciel (CC0)
             shutil.copytree(f, out / f.name, dirs_exist_ok=True)
+    bust_cache(out)
     (out / ".nojekyll").write_text("", encoding="utf-8")
     (out / "data").mkdir(exist_ok=True)
     (out / "data" / "vitrine.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -528,6 +657,7 @@ def publish(repo: Path | None = None, cfg: dict | None = None, runner=subprocess
         except Exception as e:                     # Ollama éteint : on publie quand même les agrégats
             print(f"[Vitrine] rejeu impossible : {e}")
     res = build(repo)
+    res["og_scene"] = og_screenshot(repo)              # la vraie scène du jour, sinon la carte texte
     _git(repo, "add", "-A", runner=runner)
     st = _git(repo, "status", "--porcelain", runner=runner)
     if not (st.stdout or "").strip():

@@ -28,16 +28,19 @@ flowchart TB
     live{{"⚡ <b>JARVIS · MARK LIII</b><br/>Gemini 3.1 Flash Live<br/>Oracle 24/7 ou ce PC"}}
     night["🌙 <b>Night Shift</b><br/>3 passes par nuit"]
 
-    tools["🧰 <b>35 outils</b><br/>plugins · MCP · skills"]
+    tools["🧰 <b>43 outils</b><br/>plugins · MCP · skills"]
     ctx["🎚️ <b>Contexte</b><br/>quand et comment parler"]
     mind["🧠 <b>Cognition</b><br/>mémoire avec provenance"]
     offline["🔌 <b>Hors-ligne</b><br/>Whisper + Ollama"]
+    matthew["🌱 <b>Matthew</b><br/>son propre modèle<br/>entraîné chaque nuit"]
 
     you <==> hud & android & web
     hud & android & web <==> live
     night -.-> live
     live ==> tools & ctx & mind
     live -.-> offline
+    mind -.-> matthew
+    offline -.-> matthew
 
     classDef core fill:#0E2A3F,stroke:#7DD3FC,stroke-width:3px,color:#FFFFFF
     classDef ui fill:#0A101A,stroke:#6EE7B7,stroke-width:1.5px,color:#E0F4FF
@@ -47,7 +50,7 @@ flowchart TB
     class live core
     class hud,android,web ui
     class tools,ctx,mind brain
-    class offline,night side
+    class offline,night,matthew side
     class you user
 ```
 
@@ -103,6 +106,11 @@ mindmap
       Selftests par paquet
       EVAL LAB
       Night Shift
+    🌱 Matthew
+      Son propre modèle ouvert
+      Entraîné chaque nuit
+      Promu s'il fait mieux
+      Vitrine publique en direct
 ```
 
 > JARVIS connaît son propre graphe : demandez-lui **« montre-moi ton graphe »**, il l'ouvre dans le HUD.
@@ -177,10 +185,61 @@ temps du démarrage ; retirez la clé, rien ne reste.
 Tout le détail, avec l'état vérifié, est dans le graphe
 [`capabilities/graphs/deployment.json`](capabilities/graphs/deployment.json) (nœud *JARVIS portable*).
 
+## 🌱 Matthew — un cerveau à lui
+
+JARVIS pense aujourd'hui avec Gemini. **Matthew** est la transition : un modèle aux poids
+ouverts (Qwen3.5-4B, Apache-2.0) qui apprend chaque nuit sur **la carte graphique de la
+maison**, et qui prend des tâches une à une, seulement quand l'évaluation prouve qu'il fait
+aussi bien.
+
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "Segoe UI, Helvetica, Arial", "fontSize": "14px", "primaryColor": "#0B1A2A", "primaryTextColor": "#E0F4FF", "primaryBorderColor": "#6EE7B7", "lineColor": "#6EE7B7"}}}%%
+flowchart LR
+    a["✍️ <b>Inventer</b><br/>gpt-oss-120b écrit des demandes<br/>outils · conversation · refus"]
+    b["🔎 <b>Vérifier</b><br/>gpt-oss-20b, à l'aveugle"]
+    c["🧠 <b>S'entraîner</b><br/>LoRA sur la RTX 3060<br/>3 époques, la meilleure gardée"]
+    d["📝 <b>Examen</b><br/>par outil · refus justes<br/>banc de cognition"]
+    e["🏆 <b>Promotion</b><br/>seulement s'il bat le champion"]
+    f["🌌 <b>Vitrine</b><br/>publiée toute seule"]
+    a --> b --> c --> d --> e --> f
+    d -. "points faibles" .-> a
+```
+
+- **Chaque nuit à 02 h 30** (tâche Windows *Matthew flywheel*) : amorçage, entraînement,
+  examen, promotion, vitrine. Il repart toujours du modèle de base, jamais de son propre
+  candidat ; un meilleur modèle ouvert peut devenir sa base (« challengers »).
+- **Jamais appris de Gemini ni de Claude** : leurs conditions l'interdisent. Les réponses
+  modèles viennent de professeurs sous licence ouverte (gpt-oss via Groq ; qwen3.6 et gemma4
+  en local quand le quota gratuit est épuisé) et de **vos corrections** — dites *« non, la
+  bonne réponse c'était… »*, ou utilisez l'onglet **MATTHEW** du panneau ESPRIT.
+- **Déjà en service** : Ollama le sert sous le nom `matthew` ; il répond quand Gemini est
+  injoignable (relais hors-ligne) et fait les tâches de fond de la cognition s'il réussit son
+  banc. Le badge du HUD dit qui répond : GEMINI, MATTHEW ou HORS-LIGNE.
+- **Ses propres tokens** : `python -m matthew.gateway` — une API compatible OpenAI devant
+  Ollama, une clé par appareil, un budget de tokens par jour, du streaming.
+- **La vitrine** : [teddydarkvador.github.io/matthew-vitrine](https://teddydarkvador.github.io/matthew-vitrine/)
+  — un récit qui défile sur une scène 3D : Matthew dans sa base sur la Lune, une lumière par
+  savoir-faire, la frise de ses nuits, l'examen rejoué en direct, ses réponses avant / après,
+  ses compteurs (tokens, heures de GPU, nuits), en français et en anglais. Lecture seule,
+  aucune vraie conversation publiée ; elle se met à jour d'elle-même à chaque amélioration
+  (crochets Git + boucle de nuit).
+- **Où il en est** (21 octobre 2026) : deuxième champion, **90 %** à l'examen (85 % au
+  premier), 91 % de refus justes quand aucun outil ne convient (50 % avant).
+
+| Commande | Ce qu'elle fait |
+|---|---|
+| `python -m matthew.flywheel --status` | où en est Matthew |
+| `python -m matthew.flywheel --execute` | un cycle complet, maintenant |
+| `python -m matthew.vitrine publish` | republier la vitrine |
+| `python -m matthew.gateway key create telephone` | une clé pour un appareil |
+
+Le détail, la vision à 10 ans et l'état vérifié de chaque pièce sont dans le graphe
+[`capabilities/graphs/matthew.json`](capabilities/graphs/matthew.json).
+
 ## 🧪 Vérifier
 
 Chaque paquet se prouve seul, sans clé ni réseau : `python -m capabilities.selftest`, `python -m context.selftest`, `python -m server.selftest`, …
-La liste complète est dans [`CLAUDE.md`](CLAUDE.md). Trois fois par nuit, **Night Shift** relance les 15 suites sous Linux, mesure si JARVIS s'améliore et s'attaque à chaque passe à un problème différent : un correctif proposé, à relire, jamais fusionné par une machine.
+La liste complète est dans [`CLAUDE.md`](CLAUDE.md). Trois fois par nuit, **Night Shift** relance les suites sous Linux, mesure si JARVIS s'améliore et s'attaque à chaque passe à un problème différent : un correctif proposé, à relire, jamais fusionné par une machine.
 
 ## 📜 Licence
 
