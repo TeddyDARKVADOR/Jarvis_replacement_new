@@ -740,6 +740,118 @@ def _vitrine():
     return f"{len(attempts)} fuites refusées, {res['fields_checked']} valeurs vérifiées"
 
 
+@check("vitrine : jamais le nom de l'hôte, journal des améliorations nettoyé, drapeau")
+def _vitrine_flag():
+    from matthew import vitrine as V
+    assert V.clean_title("JARVIS portable : clé USB nomade") == "Matthew portable : clé USB nomade"
+    assert V.clean_title("Déploiement vers MARK LIII") == "Déploiement vers le serveur"
+    for bad in ("x", "fix C:/Users/moi/secret.txt", "envoie à bob@ex.fr", "voir https://exemple.com"):
+        assert V.clean_title(bad) is None, bad
+    assert V.pub("shutdown_jarvis") == "shutdown"
+    git_log = ("@@2026-10-20|JARVIS : nouveau HUD\nclient_desktop/hud/web/index.html\nclient_desktop/hud/window.py\n"
+               "@@2026-10-19|Matthew : routeur par le sens\nmatthew/router.py\ncapabilities/graphs/matthew.json\n"
+               "@@2026-10-18|clé AIza" + "x" * 35 + "\nmain.py\n")
+    ch = V.changes(runner=lambda *a, **k: Proc(out=git_log))
+    assert ch == [{"date": "2026-10-20", "title": "Matthew : nouveau HUD", "area": "Interface"},
+                  {"date": "2026-10-19", "title": "Matthew : routeur par le sens", "area": "IA"}], ch
+    root = TMP / "vitrine"                      # monde construit par le test précédent
+    data = V.gather(root)
+    data["changes"] = ch
+    V.check_public(data, root)
+    bad = json.loads(json.dumps(data))
+    bad["tools"][0]["label"] = "Arrêt de Jarvis"
+    try:
+        V.check_public(bad, root)
+        raise AssertionError("le nom de l'hôte est passé")
+    except V.PrivacyError:
+        pass
+    # Drapeau : rien sans lui ; publié et baissé avec lui ; pas deux fois en 5 minutes.
+    clock = Clock()
+    cfg = {**CFG, "vitrine_publish": True, "vitrine_repo": str(TMP)}
+    calls = []
+    pub_ok = lambda: calls.append(1) or {"ok": True, "pushed": True}
+    assert V.run(root, cfg, publisher=pub_ok, clock=clock)["ran"] is False
+    V.flag("code : nouveau commit", root)
+    V.flag("IA : nouveau champion", root)
+    out = V.run(root, cfg, publisher=pub_ok, clock=clock)
+    assert out["ran"] and out["ok"] and calls == [1] and not (root / "vitrine" / "FLAG").exists(), out
+    V.flag("code : encore", root)
+    assert V.run(root, cfg, publisher=pub_ok, clock=clock)["ran"] is False, "moins de 5 min après"
+    clock.t += 600
+    fail = lambda: {"ok": False, "reason": "réseau"}
+    assert V.run(root, cfg, publisher=fail, clock=clock)["ok"] is False
+    assert (root / "vitrine" / "FLAG").exists(), "échec : le drapeau reste levé"
+    # Crochets Git : ajoutés à la fin d'un crochet existant, une seule fois.
+    repo = TMP / "hookrepo"
+    (repo / ".git" / "hooks").mkdir(parents=True)
+    (repo / ".git" / "hooks" / "post-commit").write_text("#!/bin/sh\necho déjà là\n", encoding="utf-8")
+    V.install_hooks(repo)
+    V.install_hooks(repo)
+    pc = (repo / ".git" / "hooks" / "post-commit").read_text(encoding="utf-8")
+    assert "echo déjà là" in pc and pc.count(V.HOOK_MARK) == 1 and "flag" in pc and "--spawn" in pc
+    assert (repo / ".git" / "hooks" / "post-merge").exists()
+    return "marque filtrée, 2 améliorations sur 3, drapeau levé / baissé / gardé"
+
+
+@check("tokens : clés hachées, budget du jour, requêtes par minute, comptes, vraie passerelle HTTP")
+def _gateway():
+    import threading
+    import urllib.error
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    from matthew import gateway as G
+    root = TMP / "gw"
+    root.mkdir()
+    clock = Clock()
+    keys = G.Keys(root, clock=lambda: clock.t)
+    tel = keys.create("telephone", budget=100, rpm=10)
+    pc = keys.create("pc", budget=10_000, rpm=50)
+    assert tel.startswith("mk-") and tel not in (root / "keys.json").read_text(encoding="utf-8"), "seulement le hash"
+    seen = []
+
+    def fake_ollama(url, payload, timeout):
+        seen.append(payload)
+        return 200, {"choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                     "usage": {"prompt_tokens": 30, "completion_tokens": 10}}
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), G.make_handler(keys, "http://ollama/v1", post=fake_ollama))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}/v1"
+
+    def call(key, body=None, path="/chat/completions"):
+        req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None,
+                                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, json.loads(r.read()), dict(r.headers)
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read()), dict(e.headers)
+    try:
+        msg = {"messages": [{"role": "user", "content": "salut"}]}
+        assert call("mk-faux", msg)[0] == 401
+        code, data, h = call(tel, msg)
+        assert code == 200 and h["X-Matthew-Tokens-Today"] == "40", (code, h)
+        assert seen[-1]["model"] == "matthew" and seen[-1]["stream"] is False and seen[-1]["reasoning_effort"] == "none"
+        assert call(tel, {**msg, "model": "autre-modele"})[0] == 403
+        assert call(tel, msg)[0] == 200                     # 80 / 100
+        assert call(tel, msg)[0] == 200                     # reste 20 : admis (vérifié avant l'appel), 120 / 100
+        code, data, h = call(tel, msg)
+        assert code == 429 and "budget" in data["error"]["message"] and int(h["Retry-After"]) > 0, (code, data)
+        for _ in range(3):
+            clock.t += 1
+        code, *_ = call(pc, msg)
+        assert code == 200, "une autre clé n'est pas touchée"
+        assert call(pc, path="/usage")[1]["today"] == 40
+        keys2 = G.Keys(root, clock=lambda: clock.t)
+        assert keys2.revoke("pc") and call(pc, msg)[0] == 401
+        rpm_key = keys.create("rafale", budget=10_000, rpm=2)
+        assert [call(rpm_key, msg)[0] for _ in range(3)] == [200, 200, 429]
+        assert {r["name"]: r["today"] for r in keys.table()} == {"pc": 40, "rafale": 80, "telephone": 120}
+        assert usage_summary(root)["gateway:telephone"]["calls"] == 3
+    finally:
+        httpd.shutdown()
+    return "401 / 403 / 429 budget / 429 rpm / révocation"
+
+
 @check("contrat V2 : trois hooks gardés, données ignorées par Git")
 def _contract():
     rt = (REPO / "cognition" / "runtime.py").read_text(encoding="utf-8")

@@ -17,6 +17,9 @@ a { color: var(--cyan); }
 .hero { position: relative; min-height: 100vh; min-height: 100svh; overflow: hidden;
   background: radial-gradient(ellipse at 60% 50%, #0a2440 0%, var(--bg) 70%); }
 .scene { position: absolute; inset: 0; overflow: hidden; }
+.hero::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(90deg, rgba(3,8,16,.82) 0%, rgba(3,8,16,.45) 32%, rgba(3,8,16,0) 52%),
+              linear-gradient(0deg, rgba(3,8,16,.7) 0%, rgba(3,8,16,0) 22%); }
 .scene canvas { display: block; }
 .hero-text { position: relative; z-index: 2; max-width: 560px; padding: 9vh 6vw 0; pointer-events: none; }
 .kicker { font: 600 13px var(--title); letter-spacing: .22em; text-transform: uppercase; color: var(--cyan); margin: 0 0 10px; }
@@ -96,6 +99,7 @@ footer { max-width: 1120px; margin: 72px auto 0; padding: 24px 6vw 48px; color: 
   .two { grid-template-columns: 1fr; gap: 8px; }
   .hero { min-height: auto; padding-bottom: 20px; }
   .scene { position: relative; height: min(62vh, 480px); }
+  .hero::after { display: none; }
   .hero-text { max-width: 100%; padding: 4vh 16px 0; }
   .lbl-domain { font-size: 10px; letter-spacing: .14em; }
   .hero-text { position: relative; }
@@ -106,3 +110,19 @@ footer { max-width: 1120px; margin: 72px auto 0; padding: 24px 6vw 48px; color: 
 @media (prefers-reduced-motion: reduce) {
   .dot.live { animation: none; } html { scroll-behavior: auto; }
 }
+
+/* ── Améliorations ── */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.chips button { font: 600 12px var(--title); letter-spacing: .1em; text-transform: uppercase; color: var(--text); background: transparent;
+  border: 1px solid var(--line); border-radius: 99px; padding: 4px 12px; cursor: pointer; }
+.chips button[aria-pressed="true"] { background: var(--cyan); color: #00131c; border-color: var(--cyan); }
+.changes { list-style: none; padding: 0; margin: 0; border-left: 1px solid var(--line); }
+.changes li { position: relative; padding: 8px 0 8px 22px; display: grid; grid-template-columns: 74px 1fr auto; gap: 10px; align-items: baseline; }
+.changes li::before { content: ""; position: absolute; left: -5px; top: 15px; width: 9px; height: 9px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.changes .d { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.changes .a { font: 600 11px var(--title); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 1px 8px; }
+.changes li[data-area="IA"]::before { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.changes li[data-area="Interface"]::before { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.changes li[data-area="Voix"]::before { background: #c58bff; box-shadow: 0 0 8px #c58bff; }
+.changes li.more { display: block; color: var(--muted); }
+@media (max-width: 860px) { .changes li { grid-template-columns: 1fr; gap: 2px; } }

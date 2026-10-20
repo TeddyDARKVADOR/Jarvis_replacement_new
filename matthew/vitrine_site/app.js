@@ -24,6 +24,7 @@ async function main() {
   fillDomains();
   fillExam();
   fillNights();
+  fillChanges();
   const scene = await startScene().catch((e) => { console.warn("3D indisponible :", e); return null; });
   startReplay(scene);
 }
@@ -36,6 +37,8 @@ function fillStats() {
   $("s-tools").textContent = `${cov.tools_covered}/${cov.tools_total}`;
   $("s-ex").textContent = cov.examples.toLocaleString("fr-FR");
   $("s-nights").textContent = new Set(DATA.cycles.map((x) => x.date)).size || "—";
+  const month = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  $("s-changes").textContent = (DATA.changes || []).filter((c) => c.date >= month).length || "—";
   $("gen").textContent = DATA.generated;
   $("base").textContent = c ? c.base : "—";
   $("tok").textContent = `${(DATA.tokens.matthew || 0).toLocaleString("fr-FR")} tokens générés par Matthew`;
@@ -114,6 +117,24 @@ function fillNights() {
   }
 }
 
+function fillChanges() {
+  const all = DATA.changes || [], chips = $("chips"), ol = $("changes");
+  const areas = ["Tout", ...new Set(all.map((c) => c.area))];
+  let area = "Tout", shown = 25;
+  function render() {
+    const rows = all.filter((c) => area === "Tout" || c.area === area);
+    ol.innerHTML = rows.slice(0, shown).map((c) => `<li data-area="${esc(c.area)}"><span class="d">${frDate(c.date)}</span><span>${esc(c.title)}</span><span class="a">${esc(c.area)}</span></li>`).join("")
+      + (rows.length > shown ? `<li class="more"><button type="button" id="more">Voir les ${rows.length - shown} autres</button></li>` : "");
+    const more = $("more"); if (more) more.onclick = () => { shown = rows.length; render(); };
+  }
+  for (const a of areas) {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = a; b.setAttribute("aria-pressed", String(a === area));
+    b.onclick = () => { area = a; shown = 25; for (const x of chips.children) x.setAttribute("aria-pressed", String(x.textContent === a)); render(); };
+    chips.appendChild(b);
+  }
+  if (!all.length) ol.innerHTML = "<li>Les premières améliorations arrivent.</li>"; else render();
+}
+
 // ── Scène 3D ─────────────────────────────────────────────────────────────────
 async function startScene() {
   const host = $("scene");
@@ -122,86 +143,163 @@ async function startScene() {
   const THREE = await import("three");
   const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
   const { CSS2DRenderer, CSS2DObject } = await import("three/addons/renderers/CSS2DRenderer.js");
+  const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+  const { RGBELoader } = await import("three/addons/loaders/RGBELoader.js");
   const small = innerWidth < 860;
   let composer = null;
 
-  const renderer = new THREE.WebGLRenderer({ antialias: !small, alpha: true, powerPreference: "high-performance" });
+  const renderer = new THREE.WebGLRenderer({ antialias: !small, alpha: false, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.5 : 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
   host.appendChild(renderer.domElement);
   const labels = new CSS2DRenderer();
   labels.domElement.style.cssText = "position:absolute;inset:0;pointer-events:none";
   host.appendChild(labels.domElement);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x030810, 0.035);
-  const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 200);
-  camera.position.set(small ? 0 : 6, small ? 9 : 7.5, small ? 19 : 16);
+  scene.background = new THREE.Color(0x030810);
+  scene.fog = new THREE.Fog(0x050b16, 34, 110);
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+  camera.position.set(small ? 0 : 10, small ? 18 : 15, small ? 32 : 27);
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.enablePan = false;
-  controls.minDistance = 9; controls.maxDistance = 28; controls.maxPolarAngle = Math.PI * 0.48;
-  controls.autoRotate = !REDUCED; controls.autoRotateSpeed = 0.35;
-  controls.target.set(small ? 0 : 2.5, 0, 0);
+  controls.minDistance = 12; controls.maxDistance = 46; controls.maxPolarAngle = Math.PI * 0.47;
+  controls.autoRotate = !REDUCED; controls.autoRotateSpeed = 0.3;
+  controls.target.set(small ? 0 : 3, 2.2, 0);
 
   const CYAN = new THREE.Color(0x5fe3ff), GREEN = new THREE.Color(0x4dffb0), RED = new THREE.Color(0xff5a6e), AMBER = new THREE.Color(0xffb84d);
 
-  // Noyau : sphère à effet Fresnel, coquille filaire, nuage de points.
+  // Ciel étoilé réel (Poly Haven, CC0) : fond ET éclairage d'ambiance.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  new RGBELoader().load("assets/sky/night_1k.hdr", (hdr) => {
+    hdr.mapping = THREE.EquirectangularReflectionMapping;
+    scene.environment = pmrem.fromEquirectangular(hdr).texture;
+    scene.background = hdr;
+    // Luminance médiane mesurée 0,48 (un crépuscule) : ramenée à ~0,02 pour une nuit
+    // profonde ; les étoiles (p99 ≈ 6) restent visibles.
+    scene.backgroundIntensity = 0.045;
+    scene.environmentIntensity = 0.3;
+  });
+  scene.add(new THREE.HemisphereLight(0x6fa8ff, 0x0b1018, 0.35));
+  const moon = new THREE.DirectionalLight(0xbcd8ff, 1.4);
+  moon.position.set(-14, 22, 10);
+  scene.add(moon);
+  const coreLight = new THREE.PointLight(0x5fe3ff, 40, 26, 1.6);
+  coreLight.position.set(0, 4.2, 0);
+  scene.add(coreLight);
+
+  // Sol lunaire.
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(220, 96),
+    new THREE.MeshStandardMaterial({ color: 0x1a222c, roughness: 0.96, metalness: 0.05 }));
+  ground.rotation.x = -Math.PI / 2;
+  scene.add(ground);
+  const grid = new THREE.PolarGridHelper(13, 24, 6, 96, 0x2a7d9c, 0x123446);
+  grid.position.y = 0.02; grid.material.transparent = true; grid.material.opacity = 0.45; scene.add(grid);
+
+  // Modèles Kenney (Space Kit, CC0) : chargés une fois, clonés ensuite.
+  const loader = new GLTFLoader();
+  const names = ["platform_large", "hangar_largeA", "hangar_roundGlass", "hangar_smallA", "satelliteDish_large",
+    "satelliteDish", "machine_wireless", "machine_generatorLarge", "machine_generator", "desk_computer",
+    "structure_detailed", "rocket_baseA", "rocket_fuelA", "rocket_topA", "rover", "craft_speederA", "crater",
+    "craterLarge", "rock_largeA", "rocks_smallA", "rock_crystals", "rock_crystalsLargeA", "machine_barrel",
+    "supports_low", "astronautA", "meteor"];
+  const M = {};
+  await Promise.all(names.map((n) => loader.loadAsync(`assets/models/${n}.glb`).then((g) => (M[n] = g.scene)).catch(() => null)));
+  // Les modèles Kenney ont leur origine dans un coin (ce sont des tuiles) : chacun est
+  // recentré sur le milieu de sa base avant d'être posé, tourné et mis à l'échelle.
+  const box = new THREE.Box3(), mid = new THREE.Vector3();
+  const place = (name, x, z, s = 1, rotY = 0, y = 0) => {
+    if (!M[name]) return null;
+    const inner = M[name].clone(true);
+    box.setFromObject(inner); box.getCenter(mid);
+    inner.position.set(-mid.x, -box.min.y, -mid.z);
+    const o = new THREE.Group(); o.add(inner);
+    o.scale.setScalar(s); o.position.set(x, y, z); o.rotation.y = rotY;
+    scene.add(o);
+    return o;
+  };
+  const dim = (obj, f) => obj && obj.traverse((m) => {
+    if (m.isMesh) { m.material = m.material.clone(); m.material.color.multiplyScalar(f); }
+  });
+
+  // Paysage : cratères, rochers, cristaux, en dehors du cercle de la base.
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 26; i++) {
+    const a = rnd() * Math.PI * 2, r = 16 + rnd() * 22;
+    const kind = ["crater", "craterLarge", "rock_largeA", "rocks_smallA", "rock_crystals", "rock_crystalsLargeA", "meteor"][i % 7];
+    place(kind, Math.cos(a) * r, Math.sin(a) * r, 1.6 + rnd() * 2.4, rnd() * 6.28);
+  }
+
+  // Le centre : la plateforme, Matthew au-dessus.
+  place("platform_large", 0, 0, 3.2);
+  place("astronautA", 3.4, 2.6, 1.4, -0.6, 0.2);
   const fresnel = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uColor: { value: CYAN.clone() }, uPulse: { value: 0 } },
     vertexShader: `varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.); vN = normalize(normalMatrix*normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix*mv; }`,
     fragmentShader: `uniform float uTime; uniform vec3 uColor; uniform float uPulse; varying vec3 vN; varying vec3 vV;
       void main(){ float f = pow(1.-max(dot(vN,vV),0.), 2.2); float scan = .55+.45*sin(gl_FragCoord.y*.9+uTime*4.);
-        gl_FragColor = vec4(uColor*(f*1.6+.08+uPulse*.6)*mix(.8,1.,scan), f*.95+.12+uPulse*.3); }`,
+        gl_FragColor = vec4(uColor*(f*1.8+.12+uPulse*.6)*mix(.8,1.,scan), f*.95+.18+uPulse*.3); }`,
     transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
   });
-  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.25, 5), fresnel);
-  scene.add(core);
-  const shell = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.85, 1)),
-    new THREE.LineBasicMaterial({ color: 0x5fe3ff, transparent: true, opacity: 0.35 }));
-  scene.add(shell);
+  const CORE_Y = 4.2;
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.3, 5), fresnel);
+  core.position.y = CORE_Y; scene.add(core);
+  const shell = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.95, 1)),
+    new THREE.LineBasicMaterial({ color: 0x5fe3ff, transparent: true, opacity: 0.4 }));
+  shell.position.y = CORE_Y; scene.add(shell);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.5, CORE_Y, 24, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x5fe3ff, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, depthWrite: false }));
+  beam.position.y = CORE_Y / 2; scene.add(beam);
   const coreLbl = document.createElement("div"); coreLbl.className = "lbl-domain"; coreLbl.textContent = "Matthew";
-  const coreObj = new CSS2DObject(coreLbl); coreObj.position.set(0, 2.4, 0); scene.add(coreObj);
+  const coreObj = new CSS2DObject(coreLbl); coreObj.position.set(0, CORE_Y + 2.6, 0); scene.add(coreObj);
 
-  // Sol : anneaux et rayons, comme une table holographique.
-  const grid = new THREE.PolarGridHelper(11, 24, 8, 96, 0x1d5a73, 0x0e2f40);
-  grid.position.y = -1.6; grid.material.transparent = true; grid.material.opacity = 0.55; scene.add(grid);
-
-  // Étoiles.
-  const starGeo = new THREE.BufferGeometry(), N = small ? 600 : 1400, pos = new Float32Array(N * 3);
-  for (let i = 0; i < N; i++) { const r = 40 + Math.random() * 50, t = Math.random() * Math.PI * 2, p = Math.acos(2 * Math.random() - 1);
-    pos.set([r * Math.sin(p) * Math.cos(t), r * Math.cos(p) * 0.6, r * Math.sin(p) * Math.sin(t)], i * 3); }
-  starGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x7fbfd6, size: 0.12, transparent: true, opacity: 0.6 })));
-
-  // Stations : un secteur par domaine, un octaèdre par outil, couleur = précision.
+  // Un bâtiment par domaine, un module par outil, une balise par module.
+  const BUILDING = { "Système": ["hangar_largeA", 1.5], "Bureau": ["hangar_smallA", 1.8], "Infos": ["satelliteDish_large", 2.0],
+    "Communication": ["machine_wireless", 2.2], "Mémoire": ["hangar_roundGlass", 1.9], "Code": ["rocket", 1.8],
+    "Noyau": ["machine_generatorLarge", 2.0], "Autres": ["structure_detailed", 1.4] };
+  const POD = { "Système": "machine_generator", "Bureau": "desk_computer", "Infos": "satelliteDish", "Communication": "machine_wireless",
+    "Mémoire": "machine_barrel", "Code": "structure_detailed", "Noyau": "supports_low", "Autres": "rocks_smallA" };
+  const spinners = [];
   const stations = new Map(), doms = DATA.domains.filter((d) => DATA.tools.some((t) => t.domain === d));
   const sector = (Math.PI * 2) / doms.length;
+  const beaconGeo = new THREE.SphereGeometry(0.2, 16, 16);
   doms.forEach((dom, di) => {
     const tools = DATA.tools.filter((t) => t.domain === dom);
-    const a0 = di * sector + 0.12, a1 = (di + 1) * sector - 0.12;
-    const mid = (a0 + a1) / 2;
+    const a0 = di * sector + 0.14, a1 = (di + 1) * sector - 0.14, mid = (a0 + a1) / 2;
+    const bx = Math.cos(mid) * 12.2, bz = Math.sin(mid) * 12.2, face = -mid + Math.PI / 2;
+    const [bName, bScale] = BUILDING[dom] || BUILDING["Autres"];
+    if (bName === "rocket") {
+      place("rocket_baseA", bx, bz, bScale); place("rocket_fuelA", bx, bz, bScale, 0, bScale); place("rocket_topA", bx, bz, bScale, 0, bScale * 2);
+    } else {
+      const b = place(bName, bx, bz, bScale, face);
+      if (b && /satellite|wireless/.test(bName)) spinners.push(b);
+    }
     const dl = document.createElement("div"); dl.className = "lbl-domain"; dl.textContent = dom;
-    const dObj = new CSS2DObject(dl); dObj.position.set(Math.cos(mid) * 10.4, -1.2, Math.sin(mid) * 10.4); scene.add(dObj);
-    const arc = new THREE.EllipseCurve(0, 0, 9.4, 9.4, a0, a1).getPoints(40).map((p) => new THREE.Vector3(p.x, -1.55, p.y));
-    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(arc), new THREE.LineBasicMaterial({ color: 0x5fe3ff, transparent: true, opacity: 0.35 })));
+    const dObj = new CSS2DObject(dl); dObj.position.set(bx, bName === "rocket" ? 7.4 : 4.6, bz); scene.add(dObj);
     tools.forEach((t, i) => {
-      const a = a0 + ((i + 0.5) * (a1 - a0)) / tools.length, row = i % 2;
-      const r = 6.2 + row * 1.6, yy = -0.6 + Math.sin(i * 1.7 + di) * 0.5;
+      const a = a0 + ((i + 0.5) * (a1 - a0)) / tools.length, r = 6.6 + (i % 2) * 2.2;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
       const learned = t.examples > 0;
-      const col = !learned ? new THREE.Color(0x2a4250) : t.accuracy == null ? CYAN.clone() : AMBER.clone().lerp(GREEN, t.accuracy);
-      const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(learned ? 0.26 : 0.18, 0),
-        learned ? new THREE.MeshBasicMaterial({ color: col }) : new THREE.MeshBasicMaterial({ color: col, wireframe: true }));
-      mesh.position.set(Math.cos(a) * r, yy, Math.sin(a) * r);
-      scene.add(mesh);
-      const stem = new THREE.Line(new THREE.BufferGeometry().setFromPoints([mesh.position.clone(), new THREE.Vector3(mesh.position.x, -1.6, mesh.position.z)]),
-        new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: learned ? 0.35 : 0.15 }));
-      scene.add(stem);
+      const pod = place(POD[dom] || "rocks_smallA", x, z, 1.15, -a + Math.PI / 2);
+      if (!learned) dim(pod, 0.3);
+      const col = !learned ? new THREE.Color(0x33475a) : t.accuracy == null ? CYAN.clone() : AMBER.clone().lerp(GREEN, t.accuracy);
+      const beacon = new THREE.Mesh(beaconGeo, new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(learned ? 2.2 : 0.8) }));
+      beacon.position.set(x, 2.1, z);
+      scene.add(beacon);
       const el = document.createElement("div"); el.className = "lbl-tool" + (learned ? "" : " off"); el.textContent = t.label;
-      const lo = new CSS2DObject(el); lo.position.copy(mesh.position).add(new THREE.Vector3(0, 0.45, 0)); scene.add(lo);
-      stations.set(t.id, { mesh, el, base: col.clone(), spin: 0.4 + Math.random() * 0.6 });
+      const lo = new CSS2DObject(el); lo.position.set(x, 2.65, z); scene.add(lo);
+      stations.set(t.id, { mesh: beacon, el, base: beacon.material.color.clone() });
     });
   });
 
-  // Halo (bloom) sur les grands écrans seulement.
+  // La vie de la base : un rover qui patrouille, un vaisseau en orbite.
+  const rover = place("rover", 15, 0, 1.6);
+  const ship = place("craft_speederA", 0, 20, 1.8, 0, 9);
+
+  // Halo (bloom) sur les grands écrans : seules les lumières vives brillent.
   if (!small && !REDUCED) {
     try {
       const { EffectComposer } = await import("three/addons/postprocessing/EffectComposer.js");
@@ -210,7 +308,7 @@ async function startScene() {
       const { OutputPass } = await import("three/addons/postprocessing/OutputPass.js");
       composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, camera));
-      composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.85, 0.55, 0.12));
+      composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.8, 0.45, 0.9));
       composer.addPass(new OutputPass());
     } catch (e) { composer = null; }
   }
@@ -223,22 +321,23 @@ async function startScene() {
   }
   new ResizeObserver(resize).observe(host); resize();
 
-  // Faisceaux : un point lumineux voyage du noyau à la station, sur un arc.
+  // Faisceaux : un point lumineux voyage du noyau à la balise, sur un arc.
   const beams = [];
+  const ORIGIN = new THREE.Vector3(0, CORE_Y, 0);
   function fire(targetId, ok, expectedId) {
     const st = stations.get(targetId);
-    const end = st ? st.mesh.position.clone() : new THREE.Vector3(0, 4, 0);
-    const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(0, 0.4, 0), end.clone().multiplyScalar(0.5).add(new THREE.Vector3(0, 3.2, 0)), end);
+    const end = st ? st.mesh.position.clone() : new THREE.Vector3(0, CORE_Y + 6, 0);
+    const curve = new THREE.QuadraticBezierCurve3(ORIGIN.clone(), ORIGIN.clone().lerp(end, 0.5).add(new THREE.Vector3(0, 4, 0)), end);
     const color = ok ? GREEN : RED;
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(48)),
       new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0 }));
-    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), new THREE.MeshBasicMaterial({ color }));
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12), new THREE.MeshBasicMaterial({ color: color.clone().multiplyScalar(3) }));
     scene.add(line, dot);
     beams.push({ curve, line, dot, t: 0, st, ok, color });
-    if (!ok && expectedId && stations.get(expectedId)) {            // l'outil attendu, en pointillé
+    if (!ok && expectedId && stations.get(expectedId)) {             // l'outil attendu, en pointillé
       const ex = stations.get(expectedId).mesh.position;
-      const dash = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0.4, 0), ex.clone()]),
-        new THREE.LineDashedMaterial({ color: 0xffb84d, dashSize: 0.3, gapSize: 0.2, transparent: true, opacity: 0.6 }));
+      const dash = new THREE.Line(new THREE.BufferGeometry().setFromPoints([ORIGIN.clone(), ex.clone()]),
+        new THREE.LineDashedMaterial({ color: 0xffb84d, dashSize: 0.3, gapSize: 0.2, transparent: true, opacity: 0.7 }));
       dash.computeLineDistances(); scene.add(dash);
       setTimeout(() => scene.remove(dash), 3200);
     }
@@ -248,20 +347,30 @@ async function startScene() {
     for (const [k, s] of stations) s.el.classList.toggle("on", k === id);
   }
 
-  const clock = new THREE.Clock();
+  const clock = new THREE.Clock(), ONE = new THREE.Vector3(1, 1, 1);
   (function loop() {
     const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
     fresnel.uniforms.uTime.value = t;
     fresnel.uniforms.uPulse.value *= 0.94;
-    if (!REDUCED) { shell.rotation.y += dt * 0.15; shell.rotation.x += dt * 0.05; core.scale.setScalar(1 + Math.sin(t * 1.6) * 0.02); }
-    for (const s of stations.values()) { s.mesh.rotation.y += dt * s.spin; s.mesh.material.color.lerp(s.base, 0.04); s.mesh.scale.lerp(new THREE.Vector3(1, 1, 1), 0.08); }
+    coreLight.intensity = 40 + fresnel.uniforms.uPulse.value * 60;
+    if (!REDUCED) {
+      shell.rotation.y += dt * 0.15; shell.rotation.x += dt * 0.05;
+      core.position.y = CORE_Y + Math.sin(t * 1.2) * 0.12;
+      for (const s of spinners) s.rotation.y += dt * 0.25;
+      if (rover) { const a = t * 0.08; rover.position.set(Math.cos(a) * 15.5, 0, Math.sin(a) * 15.5); rover.rotation.y = -a; }
+      if (ship) { const a = -t * 0.15; ship.position.set(Math.cos(a) * 21, 9 + Math.sin(t * 0.7) * 0.8, Math.sin(a) * 21); ship.rotation.y = -a + Math.PI; }
+    }
+    for (const s of stations.values()) { s.mesh.material.color.lerp(s.base, 0.04); s.mesh.scale.lerp(ONE, 0.08); }
     for (let i = beams.length - 1; i >= 0; i--) {
       const b = beams[i];
       b.t += dt * (REDUCED ? 3 : 0.9);
       const k = Math.min(b.t, 1);
       b.dot.position.copy(b.curve.getPoint(k));
-      b.line.material.opacity = Math.min(0.8, b.t * 1.5) * (b.t > 1 ? Math.max(0, 2.2 - b.t) : 1);
-      if (b.t >= 1 && !b.hit) { b.hit = true; scene.remove(b.dot); if (b.st) { b.st.mesh.material.color.copy(b.color); b.st.mesh.scale.setScalar(2.2); } }
+      b.line.material.opacity = Math.min(0.9, b.t * 1.5) * (b.t > 1 ? Math.max(0, 2.2 - b.t) : 1);
+      if (b.t >= 1 && !b.hit) {
+        b.hit = true; scene.remove(b.dot);
+        if (b.st) { b.st.mesh.material.color.copy(b.color).multiplyScalar(4); b.st.mesh.scale.setScalar(2.4); }
+      }
       if (b.t > 2.2) { scene.remove(b.line); beams.splice(i, 1); }
     }
     controls.update();

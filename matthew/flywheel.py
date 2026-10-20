@@ -232,7 +232,9 @@ class Flywheel:
             return
         try:
             from matthew import vitrine
-            res = vitrine.publish(Path(self.cfg["vitrine_repo"]), self.cfg, runner=self._runner)
+            vitrine.flag(f"IA : {rep.get('outcome', 'cycle')}", self.root)
+            res = vitrine.run(self.root, self.cfg, publisher=lambda: vitrine.publish(
+                Path(self.cfg["vitrine_repo"]), self.cfg, runner=self._runner))
         except Exception as e:
             res = {"ok": False, "reason": f"{type(e).__name__}: {e}"}
         rep["steps"].append({"step": "vitrine", **{k: res.get(k) for k in ("ok", "pushed", "reason")}})

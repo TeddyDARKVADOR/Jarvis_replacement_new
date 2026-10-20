@@ -5,6 +5,9 @@ matthew/vitrine.py — la vitrine publique : regarder Matthew apprendre, sans ac
     python -m matthew.vitrine build DIR   écrit le site (page + data/vitrine.json + og.png) dans DIR
     python -m matthew.vitrine publish     replay + build dans le dépôt de la vitrine, puis git push
                                           (GitHub Pages republie tout seul à chaque push)
+    python -m matthew.vitrine flag "…"    lever le drapeau ; run : publier s'il est levé
+    python -m matthew.vitrine hooks       crochets Git : chaque commit ou fusion lève le drapeau
+    python -m matthew.vitrine schedule    tâche de rattrapage toutes les 30 minutes
     python -m matthew.vitrine setup       une seule fois, par l'utilisateur : crée le dépôt GitHub
                                           public depuis D:\\DEV\\matthew-vitrine et active Pages
 
@@ -52,7 +55,7 @@ SHOWCASE_SIZE = 16
 TOOLS = {
     "system_status": ("État du PC", "Système"), "manage_monitor": ("Écrans", "Système"),
     "computer_settings": ("Réglages du PC", "Système"), "local_health_check": ("Diagnostic", "Système"),
-    "shutdown_jarvis": ("Arrêt de JARVIS", "Système"), "close_camera": ("Fermer la caméra", "Système"),
+    "shutdown_jarvis": ("S'éteindre", "Système"), "close_camera": ("Fermer la caméra", "Système"),
     "screen_process": ("Lire l'écran", "Système"), "game_updater": ("Mises à jour de jeux", "Système"),
     "open_app": ("Ouvrir une appli", "Bureau"), "desktop_control": ("Bureau Windows", "Bureau"),
     "computer_control": ("Souris et clavier", "Bureau"), "browser_control": ("Navigateur", "Bureau"),
@@ -68,13 +71,19 @@ TOOLS = {
     "goals": ("Objectifs", "Mémoire"), "self_state": ("État intérieur", "Mémoire"),
     "code_helper": ("Aide au code", "Code"), "code_studio": ("Code Studio", "Code"),
     "repository_review": ("Revue de dépôt", "Code"),
-    "capabilities": ("Ses capacités", "JARVIS"), "usage_report": ("Consommation", "JARVIS"),
-    "quotas": ("Quotas", "JARVIS"), "incidents": ("Incidents", "JARVIS"),
-    "extensions": ("Extensions", "JARVIS"), "mcp": ("Connecteurs MCP", "JARVIS"),
-    "skills": ("Compétences", "JARVIS"), "portable": ("Mode clé USB", "JARVIS"),
-    "matthew": ("Apprendre à Matthew", "JARVIS"),
+    "capabilities": ("Ses capacités", "Noyau"), "usage_report": ("Consommation", "Noyau"),
+    "quotas": ("Quotas", "Noyau"), "incidents": ("Incidents", "Noyau"),
+    "extensions": ("Extensions", "Noyau"), "mcp": ("Connecteurs MCP", "Noyau"),
+    "skills": ("Compétences", "Noyau"), "portable": ("Mode clé USB", "Noyau"),
+    "matthew": ("Apprendre", "Noyau"),
 }
-DOMAINS = ["Système", "Bureau", "Infos", "Communication", "Mémoire", "Code", "JARVIS", "Autres"]
+DOMAINS = ["Système", "Bureau", "Infos", "Communication", "Mémoire", "Code", "Noyau", "Autres"]
+#: Identifiants publics : aucun ne doit trahir l'assistant hôte.
+PUBLIC_IDS = {"shutdown_jarvis": "shutdown"}
+
+
+def pub(name: str | None) -> str | None:
+    return PUBLIC_IDS.get(name, name) if name else name
 
 
 def vdir() -> Path:
@@ -110,7 +119,8 @@ def showcase(root: Path | None = None) -> list[dict]:
     by_tool: dict[str, list[dict]] = {}
     for r in synthetic_records(root):
         t = r.get("target", "")
-        if t.startswith("__") or t in have or scrub(r["messages"][1]["content"]) != r["messages"][1]["content"]:
+        text = r["messages"][1]["content"]
+        if t.startswith("__") or t in have or scrub(text) != text or BRAND.search(text):
             continue                    # (une adresse inventée bloquerait toute la publication)
         by_tool.setdefault(t, []).append(r)
     for t in sorted(by_tool):
@@ -155,6 +165,62 @@ def replay(client: Client | None = None, root: Path | None = None, day: str | No
     return out
 
 
+# ── Le journal des améliorations ─────────────────────────────────────────────
+
+AREAS = ["IA", "Interface", "Voix", "Fiabilité", "Système"]
+_AREA_OF = [("IA", ("matthew/", "cognition/", "eval_lab/", "offline/llm")),
+            ("Interface", ("client_desktop/", "dashboard/", "local_hud", "client-android/")),
+            ("Voix", ("offline/", "meeting/", "server/audio", "core/wake")),
+            ("Fiabilité", ("selftest", "nightshift/", "incidents/", "resilience/", "capabilities/", "quota/"))]
+
+
+def clean_title(subject: str) -> str | None:
+    """Un sujet de commit publiable, ou None. Le nom de l'assistant hôte devient « Matthew »."""
+    # Secrets et coordonnées cherchés sur le texte D'ORIGINE : retirer « @ » d'abord
+    # ferait passer une adresse e-mail (constaté par le selftest).
+    if scrub(subject or "") != (subject or "") or re.search(r"[A-Za-z]:[/\\]|https?://", subject or ""):
+        return None
+    t = re.sub(r"(?i)\bjarvis\b", "Matthew", subject or "").strip()
+    t = re.sub(r"(?i)mark\s*l?iii", "le serveur", t)
+    t = re.sub(r"[\"`*_<>\[\]{}|~^$#@\\]", "", t)
+    t = re.sub(r"\s+", " ", t)[:110].strip(" .'")
+    if len(t) < 6 or scrub(t) != t or re.search(r"[A-Za-z]:/|https?://", t) or BRAND.search(t) \
+            or not _TITLE.match(t):
+        return None
+    return t
+
+
+def changes(repo: Path | None = None, limit: int = 80, runner=subprocess.run) -> list[dict]:
+    """Les dernières améliorations du code (commits hors fusions), classées par domaine."""
+    from matthew import REPO
+    try:
+        cp = runner(["git", "-C", str(repo or REPO), "log", "--no-merges", f"-n{limit * 2}", "--date=short",
+                     "--pretty=format:@@%ad|%s", "--name-only"], capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    out = []
+    for block in (cp.stdout or "").split("@@")[1:]:
+        lines = [l for l in block.splitlines() if l.strip()]
+        if not lines:
+            continue
+        date, _, subject = lines[0].partition("|")
+        title = clean_title(subject)
+        if not title or not _DATE.match(date):
+            continue
+        votes: dict[str, int] = {}
+        for f in lines[1:]:
+            if f.startswith("capabilities/graphs/"):
+                continue
+            a = next((a for a, keys in _AREA_OF if any(k in f for k in keys)), "Système")
+            votes[a] = votes.get(a, 0) + 1
+        area = max(votes, key=votes.get) if votes else "Système"
+        out.append({"date": date, "title": title, "area": area})
+        if len(out) >= limit:
+            break
+    return out
+
+
 # ── Données publiques ────────────────────────────────────────────────────────
 
 def _score(s: dict | None) -> dict | None:
@@ -183,7 +249,7 @@ def gather(root: Path | None = None) -> dict:
     for name in decls:
         label, dom = TOOLS.get(name, (name.replace("_", " "), "Autres"))
         acc = per_tool.get(name)
-        tools.append({"id": name, "label": label, "domain": dom, "examples": per_ex.get(name, 0),
+        tools.append({"id": pub(name), "label": label, "domain": dom, "examples": per_ex.get(name, 0),
                       "accuracy": round(float(acc), 3) if isinstance(acc, (int, float)) else None})
     history, cycles = [], []
     for f in sorted((root / "reports").glob("*.json")):
@@ -203,9 +269,9 @@ def gather(root: Path | None = None) -> dict:
         days[f.stem] = _read(f, {})
     show = []
     for s in showcase(root):
-        show.append({"id": s["id"], "request": s["request"], "target": s["target"],
+        show.append({"id": s["id"], "request": s["request"], "target": pub(s["target"]),
                      "heldout": bool(s.get("heldout")),
-                     "results": {d: {"chosen": v[s["id"]]["chosen"], "ok": bool(v[s["id"]]["ok"]),
+                     "results": {d: {"chosen": pub(v[s["id"]]["chosen"]), "ok": bool(v[s["id"]]["ok"]),
                                      "ms": int(v[s["id"]].get("ms", 0))}
                                  for d, v in days.items() if s["id"] in v}})
     toks = usage_summary(root)
@@ -218,6 +284,7 @@ def gather(root: Path | None = None) -> dict:
         "tokens": {"matthew": sum(v["in"] + v["out"] for k, v in toks.items() if k == "matthew"),
                    "school": sum(v["in"] + v["out"] for k, v in toks.items() if k == "teacher")},
         "showcase": show,
+        "changes": changes(),
     }
 
 
@@ -225,19 +292,25 @@ def gather(root: Path | None = None) -> dict:
 
 ALLOWED = {
     "": {"schema", "name", "generated", "champion", "coverage", "tools", "domains", "history", "cycles",
-         "tokens", "showcase"},
+         "tokens", "showcase", "changes"},
     "champion": {"since", "base", "score"},
     "score": {"composite", "tool_name", "tool_args", "irrelevance", "valid", "latency_p50"},
     "coverage": {"tools_total", "tools_covered", "examples"},
     "tools[]": {"id", "label", "domain", "examples", "accuracy"},
     "history[]": {"date", "score", "promoted", "examples"},
     "cycles[]": {"date", "outcome"},
+    "changes[]": {"date", "title", "area"},
     "tokens": {"matthew", "school"},
     "showcase[]": {"id", "request", "target", "heldout", "results"},
     "result": {"chosen", "ok", "ms"},
 }
 _SAFE = re.compile(r"^[\w .:/+'’«»()\-éèêàâîïôûùçÉÀ%,]{0,80}$")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$")
+
+
+#: La vitrine présente Matthew seul : l'assistant qui l'héberge n'est jamais nommé.
+BRAND = re.compile(r"jarvis|mark\s*l?iii", re.I)
+_TITLE = re.compile(r"^[\w .:/+'’«»()\-%,—→&!?·=]{3,110}$")
 
 
 class PrivacyError(AssertionError):
@@ -254,7 +327,7 @@ def check_public(data: dict, root: Path | None = None) -> int:
     présente telle quelle dans l'amorçage synthétique."""
     root = root or data_dir()
     j = Journal(root)
-    known = {d["name"] for d in j.tools()} | set(TOOLS)
+    known = {pub(n) for n in {d["name"] for d in j.tools()} | set(TOOLS)}
     synthetic = {r["messages"][1]["content"] for r in synthetic_records(root)}
     private = set()
     for r in j.records():
@@ -268,13 +341,15 @@ def check_public(data: dict, root: Path | None = None) -> int:
         raise PrivacyError(f"vitrine refusée — {path} : {why}")
 
     def text_ok(v: str, path: str, free: bool):
+        if BRAND.search(v):
+            fail(path, "nomme l'assistant hôte")
         if scrub(v) != v:
             fail(path, "contient un secret ou une coordonnée")
         if v.strip() in private:
             fail(path, "texte du journal réel")
         if not free and ("\\" in v or re.search(r"[A-Za-z]:/", v)):
             fail(path, "ressemble à un chemin local")
-        if not free and not _SAFE.match(v):
+        if not free and not (_TITLE if path.endswith(".title") else _SAFE).match(v):
             fail(path, f"texte hors gabarit {v[:40]!r}")
 
     def walk(v, path: str, ctx: str):
@@ -293,7 +368,7 @@ def check_public(data: dict, root: Path | None = None) -> int:
             for k, x in v.items():
                 if k not in allowed:
                     fail(path, f"champ non autorisé {k!r}")
-                child = {"tools": "tools[]", "history": "history[]", "cycles": "cycles[]",
+                child = {"tools": "tools[]", "history": "history[]", "cycles": "cycles[]", "changes": "changes[]",
                          "showcase": "showcase[]", "results": "results", "score": "score",
                          "champion": "champion", "coverage": "coverage", "tokens": "tokens"}.get(k, "leaf")
                 walk(x, f"{path}.{k}", child if isinstance(x, (dict, list)) else
@@ -310,9 +385,13 @@ def check_public(data: dict, root: Path | None = None) -> int:
 
     # Passe 2 : le fond.
     for d in (data.get("generated", ""), (data.get("champion") or {}).get("since", ""),
-              *[h["date"] for h in data["history"]], *[c["date"] for c in data["cycles"]]):
+              *[h["date"] for h in data["history"]], *[c["date"] for c in data["cycles"]],
+              *[c["date"] for c in data.get("changes", [])]):
         if d and not _DATE.match(d):
             fail("vitrine", f"date mal formée {d!r}")
+    for c in data.get("changes", []):
+        if c["area"] not in AREAS:
+            fail("vitrine.changes", f"domaine inconnu {c['area']!r}")
     for t in data["tools"]:
         if t["id"] not in known:
             fail("vitrine.tools", f"outil inconnu {t['id']!r}")
@@ -378,6 +457,8 @@ def build(out: Path, root: Path | None = None) -> dict:
     for f in SITE.iterdir():
         if f.is_file():
             shutil.copy2(f, out / f.name)
+        elif f.is_dir():                                 # assets/ : modèles et ciel (CC0)
+            shutil.copytree(f, out / f.name, dirs_exist_ok=True)
     (out / ".nojekyll").write_text("", encoding="utf-8")
     (out / "data").mkdir(exist_ok=True)
     (out / "data" / "vitrine.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -413,6 +494,104 @@ def publish(repo: Path | None = None, cfg: dict | None = None, runner=subprocess
             "reason": (push.stderr or "")[-200:], **res}
 
 
+# ── Le drapeau : publier dès qu'il y a une amélioration ──────────────────────
+#
+# Tout ce qui améliore Matthew lève le drapeau (flag) : un commit ou une fusion dans le
+# dépôt (crochets Git post-commit / post-merge, posés par `hooks`), un cycle de la boucle
+# de nuit (flywheel), y compris quand Night Shift fait entrer un correctif. Le lanceur
+# (`run`) ne publie que si le drapeau est levé, au plus une fois toutes les MIN_GAP_S,
+# et ne le baisse qu'après un push réussi. Une tâche planifiée toutes les 30 minutes
+# rattrape un drapeau resté levé (réseau coupé, PC en veille, publication trop proche).
+
+MIN_GAP_S = 300
+HOOK_MARK = "# matthew-vitrine"
+
+
+def _flag_path(root: Path | None = None) -> Path:
+    return (root or data_dir()) / "vitrine" / "FLAG"
+
+
+def flag(reason: str, root: Path | None = None) -> dict:
+    """Lève le drapeau (les raisons s'accumulent jusqu'à la publication)."""
+    path = _flag_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cur = _read(path, {"since": time.time(), "reasons": []})
+    cur["reasons"] = (cur.get("reasons", []) + [f"{datetime.now():%Y-%m-%d %H:%M} {reason[:60]}"])[-20:]
+    path.write_text(json.dumps(cur, ensure_ascii=False), encoding="utf-8")
+    return cur
+
+
+def run(root: Path | None = None, cfg: dict | None = None, publisher=None, clock=time.time) -> dict:
+    """Publie si le drapeau est levé ; sinon ne fait rien. Ne lève jamais d'exception."""
+    root = root or data_dir()
+    cfg = cfg or config()
+    path, state_path = _flag_path(root), root / "vitrine" / "last_publish.json"
+    if not path.exists():
+        return {"ran": False, "reason": "drapeau baissé"}
+    if not cfg.get("vitrine_publish"):
+        return {"ran": False, "reason": "vitrine_publish=false"}
+    last = _read(state_path, {}).get("at", 0)
+    if clock() - last < MIN_GAP_S:
+        return {"ran": False, "reason": f"publiée il y a {int(clock() - last)} s ; la tâche planifiée reprendra"}
+    lock = root / "vitrine" / "publish.lock"
+    if lock.exists() and clock() - lock.stat().st_mtime < 1800:
+        return {"ran": False, "reason": "publication déjà en cours"}
+    lock.write_text(str(clock()), encoding="utf-8")
+    try:
+        flagged = _read(path, {})
+        try:
+            res = (publisher or (lambda: publish(Path(cfg["vitrine_repo"]), cfg)))()
+        except Exception as e:
+            res = {"ok": False, "reason": f"{type(e).__name__}: {e}"}
+        if res.get("ok"):
+            # Baissé seulement s'il n'a pas été relevé pendant la publication.
+            if _read(path, {}) == flagged:
+                path.unlink(missing_ok=True)
+            state_path.write_text(json.dumps({"at": clock(), "reasons": flagged.get("reasons", []),
+                                              "pushed": res.get("pushed")}), encoding="utf-8")
+        return {"ran": True, **{k: res.get(k) for k in ("ok", "pushed", "reason")}}
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def spawn() -> None:
+    """Lance `run` en arrière-plan, détaché : un commit ne doit pas attendre la publication."""
+    from matthew import REPO
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.Popen([sys.executable, "-m", "matthew.vitrine", "run"], cwd=str(REPO),
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                     creationflags=flags, close_fds=True)
+
+
+def install_hooks(repo: Path | None = None) -> list[str]:
+    """Crochets Git post-commit et post-merge : lever le drapeau et publier en fond.
+    Un crochet déjà présent est gardé : notre ligne s'ajoute à la fin."""
+    from matthew import REPO
+    hooks = Path(repo or REPO) / ".git" / "hooks"
+    py = sys.executable.replace("\\", "/")
+    line = f'"{py}" -m matthew.vitrine flag "{{kind}}" --spawn >/dev/null 2>&1 || true  {HOOK_MARK}\n'
+    done = []
+    for name, kind in (("post-commit", "code : nouveau commit"), ("post-merge", "code : fusion")):
+        f = hooks / name
+        text = f.read_text(encoding="utf-8") if f.exists() else "#!/bin/sh\n"
+        if HOOK_MARK not in text:
+            f.write_text(text.rstrip("\n") + "\n" + line.replace("{kind}", kind), encoding="utf-8")
+        done.append(str(f))
+    return done
+
+
+def schedule(minutes: int = 30, runner=subprocess.run) -> dict:
+    """Tâche Windows « Matthew vitrine » : toutes les N minutes, publier si le drapeau est levé."""
+    from matthew import REPO
+    cmd_file = data_dir() / "vitrine" / "run.cmd"
+    cmd_file.write_text("\r\n".join(["@echo off", f'cd /d "{REPO}"', "set PYTHONIOENCODING=utf-8",
+                                      f'"{sys.executable}" -m matthew.vitrine run >> "{data_dir() / "vitrine" / "run.log"}" 2>&1',
+                                      ""]), encoding="utf-8")
+    cp = runner(["schtasks", "/Create", "/TN", "Matthew vitrine", "/SC", "MINUTE", "/MO", str(minutes),
+                 "/TR", f'"{cmd_file}"', "/F"], capture_output=True, text=True)
+    return {"ok": cp.returncode == 0, "out": (cp.stdout or cp.stderr).strip()[:200]}
+
+
 def setup(repo: Path, name: str = "matthew-vitrine", runner=subprocess.run) -> dict:
     """Première mise en ligne, À LANCER PAR L'UTILISATEUR (c'est elle qui rend public) :
     crée le dépôt GitHub public depuis le clone local, pousse, active GitHub Pages."""
@@ -441,6 +620,12 @@ def main(argv=None) -> int:
     sub.add_parser("replay")
     s = sub.add_parser("setup", help="première mise en ligne (crée le dépôt public, active Pages)")
     s.add_argument("--repo", default=None)
+    f = sub.add_parser("flag", help="lever le drapeau (une amélioration vient d'arriver)")
+    f.add_argument("reason")
+    f.add_argument("--spawn", action="store_true", help="et lancer la publication en fond")
+    sub.add_parser("run", help="publier si le drapeau est levé")
+    sub.add_parser("hooks", help="poser les crochets Git post-commit / post-merge")
+    sub.add_parser("schedule", help="tâche planifiée de rattrapage, toutes les 30 min")
     b = sub.add_parser("build")
     b.add_argument("out")
     p = sub.add_parser("publish")
@@ -450,6 +635,16 @@ def main(argv=None) -> int:
         out = replay()
     elif a.cmd == "setup":
         out = setup(Path(a.repo or config()["vitrine_repo"]))
+    elif a.cmd == "flag":
+        out = flag(a.reason)
+        if a.spawn:
+            spawn()
+    elif a.cmd == "run":
+        out = run()
+    elif a.cmd == "hooks":
+        out = install_hooks()
+    elif a.cmd == "schedule":
+        out = schedule()
     elif a.cmd == "build":
         out = build(Path(a.out))
     else:

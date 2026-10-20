@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Matthew — une IA qui apprend chaque nuit</title>
-<meta name="description" content="Matthew est l'IA personnelle de JARVIS. Chaque nuit elle s'entraîne, passe un examen et, si elle fait mieux, prend la relève. Cette page montre ses progrès, rien d'autre.">
+<meta name="description" content="Matthew est une IA personnelle qui s'entraîne chaque nuit, passe un examen et ne prend la relève que si elle fait mieux. Cette page montre ses progrès, rien d'autre.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Matthew — une IA qui apprend chaque nuit, en public">
 <meta property="og:description" content="Regardez une IA personnelle se construire jour après jour : son score, ce qu'elle sait faire, et le même examen rejoué chaque nuit.">
@@ -32,15 +32,16 @@
   <div class="hero-text">
     <p class="kicker"><span class="dot live"></span> Apprentissage en public · lecture seule</p>
     <h1 id="titre">MATTHEW</h1>
-    <p class="lead">L'IA personnelle de JARVIS. Chaque nuit, elle s'entraîne, passe un examen, et ne prend la relève que si elle fait mieux que la veille. Vous regardez ; personne ne peut lui parler d'ici.</p>
+    <p class="lead">Une IA personnelle qui se construit sous vos yeux. Chaque nuit, elle s'entraîne, passe un examen, et ne prend la relève que si elle fait mieux que la veille. Chaque amélioration apparaît ici. Vous regardez ; personne ne peut lui parler d'ici.</p>
   </div>
-  <div id="scene" class="scene" role="img" aria-label="Scène 3D : Matthew au centre, ses outils tout autour, regroupés par domaine. Chaque scénario de l'examen part du centre vers l'outil choisi."></div>
+  <div id="scene" class="scene" role="img" aria-label="Scène 3D : une base sous un ciel étoilé. Matthew flotte au centre ; autour, un bâtiment par domaine et un module par outil, avec une balise colorée selon sa précision. Chaque scénario de l'examen part du centre vers l'outil choisi."></div>
   <dl class="stats" id="stats" aria-live="polite">
     <div><dt>Score</dt><dd id="s-score">—</dd></div>
     <div><dt>Bon outil</dt><dd id="s-tool">—</dd></div>
     <div><dt>Outils appris</dt><dd id="s-tools">—</dd></div>
     <div><dt>Exemples vérifiés</dt><dd id="s-ex">—</dd></div>
     <div><dt>Nuits</dt><dd id="s-nights">—</dd></div>
+    <div><dt>Améliorations</dt><dd id="s-changes">—</dd></div>
   </dl>
   <aside class="replay" id="replay" aria-live="polite">
     <div class="replay-head">
@@ -70,6 +71,12 @@
     <div class="table-wrap"><table id="exam"><caption class="sr">Résultats de l'examen par scénario et par jour</caption></table></div>
   </section>
 
+  <section class="band">
+    <header><h2>Améliorations</h2><p>Tout ce qui l'a fait progresser : son intelligence, sa voix, son interface, sa fiabilité. La page se met à jour d'elle-même à chaque amélioration.</p></header>
+    <div class="chips" id="chips" role="group" aria-label="Filtrer par domaine"></div>
+    <ol class="changes" id="changes"></ol>
+  </section>
+
   <section class="band two">
     <div>
       <header><h2>Les nuits</h2></header>
@@ -91,7 +98,7 @@
 
 <footer>
   <p>Mis à jour le <span id="gen">—</span> · base <span id="base">—</span> · <span id="tok">—</span></p>
-  <p>Page en lecture seule, régénérée après chaque nuit d'apprentissage. Partie du projet <a href="https://github.com/TeddyDARKVADOR/Jarvis_replacement_new">JARVIS</a>.</p>
+  <p>Page en lecture seule, régénérée à chaque amélioration. Décor : <a href="https://kenney.nl/assets/space-kit">Space Kit de Kenney</a> et ciel <a href="https://polyhaven.com/a/qwantani_night_puresky">Poly Haven</a> (CC0) · rendu <a href="https://threejs.org">three.js</a>.</p>
 </footer>
 
 <noscript><p class="noscript">Cette page a besoin de JavaScript pour afficher les chiffres du jour.</p></noscript>
