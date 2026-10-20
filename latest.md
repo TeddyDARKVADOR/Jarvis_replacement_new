@@ -1,29 +1,29 @@
-## JARVIS Night Shift — 2026-10-20 · passe 2/3
+## JARVIS Night Shift — 2026-10-20 · passe 3/3
 
 **18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.**
 
-commit `47a5308` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 12 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39378525867)
+commit `47a5308` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 19 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39393526695)
 
 | Suite | Score | État | Durée |
 |---|---:|---|---:|
-| capabilities.selftest | 11/11 | ✅ vert | 0.3 s |
+| capabilities.selftest | 11/11 | ✅ vert | 0.6 s |
 | context.selftest | 33/33 | ✅ vert | 0.1 s |
-| server.selftest | 35/35 | ✅ vert | 1.8 s |
-| server.routing_selftest | 35/35 | ✅ vert | 0.6 s |
-| client_desktop --selftest | 28/28 | ✅ vert | 0.5 s |
-| cognition.selftest | 64/64 | ✅ vert | 3.9 s |
-| eval_lab.selftest | 28/28 | ✅ vert | 4.4 s |
-| core.code_workspace.selftest | 34/34 | ✅ vert | 33.6 s |
-| reminders.selftest | 4/4 | ✅ vert | 0.2 s |
-| resilience.selftest | 15/15 | ✅ vert | 0.4 s |
-| extensions.selftest | 14/15 | ❌ rouge (déjà) | 0.7 s |
-| offline.selftest | 10/10 | ✅ vert | 1.2 s |
+| server.selftest | 35/35 | ✅ vert | 2.1 s |
+| server.routing_selftest | 35/35 | ✅ vert | 0.7 s |
+| client_desktop --selftest | 28/28 | ✅ vert | 0.8 s |
+| cognition.selftest | 64/64 | ✅ vert | 3.7 s |
+| eval_lab.selftest | 28/28 | ✅ vert | 7.0 s |
+| core.code_workspace.selftest | 34/34 | ✅ vert | 33.7 s |
+| reminders.selftest | 4/4 | ✅ vert | 0.3 s |
+| resilience.selftest | 15/15 | ✅ vert | 0.7 s |
+| extensions.selftest | 14/15 | ❌ rouge (déjà) | 0.8 s |
+| offline.selftest | 10/10 | ✅ vert | 1.3 s |
 | core.token_usage_selftest | 1/1 | ✅ vert | 0.0 s |
 | actions.repository_review_selftest | 1/1 | ✅ vert | 0.0 s |
-| nightshift.selftest | 34/34 | ✅ vert | 5.2 s |
-| meeting.selftest | 21/21 | ✅ vert | 0.8 s |
+| nightshift.selftest | 34/34 | ✅ vert | 6.5 s |
+| meeting.selftest | 21/21 | ✅ vert | 1.0 s |
 | pilot.selftest | 13/13 | ✅ vert | 1.7 s |
-| quota.selftest | 7/7 | ✅ vert | 0.0 s |
+| quota.selftest | 7/7 | ✅ vert | 0.1 s |
 | daily.selftest | 7/8 | ❌ rouge (déjà) | 15.2 s |
 | incidents.selftest | 6/6 | ✅ vert | 0.2 s |
 
@@ -41,6 +41,7 @@ commit `47a5308` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 
 
 - Passe 1 : rien de tenté — rien de tenté · 0 tokens
 - Passe 2 : rien de tenté — rien de tenté · 0 tokens
+- Passe 3 : rien de tenté — rien de tenté · 0 tokens
 
 ### Indicateurs — JARVIS s'améliore-t-il ?
 

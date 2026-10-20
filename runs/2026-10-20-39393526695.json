@@ -1,0 +1,695 @@
+{
+ "schema_version": "jarvis.nightly/1",
+ "run_id": "39393526695",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39393526695",
+ "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
+ "ref": "main",
+ "event": "schedule",
+ "commit": "47a5308",
+ "commit_full": "47a5308f6864cd4f243caf67dc0905fa1645a143",
+ "previous": {
+  "run_id": "39378525867",
+  "commit": "47a5308",
+  "finished_at": "2026-10-20T08:08:45+02:00",
+  "status": "partial_success"
+ },
+ "started_at": "2026-10-20T10:28:09+02:00",
+ "finished_at": "2026-10-20T10:29:28+02:00",
+ "duration_s": 79.0,
+ "status": "partial_success",
+ "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
+ "environment": {
+  "runner": "github",
+  "os": "Ubuntu 24.04.5 LTS",
+  "python": "3.12.15",
+  "image": "ubuntu24 20261012.334.1"
+ },
+ "suites": [
+  {
+   "name": "capabilities.selftest",
+   "platform": "linux",
+   "passed": 11,
+   "total": 11,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.6,
+   "outcome": "ok"
+  },
+  {
+   "name": "context.selftest",
+   "platform": "linux",
+   "passed": 33,
+   "total": 33,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.1,
+   "outcome": "ok"
+  },
+  {
+   "name": "server.selftest",
+   "platform": "linux",
+   "passed": 35,
+   "total": 35,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 2.1,
+   "outcome": "ok"
+  },
+  {
+   "name": "server.routing_selftest",
+   "platform": "linux",
+   "passed": 35,
+   "total": 35,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.7,
+   "outcome": "ok"
+  },
+  {
+   "name": "client_desktop --selftest",
+   "platform": "linux",
+   "passed": 28,
+   "total": 28,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.8,
+   "outcome": "ok"
+  },
+  {
+   "name": "cognition.selftest",
+   "platform": "linux",
+   "passed": 64,
+   "total": 64,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 3.7,
+   "outcome": "ok"
+  },
+  {
+   "name": "eval_lab.selftest",
+   "platform": "linux",
+   "passed": 28,
+   "total": 28,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 7.0,
+   "outcome": "ok"
+  },
+  {
+   "name": "core.code_workspace.selftest",
+   "platform": "linux",
+   "passed": 34,
+   "total": 34,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 33.7,
+   "outcome": "ok"
+  },
+  {
+   "name": "reminders.selftest",
+   "platform": "linux",
+   "passed": 4,
+   "total": 4,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.3,
+   "outcome": "ok"
+  },
+  {
+   "name": "resilience.selftest",
+   "platform": "linux",
+   "passed": 15,
+   "total": 15,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.7,
+   "outcome": "ok"
+  },
+  {
+   "name": "extensions.selftest",
+   "platform": "linux",
+   "passed": 14,
+   "total": 15,
+   "status": "failing",
+   "failures": [
+    "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
+   ],
+   "failed": [
+    {
+     "id": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
+     "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
+     "detail": "[]",
+     "class": "preexisting"
+    }
+   ],
+   "duration_s": 0.8,
+   "outcome": "failing"
+  },
+  {
+   "name": "offline.selftest",
+   "platform": "linux",
+   "passed": 10,
+   "total": 10,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 1.3,
+   "outcome": "ok"
+  },
+  {
+   "name": "core.token_usage_selftest",
+   "platform": "linux",
+   "passed": 1,
+   "total": 1,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.0,
+   "outcome": "ok"
+  },
+  {
+   "name": "actions.repository_review_selftest",
+   "platform": "linux",
+   "passed": 1,
+   "total": 1,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.0,
+   "outcome": "ok"
+  },
+  {
+   "name": "nightshift.selftest",
+   "platform": "linux",
+   "passed": 34,
+   "total": 34,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 6.5,
+   "outcome": "ok"
+  },
+  {
+   "name": "meeting.selftest",
+   "platform": "linux",
+   "passed": 21,
+   "total": 21,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 1.0,
+   "outcome": "ok"
+  },
+  {
+   "name": "pilot.selftest",
+   "platform": "linux",
+   "passed": 13,
+   "total": 13,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 1.7,
+   "outcome": "ok"
+  },
+  {
+   "name": "quota.selftest",
+   "platform": "linux",
+   "passed": 7,
+   "total": 7,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.1,
+   "outcome": "ok"
+  },
+  {
+   "name": "daily.selftest",
+   "platform": "linux",
+   "passed": 7,
+   "total": 8,
+   "status": "failing",
+   "failures": [
+    "2 agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau"
+   ],
+   "failed": [
+    {
+     "id": "2",
+     "label": "agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau",
+     "detail": "[('jour', \"Salon de l'emploi\"), ('07:00', 'Cours CDA'), ('15:00', 'Appel client New York')]",
+     "class": "preexisting"
+    }
+   ],
+   "duration_s": 15.2,
+   "outcome": "failing"
+  },
+  {
+   "name": "incidents.selftest",
+   "platform": "linux",
+   "passed": 6,
+   "total": 6,
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 0.2,
+   "outcome": "ok"
+  }
+ ],
+ "regressions": [],
+ "repaired": [],
+ "preexisting": [
+  {
+   "suite": "extensions.selftest",
+   "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
+   "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
+  },
+  {
+   "suite": "daily.selftest",
+   "check": "2",
+   "label": "agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau"
+  }
+ ],
+ "unreferenced": [],
+ "lint": {
+  "tool": "ruff",
+  "available": true,
+  "version": "0.17.0",
+  "count": 0,
+  "findings": [],
+  "new": []
+ },
+ "metrics": {
+  "eval_lab": {
+   "available": true,
+   "corpora": {
+    "legacy": {
+     "available": true,
+     "total": 77,
+     "pass": 77,
+     "rate": 1.0,
+     "by_verdict": {
+      "PASS": 77
+     },
+     "causes": {},
+     "by_surface": {
+      "policy": {
+       "pass": 32,
+       "total": 32
+      },
+      "routing": {
+       "pass": 23,
+       "total": 23
+      },
+      "sequence": {
+       "pass": 5,
+       "total": 5
+      },
+      "situation": {
+       "pass": 17,
+       "total": 17
+      }
+     }
+    },
+    "regressions": {
+     "available": true,
+     "total": 9,
+     "pass": 9,
+     "rate": 1.0,
+     "by_verdict": {
+      "PASS": 9
+     },
+     "causes": {},
+     "by_surface": {
+      "policy": {
+       "pass": 3,
+       "total": 3
+      },
+      "router": {
+       "pass": 2,
+       "total": 2
+      },
+      "sequence": {
+       "pass": 4,
+       "total": 4
+      }
+     }
+    }
+   }
+  },
+  "cognition": {
+   "available": true,
+   "values": {
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · questions justes": "6/6",
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · faux souvenirs devenus des faits": "0/4",
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · mise à jour Lyon → Bordeaux": "historisée",
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · suppression (« oublie ma sœur »)": "complète",
+    "Mémoire (3 sessions, 2 redémarrages, 4 inventions du modèle) · persistance après 2 redémarrages": "oui",
+    "Rappel (5 paires ancien/récent) · Park (récence+importance+pertinence)": "5/5 : le souvenir récent et important arrive en tête",
+    "Rappel (5 paires ancien/récent) · pertinence seule": "0/5 : le souvenir récent et important arrive en tête",
+    "Émotions (agent simulé qui suit les consignes) · essais avant de changer d'approche": "3",
+    "Émotions (agent simulé qui suit les consignes) · fausse alerte sur 10 succès": "non",
+    "Calibration (300 appels, réussites vraies connues) · Brier du modèle de soi": "0.163",
+    "Calibration (300 appels, réussites vraies connues) · Brier « toujours 50 % » (référence)": "0.25",
+    "Calibration (300 appels, réussites vraies connues) · ECE du modèle de soi": "0.025",
+    "Autonomie (vérification des propositions) · propositions dangereuses ou invalides refusées": "22/22",
+    "Autonomie (vérification des propositions) · propositions légitimes acceptées (pas de sur-blocage)": "8/8"
+   }
+  },
+  "context": {
+   "available": true,
+   "server": {
+    "tools": 40,
+    "chars": 28658
+   },
+   "local": {
+    "tools": 41,
+    "chars": 29894
+   },
+   "system_prompt_chars": 3540,
+   "estimated_tokens_local": 9552
+  }
+ },
+ "metrics_changes": [],
+ "green_streak": 0,
+ "task": {
+  "id": null,
+  "source": null,
+  "files": [],
+  "attempts": 0,
+  "outcome": "skipped",
+  "reason": "rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant",
+  "out_of_zone": [
+   {
+    "id": "fail-daily-2-47a5308",
+    "source": "failing_check",
+    "reason": "hors de la liste blanche : daily/__init__.py"
+   }
+  ],
+  "skipped": [
+   {
+    "id": "fail-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-47a5308",
+    "idea": "check:extensions.selftest:manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
+    "reason": "déjà tentée au commit 47a5308 avec le même contexte"
+   }
+  ]
+ },
+ "pull_request_url": null,
+ "usage": {
+  "llm_calls": 0,
+  "tokens_in": 0,
+  "tokens_out": 0,
+  "providers": {}
+ },
+ "budgets": {
+  "max_tasks": 1,
+  "max_llm_calls": 12,
+  "max_tokens": 60000,
+  "max_runtime_minutes": 45,
+  "passes": 3,
+  "max_open_prs": 3
+ },
+ "limitations": [],
+ "dry_run": true,
+ "backlog": [
+  {
+   "graph": "context",
+   "node": "l.voiture",
+   "label": "Détection de la voiture",
+   "status": "partiel",
+   "summary": "Sans ACTIVITY_RECOGNITION ni localisation (refusées par le manifeste), DRIVING ne se déclenche que par le nom Bluetooth de l'autoradio, déclaré côté serveur dans car_bluetooth_names.",
+   "files": [
+    "context/situation.py"
+   ],
+   "zone": true,
+   "owner": "humain (aucun contrôle ne le prouverait)"
+  },
+  {
+   "graph": "general",
+   "node": "tool.weather_report",
+   "label": "weather_report",
+   "status": "partiel",
+   "summary": "Météo de votre ville (lue dans la mémoire) : une phrase, et le navigateur s'ouvre.",
+   "files": [
+    "actions/weather_report.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "tool.youtube_video",
+   "label": "youtube_video",
+   "status": "partiel",
+   "summary": "YouTube : lire une vidéo, la résumer, ses infos, les tendances.",
+   "files": [
+    "actions/youtube_video.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "nightshift",
+   "node": "nightshift",
+   "label": "nightshift/ — le veilleur de nuit",
+   "status": "partiel",
+   "summary": "Phases 1 à 5 du plan Night Shift (meilleur.idee.md) : chaque nuit, GitHub Actions lance les suites testables sous Linux et ruff, compare avec la passe précédente, choisit à chaque passe une tâche diff",
+   "files": [
+    "nightshift/__init__.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "preprod",
+   "node": "t.audio",
+   "label": "audio",
+   "status": "partiel",
+   "summary": "Ce qui est déterministe ; le reste sort en PHYSICAL_ONLY.",
+   "files": [
+    "jarvis-preprod/tests/audio/test_audio.sh"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "server",
+   "node": "l.barge_in",
+   "label": "Interruption à la voix (option)",
+   "status": "partiel",
+   "summary": "phone_barge_in: true dans config/api_keys.json : l'audio du téléphone continue d'aller à Gemini pendant que JARVIS parle, et sa détection de voix peut l'interrompre. Désactivé par défaut.",
+   "files": [
+    "main.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "tool.reminder",
+   "label": "reminder · rappels",
+   "status": "partiel",
+   "summary": "Rappel à une date et une heure : tâche planifiée du système (filet quand JARVIS est fermé) et, quand il tourne, livraison par JARVIS lui-même (HUD, téléphone, voix).",
+   "files": [
+    "actions/reminder.py",
+    "reminders/__init__.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "tool.system_status",
+   "label": "system_status",
+   "status": "partiel",
+   "summary": "CPU, RAM, GPU, température, temps de fonctionnement, nombre de processus.",
+   "files": [
+    "main.py",
+    "actions/system_monitor.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "server",
+   "node": "m.assist",
+   "label": "assist.py — le cerveau d'Oracle pour les appareils",
+   "status": "partiel",
+   "summary": "Ce qu'un PC relié demande au cerveau d'Oracle, qui seul a les clés : POST /api/meeting/summary (compte rendu de réunion, puis livraison), /api/pilot/step (l'action suivante du pilote), /api/pilot/conf",
+   "files": [
+    "server/assist.py",
+    "server/run_headless.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "client_desktop",
+   "node": "f.plugins_appareil",
+   "label": "Plugins d'appareil (PLUGIN_DEVICE)",
+   "status": "partiel",
+   "summary": "Un plugin qui déclare PLUGIN_DEVICE = (dépendances) s'exécute là où est l'utilisateur : le client le lit dans le texte (sans importer les autres plugins), vérifie ses dépendances, le déclare comme cap",
+   "files": [
+    "client_desktop/device.py",
+    "client_desktop/app.py",
+    "client_desktop/state.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "f.nightshift",
+   "label": "Veilleur de nuit (Night Shift)",
+   "status": "partiel",
+   "summary": "Trois passes par nuit (01 h 17, 03 h 17, 05 h 17) : GitHub Actions lance les suites testables sous Linux et ruff, compare avec la passe précédente, choisit à chaque passe une tâche différente dans la ",
+   "files": [
+    "nightshift/__init__.py",
+    ".github/workflows/nightly.yml",
+    ".github/workflows/nightshift-cleanup.yml"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "f.pilote",
+   "label": "Pilote universel",
+   "status": "partiel",
+   "summary": "JARVIS prend la main sur l'ordinateur pour n'importe quelle application ou site : il regarde l'écran (arbre d'accessibilité numéroté + capture), choisit une action avec Gemini, la fait, vérifie, recom",
+   "files": [
+    "pilot/__init__.py",
+    "pilot/a11y.py",
+    "pilot/a11y_windows.py",
+    "pilot/a11y_linux.py",
+    "pilot/a11y_macos.py",
+    "pilot/model.py",
+    "pilot/screen.py",
+    "pilot/inputs.py",
+    "pilot/discover.py",
+    "pilot/brain.py",
+    "pilot/agent.py",
+    "pilot/recipes.py",
+    "pilot/client.py",
+    "pilot/selftest.py",
+    "server/assist.py",
+    "main.py",
+    "client_desktop/app.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "general",
+   "node": "f.reunion",
+   "label": "Copilote de réunion",
+   "status": "partiel",
+   "summary": "Une visio commence (n'importe quelle application prend le micro ou la caméra) : JARVIS capte le son du PC (« Participants ») et le micro (« Moi »), transcrit sur ce PC au fil de la réunion, puis écrit",
+   "files": [
+    "meeting/__init__.py",
+    "meeting/detect.py",
+    "meeting/_win_sensor.py",
+    "meeting/capture.py",
+    "meeting/transcribe.py",
+    "meeting/summarize.py",
+    "meeting/brain.py",
+    "meeting/watcher.py",
+    "meeting/client.py",
+    "meeting/selftest.py",
+    "server/assist.py",
+    "main.py",
+    "client_desktop/app.py",
+    "meeting/live.py",
+    "meeting/overlay.py",
+    "meeting/hotkey.py",
+    "client_desktop/__init__.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "android",
+   "node": "m.matrice",
+   "label": "Ce qui arrive sur Android",
+   "status": "partiel",
+   "summary": "Depuis le téléphone, tout ce qui n'est pas open_app s'exécute sur Oracle : parfait pour le réseau et la réflexion, inutile pour ce qui touche un écran.",
+   "files": [],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "cognition",
+   "node": "l.local",
+   "label": "Mode local seulement",
+   "status": "partiel",
+   "summary": "Ni la cognition ni ESPRIT ne tournent sur Oracle : l'usage quotidien en ligne n'en profite pas.",
+   "files": [],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "deployment",
+   "node": "l.dependances",
+   "label": "Ce qui dépend d'autre chose que ce PC",
+   "status": "partiel",
+   "summary": "Oracle lui-même (secrets et sauvegardes sur la même VM) ; le compte Tailscale (sinon IP publique et une clé SSH absente de ce PC) ; la clé de signature Android.",
+   "files": [],
+   "zone": false,
+   "owner": "humain"
+  }
+ ],
+ "pass": {
+  "n": 3,
+  "of": 3
+ },
+ "diagnostics": [],
+ "week": null,
+ "tonight": [
+  {
+   "pass": 1,
+   "run_id": "39355718135",
+   "status": "partial_success",
+   "task": null,
+   "outcome": "skipped",
+   "ref": {},
+   "tokens": 0,
+   "pr": null
+  },
+  {
+   "pass": 2,
+   "run_id": "39378525867",
+   "status": "partial_success",
+   "task": null,
+   "outcome": "skipped",
+   "ref": {},
+   "tokens": 0,
+   "pr": null
+  },
+  {
+   "pass": 3,
+   "run_id": "39393526695",
+   "status": "partial_success",
+   "task": null,
+   "outcome": "skipped",
+   "ref": {},
+   "tokens": 0,
+   "pr": null
+  }
+ ],
+ "local": {
+  "available": false,
+  "reason": "aucun avis local : PC éteint, ou worker non installé (phase 5, facultative)"
+ },
+ "incidents": {
+  "available": false,
+  "reason": "pas de résumé partagé (incidents_share désactivé, ou JARVIS pas lancé)"
+ }
+}
