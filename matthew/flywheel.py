@@ -221,7 +221,22 @@ class Flywheel:
         st = _read(self.state_path, {})
         st["last_cycle"] = {"at": rep["at"], "outcome": outcome}
         _write(self.state_path, st)
+        if outcome != "occupé":
+            self._vitrine(rep)
         return rep
+
+    def _vitrine(self, rep: dict) -> None:
+        """8. vitrine : rejouer l'examen, régénérer la page publique, pousser. Un échec
+        (Ollama éteint, réseau, garde-fou de vie privée) est noté, jamais bloquant."""
+        if not self.cfg.get("vitrine_publish") or not self.cfg.get("vitrine_repo"):
+            return
+        try:
+            from matthew import vitrine
+            res = vitrine.publish(Path(self.cfg["vitrine_repo"]), self.cfg, runner=self._runner)
+        except Exception as e:
+            res = {"ok": False, "reason": f"{type(e).__name__}: {e}"}
+        rep["steps"].append({"step": "vitrine", **{k: res.get(k) for k in ("ok", "pushed", "reason")}})
+        _write(self.root / "reports" / f"{rep['at']}.json", rep)
 
     def status(self) -> dict:
         eps = corr = 0

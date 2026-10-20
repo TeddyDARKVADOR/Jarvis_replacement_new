@@ -70,6 +70,10 @@ DEFAULTS: dict = {
     # Autres bases essayées à tour de rôle (licence ouverte obligatoire) ; un challenger
     # qui bat le champion devient la base. Ex. : [{"model": "Qwen/Qwen3.5-9B", "license": "apache-2.0"}]
     "base_challengers": [],
+    # Vitrine publique (matthew/vitrine.py) : clone local du dépôt GitHub Pages, publié
+    # après chaque cycle. Approuvé par l'utilisateur le 2026-10-20 ; false la coupe.
+    "vitrine_repo": r"D:\DEV\matthew-vitrine",
+    "vitrine_publish": True,
 }
 
 

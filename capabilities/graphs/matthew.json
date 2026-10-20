@@ -201,7 +201,7 @@
       "id": "m.flywheel",
       "label": "flywheel.py — la boucle automatique",
       "kind": "module",
-      "summary": "Amorçage → école → données → seuil → entraînement → ollama create → évaluation contre le champion → promotion. Change aussi de modèle de base : des challengers sous licence ouverte sont essayés sur les mêmes données, et celui qui gagne devient la base.",
+      "summary": "Amorçage → école → données → seuil → entraînement → ollama create → évaluation contre le champion → promotion → vitrine publique. Change aussi de modèle de base : des challengers sous licence ouverte sont essayés sur les mêmes données, et celui qui gagne devient la base.",
       "details": [
         "Premier cycle réel : champion promu le 2026-10-20 à 20 h 52 — 116 exemples amorcés (23 outils) + augmentations, 3 époques sur la RTX 3060 (meilleure : la 2e, perte d'éval 0,125), GGUF Q5_K_M 3,2 Go ; éval sur 18 exemples : composite 0,85, bon outil 100 %, arguments 79 %, JSON 100 %, refus quand aucun outil ne convient 50 %, 1,1 s ; servi par Ollama, choisi par le mode hors-ligne et placé en tête de la cognition.",
         "Tâche planifiée Windows « Matthew flywheel », chaque nuit à 02 h 30 (posée le 2026-10-20) : memory/matthew/flywheel.cmd, journal memory/matthew/flywheel.log."
@@ -318,20 +318,24 @@
     },
     {
       "id": "v.vitrine",
-      "label": "Idée : la vitrine publique — voir un chef-d'œuvre se construire",
-      "kind": "procedure",
-      "summary": "Une page en ligne, en lecture seule, mise à jour après chaque cycle : JARVIS/Matthew accomplit des tâches dans une simulation 3D de son environnement (ses outils, son PC, ses appareils), et la page montre jour après jour ce qu'il a appris. Le public regarde, n'agit sur rien et n'a accès à rien.",
+      "label": "La vitrine publique — voir Matthew apprendre",
+      "kind": "fonction",
+      "summary": "Une page en lecture seule (GitHub Pages, dépôt public séparé matthew-vitrine) : la scène 3D de Matthew et de ses 43 outils par domaine, l'examen du jour rejoué en faisceaux (réussi / raté, jamais vu / vu à l'entraînement), la courbe des nuits, la précision par outil, le journal des cycles. Régénérée et poussée par la boucle de nuit (étape 8) ; GitHub Pages republie à chaque push.",
       "details": [
-        "CONTENU — chiffres agrégés seulement : score du champion, courbe jour par jour, précision par outil, outils couverts (23/43 → 43/43), base du modèle, tokens de Matthew, cycles et promotions, nouvelles compétences.",
-        "SIMULATION 3D — une scène three.js (réutiliser le noyau Terre du HUD et son style holographique) où chaque outil est un lieu ; Matthew rejoue des tâches du jeu d'évaluation SYNTHÉTIQUE (amorçage), on voit le routeur choisir, l'appel partir, le résultat revenir ; succès en cyan, échecs en rouge, et le même scénario rejoué à J-7 pour voir le progrès.",
-        "VIE PRIVÉE (non négociable) — jamais une demande, une réponse ou un résultat d'outil du journal réel ; seulement l'évaluation synthétique et des agrégats ; scrub() en dernier filet ; aucune clé ni chemin local ; une liste blanche de champs plutôt qu'une liste noire.",
-        "LECTURE SEULE — page statique générée (HTML + JSON), aucune entrée, aucun appel vers le PC ; hébergement : Artifact claude.ai (privé par défaut, lien en lecture) ou GitHub Pages.",
-        "AUTOMATISATION — étape 8 de la boucle de nuit (« vitrine ») : générer, vérifier la liste blanche, publier. Publier est une action vers l'extérieur : la première version est relue et approuvée par l'utilisateur avant toute mise en ligne automatique.",
-        "Rien d'équivalent trouvé (recherche 2026-10-20) : Termi Protocol montre des agents de code en 3D, sans diffusion publique ni masquage ; la couche de masquage est à construire."
+        "CONSTRUIT le 2026-10-20 : données (matthew/vitrine.py), page sans compilation (three.js 0.169.0 épinglé, halo, Fresnel, étiquettes CSS2D), carte de partage 1200×630 (Pillow), page entièrement lisible sans 3D, mouvement réduit respecté.",
+        "VIE PRIVÉE : liste blanche construite champ par champ ; check_public() refuse tout texte du journal réel, champ non prévu, secret, téléphone, chemin local, outil inconnu, scénario absent de l'amorçage — 7 fuites fabriquées refusées par le selftest.",
+        "HONNÊTETÉ : l'examen prend en priorité des demandes du hold-out (jamais vues à l'entraînement) et la page dit lesquelles le sont ; premier rejeu 11/11 jamais vues, 12/12 vues.",
+        "VÉRIFIÉ en local (Edge sans interface, bureau 1440 px et téléphone 390 px) ; PAS ENCORE EN LIGNE : la création du dépôt public est refusée par les permissions de Claude Code — l'utilisateur lance une fois `python -m matthew.vitrine setup` (crée le dépôt, pousse D:\\DEV\\matthew-vitrine, active Pages).",
+        "Ensuite automatique : chaque nuit, flywheel → vitrine.publish() (rejeu, construction, garde-fou, git push) ; vitrine_publish=false le coupe.",
+        "Rien d'équivalent trouvé (recherche 2026-10-20) : Termi Protocol montre des agents en 3D, sans diffusion publique ni masquage."
       ],
       "files": [
-        "matthew/flywheel.py"
-      ]
+        "matthew/vitrine.py",
+        "matthew/vitrine_site/index.html",
+        "matthew/vitrine_site/app.js"
+      ],
+      "status": "a_tester",
+      "verified": "2026-10-20 — matthew.selftest : 26/26"
     },
     {
       "id": "l.outils",

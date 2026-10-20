@@ -36,7 +36,8 @@ DECLS = [
 ]
 CFG = {**matthew.DEFAULTS, "teacher": {"base_url": "http://x", "model": "gpt-oss-120b",
                                         "license": "apache-2.0"},
-       "min_new_examples": 3, "bootstrap_budget": 0, "dedup": False}
+       "min_new_examples": 3, "bootstrap_budget": 0, "dedup": False,
+       "vitrine_publish": False}
 
 
 def check(name):
@@ -659,6 +660,84 @@ def _augment():
     bal, cut = A.balance(rows[:300] + chat + vol)        # médiane 10 → plafond 30
     assert cut == 300 - 30 and len(bal) == 50, (cut, len(bal))
     return f"pertinence {len(irr)}/400, masqués {len(msk)}/400"
+
+
+def _vitrine_world(root: Path):
+    """Un journal réel (privé), un amorçage synthétique, un champion et un rapport."""
+    from matthew.bootstrap import Bootstrap
+    j = Journal(root, clock=Clock())
+    j.save_tools(DECLS)
+    j.episode(session="s", user="appelle ma sœur Camille au 06 11 22 33 44", tools=[], reply="Je l'appelle.")
+    j.episode(session="s", user="mon secret : le coffre est derrière le tableau", tools=[], reply="Noté.")
+    Bootstrap(j, Client("http://x", "gpt-oss-120b", post=fake_post(fake_bootstrap_teacher), usage_root=root),
+              cfg=CFG, sleep=lambda s: None).run(per_tool=3, chitchat=0)
+    (root / "champion.json").write_text(json.dumps({"model": "matthew", "since": "20261020-205246",
+        "base": "Qwen/Qwen3.5-4B", "score": {"composite": 0.85, "tool_name": 1.0, "secret_field": "x"}}), encoding="utf-8")
+    (root / "reports").mkdir(exist_ok=True)
+    (root / "reports" / "20261020-205246.json").write_text(json.dumps({"at": "20261020-205246", "outcome": "nouveau champion",
+        "steps": [{"step": "données", "train": 4, "eval": 1}, {"step": "évaluation", "promote": True,
+                   "candidate": {"composite": 0.85, "tool_name": 1.0, "failures": [{"user": "mon secret"}]}}]}), encoding="utf-8")
+    (root / "last_eval.json").write_text(json.dumps({"per_tool": {"weather": 0.9}, "failures": [
+        {"user": "appelle ma sœur Camille"}]}), encoding="utf-8")
+    return j
+
+
+@check("vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite")
+def _vitrine():
+    import copy as _copy
+    from matthew import vitrine as V
+    root = TMP / "vitrine"
+    _vitrine_world(root)
+
+    class Showy:                                  # le champion rejoue l'examen
+        model = "matthew"
+        def chat(self, messages, tools=None, **kw):
+            return smart_teacher({"messages": messages})
+    V.replay(Showy(), root=root, day="2026-10-20")
+    data = V.gather(root)
+    assert V.check_public(data, root) > 20
+    blob = json.dumps(data, ensure_ascii=False)
+    for leak in ("Camille", "06 11", "coffre", "secret_field", "failures", "Je l'appelle", str(TMP)):
+        assert leak not in blob, f"fuite : {leak}"
+    assert data["showcase"] and all(s["results"] for s in data["showcase"])
+    assert data["champion"]["score"]["composite"] == 0.85 and "secret_field" not in data["champion"]["score"]
+    # Chaque fuite fabriquée doit être refusée.
+    attempts = {
+        "texte du journal": lambda d: d["showcase"][0].__setitem__("request", "mon secret : le coffre est derrière le tableau"),
+        "champ en plus": lambda d: d["champion"].__setitem__("journal", "x"),
+        "téléphone": lambda d: d["tools"][0].__setitem__("label", "appelle le 06 11 22 33 44"),
+        "chemin local": lambda d: d["tools"][0].__setitem__("label", "D:/DEV/secret"),
+        "outil inconnu": lambda d: d["tools"][0].__setitem__("id", "rm_rf"),
+        "demande inventée hors amorçage": lambda d: d["showcase"][0].__setitem__("request", "une demande qui n'existe pas"),
+        "jour mal formé": lambda d: d["showcase"][0]["results"].__setitem__("hier", {"chosen": None, "ok": False, "ms": 0}),
+    }
+    for name, tamper in attempts.items():
+        bad = _copy.deepcopy(data)
+        tamper(bad)
+        try:
+            V.check_public(bad, root)
+        except V.PrivacyError:
+            continue
+        raise AssertionError(f"fuite acceptée : {name}")
+    # build écrit le site complet ; publish committe et pousse via git (faux runner).
+    site = TMP / "site"
+    res = V.build(site, root)
+    assert (site / "index.html").exists() and (site / "data" / "vitrine.json").exists() and (site / ".nojekyll").exists()
+    assert res["og"] and (site / "og.png").stat().st_size > 1000
+    repo = TMP / "vrepo"
+    (repo / ".git").mkdir(parents=True)
+    calls = []
+
+    def git(cmd, **kw):
+        calls.append(cmd[3])
+        return Proc(out=" M data/vitrine.json" if cmd[3] == "status" else "")
+    os.environ["MATTHEW_HOME"] = str(root)
+    try:
+        out = V.publish(repo, CFG, runner=git, do_replay=False)
+    finally:
+        os.environ["MATTHEW_HOME"] = str(TMP / "home")
+    assert out["pushed"] and calls == ["add", "status", "commit", "push"], (out, calls)
+    return f"{len(attempts)} fuites refusées, {res['fields_checked']} valeurs vérifiées"
 
 
 @check("contrat V2 : trois hooks gardés, données ignorées par Git")

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matthew — une IA qui apprend chaque nuit</title>
+<meta name="description" content="Matthew est l'IA personnelle de JARVIS. Chaque nuit elle s'entraîne, passe un examen et, si elle fait mieux, prend la relève. Cette page montre ses progrès, rien d'autre.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Matthew — une IA qui apprend chaque nuit, en public">
+<meta property="og:description" content="Regardez une IA personnelle se construire jour après jour : son score, ce qu'elle sait faire, et le même examen rejoué chaque nuit.">
+<meta property="og:image" content="https://teddydarkvador.github.io/matthew-vitrine/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#030810">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='14' fill='%235fe3ff'/%3E%3Ccircle cx='32' cy='32' r='26' fill='none' stroke='%235fe3ff' stroke-width='3' opacity='.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{"imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+}}
+</script>
+</head>
+<body>
+<a class="skip" href="#progres">Aller aux chiffres</a>
+
+<section class="hero" aria-labelledby="titre">
+  <div class="hero-text">
+    <p class="kicker"><span class="dot live"></span> Apprentissage en public · lecture seule</p>
+    <h1 id="titre">MATTHEW</h1>
+    <p class="lead">L'IA personnelle de JARVIS. Chaque nuit, elle s'entraîne, passe un examen, et ne prend la relève que si elle fait mieux que la veille. Vous regardez ; personne ne peut lui parler d'ici.</p>
+  </div>
+  <div id="scene" class="scene" role="img" aria-label="Scène 3D : Matthew au centre, ses outils tout autour, regroupés par domaine. Chaque scénario de l'examen part du centre vers l'outil choisi."></div>
+  <dl class="stats" id="stats" aria-live="polite">
+    <div><dt>Score</dt><dd id="s-score">—</dd></div>
+    <div><dt>Bon outil</dt><dd id="s-tool">—</dd></div>
+    <div><dt>Outils appris</dt><dd id="s-tools">—</dd></div>
+    <div><dt>Exemples vérifiés</dt><dd id="s-ex">—</dd></div>
+    <div><dt>Nuits</dt><dd id="s-nights">—</dd></div>
+  </dl>
+  <aside class="replay" id="replay" aria-live="polite">
+    <div class="replay-head">
+      <span class="label">Examen du jour</span>
+      <div class="days" id="days" role="group" aria-label="Rejouer l'examen d'un autre jour"></div>
+    </div>
+    <p class="req" id="r-req">Chargement…</p>
+    <p class="res"><span id="r-arrow">→</span> <span id="r-chosen"></span> <span class="badge" id="r-badge"></span> <span class="badge ghost" id="r-seen"></span></p>
+    <div class="replay-foot"><button id="r-pause" type="button" aria-pressed="false">Pause</button><span id="r-count"></span></div>
+  </aside>
+</section>
+
+<main>
+  <section id="progres" class="band">
+    <header><h2>Progrès</h2><p>Score de chaque candidat à l'examen, nuit après nuit. Un point plein : il a été promu et sert depuis.</p></header>
+    <div class="chart-wrap"><svg id="chart" role="img" aria-labelledby="chart-t"><title id="chart-t">Courbe du score par nuit</title></svg></div>
+    <div class="legend"><span class="k k1"></span>Score global <span class="k k2"></span>Bon outil <span class="k k3"></span>Bons arguments</div>
+  </section>
+
+  <section class="band">
+    <header><h2>Ce qu'il sait faire</h2><p>Ses outils, regroupés comme dans la scène. La barre : sa précision au dernier examen. Grisé : pas encore appris — il y arrive au fil des nuits.</p></header>
+    <div class="domains" id="domains"></div>
+  </section>
+
+  <section class="band">
+    <header><h2>L'examen, jour par jour</h2><p>Le même examen chaque nuit. « Jamais vu » : une demande que Matthew n'a jamais rencontrée en s'entraînant. Toutes les demandes sont inventées pour l'examen ; aucune ne vient d'une vraie conversation.</p></header>
+    <div class="table-wrap"><table id="exam"><caption class="sr">Résultats de l'examen par scénario et par jour</caption></table></div>
+  </section>
+
+  <section class="band two">
+    <div>
+      <header><h2>Les nuits</h2></header>
+      <ol class="nights" id="nights"></ol>
+    </div>
+    <div>
+      <header><h2>Comment il apprend</h2></header>
+      <ol class="steps">
+        <li><b>Inventer.</b> Un modèle ouvert écrit des demandes réalistes pour chaque outil.</li>
+        <li><b>Vérifier.</b> Un autre modèle, à l'aveugle, doit retrouver le bon outil. Sinon, la demande est jetée.</li>
+        <li><b>S'entraîner.</b> Sur une carte graphique de salon, depuis un modèle ouvert (Qwen3.5-4B).</li>
+        <li><b>Passer l'examen.</b> Sur des demandes jamais vues, outil par outil.</li>
+        <li><b>Prendre la relève</b> seulement s'il bat la version précédente. Sinon, rien ne change.</li>
+      </ol>
+      <p class="rules">Règles : aucune vraie conversation n'est publiée ici ; aucune réponse de Gemini ou de Claude ne lui sert de modèle — seulement des modèles sous licence ouverte et les corrections de son utilisateur.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>Mis à jour le <span id="gen">—</span> · base <span id="base">—</span> · <span id="tok">—</span></p>
+  <p>Page en lecture seule, régénérée après chaque nuit d'apprentissage. Partie du projet <a href="https://github.com/TeddyDARKVADOR/Jarvis_replacement_new">JARVIS</a>.</p>
+</footer>
+
+<noscript><p class="noscript">Cette page a besoin de JavaScript pour afficher les chiffres du jour.</p></noscript>
+<script type="module" src="app.js"></script>
+</body>
+</html>
