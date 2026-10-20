@@ -747,6 +747,10 @@ def attach(jarvis, db_path: Path | str | None = None,
     """Appelé une fois par JarvisLive.__init__. Mode local uniquement (pour l'instant).
     Les paramètres ne servent qu'au selftest, qui ne touche jamais la vraie base."""
     global _active
+    try:    # matthew/ (optionnel, tous les modes) : journal d'entraînement de notre modèle
+        __import__("matthew").attach(jarvis)
+    except ImportError:
+        pass
     ui = getattr(jarvis, "ui", None)
     if not getattr(ui, "local_mode", False):
         return None

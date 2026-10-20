@@ -1,0 +1,294 @@
+"""
+matthew/bootstrap.py — l'amorçage : des données d'entraînement sans attendre des semaines.
+
+Méthode APIGen / AgenticQwen (rejet par vérification indépendante), sans rien
+exécuter et sans Gemini :
+  1. inventer   pour chaque outil, le professeur ouvert écrit des demandes
+                variées en français parlé (tutoiement, vouvoiement, valeurs
+                concrètes, formulations indirectes) ;
+  2. vérifier   une AUTRE passe du professeur, qui ne sait pas quel outil était
+                visé, reçoit la demande avec le bon outil noyé parmi les leurres
+                du routeur ; gardé seulement s'il choisit cet outil, avec des
+                arguments conformes au schéma (obligatoires, types, enum).
+  3. sans outil quelques demandes de conversation, où la bonne réponse est de
+                répondre sans outil (sinon Matthew en appellerait partout).
+Un exemple s'arrête à l'appel d'outil (aucun résultat inventé) : Matthew y
+apprend à CHOISIR et à REMPLIR les arguments ; les réponses finales viennent
+du journal réel.
+
+Reprise possible : un outil déjà amorcé est sauté. Quota (429) : on attend ce
+que le serveur demande (au plus 3 fois de suite), puis on s'arrête proprement.
+
+    python -m matthew.bootstrap [--per-tool 6] [--chitchat 30] [--max-calls 400]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+import time
+import uuid
+from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from matthew import config
+from matthew.client import Client, ClientError, QuotaError, to_openai_tools
+from matthew.journal import Journal
+from matthew import data_dir
+from matthew.router import Router
+from matthew.router import default as default_router
+from matthew.teacher import SYSTEM, check_teacher, tool_subset
+
+GEN_PROMPT = """Voici un outil d'un assistant vocal personnel (sur PC Windows, en français) :
+
+nom : {name}
+description : {description}
+paramètres (JSON Schema) : {params}
+
+Écris {n} demandes DIFFÉRENTES qu'un utilisateur dirait à voix haute et qui exigent cet outil.
+Varie : longueur, tutoiement / vouvoiement, formulation directe ou indirecte, valeurs concrètes
+(noms, nombres, lieux, applications réalistes). Langue parlée naturelle, pas de liste technique.
+Réponds uniquement en JSON : {{"requests": ["...", "..."]}}"""
+
+CHAT_PROMPT = """Écris {n} phrases DIFFÉRENTES qu'un utilisateur dirait à son assistant vocal et
+auxquelles il faut répondre directement, SANS action ni recherche : salutations, remerciements,
+petites discussions, questions sur l'assistant lui-même, demandes de reformulation, avis simples.
+Varie le ton. Réponds uniquement en JSON : {{"requests": ["...", "..."]}}"""
+
+HARD_HINT = """
+
+Cette fois, des demandes DIFFICILES : formulations indirectes ou implicites (l'utilisateur
+décrit son besoin sans nommer l'action), phrases longues avec du contexte inutile, fautes
+de transcription vocale plausibles, et demandes proches d'autres outils."""
+
+_TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool,
+          "array": list, "object": dict}
+
+
+def valid_args(args: dict, schema: dict) -> tuple[bool, str]:
+    """Obligatoires présents, types et enum respectés (schéma JSON en minuscules)."""
+    if not isinstance(args, dict) or "_invalid_json" in args:
+        return False, "arguments illisibles"
+    props = schema.get("properties") or {}
+    for r in schema.get("required") or []:
+        if r not in args or args[r] in ("", None):
+            return False, f"« {r} » manquant"
+    for k, v in args.items():
+        spec = props.get(k)
+        if spec is None:
+            return False, f"argument inconnu « {k} »"
+        t = _TYPES.get(str(spec.get("type", "")).lower())
+        if t and not isinstance(v, t) or (t is int and isinstance(v, bool)):
+            return False, f"« {k} » n'est pas {spec.get('type')}"
+        if spec.get("enum") and v not in spec["enum"]:
+            return False, f"« {k} »={v!r} hors enum"
+    return True, ""
+
+
+def _requests_of(text: str) -> list[str]:
+    m = re.search(r"\{.*\}", text or "", re.S)
+    try:
+        reqs = json.loads(m.group(0))["requests"] if m else []
+    except (ValueError, KeyError, TypeError):
+        return []
+    return [r.strip() for r in reqs if isinstance(r, str) and 3 < len(r.strip()) < 300]
+
+
+class Bootstrap:
+    def __init__(self, journal: Journal | None = None, client: Client | None = None,
+                 cfg: dict | None = None, sleep=time.sleep, max_calls: int = 400, verifier=None):
+        self.cfg = cfg or config()
+        self.journal = journal or Journal()
+        t = self.cfg["teacher"]
+        check_teacher(t)
+        self.teacher = t
+        self.client = client or Client(t["base_url"], t["model"], t.get("api_key"),
+                                       purpose="teacher", usage_root=self.journal.root)
+        # Vérificateur : un AUTRE modèle ouvert (indépendance du contrôle, et un quota
+        # séparé chez Groq : le débit double). Sans réglage, le professeur lui-même.
+        self.verifier_model = t.get("verifier_model") or t["model"]
+        self.verifier = verifier or (self.client if self.verifier_model == t["model"] or client else
+                                     Client(t["base_url"], self.verifier_model, t.get("api_key"),
+                                            purpose="teacher", usage_root=self.journal.root))
+        self._sleep = sleep
+        self.max_calls, self.calls = max_calls, 0
+
+    @property
+    def path(self) -> Path:
+        d = self.journal.root / "synthetic"
+        d.mkdir(parents=True, exist_ok=True)
+        return d / "records.jsonl"
+
+    def records(self):
+        try:
+            lines = self.path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return
+        for line in lines:
+            try:
+                yield json.loads(line)
+            except ValueError:
+                pass
+
+    def _verify(self, *a, **kw) -> dict:
+        return self._chat(*a, _client=self.verifier, **kw)
+
+    def _chat(self, *a, _client=None, **kw) -> dict:
+        strikes = 0
+        while True:
+            if self.calls >= self.max_calls:
+                raise StopIteration("budget d'appels atteint")
+            self.calls += 1
+            try:
+                return (_client or self.client).chat(*a, **kw)
+            except QuotaError as e:
+                strikes += 1
+                if strikes > 3:
+                    raise StopIteration(f"quota du professeur épuisé : {e}")
+                self._sleep(min(120.0, (e.retry_after or 20.0) + 1))
+
+    def _write(self, rec: dict) -> None:
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    def run(self, per_tool: int = 6, chitchat: int = 30) -> dict:
+        decls = self.journal.tools()
+        if not decls:
+            return {"ok": 0, "rejected": 0, "reason": "aucune déclaration d'outils (tools.json) : lancer JARVIS une fois"}
+        # Fait = au moins un exemple vérifié, ou 3 échecs (un aléa ne condamne pas un outil).
+        ok_t, fails = set(), {}
+        for r in self.records():
+            if r.get("status") == "ok":
+                ok_t.add(r.get("target"))
+            else:
+                fails[r.get("target")] = fails.get(r.get("target"), 0) + 1
+        done = ok_t | {t for t, n in fails.items() if n >= 3}
+        self.calls = 0
+        # Leurres = ce que le routeur réel confond avec la cible (négatifs difficiles).
+        router = default_router(decls) if self.journal.root == data_dir() else Router(decls)
+        stats = {"ok": 0, "rejected": 0, "tools_done": 0, "reasons": {}}
+        try:
+            for d in decls:
+                if d["name"] in done:
+                    continue
+                self._tool(d, decls, router, per_tool, stats)
+                stats["tools_done"] += 1
+            if "__chat__" not in done and chitchat:
+                self._chitchat(decls, router, chitchat, stats)
+            self._remediate(decls, router, stats)
+        except StopIteration as e:
+            stats["stopped"] = str(e)
+        stats["calls"] = self.calls
+        return stats
+
+    def _reject(self, stats, target, req, why):
+        stats["rejected"] += 1
+        key = why.split(" «")[0][:40]
+        stats["reasons"][key] = stats["reasons"].get(key, 0) + 1
+        self._write({"target": target, "status": "rejected", "user": req, "reason": why,
+                     "teacher": self.teacher["model"], "ts": time.time()})
+
+    def _tool(self, d, decls, router, n, stats, extra: str = "", round_: str | None = None):
+        schema = to_openai_tools([d])[0]["function"]["parameters"]
+        gen = self._chat([{"role": "user", "content": GEN_PROMPT.format(
+            name=d["name"], description=str(d.get("description", ""))[:900],
+            params=json.dumps(schema, ensure_ascii=False)[:1500], n=n) + extra}],
+            max_tokens=1500, temperature=0.9, json_mode=True)
+        reqs = _requests_of(gen["content"])
+        if not reqs:
+            self._reject(stats, d["name"], "", "génération illisible")
+            return
+        for req in reqs[:n]:
+            sid = f"syn-{uuid.uuid4().hex[:10]}"
+            subset = tool_subset(decls, [d["name"]], sid, router=router, query=req)
+            tools = to_openai_tools(subset)
+            msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": req}]
+            try:
+                got = self._verify(msgs, tools, temperature=0.2)
+            except ClientError as e:
+                self._reject(stats, d["name"], req, f"erreur {e}")
+                continue
+            calls = got.get("tool_calls") or []
+            if len(calls) != 1 or (calls[0].get("function") or {}).get("name") != d["name"]:
+                names = [(c.get("function") or {}).get("name") for c in calls]
+                self._reject(stats, d["name"], req, f"vérification : {names or 'aucun outil'}")
+                continue
+            args = calls[0]["function"].get("arguments") or {}
+            ok, why = valid_args(args, schema)
+            if not ok:
+                self._reject(stats, d["name"], req, f"arguments : {why}")
+                continue
+            self._write({"episode": sid, "target": d["name"], "status": "ok", "synthetic": True,
+                         "teacher": self.teacher["model"], "license": self.teacher["license"],
+                         "verifier": self.verifier_model, **({"round": round_} if round_ else {}),
+                         "verified": "independent", "ts": time.time(), "tools": [x["name"] for x in subset],
+                         "messages": msgs + [{"role": "assistant", "content": got.get("content", ""),
+                                              "tool_calls": [{"id": "call_0", "type": "function",
+                                                              "function": {"name": d["name"], "arguments": args}}]}]})
+            stats["ok"] += 1
+
+    def _remediate(self, decls, router, stats, per_tool: int = 4):
+        """Remédiation (iTool, AgenticQwen) : pour chaque outil où le dernier candidat
+        a échoué, des demandes PLUS DIFFICILES — formulations indirectes, proches des
+        outils avec lesquels il l'a confondu. Une fois par évaluation."""
+        try:
+            ev = json.loads((self.journal.root / "last_eval.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        done = {r.get("round") for r in self.records() if r.get("round")}
+        if not ev.get("weak") or ev.get("at") in done:
+            return
+        by = {d["name"]: d for d in decls}
+        for name in ev["weak"]:
+            if name not in by:
+                continue
+            mistakes = [f["got"] for f in ev.get("failures", []) if f.get("target") == name]
+            confused = sorted({g for m in mistakes if isinstance(m, list) for g in m if g != name})
+            hint = (f"\nLe modèle élève l'a confondu avec : {', '.join(confused)}. Écris des demandes qui "
+                    "distinguent clairement cet outil de ceux-là." if confused else "")
+            stats.setdefault("remediated", []).append(name)
+            self._tool(by[name], decls, router, per_tool, stats, extra=HARD_HINT + hint, round_=ev["at"])
+        if "remediated" not in stats:
+            return
+        # Marque la ronde faite même si tous les exemples ont été rejetés.
+        self._write({"target": "__round__", "status": "rejected", "round": ev["at"], "reason": "ronde",
+                     "teacher": self.teacher["model"], "ts": time.time()})
+
+    def _chitchat(self, decls, router, n, stats):
+        gen = self._chat([{"role": "user", "content": CHAT_PROMPT.format(n=n)}],
+                         max_tokens=2000, temperature=0.9, json_mode=True)
+        for req in _requests_of(gen["content"])[:n]:
+            sid = f"syn-{uuid.uuid4().hex[:10]}"
+            subset = tool_subset(decls, [], sid, router=router, query=req)
+            msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": req}]
+            try:
+                got = self._verify(msgs, to_openai_tools(subset), temperature=0.4, max_tokens=300)
+            except ClientError as e:
+                self._reject(stats, "__chat__", req, f"erreur {e}")
+                continue
+            if got.get("tool_calls") or not got.get("content"):
+                self._reject(stats, "__chat__", req, "outil appelé pour une simple conversation")
+                continue
+            self._write({"episode": sid, "target": "__chat__", "status": "ok", "synthetic": True,
+                         "teacher": self.teacher["model"], "license": self.teacher["license"],
+                         "verified": "independent", "ts": time.time(), "tools": [x["name"] for x in subset],
+                         "messages": msgs + [{"role": "assistant", "content": got["content"]}]})
+            stats["ok"] += 1
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="matthew.bootstrap")
+    ap.add_argument("--per-tool", type=int, default=6)
+    ap.add_argument("--chitchat", type=int, default=30)
+    ap.add_argument("--max-calls", type=int, default=400)
+    a = ap.parse_args(argv)
+    out = Bootstrap(max_calls=a.max_calls).run(a.per_tool, a.chitchat)
+    print(json.dumps(out, ensure_ascii=False, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

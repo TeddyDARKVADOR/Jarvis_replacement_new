@@ -91,6 +91,8 @@ memory/nightshift.json
 memory/pilot_recipes.json
 memory/quota.json
 memory/daily.json
+# Matthew : journal des conversations, jeux de données, entraînements (personnel)
+memory/matthew/
 memory/.daily-*.tmp
 memory/incidents.json
 memory/.incidents-*.tmp

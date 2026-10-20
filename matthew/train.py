@@ -1,0 +1,258 @@
+"""
+matthew/train.py — préparer, et lancer si la machine le permet, un entraînement.
+
+Écrit dans runs/<date>/ :
+    train_matthew.py   script Unsloth autonome (LoRA bf16, réponses seules)
+    Modelfile          pour `ollama create` à partir du GGUF exporté
+    plan.json          réglages, jeu de données, et commande à lancer
+
+Choix fondés sur la recherche du 2026-10-20 (graphe matthew) :
+  - Qwen3.5-4B, Apache-2.0 : LoRA bf16 ~10 Go, tient dans la RTX 3060 (12 Go).
+    Unsloth déconseille le QLoRA 4 bits pour Qwen3.5 ; 9B (~22 Go) = GPU loué.
+  - CHAQUE cycle repart du modèle de base, jamais du candidat précédent :
+    l'entraînement itératif sur ses propres sorties amplifie des traits
+    (arXiv 2605.01130), surtout en DPO ; réinitialiser l'évite. L'historique
+    complet est réappris à chaque fois (mélange ancien + neuf, Agent-in-the-Loop).
+  - Perte sur les réponses seulement ; réflexion coupée (enable_thinking=False) :
+    une réponse vocale rapide d'abord.
+  - Export GGUF q4_k_m avec le gabarit de chat d'entraînement : un gabarit
+    différent à l'inférence est la première cause de modèle « dégradé ».
+
+Rien n'est installé ici. `execute()` ne lance le script que si unsloth et torch
+sont importables ; sinon il dit quoi installer.
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+from matthew import config, data_dir
+
+# Recherche du 2026-10-20 (graphe matthew, nœud r.reglages) :
+#  - 3 époques, évaluées à chacune ; on garde la meilleure sur la perte d'évaluation
+#    (Unsloth : 1–3 époques, au-delà sur-apprentissage ; arrêt précoce sur le hold-out).
+#  - Q5_K_M plutôt que Q4_K_M : un 4B perd davantage à la quantification, et un appel
+#    d'outil est une sortie exacte (comme le code, qu'on conseille ≥ Q5).
+#  - r = alpha = 16, lr 2e-4 : point de départ conseillé ; rsLoRA inutile à ce rang.
+HYPER = {"lora_r": 16, "lora_alpha": 16, "lora_dropout": 0.0, "lr": 2e-4, "epochs": 3,
+         "batch": 1, "grad_accum": 8, "max_seq": 2048, "warmup_ratio": 0.05, "seed": 3407,
+         "quant": "q5_k_m"}
+
+SCRIPT = r'''"""Entraînement de Matthew — généré par matthew/train.py. Lancer : python train_matthew.py"""
+import json, sys
+from pathlib import Path
+HERE = Path(__file__).resolve().parent
+PLAN = json.loads((HERE / "plan.json").read_text(encoding="utf-8"))
+H = PLAN["hyper"]
+
+from unsloth.chat_templates import train_on_responses_only
+from datasets import Dataset
+from trl import SFTTrainer, SFTConfig
+
+# Qwen3.5 porte un encodeur d'images : selon la version d'Unsloth, il se charge
+# par FastLanguageModel ou par FastModel. On essaie l'un puis l'autre.
+try:
+    from unsloth import FastLanguageModel as FM
+    model, tok = FM.from_pretrained(
+        PLAN["base_model"], max_seq_length=H["max_seq"], load_in_4bit=False, load_in_16bit=True)
+except Exception as e:
+    print("FastLanguageModel refuse ce modèle, essai FastModel :", e)
+    from unsloth import FastModel as FM
+    model, tok = FM.from_pretrained(
+        PLAN["base_model"], max_seq_length=H["max_seq"], load_in_4bit=False, load_in_16bit=True)
+model = FM.get_peft_model(
+    model, r=H["lora_r"], lora_alpha=H["lora_alpha"], lora_dropout=H["lora_dropout"], bias="none",
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    use_gradient_checkpointing="unsloth", random_state=H["seed"])
+
+def render(row):
+    # Le gabarit de Qwen3.5 parcourt les arguments (|items) : un dict, pas du JSON en texte.
+    for m in row["messages"]:
+        for c in m.get("tool_calls") or []:
+            if isinstance(c["function"]["arguments"], str):
+                c["function"]["arguments"] = json.loads(c["function"]["arguments"] or "{}")
+    kw = {"tools": row["tools"]} if row.get("tools") else {}
+    try:
+        text = tok.apply_chat_template(row["messages"], tokenize=False, enable_thinking=False, **kw)
+    except TypeError:
+        text = tok.apply_chat_template(row["messages"], tokenize=False, **kw)
+    return {"text": text}
+
+# Lu à la main : les schémas d'outils varient d'une ligne à l'autre, ce
+# qu'Arrow (load_dataset("json")) ne sait pas unifier. Seul le texte rendu passe.
+def rows(path):
+    p = Path(path)
+    if not p.exists():
+        return []
+    return [render(json.loads(l)) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+train_ds = Dataset.from_list(rows(PLAN["train"]))
+eval_rows = rows(PLAN["eval"])
+print("exemples :", len(train_ds), "entraînement,", len(eval_rows), "évaluation")
+print(train_ds[0]["text"][:1500])
+# Avec un hold-out : évaluer à chaque époque et garder la meilleure (arrêt précoce).
+best = dict(eval_strategy="epoch", save_strategy="epoch", load_best_model_at_end=True,
+            metric_for_best_model="eval_loss", greater_is_better=False, save_total_limit=2)     if eval_rows and H.get("max_steps", -1) < 0 else {}
+trainer = SFTTrainer(
+    model=model, tokenizer=tok, train_dataset=train_ds,
+    eval_dataset=Dataset.from_list(eval_rows) if eval_rows else None,
+    args=SFTConfig(**best, dataset_text_field="text", max_seq_length=H["max_seq"],
+                   per_device_train_batch_size=H["batch"], gradient_accumulation_steps=H["grad_accum"],
+                   num_train_epochs=H["epochs"], max_steps=H.get("max_steps", -1),
+                   learning_rate=H["lr"], warmup_ratio=H["warmup_ratio"],
+                   optim="adamw_8bit", logging_steps=5, seed=H["seed"], output_dir=str(HERE / "ckpt"),
+                   report_to="none", bf16=True))
+trainer = train_on_responses_only(trainer, instruction_part=PLAN["instruction_part"],
+                                  response_part=PLAN["response_part"])
+stats = trainer.train()
+model.save_pretrained(str(HERE / "lora"))
+tok.save_pretrained(str(HERE / "lora"))
+model.save_pretrained_gguf(str(HERE / "gguf"), tok, quantization_method=H["quant"])
+(HERE / "result.json").write_text(json.dumps({
+    "train_loss": stats.training_loss, "best_eval_loss": trainer.state.best_metric,
+    "log": [h for h in trainer.state.log_history if "eval_loss" in h]}), encoding="utf-8")
+print("MATTHEW_TRAIN_OK", stats.training_loss)
+'''
+
+
+# RENDERER / PARSER qwen3.5 : le format de chat et d'appels d'outils de Qwen3.5,
+# intégré à Ollama (lu sur qwen3.6 le 2026-10-20, Ollama 0.40.6). Sans eux, le
+# modèle n'a pas la capacité « tools » et offline/llm.py ne le choisit jamais.
+MODELFILE = """# ollama create matthew-candidate -f Modelfile
+FROM ./gguf/unsloth.Q4_K_M.gguf
+RENDERER qwen3.5
+PARSER qwen3.5
+PARAMETER temperature 0.4
+PARAMETER top_p 0.9
+PARAMETER num_ctx 8192
+"""
+
+
+def train_python(cfg: dict | None = None) -> str:
+    """Le Python d'entraînement configuré s'il existe, sinon celui-ci."""
+    p = (cfg or config()).get("train_python")
+    return p if p and Path(p).exists() else sys.executable
+
+
+def train_env(cfg: dict | None = None) -> dict:
+    import os
+    env = dict(os.environ)
+    hf = (cfg or config()).get("hf_home")
+    if hf:
+        env["HF_HOME"] = hf
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
+def missing_deps(cfg: dict | None = None) -> list[str]:
+    py = train_python(cfg)
+    if py == sys.executable:
+        return [m for m in ("torch", "unsloth", "trl", "datasets") if importlib.util.find_spec(m) is None]
+    probe = ("import importlib.util as u;print(','.join(m for m in ('torch','unsloth','trl','datasets')"
+             " if u.find_spec(m) is None))")
+    try:
+        cp = subprocess.run([py, "-c", probe], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return [f"python d'entraînement injoignable ({e})"]
+    return [m for m in cp.stdout.strip().split(",") if m]
+
+
+def plan(dataset_dir: Path, cfg: dict | None = None, root: Path | None = None, clock=time.time,
+         **hyper) -> Path:
+    """`hyper` remplace des réglages (ex. max_steps=5 pour un essai de bout en bout)."""
+    cfg = cfg or config()
+    dataset_dir = Path(dataset_dir)
+    run = (root or data_dir()) / "runs" / datetime.fromtimestamp(clock()).strftime("%Y%m%d-%H%M%S")
+    run.mkdir(parents=True, exist_ok=True)
+    p = {"schema": "matthew.run/1", "base_model": cfg["base_model"],
+         "base_license": cfg["base_license"], "from": "base",
+         "train": str(dataset_dir / "train.jsonl"), "eval": str(dataset_dir / "eval.jsonl"),
+         "manifest": json.loads((dataset_dir / "manifest.json").read_text(encoding="utf-8")),
+         "hyper": {**HYPER, **hyper},
+         # Gabarit ChatML des Qwen : la perte ne porte que sur ce qui suit l'assistant.
+         "instruction_part": "<|im_start|>user\n", "response_part": "<|im_start|>assistant\n",
+         "command": f'"{train_python(cfg)}" "{run / "train_matthew.py"}"'}
+    (run / "plan.json").write_text(json.dumps(p, ensure_ascii=False, indent=1), encoding="utf-8")
+    (run / "train_matthew.py").write_text(SCRIPT, encoding="utf-8")
+    (run / "Modelfile").write_text(MODELFILE, encoding="utf-8")
+    return run
+
+
+def free_gpu(runner=subprocess.run) -> list[str]:
+    """Décharge les modèles qu'Ollama garde en mémoire vidéo : l'entraînement prend
+    ~10 Go des 12 de la RTX 3060, un modèle chargé de plus et c'est le dépassement."""
+    try:
+        cp = runner(["ollama", "ps"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    names = [l.split()[0] for l in (cp.stdout or "").splitlines()[1:] if l.strip()]
+    for n in names:
+        try:
+            runner(["ollama", "stop", n], capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return names
+
+
+def execute(run: Path, timeout_h: float = 6.0, cfg: dict | None = None) -> dict:
+    cfg = cfg or config()
+    missing = missing_deps(cfg)
+    if missing:
+        return {"ok": False, "reason": f"à installer : {', '.join(missing)} "
+                f"(voir le nœud « Installer l'entraînement local » du graphe matthew)"}
+    free_gpu()
+    try:
+        cp = subprocess.run([train_python(cfg), str(run / "train_matthew.py")], cwd=run,
+                            capture_output=True, text=True, encoding="utf-8", errors="replace",
+                            timeout=timeout_h * 3600, env=train_env(cfg))
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "reason": f"délai de {timeout_h} h dépassé"}
+    (run / "train.log").write_text(cp.stdout[-200_000:] + "\n" + cp.stderr[-200_000:], encoding="utf-8")
+    if cp.returncode != 0 or "MATTHEW_TRAIN_OK" not in cp.stdout:
+        return {"ok": False, "reason": f"échec (code {cp.returncode}), voir {run / 'train.log'}"}
+    gguf = finish(run)
+    if gguf is None:
+        return {"ok": False, "reason": f"entraînement fini mais aucun GGUF quantifié dans {run}"}
+    return {"ok": True, "gguf": gguf}
+
+
+def quantized_gguf(run: Path) -> Path | None:
+    """Le GGUF à servir. Unsloth (2026.10) l'écrit dans gguf_gguf/, à côté de
+    gguf/ qui contient le modèle fusionné en 16 bits ; on écarte BF16 et mmproj."""
+    found = [p for d in ("gguf_gguf", "gguf") for p in sorted((Path(run) / d).glob("*.gguf"))
+             if "mmproj" not in p.name.lower() and "bf16" not in p.name.lower()]
+    return found[0] if found else None
+
+
+def finish(run: Path) -> str | None:
+    """Pointe le Modelfile sur le GGUF quantifié et libère ~8,7 Go : le modèle
+    fusionné en 16 bits (gguf/*.safetensors), reconstructible depuis lora/."""
+    import re
+    import shutil
+    run = Path(run)
+    q = quantized_gguf(run)
+    if q is None:
+        return None
+    rel = q.relative_to(run).as_posix()
+    mf = run / "Modelfile"
+    mf.write_text(re.sub(r"(?m)^FROM \S+", f"FROM ./{rel}", mf.read_text(encoding="utf-8")), encoding="utf-8")
+    merged = run / "gguf"
+    if q.parent != merged and merged.is_dir() and any(merged.glob("*.safetensors")):
+        shutil.rmtree(merged, ignore_errors=True)
+    for bf16 in run.glob("gguf*/*BF16.gguf"):
+        bf16.unlink(missing_ok=True)
+    return rel
+
+
+def ollama_create(run: Path, name: str, runner=subprocess.run) -> dict:
+    try:
+        cp = runner(["ollama", "create", name, "-f", "Modelfile"], cwd=run,
+                    capture_output=True, text=True, timeout=1800)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"ok": False, "reason": str(e)}
+    return {"ok": cp.returncode == 0, "reason": (cp.stderr or cp.stdout)[-300:]}

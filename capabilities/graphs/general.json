@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "general",
   "title": "JARVIS — toutes les fonctionnalités",
-  "updated": "2026-10-17",
+  "updated": "2026-10-20",
   "summary": "Ce que JARVIS sait faire, domaine par domaine. Chaque domaine ouvre un sous-graphe quand il en a un. Les outils sont ceux que Gemini peut appeler : le selftest vérifie qu'il n'en manque aucun.",
   "replaces": [],
   "nodes": [
@@ -1393,6 +1393,32 @@
         "Le déploiement et le lancement se font par portable/Lancer-JARVIS.bat posé sur la clé, pas par cet outil. Détail dans le graphe deployment (nœud f.portable)."
       ],
       "updated": "2026-10-17"
+    },
+    {
+      "id": "dom.matthew",
+      "label": "Matthew — notre propre modèle",
+      "kind": "domaine",
+      "status": "partiel",
+      "summary": "Le futur cerveau : un modèle ouvert entraîné sur nos échanges et sur des exemples vérifiés par des modèles ouverts (jamais Gemini ni Claude), évalué outil par outil, promu et ré-basé automatiquement chaque nuit, servi par Ollama avec ses propres tokens.",
+      "graph": "matthew",
+      "files": [
+        "matthew/__init__.py"
+      ],
+      "test": "python -m matthew.selftest",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "tool.matthew",
+      "label": "matthew — apprendre à notre modèle",
+      "kind": "outil",
+      "tool": "matthew",
+      "status": "ok",
+      "summary": "Actions : status (ce qu'il a appris, ses tokens, son score), correct (la bonne réponse au dernier échange), forget_last, pause / resume, cycle (un cycle d'apprentissage en fond).",
+      "files": [
+        "plugins/matthew.py"
+      ],
+      "graph": "matthew",
+      "verified": "2026-10-20 — sonde réelle (capabilities.verify) ; 2026-10-20 — matthew.selftest : 25/25"
     }
   ],
   "edges": [
@@ -2125,6 +2151,21 @@
       "dom.deploiement",
       "tool.portable",
       "contient"
+    ],
+    [
+      "jarvis",
+      "dom.matthew",
+      "contient"
+    ],
+    [
+      "dom.matthew",
+      "tool.matthew",
+      "contient"
+    ],
+    [
+      "dom.cognition",
+      "dom.matthew",
+      "alimente"
     ]
   ]
 }

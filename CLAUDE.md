@@ -59,6 +59,7 @@ python -m pilot.selftest
 python -m quota.selftest
 python -m daily.selftest
 python -m incidents.selftest
+python -m matthew.selftest
 python -m capabilities.verify --quick   # sondes réelles des outils
 ```
 

@@ -42,6 +42,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # (nom, type, url de base, clé de config, modèle par défaut)
 _CATALOG = {
     "local":      ("openai", "http://127.0.0.1:11434/v1", None, "qwen3:4b-instruct"),
+    # Matthew (matthew/) : notre modèle, servi par Ollama. Hors DEFAULT_ORDER :
+    # matthew.cognition_order() le met en tête seulement quand un champion évalué existe.
+    "matthew":    ("openai", "http://127.0.0.1:11434/v1", None, "matthew"),
     "groq":       ("openai", "https://api.groq.com/openai/v1", "groq_api_key", "openai/gpt-oss-20b"),
     "cerebras":   ("openai", "https://api.cerebras.ai/v1", "cerebras_api_key", "llama3.1-8b"),
     "gemini":     ("gemini", None, "gemini_api_key", "gemini-3.1-flash-lite"),
@@ -54,7 +57,8 @@ _CATALOG = {
 # Qwen3 local : même chose, mesuré sur ce PC (CPU, ~33 tok/s) : 6–7 s avec
 # réflexion, < 1 s sans. Sans réflexion, la qualité baisse nettement : à
 # réserver aux tâches simples (cf. prefer= dans complete()).
-_EXTRA = {"groq": {"reasoning_effort": "low"}, "local": {"reasoning_effort": "none"}}
+_EXTRA = {"groq": {"reasoning_effort": "low"}, "local": {"reasoning_effort": "none"},
+          "matthew": {"reasoning_effort": "none"}}
 # Ordre par défaut : le plus rapide d'abord pour les tâches courtes.
 DEFAULT_ORDER = ["local", "groq", "cerebras", "gemini", "openrouter", "mistral"]
 
@@ -172,11 +176,12 @@ class ProviderChain:
         self.providers = providers
         self._clock = clock
         self._lock = threading.Lock()
-        self._local_checked_at = -1e9
-        self._local_ok = False
+        # Sonde de vie par serveur local (local, matthew) : nom -> (vérifié à, vivant).
+        self._alive: dict[str, tuple[float, bool]] = {}
 
     @classmethod
     def from_config(cls, cfg: dict | None = None) -> "ProviderChain":
+        from_file = cfg is None
         if cfg is None:
             try:
                 cfg = json.loads((BASE_DIR / "config" / "api_keys.json").read_text(encoding="utf-8"))
@@ -184,6 +189,10 @@ class ProviderChain:
                 cfg = {}
         overrides = cfg.get("cognition_providers") or {}
         order = cfg.get("cognition_provider_order") or DEFAULT_ORDER
+        try:    # matthew/ (optionnel) : en tête quand son évaluation l'a promu (vraie config seulement)
+            order = __import__("matthew").cognition_order(order, cfg) if from_file else order
+        except ImportError:
+            pass
         out = []
         for name in order:
             if name not in _CATALOG:
@@ -205,9 +214,9 @@ class ProviderChain:
         """Sonde /models au plus une fois par minute : un serveur local éteint
         ne doit coûter qu'un échec de connexion, pas 30 s de délai par appel."""
         now = self._clock()
-        if now - self._local_checked_at < 60:
-            return self._local_ok
-        self._local_checked_at = now
+        seen = self._alive.get(p.name)
+        if seen and now - seen[0] < 60:
+            return seen[1]
         try:
             import requests
             r = requests.get(f"{p.base_url}/models", timeout=0.5)
@@ -215,13 +224,13 @@ class ProviderChain:
             # 2026-10-13, Ollama tournait sans qwen3:4b-instruct, et chaque
             # appel échouait sur lui avant de passer au suivant.
             names = {m.get("id", "") for m in (r.json().get("data") or [])} if r.ok else set()
-            self._local_ok = r.ok and (not names or p.model in names
-                                       or f"{p.model}:latest" in names)
-            if r.ok and names and not self._local_ok:
-                self._log_once(f"modèle local {p.model} absent d'Ollama : générateur local ignoré")
+            ok = r.ok and (not names or p.model in names or f"{p.model}:latest" in names)
+            if r.ok and names and not ok:
+                self._log_once(f"modèle local {p.model} absent d'Ollama : générateur {p.name} ignoré")
         except Exception:
-            self._local_ok = False
-        return self._local_ok
+            ok = False
+        self._alive[p.name] = (now, ok)
+        return ok
 
     def _log_once(self, msg: str) -> None:
         if getattr(self, "_logged", None) != msg:
@@ -245,8 +254,8 @@ class ProviderChain:
             if not p.available(now):
                 errors.append(f"{p.name}: en pause {p.paused_until - now:.0f}s")
                 continue
-            if p.name == "local" and not self._local_alive(p):
-                errors.append("local: aucun serveur")
+            if p.name in ("local", "matthew") and not self._local_alive(p):
+                errors.append(f"{p.name}: aucun serveur")
                 continue
             t0 = self._clock()
             try:

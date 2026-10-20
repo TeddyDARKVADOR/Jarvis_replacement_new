@@ -1,0 +1,642 @@
+{
+  "schema": "jarvis.graph/1",
+  "id": "matthew",
+  "title": "Matthew — notre propre modèle",
+  "updated": "2026-10-20",
+  "summary": "La transition vers un cerveau à nous : collecte dans tous les modes, amorçage vérifié par un second modèle ouvert, routeur par le sens, données augmentées, LoRA de Qwen3.5-4B sur la RTX 3060, juge par outil, promotion et changement de base automatiques, chaque nuit. Gemini reste en service pendant ce temps.",
+  "replaces": [],
+  "nodes": [
+    {
+      "id": "matthew",
+      "label": "Matthew — notre propre modèle",
+      "kind": "racine",
+      "summary": "Un modèle à poids ouverts (Qwen3.5-4B, Apache-2.0) entraîné sur ce que l'utilisateur demande vraiment, servi par Ollama sur la machine, avec ses propres tokens. Gemini reste en service ; Matthew apprend à côté et prend des tâches une à une quand l'évaluation le prouve.",
+      "details": [
+        "Paquet racine (contrat V2) : retirer matthew/, plugins/matthew.py et les hooks d'une ligne (cognition/runtime.py, cognition/providers.py, offline/llm.py) rend JARVIS identique à avant.",
+        "Données personnelles dans memory/matthew/ (ignoré par Git), ou <JARVIS_DATA_DIR>/matthew sur la clé portable.",
+        "Premier cycle réel de la boucle (2026-10-20) : champion promu le 2026-10-20 à 20 h 52 — 116 exemples amorcés (23 outils) + augmentations, 3 époques sur la RTX 3060 (meilleure : la 2e, perte d'éval 0,125), GGUF Q5_K_M 3,2 Go ; éval sur 18 exemples : composite 0,85, bon outil 100 %, arguments 79 %, JSON 100 %, refus quand aucun outil ne convient 50 %, 1,1 s ; servi par Ollama, choisi par le mode hors-ligne et placé en tête de la cognition."
+      ],
+      "files": [
+        "matthew/__init__.py"
+      ],
+      "status": "partiel",
+      "verified": "2026-10-20 — matthew.selftest : 25/25",
+      "test": "python -m matthew.selftest"
+    },
+    {
+      "id": "r.licence",
+      "label": "Aucune réponse Gemini ni Claude n'est apprise",
+      "kind": "regle",
+      "summary": "Les cibles d'entraînement viennent de l'utilisateur (corrections) ou d'un professeur sous licence ouverte (gpt-oss, Apache-2.0). Jamais de Gemini, jamais de Claude.",
+      "details": [
+        "Gemini (conditions du 2026-03-23, https://ai.google.dev/gemini-api/terms) : « You may not use the Services to develop models that compete with the Services ». Interdit aussi d'apprendre des résultats Grounding with Google Search.",
+        "Claude (https://support.claude.com/en/articles/12326764-can-i-use-my, conditions commerciales §D.4) : pas d'entraînement ou de développement de modèle sans autorisation écrite ; chatbots généralistes et sorties utilisées comme cibles explicitement interdits. Claude peut écrire le code de la chaîne, pas fournir de données ni de notes qui décident de l'apprentissage.",
+        "Groq (Services Agreement, modifié le 2026-06-22) : les sorties appartiennent au client (§8.1) ; la licence du modèle s'applique (§4.1, gpt-oss Apache-2.0) ; §6.3(e) interdit de bâtir une offre similaire ou concurrente aux services cloud de Groq — Matthew est un assistant personnel local, pas un cloud d'inférence : risque jugé faible, pas un avis juridique.",
+        "Les demandes de l'utilisateur et les résultats réels des outils lui appartiennent : ils servent d'entrées.",
+        "Le selftest vérifie qu'aucun texte Gemini n'est une cible et refuse un professeur Gemini ou sans licence ouverte déclarée ; un challenger de base sans licence ouverte est ignoré."
+      ],
+      "files": [
+        "matthew/__init__.py",
+        "matthew/teacher.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "h.cognition",
+      "label": "Hook : collecte dans tous les modes",
+      "kind": "regle",
+      "summary": "Une ligne au début de cognition.attach (appelé par chaque JarvisLive) : Matthew se greffe sur ui.write_log (« You: … » puis « <nom>: … » à chaque fin de tour) et sur _execute_tool. Local, serveur Oracle, sans écran : tout est collecté, sans changer main.py ni ce que Gemini reçoit.",
+      "details": [
+        "Sonde réelle 2026-10-20 : un vrai JarvisLive sans écran (server.headless_ui), le vrai outil quotas passé par le vrai _execute_tool — épisode complet écrit, 43 déclarations d'outils captées, réponse à Gemini identique.",
+        "Pas encore observé pendant une vraie session vocale (micro + Gemini Live)."
+      ],
+      "files": [
+        "cognition/runtime.py",
+        "matthew/journal.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — sonde JarvisLive réel (sans écran)"
+    },
+    {
+      "id": "m.journal",
+      "label": "journal.py — le carnet",
+      "kind": "module",
+      "summary": "Un épisode par tour : la demande, les outils appelés (arguments + vrai résultat), la réponse (origin=gemini, pour comparer seulement). Corrections et oublis de l'utilisateur. Secrets et coordonnées masqués avant écriture.",
+      "details": [
+        "scrub() : clés Google/OpenAI/Groq/GitHub, JWT, mots de passe, e-mails, téléphones FR, IBAN, cartes.",
+        "Le fichier PAUSED coupe la collecte (outil matthew, action pause)."
+      ],
+      "files": [
+        "matthew/journal.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "m.bootstrap",
+      "label": "bootstrap.py — l'amorçage",
+      "kind": "module",
+      "summary": "Des données sans attendre des semaines : pour chaque outil, le professeur invente des demandes en français parlé ; un AUTRE modèle (gpt-oss-20b) les vérifie à l'aveugle, outil cible noyé parmi les leurres du routeur ; gardé seulement si même outil et arguments conformes au schéma. Plus des phrases de conversation sans outil.",
+      "details": [
+        "Méthode APIGen / AgenticQwen (arXiv 2604.21590) : rejet par vérification indépendante ; rien n'est exécuté.",
+        "Remédiation (iTool, EMNLP 2025) : les outils où le dernier candidat a échoué reçoivent des demandes plus dures, avec les outils confondus nommés ; une ronde par évaluation.",
+        "Run réel 2026-10-20 : 116 exemples gardés sur 138 (84 %), 23 outils sur 43, arrêt propre sur le quota Groq (gpt-oss-120b : ~8 000 tokens/min, ~200 000/jour). Rejets : arguments inventés, aucun outil, outil voisin.",
+        "Reprise : un outil est fait à son premier exemple vérifié ou après 3 échecs ; la boucle de nuit continue avec 150 appels."
+      ],
+      "files": [
+        "matthew/bootstrap.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — run réel Groq ; 2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "m.teacher",
+      "label": "teacher.py — l'école",
+      "kind": "module",
+      "summary": "Pour les vrais épisodes : un professeur ouvert refait la demande lui-même ; gardé seulement s'il appelle l'outil qui a réellement marché, puis il reçoit les vrais résultats et écrit la réponse finale.",
+      "details": [
+        "match_mode « trace » (mêmes outils, ≥ 50 % des valeurs d'arguments) ou « schema ».",
+        "Leurres = négatifs difficiles du routeur par le sens ; ordre des outils mélangé (l'outil juste n'est pas toujours en tête).",
+        "Sonde réelle : gpt-oss-120b (Groq) appelle weather(city=Lyon) en 0,65 s."
+      ],
+      "files": [
+        "matthew/teacher.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — matthew.selftest : 25/25 ; sonde réelle Groq"
+    },
+    {
+      "id": "m.router",
+      "label": "router.py — le choix des outils",
+      "kind": "module",
+      "summary": "Présélectionne 8 outils sur 43 pour une demande : sens (plongements multilingues qwen3-embedding:0.6b via Ollama, contre les descriptions et les demandes déjà vérifiées), mots-clés (BM25), et ce que le journal a appris. Sert à l'entraînement (leurres) comme à l'usage (offline/llm.py).",
+      "details": [
+        "Mesuré 2026-10-20 sur 116 exemples (chaque exemple retiré de ses exemplaires) — rappel@1 / @8 : mots-clés seuls 0,24 / 0,45 ; sens 0,58 / 0,96 ; combiné 1 / 0,5 / 0,15 → 0,71 / 1,00.",
+        "Cause du gain : descriptions des outils en anglais, demandes en français — le lexical seul ne trouvait ni reminder ni weather_report.",
+        "Repli automatique sur les mots-clés si Ollama ou le modèle de plongements manque."
+      ],
+      "files": [
+        "matthew/router.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — mesure réelle ; 2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "m.augment",
+      "label": "augment.py — données plus instructives",
+      "kind": "module",
+      "summary": "Sans un appel de plus : ~10 % d'exemples « aucun outil ne convient » (bon outil retiré, réponse sans appel), ~15 % d'exemples masqués (noms d'outils et de paramètres aléatoires, descriptions gardées), doublons retirés par le sens (cosinus ≥ 0,93), aucun outil au-delà de 3 × la médiane.",
+      "details": [
+        "Hammer (arXiv 2410.04587) : masquage des fonctions §4.1 ; données d'impertinence §4.2, ~10 % = meilleur compromis §5.6 ; masquage élevé = apprentissage ralenti §5.5.",
+        "Dédoublonnage : POLLUX, MergeIT (ACL 2026) — la diversité compte plus que le volume.",
+        "L'évaluation reçoit les exemples d'impertinence (mesurés à part), jamais les masqués."
+      ],
+      "files": [
+        "matthew/augment.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "m.dataset",
+      "label": "dataset.py — les données",
+      "kind": "module",
+      "summary": "train / eval / dpo au format chat OpenAI (messages + tools). Correction humaine > professeur ; réel : les plus récents en évaluation ; amorcé : tirage stable par demande (chaque outil évalué). manifest.json : origines, outils, augmentations.",
+      "files": [
+        "matthew/dataset.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "m.train",
+      "label": "train.py — l'entraînement",
+      "kind": "module",
+      "summary": "Script Unsloth autonome lancé dans le Python d'entraînement sur D: : LoRA bf16 r=16 sur les réponses seules, réflexion coupée, 3 époques évaluées, meilleure gardée, export GGUF Q5_K_M, Modelfile Ollama (RENDERER/PARSER qwen3.5). Libère la carte (ollama stop) avant, et ~8,7 Go de poids fusionnés après.",
+      "details": [
+        "Essai réel 2026-10-20 sur la RTX 3060 : 3 pas en 166 s, GGUF, import Ollama avec la capacité tools ; le modèle appelle system_status et close_camera, éval 0,92 sur 4 exemples.",
+        "Pièges trouvés et corrigés : le gabarit Qwen3.5 veut les arguments d'outil en dict (pas en JSON texte) ; Arrow ne sait pas unifier des schémas d'outils variés (texte rendu en Python) ; Unsloth écrit le GGUF dans gguf_gguf/.",
+        "Mémoire vidéo : 11,9 Go sur 12 pendant l'entraînement — tout autre modèle chargé fait déborder."
+      ],
+      "files": [
+        "matthew/train.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — essai réel RTX 3060"
+    },
+    {
+      "id": "r.reglages",
+      "label": "Réglages d'entraînement fondés sur la recherche",
+      "kind": "regle",
+      "summary": "3 époques avec arrêt sur la perte d'évaluation ; r = alpha = 16, lr 2e-4 ; Q5_K_M ; service sans réflexion (0,3 s par réponse au lieu de 1,5 à 34 s).",
+      "details": [
+        "Unsloth : 1–3 époques, au-delà sur-apprentissage ; Unsloth déconseille le QLoRA 4 bits pour Qwen3.5.",
+        "Quantification : un petit modèle perd davantage, une sortie structurée exacte (comme le code) mérite ≥ Q5.",
+        "Chaque cycle repart de la base, jamais du candidat précédent (amplification de traits, arXiv 2605.01130)."
+      ],
+      "files": [
+        "matthew/train.py",
+        "matthew/flywheel.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "m.evaluate",
+      "label": "evaluate.py — le juge",
+      "kind": "module",
+      "summary": "Bon outil, bons arguments, réponse courte, JSON valide, refus quand aucun outil ne convient — par outil visé, sur plusieurs passes. Promotion seulement si le candidat bat le champion d'une marge, sans recul de plus de 5 points sur les outils, les réponses ni la pertinence.",
+      "details": [
+        "Les bancs d'outils varient jusqu'à ~20 points sans changer de modèle (arXiv 2607.02577) : passes répétées.",
+        "Les échecs (outil attendu, outil choisi, demande) vont dans last_eval.json et nourrissent la remédiation."
+      ],
+      "files": [
+        "matthew/evaluate.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "m.flywheel",
+      "label": "flywheel.py — la boucle automatique",
+      "kind": "module",
+      "summary": "Amorçage → école → données → seuil → entraînement → ollama create → évaluation contre le champion → promotion. Change aussi de modèle de base : des challengers sous licence ouverte sont essayés sur les mêmes données, et celui qui gagne devient la base.",
+      "details": [
+        "Premier cycle réel : champion promu le 2026-10-20 à 20 h 52 — 116 exemples amorcés (23 outils) + augmentations, 3 époques sur la RTX 3060 (meilleure : la 2e, perte d'éval 0,125), GGUF Q5_K_M 3,2 Go ; éval sur 18 exemples : composite 0,85, bon outil 100 %, arguments 79 %, JSON 100 %, refus quand aucun outil ne convient 50 %, 1,1 s ; servi par Ollama, choisi par le mode hors-ligne et placé en tête de la cognition.",
+        "Tâche planifiée Windows « Matthew flywheel », chaque nuit à 02 h 30 (posée le 2026-10-20) : memory/matthew/flywheel.cmd, journal memory/matthew/flywheel.log."
+      ],
+      "files": [
+        "matthew/flywheel.py"
+      ],
+      "status": "partiel",
+      "verified": "2026-10-20 — matthew.selftest : 25/25",
+      "test": "python -m matthew.flywheel --status"
+    },
+    {
+      "id": "m.cloud",
+      "label": "cloud.py — le 9B sur GPU loué",
+      "kind": "module",
+      "summary": "Prépare un paquet autonome (données, plan Qwen3.5-9B, script, run.sh) à lancer sur une carte de 24 Go louée, puis réimporte le GGUF et le soumet au même juge.",
+      "details": [
+        "Louer exige le compte et le paiement de l'utilisateur : rien n'est loué automatiquement.",
+        "Vérifié avec de faux modèles ; jamais lancé sur une vraie machine louée."
+      ],
+      "files": [
+        "matthew/cloud.py"
+      ],
+      "status": "a_tester",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "m.client",
+      "label": "client.py — appels et tokens",
+      "kind": "module",
+      "summary": "Appels compatibles OpenAI (Ollama, Groq). Chaque appel écrit ses tokens dans usage.jsonl, par usage : matthew (les siens), teacher (l'école). Gestion du 429 (attente annoncée).",
+      "files": [
+        "matthew/client.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "h.providers",
+      "label": "Hook : Matthew dans la cognition (phase 1)",
+      "kind": "regle",
+      "summary": "matthew.cognition_order() met Matthew en tête des tâches de fond de la cognition dès qu'un champion évalué existe (score ≥ 0,5) ; un ordre écrit à la main gagne toujours ; use_in_cognition=false le coupe. Sonde de vie par serveur local.",
+      "details": [
+        "Limite : le juge mesure les appels d'outils, pas l'extraction ni la réflexion de la cognition."
+      ],
+      "files": [
+        "cognition/providers.py",
+        "matthew/__init__.py"
+      ],
+      "status": "a_tester",
+      "verified": "2026-10-20 — matthew.selftest : 25/25"
+    },
+    {
+      "id": "h.offline",
+      "label": "Hook : Matthew, cerveau hors-ligne (voix en cascade)",
+      "kind": "regle",
+      "summary": "matthew:latest en tête des modèles du mode hors-ligne, avec la présélection du routeur : micro → faster-whisper → Matthew → voix du système. Dès qu'un champion est promu, c'est lui qui répond quand Gemini est injoignable.",
+      "details": [
+        "Vérifié 2026-10-20 avec le vrai offline.llm.Brain et le Matthew d'essai : « température du processeur » → system_status → « 54 °C » ; « ferme la caméra » → close_camera ; 1,3 à 1,7 s. Pas encore de bout en bout avec le micro."
+      ],
+      "files": [
+        "offline/llm.py"
+      ],
+      "status": "partiel",
+      "verified": "2026-10-20 — Brain réel"
+    },
+    {
+      "id": "p.installer",
+      "label": "Environnement d'entraînement (installé)",
+      "kind": "procedure",
+      "summary": "D:\\DEV\\matthew-train : Python 3.12 (uv), torch 2.11 CUDA 12.8 (RTX 3060 vue), unsloth 2026.10.7, trl 1.15, datasets 4.8 ; cache Hugging Face sur D: (Qwen3.5-4B, 8,8 Go). Réinstaller : bash D:/DEV/matthew-train/setup.sh.",
+      "details": [
+        "Réglages train_python et hf_home dans DEFAULTS (matthew/__init__.py) ; C: est plein, rien ne doit y aller."
+      ],
+      "files": [
+        "matthew/train.py"
+      ],
+      "status": "ok",
+      "verified": "2026-10-20 — installé et utilisé"
+    },
+    {
+      "id": "p.feuille",
+      "label": "Feuille de route de la transition",
+      "kind": "procedure",
+      "summary": "0 collecte, amorçage, boucle, routeur, cascade (fait). 1 premier champion → tâches de fond. 2 couvrir les 43 outils et la conversation. 3 corrections vocales → DPO. 4 9B loué / challengers. 5 GRPO à récompenses vérifiables. 6 voix full-duplex française.",
+      "details": [
+        "GRPO (récompense = appel d'outil vérifié) : Qwen3-4B de 33 % à 67 % d'appels justes en 200 exemples (Red Hat, 2026) — mais il faut vLLM, absent de Windows : GPU loué sous Linux.",
+        "Contexte multi-tours : les tours précédents sont des réponses Gemini ; il faut les masquer de la perte avant de les inclure.",
+        "Voix : Moshi (Kyutai) full-duplex ~200 ms mais anglais ; Kyutai Unmute = cascade autour d'un LLM texte, la voie actuelle."
+      ],
+      "files": [
+        "matthew/flywheel.py"
+      ]
+    },
+    {
+      "id": "v.dix_ans",
+      "label": "Vision à 10 ans : la plus puissante POUR son utilisateur",
+      "kind": "procedure",
+      "summary": "On ne battra pas les laboratoires sur le modèle brut (entraînements de plus de 100 milliards de dollars d'ici 2030, Epoch AI). Les modèles ouverts suivent la pointe à ~4 mois. Le pari : la base devient interchangeable, et ce qui fait la puissance — données, corrections, outils, mémoire, juge — appartient à l'utilisateur et survit à chaque changement de base.",
+      "details": [
+        "1. Bases interchangeables : challengers dans la boucle (fait) ; à chaque nouveau modèle ouvert, le juge décide. Source : https://epoch.ai/data-insights/open-closed-eci-gap",
+        "2. Mémoire : la cognition a déjà la provenance ; viser une mémoire temporelle en graphe (Zep/Graphiti) et typée (arXiv 2605.25869), mesurée sur un banc personnel — les scores LongMemEval publiés sont surtout auto-déclarés.",
+        "3. Apprentissage continu : d'abord sans gradient (rappel d'expériences, Just-In-Time RL, ICLR 2026), puis adaptateurs périodiques ; écrire des faits dans les poids reste un problème ouvert (oubli) — sparse memory finetuning (arXiv 2510.15103) à surveiller.",
+        "4. Auto-amélioration du harnais, pas des poids : Darwin Gödel Machine (ICLR 2026) — SWE-bench 20 → 50 % en gardant une archive de variantes. Risque documenté : un agent a « réussi » en supprimant le journal qui détectait ses erreurs. Donc bac à sable, juge hors de portée de l'agent, validation humaine (comme Night Shift).",
+        "5. Compétences : bibliothèque de procédures apprises sur les succès (skills/ existe déjà), à la Voyager.",
+        "6. Agent sur l'ordinateur : ComputerRL (GRPO, récompenses par règles) atteint 48,9 % sur OSWorld avec un 9B ouvert — cible pour computer_control.",
+        "7. Modularité : plusieurs adaptateurs LoRA par domaine, routés (MixLoRA, MoLE) ou fusionnés (TIES, DARE dans PEFT, même base requise).",
+        "8. Calcul : la 3060 pour le quotidien, des heures louées pour les gros sauts ; l'entraînement décentralisé (DiLoCo, INTELLECT-1/2) existe mais plafonne vers 16 participants — pas une voie individuelle.",
+        "9. Garde-fous : constitution et autonomie bornée de la cognition ; ils comptent davantage à mesure que Matthew s'améliore seul."
+      ],
+      "files": [
+        "matthew/flywheel.py"
+      ]
+    },
+    {
+      "id": "v.vitrine",
+      "label": "Idée : la vitrine publique — voir un chef-d'œuvre se construire",
+      "kind": "procedure",
+      "summary": "Une page en ligne, en lecture seule, mise à jour après chaque cycle : JARVIS/Matthew accomplit des tâches dans une simulation 3D de son environnement (ses outils, son PC, ses appareils), et la page montre jour après jour ce qu'il a appris. Le public regarde, n'agit sur rien et n'a accès à rien.",
+      "details": [
+        "CONTENU — chiffres agrégés seulement : score du champion, courbe jour par jour, précision par outil, outils couverts (23/43 → 43/43), base du modèle, tokens de Matthew, cycles et promotions, nouvelles compétences.",
+        "SIMULATION 3D — une scène three.js (réutiliser le noyau Terre du HUD et son style holographique) où chaque outil est un lieu ; Matthew rejoue des tâches du jeu d'évaluation SYNTHÉTIQUE (amorçage), on voit le routeur choisir, l'appel partir, le résultat revenir ; succès en cyan, échecs en rouge, et le même scénario rejoué à J-7 pour voir le progrès.",
+        "VIE PRIVÉE (non négociable) — jamais une demande, une réponse ou un résultat d'outil du journal réel ; seulement l'évaluation synthétique et des agrégats ; scrub() en dernier filet ; aucune clé ni chemin local ; une liste blanche de champs plutôt qu'une liste noire.",
+        "LECTURE SEULE — page statique générée (HTML + JSON), aucune entrée, aucun appel vers le PC ; hébergement : Artifact claude.ai (privé par défaut, lien en lecture) ou GitHub Pages.",
+        "AUTOMATISATION — étape 8 de la boucle de nuit (« vitrine ») : générer, vérifier la liste blanche, publier. Publier est une action vers l'extérieur : la première version est relue et approuvée par l'utilisateur avant toute mise en ligne automatique.",
+        "Rien d'équivalent trouvé (recherche 2026-10-20) : Termi Protocol montre des agents de code en 3D, sans diffusion publique ni masquage ; la couche de masquage est à construire."
+      ],
+      "files": [
+        "matthew/flywheel.py"
+      ]
+    },
+    {
+      "id": "l.outils",
+      "label": "Limite : contexte court face à 43 outils",
+      "kind": "limite",
+      "summary": "Chaque exemple n'en montre que ~6 à 8 (utilisés + leurres) pour tenir en 2 048 tokens ; à l'usage, le routeur en présélectionne 8. Si le routeur rate l'outil, Matthew apprend à dire qu'il ne peut pas (exemples d'impertinence).",
+      "files": [
+        "matthew/router.py",
+        "matthew/augment.py"
+      ]
+    },
+    {
+      "id": "l.voix",
+      "label": "Limite : la voix temps réel reste à Gemini Live",
+      "kind": "limite",
+      "summary": "Matthew sert la cascade du mode hors-ligne (texte vérifié). Le full-duplex ouvert existe en anglais (Moshi) ; pas encore en français avec appels d'outils.",
+      "details": [
+        "Sources : https://inworld.ai/resources/best-speech-to-speech-model ; NemotronLabs VoiceChat (arXiv 2609.21967)."
+      ]
+    },
+    {
+      "id": "l.donnees",
+      "label": "Limite : le débit du professeur gratuit",
+      "kind": "limite",
+      "summary": "Groq gratuit : ~200 000 tokens par jour pour gpt-oss-120b, soit environ 170 appels. L'amorçage complet des 43 outils prend 2 à 3 nuits ; le vérificateur gpt-oss-20b a son propre quota. Les corrections dites à voix haute restent les meilleures données.",
+      "files": [
+        "matthew/bootstrap.py"
+      ]
+    }
+  ],
+  "edges": [
+    [
+      "matthew",
+      "r.licence",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.journal",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.bootstrap",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.teacher",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.router",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.augment",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.dataset",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.train",
+      "contient"
+    ],
+    [
+      "matthew",
+      "r.reglages",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.evaluate",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.flywheel",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.cloud",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.client",
+      "contient"
+    ],
+    [
+      "matthew",
+      "p.installer",
+      "contient"
+    ],
+    [
+      "matthew",
+      "p.feuille",
+      "contient"
+    ],
+    [
+      "matthew",
+      "v.dix_ans",
+      "contient"
+    ],
+    [
+      "matthew",
+      "l.outils",
+      "contient"
+    ],
+    [
+      "matthew",
+      "l.voix",
+      "contient"
+    ],
+    [
+      "matthew",
+      "l.donnees",
+      "contient"
+    ],
+    [
+      "h.cognition",
+      "m.journal",
+      "alimente"
+    ],
+    [
+      "m.journal",
+      "m.teacher",
+      "alimente"
+    ],
+    [
+      "m.journal",
+      "m.dataset",
+      "alimente"
+    ],
+    [
+      "m.bootstrap",
+      "m.dataset",
+      "alimente"
+    ],
+    [
+      "m.teacher",
+      "m.dataset",
+      "alimente"
+    ],
+    [
+      "m.augment",
+      "m.dataset",
+      "alimente"
+    ],
+    [
+      "m.dataset",
+      "m.train",
+      "alimente"
+    ],
+    [
+      "m.train",
+      "m.evaluate",
+      "alimente"
+    ],
+    [
+      "m.evaluate",
+      "m.bootstrap",
+      "alimente"
+    ],
+    [
+      "m.router",
+      "m.teacher",
+      "alimente"
+    ],
+    [
+      "m.router",
+      "m.bootstrap",
+      "alimente"
+    ],
+    [
+      "m.router",
+      "h.offline",
+      "alimente"
+    ],
+    [
+      "m.flywheel",
+      "m.bootstrap",
+      "utilise"
+    ],
+    [
+      "m.flywheel",
+      "m.teacher",
+      "utilise"
+    ],
+    [
+      "m.flywheel",
+      "m.dataset",
+      "utilise"
+    ],
+    [
+      "m.flywheel",
+      "m.train",
+      "utilise"
+    ],
+    [
+      "m.flywheel",
+      "m.evaluate",
+      "utilise"
+    ],
+    [
+      "m.cloud",
+      "m.train",
+      "utilise"
+    ],
+    [
+      "m.cloud",
+      "m.evaluate",
+      "utilise"
+    ],
+    [
+      "m.teacher",
+      "m.client",
+      "utilise"
+    ],
+    [
+      "m.bootstrap",
+      "m.client",
+      "utilise"
+    ],
+    [
+      "m.evaluate",
+      "m.client",
+      "utilise"
+    ],
+    [
+      "r.licence",
+      "m.dataset",
+      "protege"
+    ],
+    [
+      "r.licence",
+      "m.teacher",
+      "protege"
+    ],
+    [
+      "r.licence",
+      "m.bootstrap",
+      "protege"
+    ],
+    [
+      "r.reglages",
+      "m.train",
+      "protege"
+    ],
+    [
+      "m.flywheel",
+      "h.providers",
+      "deploie"
+    ],
+    [
+      "m.flywheel",
+      "h.offline",
+      "deploie"
+    ],
+    [
+      "p.installer",
+      "m.train",
+      "utilise"
+    ],
+    [
+      "l.outils",
+      "m.router",
+      "alimente"
+    ],
+    [
+      "v.dix_ans",
+      "p.feuille",
+      "alimente"
+    ],
+    [
+      "l.donnees",
+      "m.bootstrap",
+      "alimente"
+    ],
+    [
+      "matthew",
+      "v.vitrine",
+      "contient"
+    ],
+    [
+      "m.evaluate",
+      "v.vitrine",
+      "alimente"
+    ],
+    [
+      "m.flywheel",
+      "v.vitrine",
+      "deploie"
+    ],
+    [
+      "r.licence",
+      "v.vitrine",
+      "protege"
+    ]
+  ]
+}

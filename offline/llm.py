@@ -20,7 +20,7 @@ import re
 import requests
 
 OLLAMA = "http://127.0.0.1:11434"
-PREFERRED = ("qwen3:4b-instruct", "gemma4:12b", "llama3.2:latest", "mistral:latest")
+PREFERRED = ("matthew:latest", "qwen3:4b-instruct","gemma4:12b", "llama3.2:latest", "mistral:latest")
 MAX_AUTO_BYTES = 10 * 1024 ** 3
 MAX_TOOL_ROUNDS = 4
 TIMEOUT_S = 90
@@ -89,11 +89,20 @@ class Brain:
         except Exception:
             pass
 
-    def _declarations(self) -> list[dict]:
+    def _declarations(self, text: str = "") -> list[dict]:
+        names = list(self.tools)
+        if text and self.model.startswith("matthew"):
+            # Matthew a appris avec une présélection d'outils (matthew/router.py) : même chose ici.
+            try:
+                from matthew.router import pick
+                names = pick(text, {n: d for n, (d, _fn) in self.tools.items()})
+            except ImportError:
+                pass
         return [{"type": "function", "function": {
-                    "name": name, "description": decl.get("description", "")[:600],
-                    "parameters": to_json_schema(decl.get("parameters") or {"type": "OBJECT", "properties": {}})}}
-                for name, (decl, _fn) in self.tools.items()]
+                    "name": name, "description": self.tools[name][0].get("description", "")[:600],
+                    "parameters": to_json_schema(self.tools[name][0].get("parameters")
+                                                 or {"type": "OBJECT", "properties": {}})}}
+                for name in names]
 
     def ask(self, text: str, on_tool=None) -> str:
         self.history.append({"role": "user", "content": text})
@@ -101,7 +110,7 @@ class Brain:
         payload = {"model": self.model, "messages": self.history, "stream": False,
                    "keep_alive": "15m", "options": {"temperature": 0.4, "num_predict": 300}}
         if self.tools:
-            payload["tools"] = self._declarations()
+            payload["tools"] = self._declarations(text)
         if "thinking" in self.caps:
             payload["think"] = False
         for _ in range(MAX_TOOL_ROUNDS + 1):

@@ -304,6 +304,26 @@ def _portable(tmp: Path) -> str:
     return "mode portable détecté, données sur la clé, éjection expliquée ; gardien à vide inerte"
 
 
+def _matthew(tmp: Path) -> str:
+    import os
+    p = importlib.import_module("plugins.matthew")
+    real = p.run({"action": "status"})                 # vraies données, lecture seule
+    assert real.startswith("Matthew"), real
+    saved = os.environ.get("MATTHEW_HOME")
+    os.environ["MATTHEW_HOME"] = str(tmp / "matthew")  # écritures : dans tmp seulement
+    try:
+        from matthew.journal import Journal
+        Journal().episode(session="verify", user="salut", tools=[], reply="bonjour")
+        assert "Noté" in p.run({"action": "correct", "text": "Bonjour, ici Matthew."})
+        assert "plus" in p.run({"action": "pause"}) and "nouveau" in p.run({"action": "resume"})
+    finally:
+        if saved is None:
+            os.environ.pop("MATTHEW_HOME", None)
+        else:
+            os.environ["MATTHEW_HOME"] = saved
+    return real[:110]
+
+
 def _dry(module: str, *deps: str):
     def probe(tmp: Path) -> str:
         importlib.import_module(module)
@@ -353,6 +373,7 @@ PROBES = {
     "incidents": ("reel", _incidents),
     "extensions": ("reel", _extensions),
     "portable": ("reel", _portable),
+    "matthew": ("reel", _matthew),
     "weather_report": ("vide", _dry("actions.weather_report")),
     "flight_finder": ("vide", _dry("actions.flight_finder")),
     "save_memory": ("vide", _dry("memory.memory_manager")),
