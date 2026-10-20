@@ -44,6 +44,9 @@
   </div>
 
   <div class="right">
+    <div id="brain-chip" class="chip brain" title="Qui répond en ce moment" hidden>
+      <span class="dot"></span><span id="brain-text">—</span>
+    </div>
     <div class="clock">
       <div id="clock-time">--:--:--</div>
       <div id="clock-date"></div>
@@ -374,6 +377,7 @@
         <button data-tab="self">MODÈLE DE SOI</button>
         <button data-tab="usage">USAGE</button>
         <button data-tab="night">NUIT</button>
+        <button data-tab="matthew">MATTHEW</button>
       </nav>
       <button class="ico" id="mind-close" title="Fermer (Échap)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </header>
@@ -460,6 +464,21 @@
         <div id="night-backlog" class="mind-log"></div>
         <h4>LIMITES <small>ce que cette nuit n'a pas pu vérifier</small></h4>
         <ul id="night-limits" class="mind-limits"></ul>
+      </section>
+      <!-- Onglet MATTHEW — voir js/matthew.js et matthew/hud.py : le modèle à nous, ses
+           scores, l'entraînement en cours, et deux gestes qui l'instruisent. -->
+      <section data-pane="matthew" hidden>
+        <div class="set-note">Matthew apprend chaque nuit ; il ne prend la relève que s'il bat la version précédente. <b>Corriger</b> sa dernière réponse est la donnée la plus précieuse qui soit.</div>
+        <div class="usage-range" id="mt-actions">
+          <button data-mt="refresh">RELIRE</button><button data-mt="forget">NE PAS APPRENDRE</button><button data-mt="publish">PUBLIER LA VITRINE</button><button data-mt="open">OUVRIR LA VITRINE</button>
+        </div>
+        <div id="mt-tiles" class="usage-tiles"></div>
+        <h4>CORRIGER LA DERNIÈRE RÉPONSE <small>la bonne réponse, dans vos mots : elle devient une cible d'entraînement</small></h4>
+        <div class="usage-range mt-correct-row"><input id="mt-correct" type="text" placeholder="La bonne réponse était…" maxlength="500"><button id="mt-correct-btn">ENREGISTRER</button></div>
+        <h4>ENTRAÎNEMENT <small>en direct pendant un cycle de nuit</small></h4>
+        <div id="mt-live" class="mind-log"></div>
+        <h4>POINTS FAIBLES <small>les demandes ratées au dernier examen</small></h4>
+        <div id="mt-weak" class="mind-log"></div>
       </section>
     </div>
     <footer class="mind-foot"><span id="mind-status"></span><span id="mind-meta"></span></footer>

@@ -24,8 +24,10 @@ Dépassement → 429 avec Retry-After, comme les vraies API (modèle LiteLLM : c
 virtuelles, budgets, rpm). Chaque appel écrit ses tokens dans usage.jsonl (purpose
 « gateway:<clé> ») : ils s'ajoutent aux tokens de Matthew sur la vitrine.
 
-Pas de streaming pour l'instant (stream=true est servi en une fois). Écoute sur
-127.0.0.1 par défaut ; l'ouvrir au téléphone passe par Tailscale, jamais par Internet.
+Streaming (stream=true) relayé morceau par morceau, tokens comptés au dernier morceau.
+Écoute sur 127.0.0.1 par défaut ; `serve --tailscale` écoute sur l'adresse Tailscale de
+la machine (le téléphone y accède, Internet non) ; `install` la lance à chaque ouverture
+de session.
 """
 from __future__ import annotations
 
@@ -154,7 +156,18 @@ def _ollama_post(url: str, payload: dict, timeout: float) -> tuple[int, dict]:
         return r.status_code, {"error": {"message": r.text[:300]}}
 
 
-def make_handler(keys: Keys, upstream: str, post=_ollama_post, timeout: float = 180.0):
+def _ollama_stream(url: str, payload: dict, timeout: float):
+    """Les lignes SSE d'Ollama, une à une (texte)."""
+    import requests
+    with requests.post(url, json=payload, timeout=timeout, stream=True) as r:
+        if r.status_code >= 400:
+            yield "data: " + json.dumps({"error": {"message": r.text[:300]}})
+            return
+        for line in r.iter_lines(decode_unicode=True):
+            yield line or ""
+
+
+def make_handler(keys: Keys, upstream: str, post=_ollama_post, timeout: float = 180.0, stream=_ollama_stream):
     class Handler(BaseHTTPRequestHandler):
         server_version = "Matthew/1"
 
@@ -209,9 +222,12 @@ def make_handler(keys: Keys, upstream: str, post=_ollama_post, timeout: float = 
             model = body.get("model") or k["models"][0]
             if model not in k["models"]:
                 return self._send(403, {"error": {"message": f"modèle non permis pour cette clé : {model}"}})
-            body.update(model=model, stream=False)
+            wants_stream = bool(body.get("stream"))
+            body.update(model=model, stream=wants_stream)
             body.setdefault("reasoning_effort", "none")       # Matthew est entraîné sans réflexion
             t0 = time.monotonic()
+            if wants_stream:
+                return self._relay(name, k, model, body, t0)
             try:
                 code, data = post(f"{upstream.rstrip('/')}/chat/completions", body, timeout)
             except Exception as e:
@@ -223,15 +239,93 @@ def make_handler(keys: Keys, upstream: str, post=_ollama_post, timeout: float = 
                 record_usage(model, f"gateway:{name}", usage, time.monotonic() - t0, keys.root)
             self._send(code, data, {"X-Matthew-Tokens-Today": keys.spent_today(name),
                                     "X-Matthew-Budget": k["budget"]})
+
+        def _relay(self, name, k, model, body, t0):
+            """Streaming : chaque morceau part dès qu'il arrive (la voix commence au premier mot).
+            Les tokens viennent du dernier morceau (stream_options.include_usage) ; sinon un
+            morceau de texte ≈ un token."""
+            body["stream_options"] = {"include_usage": True}
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            usage, pieces = None, 0
+            try:
+                for line in stream(f"{upstream.rstrip('/')}/chat/completions", body, timeout):
+                    self.wfile.write((line + "\n").encode("utf-8"))
+                    if line.startswith("data: ") and line[6:].strip() not in ("", "[DONE]"):
+                        try:
+                            chunk = json.loads(line[6:])
+                        except ValueError:
+                            continue
+                        usage = chunk.get("usage") or usage
+                        for ch in chunk.get("choices") or []:
+                            if (ch.get("delta") or {}).get("content"):
+                                pieces += 1
+                    self.wfile.flush()
+            except Exception:
+                pass
+            if usage is None:
+                usage = {"prompt_tokens": 0, "completion_tokens": pieces}
+            used = int(usage.get("prompt_tokens") or 0) + int(usage.get("completion_tokens") or 0)
+            if used:
+                keys.charge(name, used)
+                record_usage(model, f"gateway:{name}", usage, time.monotonic() - t0, keys.root)
     return Handler
 
 
-def serve(host: str = "127.0.0.1", port: int = 11500, root: Path | None = None) -> None:
+def tailscale_ip(runner=None) -> str | None:
+    """L'adresse IPv4 Tailscale de cette machine (100.x.y.z), ou None si Tailscale manque."""
+    import shutil
+    import subprocess
+    exe = shutil.which("tailscale") or next((str(p) for p in (Path(r"C:\Program Files\Tailscale\tailscale.exe"),)
+                                              if p.exists()), None)
+    if not exe:
+        return None
+    try:
+        out = (runner or subprocess.run)([exe, "ip", "-4"], capture_output=True, text=True, timeout=10).stdout
+    except (OSError, ValueError):
+        return None
+    ip = (out or "").strip().splitlines()[0] if (out or "").strip() else ""
+    return ip if ip.startswith("100.") else None
+
+
+def serve(host: str = "127.0.0.1", port: int = 11500, root: Path | None = None, tailscale: bool = False) -> None:
     cfg = config()
     keys = Keys(root)
-    httpd = ThreadingHTTPServer((host, port), make_handler(keys, cfg["endpoint"]))
-    print(f"Matthew écoute sur http://{host}:{port}/v1  (clés : {len(keys.table())})")
-    httpd.serve_forever()
+    hosts = [host]
+    if tailscale:
+        ip = tailscale_ip()
+        if ip:
+            hosts.append(ip)
+        else:
+            print("Tailscale absent ou déconnecté : écoute sur cette machine seulement.")
+    servers = [ThreadingHTTPServer((h, port), make_handler(keys, cfg["endpoint"])) for h in dict.fromkeys(hosts)]
+    for srv in servers[1:]:
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+    print("Matthew écoute sur " + ", ".join(f"http://{h}:{port}/v1" for h in dict.fromkeys(hosts))
+          + f"  (clés : {len(keys.table())})")
+    servers[0].serve_forever()
+
+
+def install(port: int = 11500, runner=None) -> dict:
+    """Tâche Windows « Matthew passerelle » : la passerelle démarre à chaque ouverture de session."""
+    import subprocess
+    from matthew import REPO
+    cmd = data_dir() / "gateway.cmd"
+    cmd.write_text("\r\n".join(["@echo off", f'cd /d "{REPO}"', "set PYTHONIOENCODING=utf-8",
+                                 f'"{sys.executable}" -m matthew.gateway serve --tailscale --port {port} '
+                                 f'>> "{data_dir() / "gateway.log"}" 2>&1', ""]), encoding="utf-8")
+    # Une tâche « à l'ouverture de session » exige les droits administrateur (refusé le
+    # 2026-10-20) : le dossier Démarrage du compte suffit, sans fenêtre (wscript, style 0).
+    import os
+    startup = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+    if not startup.is_dir():
+        return {"ok": False, "out": f"dossier Démarrage introuvable : {startup}"}
+    vbs = startup / "Matthew passerelle.vbs"
+    vbs.write_text(f'CreateObject("WScript.Shell").Run """{cmd}""", 0, False\r\n', encoding="utf-8")
+    return {"ok": True, "out": f"lancée à chaque ouverture de session : {vbs}"}
 
 
 def main(argv=None) -> int:
@@ -240,6 +334,8 @@ def main(argv=None) -> int:
     s = sub.add_parser("serve")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=11500)
+    s.add_argument("--tailscale", action="store_true", help="écouter aussi sur l'adresse Tailscale")
+    sub.add_parser("install", help="démarrer la passerelle à chaque ouverture de session")
     k = sub.add_parser("key")
     ks = k.add_subparsers(dest="action", required=True)
     c = ks.add_parser("create")
@@ -253,7 +349,9 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     keys = Keys()
     if a.cmd == "serve":
-        serve(a.host, a.port)
+        serve(a.host, a.port, tailscale=a.tailscale)
+    elif a.cmd == "install":
+        print(json.dumps(install(), ensure_ascii=False))
     elif a.cmd == "usage" or (a.cmd == "key" and a.action == "list"):
         print(json.dumps(keys.table(), ensure_ascii=False, indent=1))
     elif a.action == "create":

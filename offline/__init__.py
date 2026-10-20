@@ -135,6 +135,7 @@ class OfflineVoice:
                      "d'outils (ollama pull qwen3:4b-instruct).")
             return
         model, caps = picked
+        self.model = model                  # lu par le badge « qui répond » du HUD (matthew/hud.py)
         brain = llm.Brain(model, caps,
                           SYSTEM.format(name=self.names[-1] or "JARVIS"),
                           tools.build(self.log))

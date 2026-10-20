@@ -37,7 +37,7 @@ DECLS = [
 CFG = {**matthew.DEFAULTS, "teacher": {"base_url": "http://x", "model": "gpt-oss-120b",
                                         "license": "apache-2.0"},
        "min_new_examples": 3, "bootstrap_budget": 0, "dedup": False,
-       "vitrine_publish": False}
+       "vitrine_publish": False, "min_eval": 1}
 
 
 def check(name):
@@ -337,9 +337,10 @@ def _evaluate():
     a, b = E.score(perfect, rows, 2), E.score(dumb, rows, 2)
     assert a["composite"] == 1.0 and a["repeats"] == 2 and a["tool_args"] == 1.0, a
     assert b["composite"] == 0.0, b
-    assert E.gate(a, None)[0] and not E.gate(b, None)[0]
-    assert E.gate(a, b)[0] and not E.gate(b, a)[0]
-    assert not E.gate({**a, "composite": 0.9, "tool_name": 0.5, "n": 2}, {**a, "composite": 0.8})[0], "recul outil"
+    assert E.gate(a, None, min_eval=1)[0] and not E.gate(b, None, min_eval=1)[0]
+    assert E.gate(a, b, min_eval=1)[0] and not E.gate(b, a, min_eval=1)[0]
+    assert not E.gate({**a, "composite": 0.9, "tool_name": 0.5, "n": 2}, {**a, "composite": 0.8}, min_eval=1)[0], "recul outil"
+    assert "trop petite" in E.gate(a, None)[1], "18 exemples ne suffisent plus : 30 requis par défaut"
     return f"parfait {a['composite']}, vide {b['composite']}"
 
 
@@ -481,11 +482,15 @@ def fake_bootstrap_teacher(payload):
     msgs = payload["messages"]
     if payload.get("response_format"):
         prompt = msgs[-1]["content"]
+        if "AUCUN" in prompt:
+            return {"role": "assistant", "content": json.dumps({"requests": ["commande une pizza", "appelle un vrai taxi"]})}
         if "nom : weather" in prompt:
             return {"role": "assistant", "content": json.dumps({"requests": [
                 "quelle est la météo à paris", "météo demain à lyon", "ouvre spotify"]})}
         if "nom : " in prompt:
             return {"role": "assistant", "content": "pas du JSON"}
+        if "AUCUN" in prompt:
+            return {"role": "assistant", "content": json.dumps({"requests": ["commande une pizza", "appelle un vrai taxi"]})}
         return {"role": "assistant", "content": json.dumps({"requests": ["salut toi", "merci beaucoup"]})}
     return smart_teacher(payload)
 
@@ -497,11 +502,16 @@ def _bootstrap():
     j = Journal(root, clock=Clock())
     j.save_tools(DECLS)
     c = Client("http://x", "gpt-oss-120b", post=fake_post(fake_bootstrap_teacher), usage_root=root)
+    import matthew.bootstrap as BS
+    saved_targets = dict(BS.NO_TOOL_TARGETS)
+    BS.NO_TOOL_TARGETS.update({"__chat__": 2, "__none__": 2})
     b = Bootstrap(j, c, cfg=CFG, sleep=lambda s: None)
     st = b.run(per_tool=3, chitchat=2)
-    # weather : 2 vérifiées, « ouvre spotify » rejetée (le vérificateur choisit un autre outil) ;
-    # open_app et volume : génération illisible ; conversation : 2 sans outil.
-    assert st["ok"] == 4 and st["rejected"] == 3, st
+    # conversation et refus D'ABORD (2 + 2) ; weather : 2 vérifiées, « ouvre spotify » rejetée ;
+    # open_app et volume : génération illisible.
+    targets = [r["target"] for r in b.records() if r["status"] == "ok"]
+    assert targets[:4] == ["__chat__", "__chat__", "__none__", "__none__"], targets
+    assert st["ok"] == 6 and st["rejected"] == 3, st
     recs = [r for r in b.records() if r["status"] == "ok"]
     tool_ex = next(r for r in recs if r["target"] == "weather")
     assert tool_ex["messages"][-1]["tool_calls"][0]["function"]["arguments"]["city"] == "paris"
@@ -511,7 +521,7 @@ def _bootstrap():
     b.run(per_tool=3, chitchat=2)
     assert b.run(per_tool=3, chitchat=2)["calls"] == 0, "après 3 échecs, l'outil est abandonné"
     man = D.build(j, None, cfg=CFG, clock=Clock())
-    assert man["synthetic"] == 4 and man["origins"] == {"teacher": 4}, man
+    assert man["synthetic"] == 6 and man["origins"] == {"teacher": 6}, man
 
     def quota_post(url, headers, payload, timeout):
         from matthew.client import QuotaError
@@ -522,7 +532,21 @@ def _bootstrap():
     st = Bootstrap(j2, Client("http://x", "m", post=quota_post, usage_root=TMP), cfg=CFG,
                    sleep=waits.append).run(1, 0)
     assert "quota" in st["stopped"] and len(waits) == 3, (st, waits)
-    return "4 exemples vérifiés, 3 rejetés ; quota : 3 attentes puis arrêt propre"
+    # Professeur de secours : quota épuisé → le modèle local prend le relais.
+    j3 = Journal(TMP / "boot3")
+    j3.save_tools(DECLS)
+    fb = Bootstrap(j3, None, cfg={**CFG, "teacher_fallback": {"base_url": "http://local", "model": "qwen3.6:latest",
+                                                               "verifier_model": "gemma4:12b", "license": "apache-2.0"}},
+                   sleep=lambda s: None)
+    fb.client = fb.verifier = Client("http://x", "m", post=quota_post, usage_root=TMP)
+    fb._fallback = fb.cfg["teacher_fallback"]
+    try:
+        fb._chat([{"role": "user", "content": "x"}])
+    except Exception:
+        pass
+    assert fb.fell_back and fb.teacher["model"] == "qwen3.6:latest" and fb.verifier_model == "gemma4:12b"
+    BS.NO_TOOL_TARGETS.update(saved_targets)
+    return "6 exemples vérifiés (conversation et refus d'abord), 3 rejetés ; quota : relais local"
 
 
 @check("remédiation : outils faibles du dernier candidat, demandes plus dures, une fois ; vérificateur distinct")
@@ -576,12 +600,16 @@ def _cog_order():
         (matthew.data_dir() / "champion.json").write_text(json.dumps({"score": {"composite": 0.3}}))
         assert matthew.cognition_order(base, {}) == base, "sous le plancher"
         (matthew.data_dir() / "champion.json").write_text(json.dumps({"score": {"composite": 0.8}}))
+        assert matthew.cognition_order(base, {}) == base, "pas de banc de cognition : en retrait"
+        (matthew.data_dir() / "champion.json").write_text(json.dumps({"score": {"composite": 0.8}, "cognition": {"score": 0.5}}))
+        assert matthew.cognition_order(base, {}) == base, "banc insuffisant"
+        (matthew.data_dir() / "champion.json").write_text(json.dumps({"score": {"composite": 0.8}, "cognition": {"score": 0.9}}))
         assert matthew.cognition_order(base, {}) == ["matthew", "local", "groq"]
         assert matthew.cognition_order(base, {"cognition_provider_order": base}) == base, "ordre manuel"
         assert matthew.cognition_order(base, {"matthew": {"use_in_cognition": False}}) == base
     finally:
         os.environ["MATTHEW_HOME"] = str(TMP / "home")
-    return "4 cas"
+    return "6 cas"
 
 
 @check("GPU loué : paquet autonome (données, plan 9B, run.sh) et retour évalué")
@@ -850,6 +878,159 @@ def _gateway():
     finally:
         httpd.shutdown()
     return "401 / 403 / 429 budget / 429 rpm / révocation"
+
+
+@check("juge des arguments : dates, heures, chemins, nombres, casse, inclusion")
+def _norm():
+    from matthew.norm import same
+    yes = [("12 juillet", "2027-07-12"), ("12/07", "le 12 juillet"), ("15h", "15:00"), ("15 h 00", "3 pm"),
+           ("C:\\Projet\\app.js", "c:/projet/app.js/"), ("8081", 8081), ("1,5", 1.5), ("oui", True),
+           ("Tour Eiffel", "page Wikipédia de la Tour Eiffel"), ("Écrans", "ecrans")]
+    no = [("Paris", "Lyon"), ("Spotify", "Discord"), ("12 juillet", "13 juillet"), ("1", "11"), ("15h", "16h")]
+    bad = [p for p in yes if not same(*p)] + [p for p in no if same(*p)]
+    assert not bad, bad
+    from matthew import evaluate as E
+    exp = {"role": "assistant", "tool_calls": [{"function": {"name": "flight", "arguments": {"date": "12 juillet", "to": "Rome"}}}]}
+    got = {"tool_calls": [{"function": {"name": "flight", "arguments": {"date": "2027-07-12", "to": "rome"}}}]}
+    assert E.judge(exp, got)["tool_args"] == 1.0, "même sens, forme différente : juste"
+    return f"{len(yes)} égalités, {len(no)} différences"
+
+
+@check("évaluation par outil : au moins un tiers de chaque outil, jusqu'à 3 ; refus mesurés")
+def _split_per_tool():
+    exs = [{"key": f"{t}{i}", "synthetic": True, "target": t, "ts": i} for t in ("a", "b", "c") for i in range(6)]
+    exs += [{"key": f"n{i}", "synthetic": True, "target": "__none__", "ts": i} for i in range(9)]
+    tr, ev = D.split(exs, 0.15)
+    per = {t: sum(e["target"] == t for e in ev) for t in ("a", "b", "c", "__none__")}
+    assert per == {"a": 2, "b": 2, "c": 2, "__none__": 3}, per
+    from matthew import evaluate as E
+
+    class NoTool:
+        model = "m"
+        def chat(self, *a, **k):
+            return {"content": "Je ne peux pas faire ça.", "_latency": 0.1}
+    rows = [{"messages": [{"role": "user", "content": "commande une pizza"}, {"role": "assistant", "content": "Je ne peux pas."}],
+             "tools": [], "target": "__none__"}]
+    sc = E.score(NoTool(), rows)
+    assert sc["irrelevance"] == 1.0, sc
+    return f"évaluation {per}"
+
+
+@check("banc de cognition : vrais prompts de la cognition (lus sans import), notés par règles")
+def _cogbench():
+    from matthew import cogbench as CB
+    assert "Answer with exactly one word: YES or NO" in CB._prompt("cognition/policy.py", "JUDGE_PROMPT")
+    assert "ONE JSON object" in CB._prompt("cognition/autonomy.py", "PLANNER_PROMPT")
+
+    class Oracle:
+        """Répond juste : OUI si le fait n'ajoute rien, un plan JSON valide sinon."""
+        model = "oracle"
+        def chat(self, messages, *a, **k):
+            p = messages[-1]["content"]
+            if "YES or NO" in p:
+                for said, fact, want in CB.JUDGE_CASES:
+                    if f"store:\n{fact}\n" in p and said[0] in p:
+                        return {"content": "YES" if want else "NO"}
+            return {"content": '{"action": "web_search", "args": {"query": "vols Rome mai"}, "reason": "r"}'}
+
+    class Dumb:
+        model = "dumb"
+        def chat(self, *a, **k):
+            return {"content": "bof"}
+    good, bad = CB.run(Oracle()), CB.run(Dumb())
+    assert good["score"] == 1.0 and bad["score"] == 0.0, (good, bad)
+    assert CB.plan_ok('{"action": "rm", "args": {}}')[0] is False and CB.plan_ok('{"action": "stop", "args": {}}')[0]
+    assert {w for _, _, w in CB.JUDGE_CASES} == {True, False}
+    return f"{len(CB.JUDGE_CASES)} jugements, {len(CB.PLANNER_CASES)} plans"
+
+
+@check("streaming : morceaux relayés dès leur arrivée, tokens comptés à la fin")
+def _gateway_stream():
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    from matthew import gateway as G
+    root = TMP / "gws"
+    root.mkdir()
+    keys = G.Keys(root)
+    k = keys.create("pc", budget=10_000, rpm=50)
+    sent = []
+
+    def fake_stream(url, payload, timeout):
+        sent.append(payload)
+        for w in ("Bon", "jour", " !"):
+            yield "data: " + json.dumps({"choices": [{"delta": {"content": w}}]})
+            yield ""
+        yield "data: " + json.dumps({"choices": [], "usage": {"prompt_tokens": 9, "completion_tokens": 3}})
+        yield ""
+        yield "data: [DONE]"
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), G.make_handler(keys, "http://o/v1", stream=fake_stream))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{httpd.server_address[1]}/v1/chat/completions",
+                                     json.dumps({"stream": True, "messages": [{"role": "user", "content": "salut"}]}).encode(),
+                                     {"Authorization": f"Bearer {k}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            assert r.headers["Content-Type"].startswith("text/event-stream")
+            body = r.read().decode()
+        text = "".join(json.loads(l[6:])["choices"][0]["delta"]["content"] for l in body.splitlines()
+                       if l.startswith("data: {") and json.loads(l[6:]).get("choices"))
+        assert text == "Bonjour !" and body.rstrip().endswith("data: [DONE]"), body
+        assert sent[0]["stream"] is True and sent[0]["stream_options"] == {"include_usage": True}
+        import time as _t
+        _t.sleep(0.2)
+        assert keys.spent_today("pc") == 12, keys.spent_today("pc")
+    finally:
+        httpd.shutdown()
+    assert G.tailscale_ip(runner=lambda *a, **k: Proc(out="100.101.102.103\n")) in ("100.101.102.103", None)
+    return "3 morceaux, 12 tokens"
+
+
+@check("entraînement en direct : journal du Trainer lu, live.json, publié sur la vitrine")
+def _live():
+    from matthew import train as T
+    from matthew import vitrine as V
+    assert T.parse_progress("{'loss': '0.1234', 'grad_norm': '1.2', 'epoch': '0.57'}") == {"loss": 0.1234, "epoch": 0.57}
+    assert T.parse_progress("{'eval_loss': 0.12, 'eval_runtime': 15.2, 'epoch': 2.0}") == {"eval_loss": 0.12, "epoch": 2.0}
+    assert T.parse_progress("Unsloth: bonjour") is None
+    root = TMP / "vitrine"
+    fw = Flywheel(root, CFG, clock=Clock())
+    fw._live({"phase": "entraînement", "epoch": 1.5, "epochs": 3, "losses": [0.3, 0.2]})
+    live = json.loads((root / "vitrine" / "live.json").read_text(encoding="utf-8"))
+    import time as _t
+    live["at"] = _t.time()
+    (root / "vitrine" / "live.json").write_text(json.dumps(live), encoding="utf-8")
+    data = V.gather(root)
+    assert data["live"]["epochs"] == 3 and data["live"]["losses"] == [0.3, 0.2]
+    V.check_public(data, root)
+    assert "<feed" in V.atom(data) and "Matthew" in V.atom(data)
+    (root / "vitrine" / "live.json").unlink()
+    assert V.gather(root)["live"] is None
+    return "époque 1,5 / 3, deux pertes"
+
+
+@check("HUD : onglet MATTHEW et badge « qui répond » (matthew.hud, sans backend réel)")
+def _hud():
+    from types import SimpleNamespace
+    from matthew import hud as H
+    assert H.who_answers(None)["brain"] == "Gemini"
+    sup = SimpleNamespace(active=True, voice=SimpleNamespace(model="matthew:latest"))
+    assert H.who_answers(SimpleNamespace(_offline=SimpleNamespace(supervisor=sup)))["brain"] == "Matthew"
+    sup.voice.model = "gemma4:12b"
+    assert H.who_answers(SimpleNamespace(_offline=SimpleNamespace(supervisor=sup)))["brain"] == "hors-ligne"
+    os.environ["MATTHEW_HOME"] = str(TMP / "hudhome")
+    try:
+        st = H.call("matthew.status")
+        assert "who" in st and "champion" in st and st["vitrine_url"].startswith("https://"), st
+        assert H.call("matthew.correct", {"text": ""})["error"]
+        assert H.call("matthew.nope")["error"]
+    finally:
+        os.environ["MATTHEW_HOME"] = str(TMP / "home")
+    js = (REPO / "client_desktop" / "hud" / "web" / "js" / "matthew.js").read_text(encoding="utf-8")
+    html = (REPO / "client_desktop" / "hud" / "web" / "index.html").read_text(encoding="utf-8")
+    assert "rpc('matthew.status'" in js and 'data-tab="matthew"' in html and 'id="brain-chip"' in html
+    assert 'startswith("matthew.")' in (REPO / "local_hud.py").read_text(encoding="utf-8")
+    return "Gemini / Matthew / hors-ligne"
 
 
 @check("contrat V2 : trois hooks gardés, données ignorées par Git")

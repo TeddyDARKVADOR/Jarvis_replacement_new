@@ -199,22 +199,62 @@ def free_gpu(runner=subprocess.run) -> list[str]:
     return names
 
 
-def execute(run: Path, timeout_h: float = 6.0, cfg: dict | None = None) -> dict:
+_NUM = r"'?(-?\d+(?:\.\d+)?(?:e-?\d+)?)'?"
+
+
+def parse_progress(line: str) -> dict | None:
+    """Une ligne de journal du Trainer ({'loss': '0.12', …, 'epoch': '1.5'}) → dict, sinon None."""
+    import re
+    if "'epoch'" not in line or ("'loss'" not in line and "'eval_loss'" not in line):
+        return None
+    out = {}
+    for key in ("loss", "eval_loss", "epoch"):
+        m = re.search(rf"'{key}': {_NUM}", line)
+        if m:
+            out[key] = float(m.group(1))
+    return out or None
+
+
+def execute(run: Path, timeout_h: float = 6.0, cfg: dict | None = None, on_progress=None) -> dict:
     cfg = cfg or config()
     missing = missing_deps(cfg)
     if missing:
         return {"ok": False, "reason": f"à installer : {', '.join(missing)} "
                 f"(voir le nœud « Installer l'entraînement local » du graphe matthew)"}
     free_gpu()
-    try:
-        cp = subprocess.run([train_python(cfg), str(run / "train_matthew.py")], cwd=run,
-                            capture_output=True, text=True, encoding="utf-8", errors="replace",
-                            timeout=timeout_h * 3600, env=train_env(cfg))
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "reason": f"délai de {timeout_h} h dépassé"}
-    (run / "train.log").write_text(cp.stdout[-200_000:] + "\n" + cp.stderr[-200_000:], encoding="utf-8")
-    if cp.returncode != 0 or "MATTHEW_TRAIN_OK" not in cp.stdout:
-        return {"ok": False, "reason": f"échec (code {cp.returncode}), voir {run / 'train.log'}"}
+    # Lu ligne par ligne : chaque perte relevée part à `on_progress` (vitrine en direct).
+    plan_h = json.loads((run / "plan.json").read_text(encoding="utf-8")).get("hyper", {})
+    epochs = int(plan_h.get("epochs", 3))
+    proc = subprocess.Popen([train_python(cfg), str(run / "train_matthew.py")], cwd=run,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                            errors="replace", env=train_env(cfg))
+    lines, deadline, losses = [], time.monotonic() + timeout_h * 3600, []
+    for line in proc.stdout:
+        lines.append(line)
+        if len(lines) > 20_000:
+            del lines[:5_000]
+        p = parse_progress(line)
+        if p and on_progress:
+            if "loss" in p:
+                losses.append(round(p["loss"], 4))
+            try:
+                on_progress({"phase": "entraînement", "epoch": p.get("epoch"), "epochs": epochs,
+                             "losses": losses[-60:], "eval_loss": p.get("eval_loss")})
+            except Exception:
+                pass
+        if time.monotonic() > deadline:
+            proc.kill()
+            return {"ok": False, "reason": f"délai de {timeout_h} h dépassé"}
+    proc.wait()
+    out = "".join(lines)
+    (run / "train.log").write_text(out[-400_000:], encoding="utf-8")
+    if proc.returncode != 0 or "MATTHEW_TRAIN_OK" not in out:
+        return {"ok": False, "reason": f"échec (code {proc.returncode}), voir {run / 'train.log'}"}
+    if on_progress:
+        try:
+            on_progress({"phase": "export", "epoch": epochs, "epochs": epochs, "losses": losses[-60:]})
+        except Exception:
+            pass
     gguf = finish(run)
     if gguf is None:
         return {"ok": False, "reason": f"entraînement fini mais aucun GGUF quantifié dans {run}"}

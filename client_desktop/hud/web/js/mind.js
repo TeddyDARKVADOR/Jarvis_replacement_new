@@ -11,6 +11,7 @@
  * l'active. Aucun outil du modèle ne passe par ici (selftest cognition #46).
  */
 import { loadNight, wireNight } from './night.js';
+import { loadMatthew, wireMatthew } from './matthew.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -88,6 +89,7 @@ export function createMind(ctx) {
     if (t === 'memories') loadMemories();
     if (t === 'usage') loadUsage();
     if (t === 'night') loadNight(ctx, status);
+    if (t === 'matthew') loadMatthew(ctx, status);
   }
 
   // ── usage : ce que JARVIS a coûté et réussi (cognition/usage.py) ──
@@ -361,6 +363,7 @@ export function createMind(ctx) {
       loadUsage();
     });
     wireNight(ctx, status);
+    wireMatthew(ctx, status);
     $('mind-views').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-view]');
       if (b) { view = b.dataset.view; loadMemories(); }

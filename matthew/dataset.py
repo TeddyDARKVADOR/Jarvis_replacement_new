@@ -80,7 +80,8 @@ def collect(journal: Journal, teacher_records) -> tuple[list[dict], list[dict]]:
         user = t["messages"][1]["content"]
         examples.append({"messages": t["messages"], "tools": tools_for(t["tools"]),
                          "origin": "teacher", "teacher": t["teacher"], "synthetic": True,
-                         "ts": t["ts"], "episode": t["episode"], "key": _key(user)})
+                         "target": t.get("target", ""), "ts": t["ts"], "episode": t["episode"],
+                         "key": _key(user)})
     # Doublons : la plus récente, et à date égale la correction humaine.
     best: dict[str, dict] = {}
     for ex in sorted(examples, key=lambda e: (e["ts"], e["origin"] == "human")):
@@ -123,9 +124,16 @@ def split(examples: list[dict], share: float) -> tuple[list[dict], list[dict]]:
     if len(real) >= 5:
         n_eval = max(1, n_eval)
     train, evals = real[:len(real) - n_eval], real[len(real) - n_eval:]
+    # Par cible (outil, conversation, refus) : au moins un tiers de ses exemples, jusqu'à 3,
+    # pour que chaque outil soit noté (18 exemples d'évaluation au premier champion : trop peu).
+    by: dict[str, list[dict]] = {}
     for e in syn:
-        h = int(hashlib.sha1(e["key"].encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
-        (evals if h < share else train).append(e)
+        by.setdefault(e.get("target", ""), []).append(e)
+    for group in by.values():
+        group.sort(key=lambda e: hashlib.sha1(e["key"].encode()).hexdigest())
+        k = max(round(share * len(group)), min(3, len(group) // 3))
+        evals += group[:k]
+        train += group[k:]
     return train, evals
 
 

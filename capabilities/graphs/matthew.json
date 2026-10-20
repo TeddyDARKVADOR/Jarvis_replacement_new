@@ -83,13 +83,16 @@
         "Méthode APIGen / AgenticQwen (arXiv 2604.21590) : rejet par vérification indépendante ; rien n'est exécuté.",
         "Remédiation (iTool, EMNLP 2025) : les outils où le dernier candidat a échoué reçoivent des demandes plus dures, avec les outils confondus nommés ; une ronde par évaluation.",
         "Run réel 2026-10-20 : 116 exemples gardés sur 138 (84 %), 23 outils sur 43, arrêt propre sur le quota Groq (gpt-oss-120b : ~8 000 tokens/min, ~200 000/jour). Rejets : arguments inventés, aucun outil, outil voisin.",
-        "Reprise : un outil est fait à son premier exemple vérifié ou après 3 échecs ; la boucle de nuit continue avec 150 appels."
+        "Reprise : un outil est fait à son premier exemple vérifié ou après 3 échecs ; la boucle de nuit continue avec 150 appels.",
+        "Ordre revu (2026-10-20) : conversation (__chat__) et refus (__none__ : demandes qu'aucun outil ne sait faire) D'ABORD, 40 exemples vérifiés chacun, puis les outils ; « salut ça va » appelait briefing et le premier champion ne refusait juste qu'une fois sur deux.",
+        "Remédiation des refus : si le dernier candidat refuse juste moins de 75 % du temps, une ronde de demandes impossibles.",
+        "Professeur de secours : quota Groq épuisé → qwen3.6 (génère) et gemma4:12b (vérifie), deux familles différentes, Apache-2.0, servis par Ollama sur ce PC ; l'amorçage continue toute la nuit."
       ],
       "files": [
         "matthew/bootstrap.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — run réel Groq ; 2026-10-20 — matthew.selftest : 25/25"
+      "verified": "2026-10-20 — matthew.selftest : 34/34"
     },
     {
       "id": "m.teacher",
@@ -148,7 +151,10 @@
         "matthew/dataset.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 25/25"
+      "verified": "2026-10-20 — matthew.selftest : 34/34",
+      "details": [
+        "Évaluation par cible : au moins un tiers des exemples de chaque outil (jusqu'à 3), conversation et refus compris ; 18 → 39 exemples d'évaluation sur les données du 2026-10-20."
+      ]
     },
     {
       "id": "m.train",
@@ -158,13 +164,14 @@
       "details": [
         "Essai réel 2026-10-20 sur la RTX 3060 : 3 pas en 166 s, GGUF, import Ollama avec la capacité tools ; le modèle appelle system_status et close_camera, éval 0,92 sur 4 exemples.",
         "Pièges trouvés et corrigés : le gabarit Qwen3.5 veut les arguments d'outil en dict (pas en JSON texte) ; Arrow ne sait pas unifier des schémas d'outils variés (texte rendu en Python) ; Unsloth écrit le GGUF dans gguf_gguf/.",
-        "Mémoire vidéo : 11,9 Go sur 12 pendant l'entraînement — tout autre modèle chargé fait déborder."
+        "Mémoire vidéo : 11,9 Go sur 12 pendant l'entraînement — tout autre modèle chargé fait déborder.",
+        "Lu ligne par ligne (parse_progress) : chaque perte part à la vitrine en direct pendant l'entraînement."
       ],
       "files": [
         "matthew/train.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — essai réel RTX 3060"
+      "verified": "2026-10-20 — matthew.selftest : 34/34"
     },
     {
       "id": "r.reglages",
@@ -190,13 +197,15 @@
       "summary": "Bon outil, bons arguments, réponse courte, JSON valide, refus quand aucun outil ne convient — par outil visé, sur plusieurs passes. Promotion seulement si le candidat bat le champion d'une marge, sans recul de plus de 5 points sur les outils, les réponses ni la pertinence.",
       "details": [
         "Les bancs d'outils varient jusqu'à ~20 points sans changer de modèle (arXiv 2607.02577) : passes répétées.",
-        "Les échecs (outil attendu, outil choisi, demande) vont dans last_eval.json et nourrissent la remédiation."
+        "Les échecs (outil attendu, outil choisi, demande) vont dans last_eval.json et nourrissent la remédiation.",
+        "Juge des arguments normalisé (matthew/norm.py) : dates, heures, chemins, nombres, casse, accents, inclusion — « 12 juillet » = « 2027-07-12 ».",
+        "Promotion refusée sous min_eval = 30 exemples d'évaluation (18 au premier champion : trop peu) ; les demandes __none__ comptent dans le taux de refus justes."
       ],
       "files": [
         "matthew/evaluate.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 25/25"
+      "verified": "2026-10-20 — matthew.selftest : 34/34"
     },
     {
       "id": "m.flywheel",
@@ -246,14 +255,15 @@
       "kind": "regle",
       "summary": "matthew.cognition_order() met Matthew en tête des tâches de fond de la cognition dès qu'un champion évalué existe (score ≥ 0,5) ; un ordre écrit à la main gagne toujours ; use_in_cognition=false le coupe. Sonde de vie par serveur local.",
       "details": [
-        "Limite : le juge mesure les appels d'outils, pas l'extraction ni la réflexion de la cognition."
+        "Limite : le juge mesure les appels d'outils, pas l'extraction ni la réflexion de la cognition.",
+        "Banc de cognition exigé (matthew/cogbench.py) : Matthew ne tient la cognition que si son score ≥ 0,75 ; premier champion : 0,96 (juge de mémoire 11/12, planificateur 4/4)."
       ],
       "files": [
         "cognition/providers.py",
         "matthew/__init__.py"
       ],
-      "status": "a_tester",
-      "verified": "2026-10-20 — matthew.selftest : 25/25"
+      "status": "ok",
+      "verified": "2026-10-20 — matthew.selftest : 34/34"
     },
     {
       "id": "h.offline",
@@ -329,7 +339,10 @@
         "SANS MARQUE : BRAND (jarvis, Mark LIII) refusé partout par check_public ; identifiants d'outils publics (shutdown_jarvis → shutdown) ; titres de commits réécrits ou écartés (clean_title).",
         "VIE PRIVÉE : liste blanche champ par champ ; aucun texte du journal réel ; secrets cherchés sur le texte d'origine (bug trouvé par le selftest : retirer « @ » d'abord laissait passer une adresse).",
         "HONNÊTETÉ : examen tiré du hold-out en priorité, « jamais vu / vu à l'entraînement » affiché.",
-        "Vérifiée en local (Edge sans interface, 1440 px et 390 px) et publiée une première fois par l'utilisateur (`python -m matthew.vitrine setup`)."
+        "Vérifiée en local (Edge sans interface, 1440 px et 390 px) et publiée une première fois par l'utilisateur (`python -m matthew.vitrine setup`).",
+        "Page par outil : clic sur une balise 3D ou une ligne → fiche (précision, courbe des examens, scénarios) ; adresse partageable …/#outil-<id>.",
+        "Entraînement en direct : bandeau « époque n/3 » et courbe de perte, Matthew pulse plus vite ; publié sans rejouer l'examen (la carte est prise).",
+        "Flux Atom des améliorations et des promotions : feed.xml."
       ],
       "files": [
         "matthew/vitrine.py",
@@ -338,7 +351,7 @@
         "matthew/vitrine_site/assets/LICENSES.txt"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 28/28"
+      "verified": "2026-10-20 — matthew.selftest : 34/34"
     },
     {
       "id": "l.outils",
@@ -378,13 +391,56 @@
         "Un token ≈ ¾ de mot. Servi à la maison, il ne coûte que l'électricité ; le vrai bien rare est la carte graphique, qui sert une demande à la fois — d'où budgets et limites par appareil.",
         "Modèle : clés virtuelles, budgets et rpm de LiteLLM (https://docs.litellm.ai/docs/proxy/users), sans dépendance de plus. Ollama n'a pas d'authentification : la passerelle doit être le seul chemin vers lui.",
         "Écoute sur 127.0.0.1 ; l'ouvrir au téléphone passe par Tailscale. Pas encore de streaming.",
-        "Sonde réelle 2026-10-20 : réponse de Matthew via la passerelle, 59 tokens comptés, compteur du jour renvoyé en en-tête."
+        "Sonde réelle 2026-10-20 : réponse de Matthew via la passerelle, 59 tokens comptés, compteur du jour renvoyé en en-tête.",
+        "Streaming (stream=true) : morceaux relayés dès leur arrivée, tokens comptés au dernier morceau (stream_options.include_usage) ; sonde réelle : premier mot en 0,53 s.",
+        "Téléphone : `serve --tailscale` écoute aussi sur l'adresse Tailscale (absente de ce PC le 2026-10-20 : à installer) ; `install` la lance à chaque ouverture de session (dossier Démarrage : la tâche planifiée exigeait les droits administrateur)."
       ],
       "files": [
         "matthew/gateway.py"
       ],
       "test": "python -m matthew.gateway usage",
-      "verified": "2026-10-20 — matthew.selftest : 28/28"
+      "verified": "2026-10-20 — matthew.selftest : 34/34"
+    },
+    {
+      "id": "m.norm",
+      "label": "norm.py — comparer comme un humain",
+      "kind": "module",
+      "status": "ok",
+      "summary": "Forme canonique d'une valeur d'argument avant comparaison : dates (« 12 juillet », « 12/07 », ISO → mois-jour), heures, chemins, nombres, booléens, casse, accents ; inclusion acceptée au-delà de 4 caractères.",
+      "files": [
+        "matthew/norm.py"
+      ],
+      "verified": "2026-10-20 — matthew.selftest : 34/34"
+    },
+    {
+      "id": "m.cogbench",
+      "label": "cogbench.py — le banc de cognition",
+      "kind": "module",
+      "status": "ok",
+      "summary": "Note Matthew sur les vraies tâches de la cognition, avec ses vrais prompts lus sans import (contrat V2) : juge de mémoire (12 cas étiquetés) et planificateur autonome (4 objectifs, JSON et action autorisée). Noté par règles, sans modèle juge.",
+      "details": [
+        "Premier champion : 0,96 — un seul écart, un cas de traduction discutable (« nurse » → « infirmière »)."
+      ],
+      "files": [
+        "matthew/cogbench.py"
+      ],
+      "test": "python -m matthew.cogbench",
+      "verified": "2026-10-20 — matthew.selftest : 34/34"
+    },
+    {
+      "id": "m.hud",
+      "label": "hud.py — l'onglet MATTHEW et le badge",
+      "kind": "module",
+      "status": "a_tester",
+      "summary": "matthew.status / correct / forget_last / publish pour le HUD (via local_hud, préfixe matthew.) ; who_answers() dit qui répond : Gemini, Matthew (relais hors-ligne) ou un autre modèle local.",
+      "details": [
+        "Vérifié par le selftest et dans le simulateur du HUD avec les vraies données ; pas encore dans une vraie session du HUD."
+      ],
+      "files": [
+        "matthew/hud.py",
+        "local_hud.py"
+      ],
+      "verified": "2026-10-20 — matthew.selftest : 34/34"
     }
   ],
   "edges": [
@@ -677,6 +733,46 @@
       "m.gateway",
       "v.vitrine",
       "alimente"
+    ],
+    [
+      "matthew",
+      "m.norm",
+      "contient"
+    ],
+    [
+      "m.evaluate",
+      "m.norm",
+      "utilise"
+    ],
+    [
+      "m.teacher",
+      "m.norm",
+      "utilise"
+    ],
+    [
+      "matthew",
+      "m.cogbench",
+      "contient"
+    ],
+    [
+      "m.cogbench",
+      "h.providers",
+      "protege"
+    ],
+    [
+      "m.flywheel",
+      "m.cogbench",
+      "utilise"
+    ],
+    [
+      "matthew",
+      "m.hud",
+      "contient"
+    ],
+    [
+      "m.hud",
+      "v.vitrine",
+      "utilise"
     ]
   ]
 }

@@ -57,11 +57,17 @@ DEFAULTS: dict = {
     "teacher": None,
     "teacher_budget": 60,            # demandes réécrites par cycle (quotas gratuits)
     "bootstrap_budget": 150,         # appels d'amorçage par cycle, tant qu'un outil manque
+    # Professeur de secours quand le quota gratuit est épuisé : deux familles différentes
+    # (générer / vérifier), toutes deux Apache-2.0, servies par Ollama sur cette machine.
+    "teacher_fallback": {"base_url": "http://127.0.0.1:11434/v1", "model": "qwen3.6:latest",
+                         "verifier_model": "gemma4:12b", "license": "apache-2.0",
+                         "extra": {"reasoning_effort": "none"}},
     "match_mode": "trace",           # "trace" | "schema" — voir teacher.py
     "min_new_examples": 60,          # ~1 nuit d'amorçage ; un cycle coûte ~20 min de GPU
     "eval_share": 0.15,              # les plus récents → évaluation (hold-out temporel)
     "eval_repeats": 2,               # les bancs d'outils varient d'une passe à l'autre
     "promote_margin": 0.02,
+    "min_eval": 30,                  # pas de promotion sur une évaluation plus petite
     # Environnement d'entraînement séparé (Python 3.12 + torch CUDA + unsloth),
     # et cache des modèles Hugging Face : sur D: par défaut, C: étant plein.
     "train_python": r"D:\DEV\matthew-train\.venv\Scripts\python.exe",
@@ -134,6 +140,11 @@ def cognition_order(order: list[str], keys: dict | None = None) -> list[str]:
     if keys.get("cognition_provider_order") or "matthew" in order:
         return list(order)
     if not config(keys).get("use_in_cognition", True) or not ready():
+        return list(order)
+    # Les appels d'outils ne disent rien des tâches de la cognition : il faut aussi le banc
+    # de cognition (matthew/cogbench.py, juge de mémoire + planificateur) au-dessus du plancher.
+    from matthew.cogbench import COG_FLOOR
+    if ((champion() or {}).get("cognition") or {}).get("score", 0) < COG_FLOOR:
         return list(order)
     return ["matthew"] + list(order)
 

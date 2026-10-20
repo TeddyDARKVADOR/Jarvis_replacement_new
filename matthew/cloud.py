@@ -92,7 +92,7 @@ def import_run(run: Path, cfg: dict | None = None, runner=subprocess.run, client
     cand_score = E.score(make(cand), rows, cfg["eval_repeats"])
     champ_path = data_dir() / "champion.json"
     champ_score = E.score(make(cfg["serve_model"]), rows, cfg["eval_repeats"]) if champ_path.exists() else None
-    ok, why = E.gate(cand_score, champ_score, cfg["promote_margin"])
+    ok, why = E.gate(cand_score, champ_score, cfg["promote_margin"], min_eval=cfg.get("min_eval", 30))
     if ok:
         cp = runner(["ollama", "cp", cand, cfg["serve_model"]], capture_output=True, text=True, timeout=600)
         ok = cp.returncode == 0

@@ -261,8 +261,11 @@ def gather(root: Path | None = None) -> dict:
         ev = next((s for s in rep.get("steps", []) if s.get("step") == "évaluation"), None)
         data = next((s for s in rep.get("steps", []) if s.get("step") == "données"), {})
         if ev and ev.get("candidate"):
+            pt = ev["candidate"].get("per_tool") or {}
             history.append({"date": d, "score": _score(ev["candidate"]), "promoted": bool(ev.get("promote")),
-                            "examples": int(data.get("train", 0)) + int(data.get("eval", 0))})
+                            "examples": int(data.get("train", 0)) + int(data.get("eval", 0)),
+                            "per_tool": {pub(t): round(float(v), 3) for t, v in pt.items()
+                                         if not t.startswith("__") and isinstance(v, (int, float))}})
     champ = _read(root / "champion.json", None)
     days = {}
     for f in sorted((root / "vitrine" / "days").glob("*.json")):
@@ -275,6 +278,15 @@ def gather(root: Path | None = None) -> dict:
                                      "ms": int(v[s["id"]].get("ms", 0))}
                                  for d, v in days.items() if s["id"] in v}})
     toks = usage_summary(root)
+    live = _read(root / "vitrine" / "live.json", None)
+    if live and time.time() - float(live.get("at", 0)) < 3 * 3600:
+        live = {"phase": str(live.get("phase", ""))[:20],
+                "epoch": round(float(live["epoch"]), 2) if isinstance(live.get("epoch"), (int, float)) else None,
+                "epochs": int(live.get("epochs") or 0),
+                "losses": [round(float(x), 4) for x in (live.get("losses") or [])][-60:],
+                "since": str(live.get("since", ""))[:16]}
+    else:
+        live = None
     return {
         "schema": SCHEMA, "name": NAME, "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "champion": {"since": _day(champ.get("since", "")), "base": str(champ.get("base", ""))[:60],
@@ -285,6 +297,7 @@ def gather(root: Path | None = None) -> dict:
                    "school": sum(v["in"] + v["out"] for k, v in toks.items() if k == "teacher")},
         "showcase": show,
         "changes": changes(),
+        "live": live,
     }
 
 
@@ -292,12 +305,13 @@ def gather(root: Path | None = None) -> dict:
 
 ALLOWED = {
     "": {"schema", "name", "generated", "champion", "coverage", "tools", "domains", "history", "cycles",
-         "tokens", "showcase", "changes"},
+         "tokens", "showcase", "changes", "live"},
+    "live": {"phase", "epoch", "epochs", "losses", "since"},
     "champion": {"since", "base", "score"},
     "score": {"composite", "tool_name", "tool_args", "irrelevance", "valid", "latency_p50"},
     "coverage": {"tools_total", "tools_covered", "examples"},
     "tools[]": {"id", "label", "domain", "examples", "accuracy"},
-    "history[]": {"date", "score", "promoted", "examples"},
+    "history[]": {"date", "score", "promoted", "examples", "per_tool"},
     "cycles[]": {"date", "outcome"},
     "changes[]": {"date", "title", "area"},
     "tokens": {"matthew", "school"},
@@ -356,6 +370,11 @@ def check_public(data: dict, root: Path | None = None) -> int:
         nonlocal count
         count += 1
         if isinstance(v, dict):
+            if ctx == "per_tool":                       # {outil public: précision}
+                for t, x in v.items():
+                    if t not in known or not isinstance(x, (int, float)):
+                        fail(path, f"précision par outil invalide {t!r}")
+                return
             if ctx == "results":                        # {jour: résultat}
                 for day, r in v.items():
                     if not _DATE.match(day):
@@ -370,7 +389,8 @@ def check_public(data: dict, root: Path | None = None) -> int:
                     fail(path, f"champ non autorisé {k!r}")
                 child = {"tools": "tools[]", "history": "history[]", "cycles": "cycles[]", "changes": "changes[]",
                          "showcase": "showcase[]", "results": "results", "score": "score",
-                         "champion": "champion", "coverage": "coverage", "tokens": "tokens"}.get(k, "leaf")
+                         "champion": "champion", "coverage": "coverage", "tokens": "tokens",
+                         "live": "live", "per_tool": "per_tool"}.get(k, "leaf")
                 walk(x, f"{path}.{k}", child if isinstance(x, (dict, list)) else
                      ("request" if k == "request" else "leaf"))
         elif isinstance(v, list):
@@ -385,6 +405,7 @@ def check_public(data: dict, root: Path | None = None) -> int:
 
     # Passe 2 : le fond.
     for d in (data.get("generated", ""), (data.get("champion") or {}).get("since", ""),
+              (data.get("live") or {}).get("since", ""),
               *[h["date"] for h in data["history"]], *[c["date"] for c in data["cycles"]],
               *[c["date"] for c in data.get("changes", [])]):
         if d and not _DATE.match(d):
@@ -411,6 +432,28 @@ def check_public(data: dict, root: Path | None = None) -> int:
 
 
 # ── Le site ──────────────────────────────────────────────────────────────────
+
+SITE_URL = "https://teddydarkvador.github.io/matthew-vitrine/"
+
+
+def atom(data: dict) -> str:
+    """Flux Atom : les améliorations et les promotions, sans autre champ que la liste blanche."""
+    from xml.sax.saxutils import escape
+    entries = [(c["date"], f"{c['area']} — {c['title']}") for c in data.get("changes", [])]
+    entries += [(h["date"], f"Nouveau champion : score {h['score']['composite']:.2f}")
+                for h in data.get("history", []) if h.get("promoted") and (h.get("score") or {}).get("composite") is not None]
+    entries.sort(key=lambda e: e[0], reverse=True)
+    items = []
+    for date, title in entries[:50]:
+        eid = hashlib.sha1(f"{date}|{title}".encode()).hexdigest()[:16]
+        items.append(f"<entry><id>urn:matthew:{eid}</id><title>{escape(title)}</title>"
+                     f"<updated>{date}T00:00:00Z</updated><link href=\"{SITE_URL}\"/></entry>")
+    updated = (entries[0][0] if entries else data["generated"][:10]) + "T00:00:00Z"
+    return ('<?xml version="1.0" encoding="utf-8"?>\n<feed xmlns="http://www.w3.org/2005/Atom">'
+            f"<title>Matthew — les améliorations</title><id>{SITE_URL}</id><updated>{updated}</updated>"
+            f'<link href="{SITE_URL}"/><link rel="self" href="{SITE_URL}feed.xml"/>'
+            "<author><name>Matthew</name></author>" + "".join(items) + "</feed>\n")
+
 
 def og_image(data: dict, path: Path) -> bool:
     """Carte de partage 1200×630 (Pillow) : le score et la couverture du jour."""
@@ -463,6 +506,7 @@ def build(out: Path, root: Path | None = None) -> dict:
     (out / "data").mkdir(exist_ok=True)
     (out / "data" / "vitrine.json").write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     og = og_image(data, out / "og.png")
+    (out / "feed.xml").write_text(atom(data), encoding="utf-8")
     return {"fields_checked": n, "tools": len(data["tools"]), "showcase": len(data["showcase"]),
             "history": len(data["history"]), "og": og}
 

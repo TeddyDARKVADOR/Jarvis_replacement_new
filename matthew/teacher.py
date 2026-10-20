@@ -29,6 +29,7 @@ from pathlib import Path
 from matthew import OPEN_LICENSES, config, data_dir
 from matthew.client import Client, ClientError, to_openai_tools
 from matthew.journal import Journal
+from matthew.norm import same
 
 SYSTEM = ("Tu es Matthew, l'assistant personnel de l'utilisateur. Tu réponds en "
           "français, en une ou deux phrases faites pour être dites à voix haute. "
@@ -89,8 +90,8 @@ def calls_match(proposed: list[dict], trace: list[dict], declarations: dict, mod
         if mode == "trace":
             ref = next((t["args"] for t in trace if t["name"] == fn["name"]), {})
             if ref:
-                same = sum(1 for k, v in ref.items() if k in args and _norm(args[k]) == _norm(v))
-                if same / len(ref) < 0.5:
+                hits = sum(1 for k, v in ref.items() if k in args and same(args[k], v))
+                if hits / len(ref) < 0.5:
                     return False, f"{fn['name']} : arguments trop différents de l'appel réussi"
     return True, ""
 

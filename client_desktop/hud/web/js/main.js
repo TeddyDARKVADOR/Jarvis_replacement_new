@@ -18,6 +18,7 @@ import { createSettings } from './settings.js';
 import { createStudio } from './studio.js';
 import { createMind } from './mind.js';
 import { createGraph } from './graph.js';
+import { pollBrain } from './matthew.js';
 
 const SW = [['#7DD3FC', 'STARK'], ['#38BDF8', 'ARC'], ['#A78BFA', 'VIBRANIUM'], ['#6EE7B7', 'EMERAUDE'],
   ['#FBBF24', 'MARK'], ['#FB923C', 'ULTRON'], ['#F43F5E', 'HOT ROD'], ['#E2E8F0', 'IVOIRE']];
@@ -813,6 +814,7 @@ const mind = createMind({
   caps: () => init.caps || {},
 });
 const graph = createGraph({ sound });
+pollBrain(rpc);                       // badge « qui répond » (caché si le backend ne connaît pas matthew.*)
 Object.assign(window.HUD, {
   openStudio: () => studio.open(),
   openMind: () => mind.open(),

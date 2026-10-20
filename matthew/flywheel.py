@@ -72,7 +72,7 @@ class Flywheel:
             lambda model: Client(self.cfg["endpoint"], model, purpose="matthew", usage_root=self.root,
                                  extra=SERVE_EXTRA))
         self._runner = runner
-        self._trainer = trainer or (lambda run: T.execute(run, cfg=self.cfg))
+        self._trainer = trainer or (lambda run: T.execute(run, cfg=self.cfg, on_progress=self._live))
         self._clock = clock
 
     @property
@@ -174,10 +174,18 @@ class Flywheel:
             cand_score = E.score(self._client_factory(cand), rows, reps)
             champ = _read(self.root / "champion.json", None)
             champ_score = E.score(self._client_factory(self.cfg["serve_model"]), rows, reps) if champ else None
-            ok, why = E.gate(cand_score, champ_score, self.cfg["promote_margin"])
+            ok, why = E.gate(cand_score, champ_score, self.cfg["promote_margin"],
+                             min_eval=self.cfg.get("min_eval", 30))
+            # Banc de cognition (juge de mémoire, planificateur) : décide de sa place dans la cognition.
+            try:
+                from matthew import cogbench
+                cog = cogbench.run(self._client_factory(cand))
+            except Exception as e:
+                cog = {"score": None, "error": f"{type(e).__name__}: {e}"}
             # Les points faibles du candidat orientent le prochain amorçage (remédiation).
             _write(self.root / "last_eval.json", {"at": stamp, "model": cand, **cand_score})
-            step("évaluation", ok=True, candidate=cand_score, champion=champ_score, promote=ok, why=why)
+            step("évaluation", ok=True, candidate=cand_score, champion=champ_score, promote=ok, why=why,
+                 cognition={k: cog.get(k) for k in ("score", "judge", "planner")})
             if not ok:
                 return self._finish(rep, "candidat non promu")
             # 7. promouvoir
@@ -188,6 +196,7 @@ class Flywheel:
                 return self._finish(rep, "échec promotion")
             _write(self.root / "champion.json", {"model": self.cfg["serve_model"], "since": stamp,
                                                  "run": str(run), "score": cand_score,
+                                                 "cognition": {k: cog.get(k) for k in ("score", "judge", "planner", "n")},
                                                  "base": base["model"], "base_license": base["license"]})
             step("promotion", ok=True)
             return self._finish(rep, "nouveau champion")
@@ -213,6 +222,28 @@ class Flywheel:
                 return {"model": c["model"], "license": c["license"].lower()}, "challenger"
         return current, "champion" if champ.get("base") else "réglage"
 
+    def _live(self, progress: dict) -> None:
+        """Pendant l'entraînement : live.json pour la vitrine, puis publication en fond
+        (sans rejouer l'examen : la carte graphique est prise). Au plus toutes les 5 min."""
+        import threading
+        live = self.root / "vitrine" / "live.json"
+        live.parent.mkdir(parents=True, exist_ok=True)
+        cur = _read(live, {})
+        _write(live, {**progress, "since": cur.get("since") or datetime.now().strftime("%Y-%m-%d %H:%M"),
+                      "at": self._clock()})
+        if not self.cfg.get("vitrine_publish") or not self.cfg.get("vitrine_repo"):
+            return
+
+        def bg():
+            try:
+                from matthew import vitrine
+                vitrine.flag("IA : entraînement en cours", self.root)
+                vitrine.run(self.root, self.cfg, publisher=lambda: vitrine.publish(
+                    Path(self.cfg["vitrine_repo"]), self.cfg, runner=self._runner, do_replay=False))
+            except Exception:
+                pass
+        threading.Thread(target=bg, daemon=True).start()
+
     def _finish(self, rep: dict, outcome: str) -> dict:
         rep["outcome"] = outcome
         d = self.root / "reports"
@@ -222,6 +253,7 @@ class Flywheel:
         st["last_cycle"] = {"at": rep["at"], "outcome": outcome}
         _write(self.state_path, st)
         if outcome != "occupé":
+            (self.root / "vitrine" / "live.json").unlink(missing_ok=True)     # fin du direct
             self._vitrine(rep)
         return rep
 

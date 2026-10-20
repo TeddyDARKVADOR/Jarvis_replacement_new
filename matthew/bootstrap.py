@@ -64,6 +64,18 @@ Cette fois, des demandes DIFFICILES : formulations indirectes ou implicites (l'u
 décrit son besoin sans nommer l'action), phrases longues avec du contexte inutile, fautes
 de transcription vocale plausibles, et demandes proches d'autres outils."""
 
+NONE_PROMPT = """Voici les outils d'un assistant vocal sur PC (nom : rôle) :
+{tools}
+
+Écris {n} demandes DIFFÉRENTES et réalistes qu'un utilisateur pourrait lui faire, mais qu'AUCUN
+de ces outils ne permet de réaliser (commander un repas, appeler un vrai taxi, conduire la voiture,
+réserver une table, deviner le loto, contrôler un appareil absent…). Varie le ton et la longueur.
+Réponds uniquement en JSON : {{"requests": ["...", "..."]}}"""
+
+#: Quotas à atteindre pour la conversation et les refus, avant les outils (ils manquaient :
+#: « salut ça va » appelait briefing ; refus justes 50 % au premier champion).
+NO_TOOL_TARGETS = {"__chat__": 40, "__none__": 40}
+
 _TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool,
           "array": list, "object": dict}
 
@@ -115,6 +127,10 @@ class Bootstrap:
                                             purpose="teacher", usage_root=self.journal.root))
         self._sleep = sleep
         self.max_calls, self.calls = max_calls, 0
+        # Professeur de secours, local (Ollama) : prend le relais quand le quota gratuit
+        # est épuisé, au lieu d'arrêter la nuit. Licence ouverte exigée, comme le premier.
+        self._fallback = self.cfg.get("teacher_fallback") if client is None else None
+        self.fell_back = False
 
     @property
     def path(self) -> Path:
@@ -147,8 +163,27 @@ class Bootstrap:
             except QuotaError as e:
                 strikes += 1
                 if strikes > 3:
+                    if self._switch_to_fallback():
+                        strikes = 0
+                        _client = self.verifier if _client is not None else None
+                        continue
                     raise StopIteration(f"quota du professeur épuisé : {e}")
                 self._sleep(min(120.0, (e.retry_after or 20.0) + 1))
+
+    def _switch_to_fallback(self) -> bool:
+        fb = self._fallback
+        if not fb or self.fell_back:
+            return False
+        check_teacher(fb)
+        self.fell_back = True
+        self.teacher = fb
+        self.client = Client(fb["base_url"], fb["model"], fb.get("api_key"), purpose="teacher",
+                             usage_root=self.journal.root, timeout=600, extra=fb.get("extra", {}))
+        self.verifier_model = fb.get("verifier_model") or fb["model"]
+        self.verifier = Client(fb["base_url"], self.verifier_model, fb.get("api_key"), purpose="teacher",
+                               usage_root=self.journal.root, timeout=300, extra=fb.get("extra", {}))
+        print(f"[Matthew] quota épuisé : le professeur local {fb['model']} prend le relais")
+        return True
 
     def _write(self, rec: dict) -> None:
         with self.path.open("a", encoding="utf-8") as f:
@@ -159,25 +194,35 @@ class Bootstrap:
         if not decls:
             return {"ok": 0, "rejected": 0, "reason": "aucune déclaration d'outils (tools.json) : lancer JARVIS une fois"}
         # Fait = au moins un exemple vérifié, ou 3 échecs (un aléa ne condamne pas un outil).
-        ok_t, fails = set(), {}
+        ok_t, fails, oks = set(), {}, {}
         for r in self.records():
+            t = r.get("target")
             if r.get("status") == "ok":
-                ok_t.add(r.get("target"))
+                ok_t.add(t)
+                oks[t] = oks.get(t, 0) + 1
             else:
-                fails[r.get("target")] = fails.get(r.get("target"), 0) + 1
+                fails[t] = fails.get(t, 0) + 1
         done = ok_t | {t for t, n in fails.items() if n >= 3}
         self.calls = 0
         # Leurres = ce que le routeur réel confond avec la cible (négatifs difficiles).
         router = default_router(decls) if self.journal.root == data_dir() else Router(decls)
         stats = {"ok": 0, "rejected": 0, "tools_done": 0, "reasons": {}}
         try:
+            # 1. Conversation et refus D'ABORD : ce sont eux qui manquaient au premier champion.
+            if chitchat:
+                for kind, goal in NO_TOOL_TARGETS.items():
+                    rounds = 0
+                    while oks.get(kind, 0) < goal and rounds < 3:
+                        rounds += 1
+                        got = self._no_tool(kind, decls, router, min(20, chitchat), stats)
+                        oks[kind] = oks.get(kind, 0) + got
+            # 2. Les outils pas encore amorcés.
             for d in decls:
                 if d["name"] in done:
                     continue
                 self._tool(d, decls, router, per_tool, stats)
                 stats["tools_done"] += 1
-            if "__chat__" not in done and chitchat:
-                self._chitchat(decls, router, chitchat, stats)
+            # 3. La remédiation : outils ratés, et refus si le dernier candidat en manque.
             self._remediate(decls, router, stats)
         except StopIteration as e:
             stats["stopped"] = str(e)
@@ -239,10 +284,16 @@ class Bootstrap:
         except (OSError, ValueError):
             return
         done = {r.get("round") for r in self.records() if r.get("round")}
-        if not ev.get("weak") or ev.get("at") in done:
+        if ev.get("at") in done:
+            return
+        irr = ev.get("irrelevance")
+        if irr is not None and irr < 0.75:
+            stats.setdefault("remediated", []).append("__none__")
+            self._no_tool("__none__", decls, router, 16, stats, round_=ev["at"])
+        if not ev.get("weak") and "remediated" not in stats:
             return
         by = {d["name"]: d for d in decls}
-        for name in ev["weak"]:
+        for name in ev.get("weak") or []:
             if name not in by:
                 continue
             mistakes = [f["got"] for f in ev.get("failures", []) if f.get("target") == name]
@@ -257,9 +308,18 @@ class Bootstrap:
         self._write({"target": "__round__", "status": "rejected", "round": ev["at"], "reason": "ronde",
                      "teacher": self.teacher["model"], "ts": time.time()})
 
-    def _chitchat(self, decls, router, n, stats):
-        gen = self._chat([{"role": "user", "content": CHAT_PROMPT.format(n=n)}],
-                         max_tokens=2000, temperature=0.9, json_mode=True)
+    def _no_tool(self, kind, decls, router, n, stats, round_: str | None = None) -> int:
+        """Demandes où la bonne réponse est de NE PAS appeler d'outil. __chat__ : conversation ;
+        __none__ : action impossible avec les outils présents (le vérificateur doit refuser
+        poliment). Le vérificateur reçoit les outils que le routeur juge les plus proches :
+        s'il en appelle un, l'exemple est rejeté."""
+        if kind == "__none__":
+            catalog = "\n".join(f"- {d['name']} : {str(d.get('description', ''))[:110]}" for d in decls)
+            prompt = NONE_PROMPT.format(tools=catalog, n=n)
+        else:
+            prompt = CHAT_PROMPT.format(n=n)
+        gen = self._chat([{"role": "user", "content": prompt}], max_tokens=2000, temperature=0.9, json_mode=True)
+        kept = 0
         for req in _requests_of(gen["content"])[:n]:
             sid = f"syn-{uuid.uuid4().hex[:10]}"
             subset = tool_subset(decls, [], sid, router=router, query=req)
@@ -267,16 +327,19 @@ class Bootstrap:
             try:
                 got = self._verify(msgs, to_openai_tools(subset), temperature=0.4, max_tokens=300)
             except ClientError as e:
-                self._reject(stats, "__chat__", req, f"erreur {e}")
+                self._reject(stats, kind, req, f"erreur {e}")
                 continue
             if got.get("tool_calls") or not got.get("content"):
-                self._reject(stats, "__chat__", req, "outil appelé pour une simple conversation")
+                self._reject(stats, kind, req, "outil appelé alors qu'aucun ne convient")
                 continue
-            self._write({"episode": sid, "target": "__chat__", "status": "ok", "synthetic": True,
+            self._write({"episode": sid, "target": kind, "status": "ok", "synthetic": True,
                          "teacher": self.teacher["model"], "license": self.teacher["license"],
+                         "verifier": self.verifier_model, **({"round": round_} if round_ else {}),
                          "verified": "independent", "ts": time.time(), "tools": [x["name"] for x in subset],
                          "messages": msgs + [{"role": "assistant", "content": got["content"]}]})
             stats["ok"] += 1
+            kept += 1
+        return kept
 
 
 def main(argv=None) -> int:

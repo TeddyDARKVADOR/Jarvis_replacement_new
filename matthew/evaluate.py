@@ -22,6 +22,7 @@ import statistics
 from pathlib import Path
 
 from matthew.client import Client, ClientError
+from matthew.norm import same
 
 SPOKEN_MAX = 600
 
@@ -47,7 +48,7 @@ def judge(expected: dict, got: dict) -> dict:
             g = next(((x.get("function") or {}).get("arguments") or {} for x in calls
                       if (x.get("function") or {}).get("name") == c["function"]["name"]), {})
             total += len(ref)
-            hits += sum(1 for k, v in ref.items() if k in g and _norm(g[k]) == _norm(v))
+            hits += sum(1 for k, v in ref.items() if k in g and same(g[k], v))
         args = hits / total if total else 1.0
         return {"kind": "tool", "tool_name": 1.0, "tool_args": args, "valid": float(valid),
                 "score": 0.5 + 0.5 * args}
@@ -86,7 +87,8 @@ def score(client: Client, rows: list[dict], repeats: int = 1) -> dict:
             mark = judge(msgs[i], got)
             want = msgs[i].get("tool_calls") or []
             mark["target"] = want[0]["function"]["name"] if want else (
-                "__irrelevance__" if row.get("aug") == "irrelevance" else "__chat__")
+                "__irrelevance__" if row.get("aug") == "irrelevance" or row.get("target") == "__none__"
+                else "__chat__")
             if mark["score"] < 1.0:
                 calls = got.get("tool_calls") or []
                 mark["got"] = [(c.get("function") or {}).get("name") for c in calls] or (got.get("content") or "")[:80]
@@ -124,10 +126,11 @@ def score(client: Client, rows: list[dict], repeats: int = 1) -> dict:
     return out
 
 
-def gate(candidate: dict, champion: dict | None, margin: float = 0.02, floor: float = 0.5) -> tuple[bool, str]:
+def gate(candidate: dict, champion: dict | None, margin: float = 0.02, floor: float = 0.5,
+         min_eval: int = 30) -> tuple[bool, str]:
     c = candidate.get("composite") or 0.0
-    if candidate.get("n", 0) == 0:
-        return False, "aucun exemple d'évaluation"
+    if candidate.get("n", 0) < min_eval:
+        return False, f"évaluation trop petite ({candidate.get('n', 0)} exemples, {min_eval} requis)"
     if champion is None:
         return (c >= floor, f"premier champion : {c:.2f} {'≥' if c >= floor else '<'} plancher {floor}")
     h = champion.get("composite") or 0.0

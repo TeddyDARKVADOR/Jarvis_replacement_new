@@ -940,3 +940,12 @@ body.mini #camera, body.mini #clip { display: none !important; }
 .ut-table td b { font-family: var(--mono); font-weight: 400; color: var(--accent); }
 .ut-table tr.weak td b, .ut-flag { color: var(--c-warn); }
 .ut-flag { font-size: 9.5px; letter-spacing: 1.5px; }
+
+/* Badge « qui répond » (js/matthew.js) : une couleur par cerveau. */
+.chip.brain { --sc: #8ab4ff; }
+.chip.brain.matthew { --sc: #4dffb0; }
+.chip.brain.offline { --sc: #ffb84d; }
+.chip.brain[hidden] { display: none; }
+.mt-correct-row input { flex: 1; min-width: 0; background: transparent; border: 1px solid var(--faint); color: var(--text);
+  padding: 6px 10px; font: inherit; }
+.mt-correct-row input:focus { outline: none; border-color: var(--accent); }

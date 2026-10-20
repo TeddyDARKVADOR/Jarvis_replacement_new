@@ -355,6 +355,13 @@ class LocalBackend:
             except Exception:
                 return {"error": "module nightshift absent"}
             return night_hud.call(op, data)
+        if str(op).startswith("matthew."):
+            # Onglet MATTHEW et badge « qui répond » (module matthew.hud). Paquet absent -> erreur lisible.
+            try:
+                from matthew import hud as matthew_hud
+            except Exception:
+                return {"error": "module matthew absent"}
+            return matthew_hud.call(op, data, jarvis=self._brain.get("jarvis"))
         return self._control.call(op, data)
 
     def attach_file(self, path: str) -> dict:

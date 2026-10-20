@@ -25,7 +25,15 @@ async function main() {
   fillExam();
   fillNights();
   fillChanges();
+  fillLive();
+  $("domains").addEventListener("click", (e) => { const t = e.target.closest("[data-tool]"); if (t) openTool(t.dataset.tool); });
+  $("domains").addEventListener("keydown", (e) => { const t = e.target.closest("[data-tool]"); if (t && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openTool(t.dataset.tool); } });
+  const closeTool = () => { $("drawer").hidden = true; history.replaceState(null, "", location.pathname); };
+  $("dr-close").onclick = closeTool;
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("drawer").hidden) closeTool(); });
+  if (location.hash.startsWith("#outil-")) openTool(decodeURIComponent(location.hash.slice(7)));
   const scene = await startScene().catch((e) => { console.warn("3D indisponible :", e); return null; });
+  if (scene) scene.onPick(openTool);
   startReplay(scene);
 }
 
@@ -82,7 +90,7 @@ function fillDomains() {
         const todo = !t.examples;
         const v = todo ? "à venir" : t.accuracy == null ? "appris" : pct(t.accuracy);
         const w = todo ? 0 : Math.round((t.accuracy ?? 1) * 100);
-        return `<div class="tool${todo ? " todo" : ""}"><span>${esc(t.label)}</span><span class="v">${v}</span><span class="bar"><i style="width:${w}%"></i></span></div>`;
+        return `<div class="tool${todo ? " todo" : ""}" tabindex="0" role="button" data-tool="${esc(t.id)}"><span>${esc(t.label)}</span><span class="v">${v}</span><span class="bar"><i style="width:${w}%"></i></span></div>`;
       }).join("")}</div>`);
   }
 }
@@ -133,6 +141,44 @@ function fillChanges() {
     chips.appendChild(b);
   }
   if (!all.length) ol.innerHTML = "<li>Les premières améliorations arrivent.</li>"; else render();
+}
+
+function spark(svg, values, w, h, color) {
+  const v = values.filter((x) => x != null);
+  if (!v.length) { svg.innerHTML = ""; return; }
+  const lo = Math.min(...v), hi = Math.max(...v), span = hi - lo || 1;
+  const pts = v.map((x, i) => [v.length < 2 ? w / 2 : 4 + (i * (w - 8)) / (v.length - 1), h - 6 - ((x - lo) / span) * (h - 12)]);
+  svg.innerHTML = (pts.length > 1 ? `<polyline fill="none" stroke="${color}" stroke-width="2" points="${pts.map((q) => q.join(",")).join(" ")}"/>` : "")
+    + pts.map((q) => `<circle cx="${q[0]}" cy="${q[1]}" r="2.5" fill="${color}"/>`).join("");
+}
+
+function fillLive() {
+  const L = DATA.live;
+  if (!L) return;
+  $("livebar").hidden = false;
+  const ep = L.epoch != null && L.epochs ? ` — époque ${Math.min(Math.ceil(L.epoch), L.epochs)}/${L.epochs}` : "";
+  $("live-text").textContent = (L.phase === "export" ? "Entraînement terminé, empaquetage" : "Entraînement en cours") + ep;
+  spark($("live-spark"), L.losses || [], 120, 28, "#4dffb0");
+}
+
+function openTool(id) {
+  const t = DATA.tools.find((x) => x.id === id);
+  if (!t) return;
+  $("dr-domain").textContent = t.domain;
+  $("dr-title").textContent = t.label;
+  $("dr-acc").textContent = !t.examples ? "à venir" : t.accuracy == null ? "appris" : pct(t.accuracy);
+  $("dr-acc").className = "big" + (!t.examples || t.accuracy == null ? " na" : t.accuracy < 0.5 ? " low" : t.accuracy < 0.75 ? " mid" : "");
+  const hist = DATA.history.filter((h) => h.per_tool && h.per_tool[id] != null);
+  spark($("dr-spark"), hist.map((h) => h.per_tool[id]), 300, 70, "#5fe3ff");
+  $("dr-meta").textContent = `${t.examples} exemples vérifiés · ${hist.length} examen${hist.length > 1 ? "s" : ""} noté${hist.length > 1 ? "s" : ""}`
+    + (t.examples ? "" : " · il l'apprendra dans les prochaines nuits");
+  const cases = DATA.showcase.filter((x) => x.target === id);
+  $("dr-cases").innerHTML = cases.length ? cases.map((c) => `<li>« ${esc(c.request)} »${c.heldout ? ' <span class="badge ghost">jamais vu</span>' : ""}<div class="days">${
+    Object.entries(c.results).sort().slice(-7).map(([d, r]) => `<span class="d${r.ok ? "" : " ko"}">${frDate(d)} ${r.ok ? "✓" : "✗"}</span>`).join(" ")}</div></li>`).join("")
+    : "<li class='muted'>Pas encore de scénario d'examen pour cet outil.</li>";
+  $("drawer").hidden = false;
+  $("dr-close").focus();
+  history.replaceState(null, "", `#outil-${id}`);                // une adresse par outil, partageable
 }
 
 // ── Scène 3D ─────────────────────────────────────────────────────────────────
@@ -266,6 +312,7 @@ async function startScene() {
   const stations = new Map(), doms = DATA.domains.filter((d) => DATA.tools.some((t) => t.domain === d));
   const sector = (Math.PI * 2) / doms.length;
   const beaconGeo = new THREE.SphereGeometry(0.2, 16, 16);
+  const hits = [];
   doms.forEach((dom, di) => {
     const tools = DATA.tools.filter((t) => t.domain === dom);
     const a0 = di * sector + 0.14, a1 = (di + 1) * sector - 0.14, mid = (a0 + a1) / 2;
@@ -291,6 +338,8 @@ async function startScene() {
       scene.add(beacon);
       const el = document.createElement("div"); el.className = "lbl-tool" + (learned ? "" : " off"); el.textContent = t.label;
       const lo = new CSS2DObject(el); lo.position.set(x, 2.65, z); scene.add(lo);
+      const hit = new THREE.Mesh(new THREE.SphereGeometry(0.75, 8, 8), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.copy(beacon.position); hit.userData.tool = t.id; scene.add(hit); hits.push(hit);
       stations.set(t.id, { mesh: beacon, el, base: beacon.material.color.clone() });
     });
   });
@@ -347,11 +396,25 @@ async function startScene() {
     for (const [k, s] of stations) s.el.classList.toggle("on", k === id);
   }
 
+  // Cliquer une balise ouvre la fiche de l'outil (un glissement de caméra n'est pas un clic).
+  let pickCb = null, down = null;
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  renderer.domElement.addEventListener("pointerdown", (e) => (down = [e.clientX, e.clientY]));
+  renderer.domElement.addEventListener("pointerup", (e) => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6 || !pickCb) return;
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const got = ray.intersectObjects(hits, false)[0];
+    if (got) pickCb(got.object.userData.tool);
+  });
+  const training = !!DATA.live;
   const clock = new THREE.Clock(), ONE = new THREE.Vector3(1, 1, 1);
   (function loop() {
     const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
     fresnel.uniforms.uTime.value = t;
     fresnel.uniforms.uPulse.value *= 0.94;
+    if (training) fresnel.uniforms.uPulse.value = Math.max(fresnel.uniforms.uPulse.value, 0.35 + 0.35 * Math.sin(t * 6));
     coreLight.intensity = 40 + fresnel.uniforms.uPulse.value * 60;
     if (!REDUCED) {
       shell.rotation.y += dt * 0.15; shell.rotation.x += dt * 0.05;
@@ -379,7 +442,7 @@ async function startScene() {
     requestAnimationFrame(loop);
   })();
 
-  return { fire, focus };
+  return { fire, focus, onPick: (cb) => (pickCb = cb) };
 }
 
 // ── Rejeu de l'examen ────────────────────────────────────────────────────────

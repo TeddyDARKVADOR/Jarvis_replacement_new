@@ -18,6 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<link rel="alternate" type="application/atom+xml" title="Matthew — les améliorations" href="feed.xml">
 <script type="importmap">
 {"imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
@@ -31,6 +32,10 @@
 <section class="hero" aria-labelledby="titre">
   <div class="hero-text">
     <p class="kicker"><span class="dot live"></span> Apprentissage en public · lecture seule</p>
+    <div class="livebar" id="livebar" hidden aria-live="polite">
+      <span class="dot hot"></span><span id="live-text">Entraînement en cours</span>
+      <svg id="live-spark" viewBox="0 0 120 28" aria-hidden="true"></svg>
+    </div>
     <h1 id="titre">MATTHEW</h1>
     <p class="lead">Une IA personnelle qui se construit sous vos yeux. Chaque nuit, elle s'entraîne, passe un examen, et ne prend la relève que si elle fait mieux que la veille. Chaque amélioration apparaît ici. Vous regardez ; personne ne peut lui parler d'ici.</p>
   </div>
@@ -96,9 +101,20 @@
   </section>
 </main>
 
+<aside class="drawer" id="drawer" hidden aria-labelledby="dr-title">
+  <button class="close" id="dr-close" type="button" aria-label="Fermer">×</button>
+  <p class="label" id="dr-domain"></p>
+  <h2 id="dr-title"></h2>
+  <p class="big" id="dr-acc"></p>
+  <svg id="dr-spark" viewBox="0 0 300 70" role="img" aria-label="Précision de cet outil, examen après examen"></svg>
+  <p class="muted" id="dr-meta"></p>
+  <h3>Ses scénarios d'examen</h3>
+  <ul id="dr-cases"></ul>
+</aside>
+
 <footer>
   <p>Mis à jour le <span id="gen">—</span> · base <span id="base">—</span> · <span id="tok">—</span></p>
-  <p>Page en lecture seule, régénérée à chaque amélioration. Décor : <a href="https://kenney.nl/assets/space-kit">Space Kit de Kenney</a> et ciel <a href="https://polyhaven.com/a/qwantani_night_puresky">Poly Haven</a> (CC0) · rendu <a href="https://threejs.org">three.js</a>.</p>
+  <p>Page en lecture seule, régénérée à chaque amélioration · <a href="feed.xml">flux des améliorations (Atom)</a>. Décor : <a href="https://kenney.nl/assets/space-kit">Space Kit de Kenney</a> et ciel <a href="https://polyhaven.com/a/qwantani_night_puresky">Poly Haven</a> (CC0) · rendu <a href="https://threejs.org">three.js</a>.</p>
 </footer>
 
 <noscript><p class="noscript">Cette page a besoin de JavaScript pour afficher les chiffres du jour.</p></noscript>
