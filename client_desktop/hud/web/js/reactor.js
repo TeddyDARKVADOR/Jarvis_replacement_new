@@ -2,10 +2,13 @@
  * reactor.js — the core. A living, audio-reactive hologram in three.js.
  *
  * Layers, from the inside out:
- *   heart      a small white-hot sphere and its glow sprite
+ *   planet     a holographic Earth turning on its tilted axis: continents as a
+ *              dot grid, coastlines, city lights, graticule, fresnel rim. The
+ *              land mask is textures/earth.png (R = land, G = night lights);
+ *              until it loads — or if it never does — continents come from noise
  *   plasma     an icosphere displaced by 3D simplex noise, lit by a fresnel
- *              rim with holographic scan bands — the part that "breathes" with
- *              the voice (SPEAKING) or the microphone (LISTENING)
+ *              rim with holographic scan bands — the atmosphere, the part that
+ *              "breathes" with the voice (SPEAKING) or the microphone (LISTENING)
  *   lattice    a slowly counter-rotating wireframe icosahedron
  *   shell      ~2 400 points on a Fibonacci sphere, pushed outward by the
  *              same noise; they swirl when JARVIS is thinking
@@ -71,6 +74,51 @@ void main(){
   vec3 col = uColor * (0.10 + rim * 1.15 + bands * rim + veins * .35) + vec3(1.0) * pow(rim, 6.0) * .18;
   float a = clamp(.10 + rim * .75 + veins * .18, 0.0, 1.0) * uGlow;
   gl_FragColor = vec4(col * uGlow, a);
+}`;
+
+const PLANET_VERT = /* glsl */`
+varying vec2 vUv; varying vec3 vNormal; varying vec3 vView; varying vec3 vObj;
+void main(){
+  vUv = uv;
+  vObj = normal;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vView = -mv.xyz;
+  vNormal = normalize(normalMatrix * normal);
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const PLANET_FRAG = /* glsl */`
+uniform vec3 uColor; uniform float uTime; uniform float uGlow; uniform float uHasMap;
+uniform sampler2D uMap;
+varying vec2 vUv; varying vec3 vNormal; varying vec3 vView; varying vec3 vObj;
+${NOISE}
+void main(){
+  vec3 m = texture2D(uMap, vUv).rgb;
+  float raw = mix(snoise(vObj * 1.7) * .5 + .5 + snoise(vObj * 4.3) * .12, m.r, uHasMap);
+  float land = smoothstep(.45, .58, raw);
+  float coast = 1.0 - abs(smoothstep(.35, .68, raw) * 2.0 - 1.0);
+  float lights = smoothstep(.12, .7, m.g) * land * uHasMap;
+
+  // dots in a lat/long grid, shrunk toward the poles so they stay round
+  float lat = (vUv.y - .5) * 3.14159;
+  vec2 g = vec2(fract(vUv.x * 220.0 * max(cos(lat), .15)), fract(vUv.y * 110.0)) - .5;
+  float dots = smoothstep(.36, .12, length(g));
+  // graticule every 15°
+  vec2 q = abs(fract(vUv * vec2(24.0, 12.0)) - .5);
+  float grid = smoothstep(.485, .5, max(q.x, q.y)) * .35;
+
+  float f = 1.0 - max(dot(normalize(vNormal), normalize(vView)), 0.0);
+  float rim = pow(f, 2.4);
+  float scan = smoothstep(.7, 1.0, sin(vUv.y * 160.0 - uTime * 2.2) * .5 + .5) * .12;
+  float sweep = smoothstep(.97, 1.0, sin(vUv.y * 3.14159 * 2.0 - uTime * .6)) * .25;
+
+  vec3 ocean = uColor * (.09 + grid * .5 + scan * .4);
+  vec3 ground = uColor * (.16 + dots * .85 + scan);
+  vec3 col = mix(ocean, ground, land);
+  col += uColor * coast * .55;
+  col += mix(uColor, vec3(1.0), .65) * lights * 1.3;
+  col += uColor * (rim * 1.3 + sweep) + vec3(1.0) * pow(rim, 7.0) * .25;
+  gl_FragColor = vec4(col * (.55 + uGlow * .55), 1.0);
 }`;
 
 const SHELL_VERT = /* glsl */`
@@ -140,6 +188,7 @@ export async function createReactor(canvas, V, Q) {
     uColor: { value: color.clone() }, uGlow: { value: 1 },
   };
   let detail = Q.detail;
+  const GLOBE = 1.22, ATMO = GLOBE * 1.09;     // planet radius, atmosphere radius
   const plasma = new THREE.Mesh(
     new THREE.IcosahedronGeometry(1, detail),
     new THREE.ShaderMaterial({
@@ -149,15 +198,28 @@ export async function createReactor(canvas, V, Q) {
   );
   root.add(plasma);
 
-  // ── heart ──
+  // ── planet ──
+  // Opaque and depth-writing, so the orbit rings pass behind it.
+  const planetU = {
+    uTime: { value: 0 }, uGlow: { value: 1 }, uColor: { value: color.clone() },
+    uMap: { value: null }, uHasMap: { value: 0 },
+  };
+  const blank = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+  blank.needsUpdate = true;
+  planetU.uMap.value = blank;
+  new THREE.TextureLoader().load(new URL('../textures/earth.png', import.meta.url).href, (map) => {
+    map.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+    planetU.uMap.value = map;
+    planetU.uHasMap.value = 1;
+  }, undefined, () => { /* procedural continents stay */ });
+  const axis = new THREE.Group();
+  axis.rotation.z = .41;                       // Earth's 23.4° tilt
+  const planet = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 64),
+    new THREE.ShaderMaterial({ uniforms: planetU, vertexShader: PLANET_VERT, fragmentShader: PLANET_FRAG }));
+  axis.add(planet);
+  root.add(axis);
+
   const tex = glowTexture(THREE);
-  const heart = new THREE.Mesh(new THREE.SphereGeometry(.16, 24, 24),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .9 }));
-  root.add(heart);
-  const heartGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: tex, color: color.clone(), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-  heartGlow.scale.setScalar(1.4);
-  root.add(heartGlow);
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({
     map: tex, color: color.clone(), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: .35 }));
   halo.scale.setScalar(5.2);
@@ -167,6 +229,7 @@ export async function createReactor(canvas, V, Q) {
   const latticeMat = new THREE.LineBasicMaterial({ color: color.clone(), transparent: true, opacity: .22,
     blending: THREE.AdditiveBlending, depthWrite: false });
   const lattice = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1.42, 1)), latticeMat);
+  lattice.scale.setScalar(1.12);              // clear of the planet
   root.add(lattice);
 
   // ── shell ──
@@ -268,9 +331,15 @@ export async function createReactor(canvas, V, Q) {
     plasmaU.uAmp.value = sm.amp;
     plasmaU.uSpeed.value = sm.speed;
     plasmaU.uFreq.value = damp(plasmaU.uFreq.value, V.state === 'THINKING' ? 1.6 : 1.05, 2, dt);
-    plasmaU.uGlow.value = sm.glow;
+    plasmaU.uGlow.value = sm.glow * .6;
     plasmaU.uColor.value.copy(color);
-    plasma.scale.setScalar(sm.scale);
+    plasma.scale.setScalar(sm.scale * ATMO);
+
+    planetU.uTime.value = t;
+    planetU.uGlow.value = sm.glow;
+    planetU.uColor.value.copy(color);
+    planet.rotation.y += dt * (.1 + sm.spin * .08);
+    axis.scale.setScalar(GLOBE * (1 + lvl * .04 + burst * .03));
 
     shellU.uTime.value = t;
     shellU.uAmp.value = sm.amp * 1.2;
@@ -282,11 +351,8 @@ export async function createReactor(canvas, V, Q) {
     lattice.rotation.y = -spinAcc * .2;
     lattice.rotation.z = spinAcc * .07;
     latticeMat.color.copy(color);
-    latticeMat.opacity = .12 + sm.glow * .14;
+    latticeMat.opacity = .06 + sm.glow * .08;
 
-    heart.scale.setScalar(1 + lvl * .9 + Math.sin(t * 2.2) * .05);
-    heartGlow.material.color.copy(color);
-    heartGlow.scale.setScalar(1.3 + lvl * 2 + burst * 1.5);
     halo.material.color.copy(color);
     halo.material.opacity = .18 + sm.glow * .22;
     halo.scale.setScalar(5 + lvl * 1.4 + burst * 2);
