@@ -650,6 +650,12 @@ def _workflow():
     assert "sha256sum -c" in pub, "le patch publié est celui qui a été validé"
     assert "pr_limit" in pub and "NIGHTLY_MAX_OPEN_PRS" in pub, "un plafond de PR ouvertes, pas de PR sans limite"
     assert "dry_run == 'false'" in pub and "validated == 'true'" in pub
+    # Fusion automatique (2026-10-21) : sur option, et seulement ce qui est entièrement prouvé.
+    assert pub.index("gh pr create") < pub.index("gh pr merge"), "toujours une PR d'abord, fusionnée ensuite"
+    assert 'AUTO_MERGE:-false}" = "true"' in pub and "NIGHTLY_AUTO_MERGE" in pub, "désactivée sans la variable"
+    for guard in (".target_fixed", "regressions", "new_lint", "review_closely", "AUTO_MERGE_MAX_LINES", "--squash",
+                  '--subject "nightshift: '):
+        assert guard in pub, f"garde de fusion absente : {guard}"
     assert "if: always()" in jobs["rapport"] and "regressions" in jobs["rapport"]
     return f"{len(SUITES)} suites ; {len(uses)} actions épinglées ; 7 jobs, clé dans 1 étape, écriture dans 2 jobs"
 

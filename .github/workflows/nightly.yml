@@ -330,7 +330,7 @@ jobs:
           if-no-files-found: warn
 
   publication:
-    name: Publication — une PR, jamais de fusion
+    name: Publication — une PR, fusionnée seulement si tout est prouvé
     needs: [veille, proposition, validation]
     if: needs.validation.outputs.validated == 'true' && needs.veille.outputs.dry_run == 'false'
     runs-on: ubuntu-24.04
@@ -360,6 +360,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MAX_OPEN: ${{ vars.NIGHTLY_MAX_OPEN_PRS }}
+          AUTO_MERGE: ${{ vars.NIGHTLY_AUTO_MERGE }}
+          AUTO_MERGE_MAX_LINES: ${{ vars.NIGHTLY_AUTO_MERGE_MAX_LINES }}
         run: |
           set -euo pipefail
           # Le patch publié est exactement celui que la validation a prouvé.
@@ -391,8 +393,34 @@ jobs:
             --title "$TITLE" --body-file ../validation/pr_body.md)"
           gh pr edit "$url" --repo "$GITHUB_REPOSITORY" --add-label nightshift 2>/dev/null \
             || echo "::warning::Étiquette nightshift non posée."
-          jq -n --arg url "$url" --arg branch "$BRANCH" '{published: true, url: $url, branch: $branch}' > ../publish.json
-          echo "PR ouverte : $url" >> "$GITHUB_STEP_SUMMARY"
+          # Fusion automatique (NIGHTLY_AUTO_MERGE=true, décidé par l'utilisateur le 2026-10-21) :
+          # seulement si la validation a tout prouvé (cible réparée, aucune régression, aucune
+          # nouvelle remarque ruff), qu'aucun indicateur n'a bougé (« à relire de près ») et que
+          # le diff reste court. Sinon la PR attend une relecture humaine, comme avant.
+          merged=false; why="NIGHTLY_AUTO_MERGE n'est pas à true"
+          case "${AUTO_MERGE_MAX_LINES:-}" in ''|*[!0-9]*) AUTO_MERGE_MAX_LINES=40 ;; esac
+          changed="$(grep -cE '^[+-]' ../proposal/patch.diff || true)"
+          changed=$((changed - 2 * $(grep -c '^--- ' ../proposal/patch.diff || true)))
+          review="$(jq '(.review_closely // []) | length' ../validation/validation.json)"
+          proved="$(jq -r '.validated and .target_fixed and ((.regressions // []) | length == 0) and ((.new_lint // []) | length == 0)' ../validation/validation.json)"
+          if [ "${AUTO_MERGE:-false}" = "true" ]; then
+            if [ "$proved" != "true" ]; then why="validation incomplète"
+            elif [ "$review" != "0" ]; then why="un indicateur a bougé : à relire de près"
+            elif [ "$changed" -gt "$AUTO_MERGE_MAX_LINES" ]; then why="$changed lignes changées (plafond $AUTO_MERGE_MAX_LINES)"
+            elif gh pr merge "$url" --repo "$GITHUB_REPOSITORY" --squash --delete-branch \
+                   --subject "nightshift: ${TITLE#Night Shift : }" \
+                   --body "Fusionné automatiquement par le veilleur de nuit : suites relancées sur le correctif, aucune régression. $url"; then
+              merged=true; why=""
+            else why="gh pr merge a échoué"
+            fi
+          fi
+          jq -n --arg url "$url" --arg branch "$BRANCH" --argjson merged "$merged" --arg why "$why" \
+            '{published: true, url: $url, branch: $branch, merged: $merged, merge_reason: $why}' > ../publish.json
+          if [ "$merged" = "true" ]; then
+            echo "PR fusionnée automatiquement : $url" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "PR ouverte : $url${why:+ (pas de fusion automatique : $why)}" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Garder la publication
         if: always()

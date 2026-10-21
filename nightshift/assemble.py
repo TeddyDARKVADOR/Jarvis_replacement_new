@@ -93,7 +93,10 @@ def task_section(choice: dict | None, proposal: dict | None, validation: dict | 
         task["publication"] = "publication absente (job sauté ou en échec)"
         return task, None
     if publish.get("published"):
-        task["publication"] = "PR ouverte"
+        task["publication"] = ("PR fusionnée automatiquement sur la branche du run" if publish.get("merged") else
+                               "PR ouverte" + (f" (pas de fusion automatique : {publish['merge_reason']})"
+                                               if publish.get("merge_reason") else ""))
+        task["merged"] = bool(publish.get("merged"))
         return task, publish.get("url")
     if publish.get("reason") == "pr_already_open":
         task["publication"] = f"une PR Night Shift est déjà ouverte ({publish.get('url')}) : rien de publié"
