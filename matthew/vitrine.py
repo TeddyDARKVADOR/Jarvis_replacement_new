@@ -275,8 +275,9 @@ def _day(stamp: str) -> str:
     return f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}" if re.match(r"^\d{8}", stamp or "") else ""
 
 
-def gather(root: Path | None = None) -> dict:
-    """Construit les données publiques champ par champ (rien n'est recopié tel quel)."""
+def gather(root: Path | None = None, next_run=None) -> dict:
+    """Construit les données publiques champ par champ (rien n'est recopié tel quel).
+    `next_run` : la prochaine nuit (flywheel.next_run par défaut, lue dans le Planificateur)."""
     root = root or data_dir()
     j = Journal(root)
     decls = [d["name"] for d in j.tools()]
@@ -331,9 +332,18 @@ def gather(root: Path | None = None) -> dict:
                 "epoch": round(float(live["epoch"]), 2) if isinstance(live.get("epoch"), (int, float)) else None,
                 "epochs": int(live.get("epochs") or 0),
                 "losses": [round(float(x), 4) for x in (live.get("losses") or [])][-60:],
-                "since": str(live.get("since", ""))[:16]}
+                "since": str(live.get("since", ""))[:16],
+                **{k: int(live[k]) for k in ("done", "total", "right") if isinstance(live.get(k), int)}}
     else:
         live = None
+    if next_run is None:
+        from matthew.flywheel import next_run
+    try:
+        nxt = next_run()
+    except Exception:
+        nxt = None
+    nxt = {"at": nxt.get("at") if _ISO.match(str(nxt.get("at") or "")) else None,
+           "enabled": bool(nxt.get("enabled"))} if isinstance(nxt, dict) else None
     return {
         "schema": SCHEMA, "name": NAME, "generated": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "champion": {"since": _day(champ.get("since", "")), "base": str(champ.get("base", ""))[:60],
@@ -345,6 +355,7 @@ def gather(root: Path | None = None) -> dict:
         "showcase": show,
         "changes": changes(),
         "live": live,
+        "next": nxt,
         "counters": counters(root, cycles, toks),
     }
 
@@ -376,8 +387,9 @@ def counters(root: Path, cycles: list[dict], toks: dict) -> dict:
 
 ALLOWED = {
     "": {"schema", "name", "generated", "champion", "coverage", "tools", "domains", "history", "cycles",
-         "tokens", "showcase", "changes", "live", "counters"},
-    "live": {"phase", "epoch", "epochs", "losses", "since"},
+         "tokens", "showcase", "changes", "live", "next", "counters"},
+    "live": {"phase", "epoch", "epochs", "losses", "since", "done", "total", "right"},
+    "next": {"at", "enabled"},
     "champion": {"since", "base", "score"},
     "score": {"composite", "tool_name", "tool_args", "irrelevance", "valid", "latency_p50"},
     "coverage": {"tools_total", "tools_covered", "examples"},
@@ -392,6 +404,8 @@ ALLOWED = {
 }
 _SAFE = re.compile(r"^[\w .:/+'’«»()\-éèêàâîïôûùçÉÀ%,]{0,80}$")
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$")
+_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")     # la prochaine nuit, avec son fuseau
+PHASES = {"prep", "entraînement", "export", "import", "exam", "duel"}
 
 
 #: La vitrine présente Matthew seul : l'assistant qui l'héberge n'est jamais nommé.
@@ -462,7 +476,8 @@ def check_public(data: dict, root: Path | None = None) -> int:
                 child = {"tools": "tools[]", "history": "history[]", "cycles": "cycles[]", "changes": "changes[]",
                          "showcase": "showcase[]", "results": "results", "score": "score",
                          "champion": "champion", "coverage": "coverage", "tokens": "tokens",
-                         "live": "live", "per_tool": "per_tool", "counters": "counters"}.get(k, "leaf")
+                         "live": "live", "next": "next", "per_tool": "per_tool",
+                         "counters": "counters"}.get(k, "leaf")
                 walk(x, f"{path}.{k}", child if isinstance(x, (dict, list)) else
                      ("request" if k in ("request", "answer") else "leaf"))
         elif isinstance(v, list):
@@ -483,6 +498,11 @@ def check_public(data: dict, root: Path | None = None) -> int:
               *[t.get("learned_on") or "" for t in data["tools"]]):
         if d and not _DATE.match(d):
             fail("vitrine", f"date mal formée {d!r}")
+    nxt = data.get("next") or {}
+    if nxt.get("at") is not None and not _ISO.match(str(nxt["at"])):
+        fail("vitrine.next", f"date mal formée {nxt['at']!r}")
+    if data.get("live") and data["live"].get("phase") not in PHASES:
+        fail("vitrine.live", f"phase inconnue {data['live'].get('phase')!r}")
     for c in data.get("changes", []):
         if c["area"] not in AREAS:
             fail("vitrine.changes", f"domaine inconnu {c['area']!r}")

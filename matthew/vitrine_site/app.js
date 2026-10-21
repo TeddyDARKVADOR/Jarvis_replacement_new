@@ -67,6 +67,20 @@ const I18N = {
     count: (i, n, ok, d, ms) => `${i}/${n} · ${ok} réussis le ${d}${ms ? ` · ${ms} s` : ""}`,
     chosen: "choisi", t_chat: "Conversation", t_none: "Refus poli", answered: "a répondu sans outil",
     live_training: "Entraînement en cours", live_export: "Entraînement terminé, empaquetage", epoch: (a, b) => ` — époque ${a}/${b}`,
+    next_label: "Prochaine nuit d'apprentissage", next_ics: "Me le rappeler (agenda)", u_h: "h", u_m: "min", u_s: "s",
+    next_when: (d, tz) => tz ? `${d} (votre heure) · ${tz} chez Matthew` : d,
+    next_wait: "La nuit a commencé : Matthew attend que son ordinateur se réveille.",
+    next_off: "Entraînements en pause pour l'instant.",
+    ph_prep: "Préparation", "ph_entraînement": "Entraînement", ph_export: "Empaquetage", ph_import: "Installation",
+    ph_exam: "Examen", ph_duel: "Duel avec le champion",
+    lv_prep: "Il relit ses nouveaux exemples et prépare la nuit.",
+    lv_train: (a, b, l) => `Époque ${a} sur ${b}${l != null ? ` · erreur ${l}` : ""} — plus l'erreur baisse, mieux il apprend.`,
+    lv_export: "Entraînement terminé : il se met en boîte pour pouvoir répondre.",
+    lv_import: "Le nouveau Matthew s'installe à côté de l'ancien.",
+    lv_exam: (d, t, r) => `Examen du nouveau Matthew : ${d}/${t} questions, ${r} bonnes réponses.`,
+    lv_duel: (d, t, r) => `L'ancien champion passe le même examen : ${d}/${t}, ${r} bonnes réponses.`,
+    toast_champ: "Nouveau champion : Matthew vient de progresser !", toast_done: "La nuit est finie : résultats à jour.",
+    ics_title: "Matthew apprend (nuit d'entraînement)",
     dr_meta: (ex, n) => `${ex} exemples vérifiés · ${n} examen${n > 1 ? "s" : ""} noté${n > 1 ? "s" : ""}`,
     dr_soon: " · il l'apprendra dans les prochaines nuits", dr_none: "Pas encore de scénario d'examen pour cet outil.",
   },
@@ -121,6 +135,20 @@ const I18N = {
     count: (i, n, ok, d, ms) => `${i}/${n} · ${ok} passed on ${d}${ms ? ` · ${ms} s` : ""}`,
     chosen: "chose", t_chat: "Small talk", t_none: "Polite refusal", answered: "answered without a tool",
     live_training: "Training now", live_export: "Training done, packaging", epoch: (a, b) => ` — epoch ${a}/${b}`,
+    next_label: "Next learning night", next_ics: "Remind me (calendar)", u_h: "h", u_m: "min", u_s: "s",
+    next_when: (d, tz) => tz ? `${d} (your time) · ${tz} at Matthew's` : d,
+    next_wait: "The night has started: Matthew is waiting for its computer to wake up.",
+    next_off: "Training is paused for now.",
+    ph_prep: "Getting ready", "ph_entraînement": "Training", ph_export: "Packaging", ph_import: "Installing",
+    ph_exam: "Exam", ph_duel: "Duel with the champion",
+    lv_prep: "Reading its new examples and getting the night ready.",
+    lv_train: (a, b, l) => `Epoch ${a} of ${b}${l != null ? ` · loss ${l}` : ""} — the lower the loss, the better it learns.`,
+    lv_export: "Training done: packing itself up so it can answer.",
+    lv_import: "The new Matthew is installed next to the old one.",
+    lv_exam: (d, t, r) => `The new Matthew's exam: ${d}/${t} questions, ${r} right.`,
+    lv_duel: (d, t, r) => `The current champion takes the same exam: ${d}/${t}, ${r} right.`,
+    toast_champ: "New champion: Matthew just got better!", toast_done: "The night is over: results updated.",
+    ics_title: "Matthew learns (training night)",
     dr_meta: (ex, n) => `${ex} verified examples · ${n} exam${n > 1 ? "s" : ""} scored`,
     dr_soon: " · it will learn it in the coming nights", dr_none: "No exam scenario for this tool yet.",
   },
@@ -188,6 +216,8 @@ async function main() {
   fillNights();
   fillChanges();
   fillLive();
+  fillNext();
+  watchData();
   const closeTool = () => { $("drawer").hidden = true; history.replaceState(null, "", location.pathname + location.search); };
   $("dr-close").onclick = closeTool;
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("drawer").hidden) closeTool(); });
@@ -383,12 +413,131 @@ function spark(svg, values, w, h, color) {
     + pts.map((q) => `<circle cx="${q[0]}" cy="${q[1]}" r="2.5" fill="${color}"/>`).join("");
 }
 
+const PHASES = ["prep", "entraînement", "export", "import", "exam", "duel"];
+
 function fillLive() {
   const L = DATA.live;
+  $("live-line").hidden = !L;
+  $("livebox").hidden = !L;
   if (!L) return;
-  $("live-line").hidden = false;
-  const ep = L.epoch != null && L.epochs ? T("epoch", Math.min(Math.ceil(L.epoch), L.epochs), L.epochs) : "";
-  $("live-text").textContent = (L.phase === "export" ? T("live_export") : T("live_training")) + ep;
+  const ep = L.phase === "entraînement" && L.epoch != null && L.epochs
+    ? T("epoch", Math.min(Math.ceil(L.epoch), L.epochs), L.epochs) : "";
+  $("live-text").textContent = (L.phase === "entraînement" ? T("live_training") : T("ph_" + L.phase)) + ep;
+  const at = PHASES.indexOf(L.phase);
+  $("phases").innerHTML = PHASES.map((p, i) =>
+    `<li class="${i < at ? "done" : i === at ? "now" : ""}">${i < at ? "✓ " : ""}${esc(T("ph_" + p))}</li>`).join("");
+  let frac = 0, text = "";
+  const last = (L.losses || []).at(-1);
+  if (L.phase === "entraînement") {
+    frac = L.epochs ? Math.min(1, (L.epoch || 0) / L.epochs) : 0;
+    text = T("lv_train", Math.min(Math.ceil(L.epoch || 0), L.epochs || 0), L.epochs || 0, last != null ? last.toFixed(3) : null);
+  } else if (L.phase === "exam" || L.phase === "duel") {
+    frac = L.total ? L.done / L.total : 0;
+    text = T(L.phase === "exam" ? "lv_exam" : "lv_duel", L.done || 0, L.total || 0, L.right || 0);
+  } else {
+    frac = { prep: 0.05, export: 1, import: 1 }[L.phase] ?? 0;
+    text = T({ prep: "lv_prep", export: "lv_export", import: "lv_import" }[L.phase] || "lv_prep");
+  }
+  $("live-bar").style.width = Math.round(frac * 100) + "%";
+  $("live-detail").textContent = text;
+  // La courbe d'erreur ne raconte que l'entraînement.
+  const v = ["entraînement", "export"].includes(L.phase) ? L.losses || [] : [], svg = $("live-loss");
+  svg.hidden = v.length < 2;
+  if (v.length >= 2) {
+    const lo = Math.min(...v), hi = Math.max(...v), span = hi - lo || 1;
+    const pts = v.map((x, i) => `${(i * 296) / (v.length - 1) + 2},${46 - ((x - lo) / span) * 42}`).join(" ");
+    svg.innerHTML = `<polyline fill="none" stroke="var(--green)" stroke-width="2" points="${pts}"/>`;
+  }
+}
+
+// ── La prochaine nuit : un vrai compte à rebours ─────────────────────────────
+// data/vitrine.json → next.at vient du Planificateur de tâches du PC de Matthew (flywheel.next_run) :
+// changer l'heure de la tâche change cette page à la publication suivante. Rien n'est écrit en dur.
+let NEXT_TIMER = null;
+const two = (n) => String(n).padStart(2, "0");
+
+function fillNext() {
+  const N = DATA.next, box = $("next");
+  clearInterval(NEXT_TIMER);
+  box.hidden = !N || !!DATA.live;
+  if (box.hidden) return;
+  if (!N.enabled || !N.at) {
+    box.classList.add("waiting");
+    $("cd-when").textContent = T("next_off");
+    $("cd-ics").hidden = true;
+    return;
+  }
+  const when = new Date(N.at);
+  // L'heure de Matthew n'est ajoutée que si le visiteur vit dans un autre fuseau.
+  const offset = -when.getTimezoneOffset(), theirs = Number(N.at.slice(20, 22)) * 60 + Number(N.at.slice(23, 25));
+  const there = offset === (N.at[19] === "-" ? -theirs : theirs) ? "" : N.at.slice(11, 16);
+  $("cd-when").textContent = T("next_when", when.toLocaleString(LANG === "en" ? "en-GB" : "fr-FR",
+    { weekday: "long", hour: "2-digit", minute: "2-digit" }), there);
+  $("cd-ics").hidden = false;
+  $("cd-ics").onclick = () => downloadIcs(when);
+  const tick = () => {
+    const left = Math.round((when - Date.now()) / 1000);
+    box.classList.toggle("soon", left > 0 && left < 900);
+    box.classList.toggle("waiting", left <= 0);
+    if (left <= 0) {
+      $("cd-when").textContent = T("next_wait");
+      $("cd-ics").hidden = true;
+      return;
+    }
+    $("cd-h").textContent = two(Math.floor(left / 3600));
+    $("cd-m").textContent = two(Math.floor((left % 3600) / 60));
+    $("cd-s").textContent = two(left % 60);
+  };
+  tick();
+  NEXT_TIMER = setInterval(tick, 1000);
+}
+
+function downloadIcs(when) {
+  const z = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Matthew//vitrine//FR", "BEGIN:VEVENT",
+    `UID:matthew-${z(when)}@vitrine`, `DTSTAMP:${z(new Date())}`, `DTSTART:${z(when)}`, "DURATION:PT1H",
+    `SUMMARY:${T("ics_title")}`, `URL:${location.origin}${location.pathname}`, "END:VEVENT", "END:VCALENDAR", ""].join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+  a.download = "matthew.ics";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ── Rester à jour sans recharger : toutes les minutes autour de la nuit, sinon toutes les 5 min ──
+function toast(text) {
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.setAttribute("role", "status");
+  t.textContent = text;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 6000);
+}
+
+function watchData() {
+  if (OG) return;
+  const due = () => {
+    const at = DATA.next && DATA.next.at ? new Date(DATA.next.at) - Date.now() : Infinity;
+    return DATA.live || Math.abs(at) < 30 * 60 * 1000 ? 60000 : 300000;
+  };
+  const poll = async () => {
+    if (!document.hidden) {
+      try {
+        // ?t= : GitHub Pages garde la page 10 min en cache ; le direct ne peut pas attendre.
+        const r = await fetch(`data/vitrine.json?t=${Date.now()}`, { cache: "no-store" });
+        const fresh = await r.json();
+        if (fresh.generated !== DATA.generated) {
+          const champ = (DATA.champion || {}).since !== (fresh.champion || {}).since;
+          const ended = DATA.live && !fresh.live;
+          DATA = fresh;
+          fillHero(); fillStats(); fillCounters(); fillLive(); fillNext();
+          if (champ) toast(T("toast_champ")); else if (ended) toast(T("toast_done"));
+        }
+      } catch { /* hors ligne : on réessaie au prochain tour */ }
+    }
+    setTimeout(poll, due());
+  };
+  setTimeout(poll, due());
 }
 
 function openTool(id) {

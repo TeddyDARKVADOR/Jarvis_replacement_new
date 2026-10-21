@@ -1017,6 +1017,74 @@ def _live():
     return "époque 1,5 / 3, deux pertes"
 
 
+@check("vitrine : prochaine nuit lue dans le Planificateur (pas en dur), direct étape par étape")
+def _next_and_phases():
+    import copy as _copy
+    import time as _t
+    from matthew import evaluate as E
+    from matthew import flywheel as F
+    from matthew import vitrine as V
+
+    class _CP:
+        def __init__(self, out, code=0):
+            self.stdout, self.returncode = out, code
+    if sys.platform == "win32":
+        assert F.next_run(runner=lambda *a, **k: _CP("2026-10-22T02:30:00+02:00\nReady\n")) == \
+            {"at": "2026-10-22T02:30:00+02:00", "enabled": True}
+        assert F.next_run(runner=lambda *a, **k: _CP("-\nDisabled\n")) == {"at": None, "enabled": False}
+        assert F.next_run(runner=lambda *a, **k: _CP("", 1)) is None, "tâche absente : rien d'inventé"
+    else:
+        assert F.next_run() is None, "hors Windows : pas de Planificateur, pas de date"
+    root = TMP / "vitrine"
+    data = V.gather(root, next_run=lambda: {"at": "2026-10-22T02:30:00+02:00", "enabled": True})
+    assert data["next"] == {"at": "2026-10-22T02:30:00+02:00", "enabled": True}
+    V.check_public(data, root)
+    assert V.gather(root, next_run=lambda: {"at": "demain vers 2 h", "enabled": True})["next"]["at"] is None, \
+        "une date mal formée n'est jamais publiée"
+    assert V.gather(root, next_run=lambda: None)["next"] is None
+    for name, tamper in {"date libre": lambda d: d["next"].__setitem__("at", "C:/Users/x"),
+                         "champ en plus": lambda d: d["next"].__setitem__("host", "pc")}.items():
+        bad = _copy.deepcopy(data)
+        tamper(bad)
+        try:
+            V.check_public(bad, root)
+        except V.PrivacyError:
+            continue
+        raise AssertionError(f"fuite acceptée : {name}")
+    # L'examen raconte sa progression ; le volant la publie, au plus toutes les 20 s.
+    seen = []
+
+    class _Echo:
+        model = "echo"
+
+        def chat(self, messages, tools=None, **kw):
+            return {"content": "ok"}
+    rows = [{"messages": [{"role": "user", "content": "q"}, {"role": "assistant", "content": "ok"}]}] * 3
+    E.score(_Echo(), rows, progress=lambda d, t, r: seen.append((d, t)))
+    assert seen == [(1, 3), (2, 3), (3, 3)], seen
+    clock = Clock()
+    fw = Flywheel(root, CFG, clock=clock)
+    prog = fw._exam("exam")
+    for i in range(1, 4):
+        prog(i, 3, i)
+    live = json.loads((root / "vitrine" / "live.json").read_text(encoding="utf-8"))
+    assert (live["phase"], live["done"], live["total"]) == ("exam", 3, 3), live
+    live["at"] = _t.time()
+    (root / "vitrine" / "live.json").write_text(json.dumps(live), encoding="utf-8")
+    pub = V.gather(root, next_run=lambda: None)
+    assert pub["live"]["phase"] == "exam" and pub["live"]["right"] == 3
+    V.check_public(pub, root)
+    live["phase"] = "pirate"
+    (root / "vitrine" / "live.json").write_text(json.dumps(live), encoding="utf-8")
+    try:
+        V.check_public(V.gather(root, next_run=lambda: None), root)
+        raise AssertionError("phase inconnue publiée")
+    except V.PrivacyError:
+        pass
+    (root / "vitrine" / "live.json").unlink()
+    return "date du Planificateur ; mal formée → rien ; examen 3/3 en direct ; phase inconnue refusée"
+
+
 @check("HUD : onglet MATTHEW et badge « qui répond » (matthew.hud, sans backend réel)")
 def _hud():
     from types import SimpleNamespace

@@ -44,6 +44,22 @@
       <p class="tagline" data-i18n="tagline">Une IA qui apprend chaque nuit, sous vos yeux.</p>
       <p class="hero-num"><b id="h-score">—</b> <span data-i18n="hero_num">de bonnes réponses à son dernier examen</span></p>
       <p class="live-line" id="live-line" hidden><span class="dot hot"></span> <span id="live-text"></span></p>
+      <!-- La prochaine nuit : lue dans le Planificateur de tâches du PC (data/vitrine.json → next), jamais écrite ici -->
+      <div class="next" id="next" hidden>
+        <p class="label" id="next-label" data-i18n="next_label">Prochaine nuit d'apprentissage</p>
+        <p class="countdown" id="cd" role="timer" aria-live="off">
+          <span><b id="cd-h">--</b><i data-i18n="u_h">h</i></span><span><b id="cd-m">--</b><i data-i18n="u_m">min</i></span><span><b id="cd-s">--</b><i data-i18n="u_s">s</i></span>
+        </p>
+        <p class="muted small" id="cd-when"></p>
+        <button id="cd-ics" type="button" class="ghostbtn" data-i18n="next_ics">Me le rappeler (agenda)</button>
+      </div>
+      <!-- Le direct : chaque étape de la nuit, et la progression de l'étape en cours -->
+      <div class="livebox" id="livebox" hidden aria-live="polite">
+        <ol class="phases" id="phases"></ol>
+        <div class="bar"><i id="live-bar"></i></div>
+        <p class="small" id="live-detail"></p>
+        <svg id="live-loss" viewBox="0 0 300 50" role="img" hidden></svg>
+      </div>
       <p class="scroll-cue" data-i18n="scroll">Faites défiler ↓</p>
     </div>
   </section>

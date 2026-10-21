@@ -218,14 +218,16 @@
       "details": [
         "Premier cycle réel : champion promu le 2026-10-20 à 20 h 52 — 116 exemples amorcés (23 outils) + augmentations, 3 époques sur la RTX 3060 (meilleure : la 2e, perte d'éval 0,125), GGUF Q5_K_M 3,2 Go ; éval sur 18 exemples : composite 0,85, bon outil 100 %, arguments 79 %, JSON 100 %, refus quand aucun outil ne convient 50 %, 1,1 s ; servi par Ollama, choisi par le mode hors-ligne et placé en tête de la cognition.",
         "Deuxième cycle réel (2026-10-21, 00 h 52 → 01 h 39) : nouveau champion — 193 exemples d'entraînement / 56 d'éval (dont conversation et refus), 3 époques en 38 min (meilleure : la 2e, perte d'éval 0,366) ; composite 0,90 (avant 0,85), bon outil 97 %, arguments 79 %, réponses sans outil 94 % (avant 50 %), refus justes 91 % (avant 50 %), 1,0 s. Point faible : file_processor (transcription audio : répond au lieu d'appeler l'outil). Deux exemples amorcés mal étiquetés (« surveille les actualités » → manage_monitor, qui gère les écrans) : à corriger dans l'amorçage.",
-        "Tâche planifiée Windows « Matthew flywheel », chaque nuit à 02 h 30 (posée le 2026-10-20) : memory/matthew/flywheel.cmd, journal memory/matthew/flywheel.log."
+        "Tâche planifiée Windows « Matthew flywheel », chaque nuit à 02 h 30 (posée le 2026-10-20) : memory/matthew/flywheel.cmd, journal memory/matthew/flywheel.log.",
+        "2026-10-21 : next_run() lit la prochaine exécution de la tâche planifiée ; _phase()/_exam() écrivent le direct de chaque étape (l'examen au plus toutes les 20 s) ; evaluate.score(progress=…) raconte sa progression sans jamais faire échouer l'examen."
       ],
       "files": [
         "matthew/flywheel.py"
       ],
       "status": "partiel",
       "verified": "2026-10-21 — matthew.selftest : 35/35 ; cycle réel, nouveau champion",
-      "test": "python -m matthew.flywheel --status"
+      "test": "python -m matthew.flywheel --status",
+      "updated": "2026-10-21"
     },
     {
       "id": "m.cloud",
@@ -355,7 +357,8 @@
         "IMAGE DE PARTAGE : og.png = capture de la vraie scène du jour (Edge ou Chrome sans interface, rendu logiciel, page ?og=1), sinon la carte texte d'avant. Vérifiée en local le 2026-10-21.",
         "DÉCOR SPATIAL : textures Lune, Terre (+ nuages), Mars, Jupiter, Saturne (+ anneau), Neptune et Voie lactée de Solar System Scope (CC BY 4.0, créditées dans LICENSES.txt et en pied de page), 4,3 Mo.",
         "CACHE (2026-10-21) : GitHub Pages autorise 10 min de cache ; une page neuve avec l'ancien style.css / app.js s'affichait sans décor ni scène. bust_cache appelle désormais style.css et app.js avec l'empreinte de leur contenu (?v=…). Vérifié en ligne avec un profil de navigateur vierge, puis republié.",
-        "TÉLÉPHONE (2026-10-21) : défiler était très dur. Écran tactile détecté (pointer: coarse, portrait comme paysage) → la scène ne reçoit plus le doigt (un toucher court sur une lumière ou un bâtiment est rattrapé par pickAt), hauteur fixe en lvh (la barre d'adresse ne redimensionne plus la 3D), pas de flou derrière les cartes, densité 1,25, une image sur trois pendant le défilement ; mise en page compacte en paysage (hauteur ≤ 520 px). Vérifié par glissements tactiles émulés (Playwright, 390×844 et 844×390) : la page défile, le toucher d'un bâtiment marche. Pas de forçage du paysage : iOS l'ignore, Android l'exige en plein écran. À confirmer sur un vrai téléphone."
+        "TÉLÉPHONE (2026-10-21) : défiler était très dur. Écran tactile détecté (pointer: coarse, portrait comme paysage) → la scène ne reçoit plus le doigt (un toucher court sur une lumière ou un bâtiment est rattrapé par pickAt), hauteur fixe en lvh (la barre d'adresse ne redimensionne plus la 3D), pas de flou derrière les cartes, densité 1,25, une image sur trois pendant le défilement ; mise en page compacte en paysage (hauteur ≤ 520 px). Vérifié par glissements tactiles émulés (Playwright, 390×844 et 844×390) : la page défile, le toucher d'un bâtiment marche. Pas de forçage du paysage : iOS l'ignore, Android l'exige en plein écran. À confirmer sur un vrai téléphone.",
+        "Compte à rebours et direct (2026-10-21) : la prochaine nuit est lue dans le Planificateur de tâches (flywheel.next_run → Get-ScheduledTaskInfo « Matthew flywheel », heure avec son fuseau) et publiée dans data/vitrine.json → next ; rien n'est écrit en dur, changer l'heure de la tâche change la page. La page compte à la seconde, dit l'heure du visiteur (et celle de Matthew s'il vit ailleurs), propose un rappel .ics, et dit honnêtement « attend que son ordinateur se réveille » si l'heure passe sans nuit. Le direct suit chaque étape : préparation → entraînement (époques, courbe d'erreur) → empaquetage → installation → examen du candidat → duel avec le champion (questions faites et réussies), publié au plus toutes les 5 min ; la page se relit seule (60 s autour de la nuit, 5 min sinon, en contournant le cache de 10 min de GitHub Pages) et annonce un nouveau champion. Garde-fou : next et les nouvelles clés du direct sont dans la liste blanche, une date mal formée ou une phase inconnue est refusée. Vérifié : matthew.selftest (36/36 sous Windows et Ubuntu), captures d'Edge sans interface des trois états. Pas encore vu pendant une vraie nuit."
       ],
       "files": [
         "matthew/vitrine.py",
@@ -365,7 +368,8 @@
         "matthew/vitrine_site/assets/LICENSES.txt"
       ],
       "status": "ok",
-      "verified": "2026-10-21 — matthew.selftest : 35/35 ; rendu local (Edge sans interface) et publiée"
+      "verified": "2026-10-21 — matthew.selftest : 35/35 ; rendu local (Edge sans interface) et publiée",
+      "updated": "2026-10-21"
     },
     {
       "id": "l.outils",

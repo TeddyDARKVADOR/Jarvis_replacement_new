@@ -69,8 +69,10 @@ def load(path: Path) -> list[dict]:
         return []
 
 
-def score(client: Client, rows: list[dict], repeats: int = 1) -> dict:
+def score(client: Client, rows: list[dict], repeats: int = 1, progress=None) -> dict:
+    """`progress(fait, total, justes)` après chaque question : la vitrine suit l'examen en direct."""
     per_pass, lat, errors = [], [], 0
+    total, done, right = len(rows) * max(1, repeats), 0, 0
     for _ in range(max(1, repeats)):
         marks = []
         for row in rows:
@@ -94,6 +96,12 @@ def score(client: Client, rows: list[dict], repeats: int = 1) -> dict:
                 mark["got"] = [(c.get("function") or {}).get("name") for c in calls] or (got.get("content") or "")[:80]
                 mark["user"] = next((m["content"] for m in msgs if m["role"] == "user"), "")[:120]
             marks.append(mark)
+            done, right = done + 1, right + (mark["score"] >= 1.0)
+            if progress:
+                try:
+                    progress(done, total, right)
+                except Exception:
+                    pass                                    # la vitrine ne fait jamais échouer un examen
         per_pass.append(marks)
 
     def mean(marks, key, kind=None):

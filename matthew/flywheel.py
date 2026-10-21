@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -108,6 +109,7 @@ class Flywheel:
             step("verrou", ok=False, reason="un cycle tourne déjà")
             return self._finish(rep, "occupé")
         try:
+            self._phase("prep")
             # 0. amorçage : complète les outils pas encore amorcés (budget borné, reprise)
             if self.cfg.get("bootstrap_budget", 0):
                 try:
@@ -164,6 +166,7 @@ class Flywheel:
             _write(self.state_path, st)
             # 5. importer
             cand = f"{self.cfg['serve_model']}-candidate"
+            self._phase("import")
             res = T.ollama_create(run, cand, runner=self._runner)
             step("import", **res)
             if not res["ok"]:
@@ -171,9 +174,10 @@ class Flywheel:
             # 6. évaluer
             rows = E.load(Path(man["dir"]) / "eval.jsonl")
             reps = self.cfg["eval_repeats"]
-            cand_score = E.score(self._client_factory(cand), rows, reps)
+            cand_score = E.score(self._client_factory(cand), rows, reps, progress=self._exam("exam"))
             champ = _read(self.root / "champion.json", None)
-            champ_score = E.score(self._client_factory(self.cfg["serve_model"]), rows, reps) if champ else None
+            champ_score = E.score(self._client_factory(self.cfg["serve_model"]), rows, reps,
+                                  progress=self._exam("duel")) if champ else None
             ok, why = E.gate(cand_score, champ_score, self.cfg["promote_margin"],
                              min_eval=self.cfg.get("min_eval", 30))
             # Banc de cognition (juge de mémoire, planificateur) : décide de sa place dans la cognition.
@@ -221,6 +225,23 @@ class Flywheel:
             if c["model"] not in tried or total >= 1.5 * tried[c["model"]]:
                 return {"model": c["model"], "license": c["license"].lower()}, "challenger"
         return current, "champion" if champ.get("base") else "réglage"
+
+    def _phase(self, phase: str, **kw) -> None:
+        """Le direct de la vitrine : prep → entraînement → export → import → exam → duel."""
+        try:
+            self._live({"phase": phase, **kw})
+        except Exception:
+            pass
+
+    def _exam(self, phase: str):
+        """Progression d'un examen pour le direct, écrite au plus toutes les 20 s (et à la fin)."""
+        last = [0.0]
+
+        def progress(done: int, total: int, right: int) -> None:
+            if done == total or self._clock() - last[0] >= 20:
+                last[0] = self._clock()
+                self._phase(phase, done=done, total=total, right=right)
+        return progress
 
     def _live(self, progress: dict) -> None:
         """Pendant l'entraînement : live.json pour la vitrine, puis publication en fond
@@ -310,6 +331,31 @@ def wrapper(root: Path | None = None) -> Path:
         f'"{sys.executable}" -m matthew.flywheel --execute >> "{root / "flywheel.log"}" 2>&1',
         ""]), encoding="utf-8")
     return path
+
+
+_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")
+
+
+def next_run(runner=subprocess.run) -> dict | None:
+    """La prochaine nuit, lue dans le Planificateur de tâches : jamais une heure écrite en dur.
+
+    {"at": "2026-10-22T02:30:00+02:00" (ou None), "enabled": bool}, ou None sans tâche
+    (autre système, tâche absente). Changer l'heure de la tâche change la vitrine."""
+    if sys.platform != "win32":
+        return None
+    ps = (f"$i = Get-ScheduledTaskInfo -TaskName '{TASK}' -ErrorAction Stop; "
+          f"$t = Get-ScheduledTask -TaskName '{TASK}' -ErrorAction Stop; "
+          "if ($i.NextRunTime) { $i.NextRunTime.ToString('yyyy-MM-ddTHH:mm:sszzz') } else { '-' }; [string]$t.State")
+    try:
+        cp = runner(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                    capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = [x.strip() for x in (cp.stdout or "").splitlines() if x.strip()]
+    if cp.returncode != 0 or len(lines) < 2:
+        return None
+    at = lines[0] if _ISO.match(lines[0]) else None
+    return {"at": at, "enabled": lines[1].lower() != "disabled"}
 
 
 def schedule_command(hour: str = "02:30", root: Path | None = None) -> list[str]:
