@@ -392,7 +392,10 @@ def _ruff():
     assert (f["code"], f["path"], f["line"]) == ("F841", "pkg/m.py", 2), f
     # Le workflow passe « --repo . » : un dépôt donné en chemin relatif garde les mêmes chemins
     # (sinon les remarques de toujours passent pour nouvelles — run 38562012866).
-    relative = Path(os.path.relpath(proj, Path.cwd()))
+    try:
+        relative = Path(os.path.relpath(proj, Path.cwd()))
+    except ValueError:              # Windows : temporaire sur C:, dépôt sur D: — pas de chemin relatif possible
+        return f"ruff {got['version']} : 1 remarque, chemin relatif au dépôt (autre lecteur : cas relatif sans objet)"
     again = run.run_ruff(relative)
     assert [x["path"] for x in again["findings"]] == ["pkg/m.py"], again["findings"]
     return f"ruff {got['version']} : 1 remarque, chemin relatif au dépôt, même donné en relatif"

@@ -221,7 +221,8 @@
         "_send_startup_briefing() consomme le dernier résumé (V1) ; la cognition l'archive aussi comme épisode daté.",
         "_save_session_summary() utilise gemini-3.1-flash-lite.",
         "Les actualités complètes s'affichent dans le HUD ; le modèle ne reçoit que 4 titres (~370 caractères au lieu de ~1 900), car tout ce qui entre dans le contexte est refacturé à chaque tour.",
-        "daily/ (2026-10-16) : agenda par lien iCal secret (agenda_ics, lecture seule, sans OAuth ; récurrences, exceptions, occurrences déplacées et fuseaux par recurring-ical-events, vérifiés sur un vrai fichier) ; articles qui racontent la même chose regroupés en une nouvelle (mots du titre ou même adresse), la plus reprise d'abord, jamais deux jours de suite ; préparé en fond et rafraîchi toutes les 30 min (l'accueil n'attend aucun réseau) ; à l'heure choisie (briefing_time), livré une fois par jour par le canal de la politique de contexte (voix, téléphone + HUD, ou plus tard ; heures silencieuses respectées). Non vérifié : en vraie session vocale, et avec un vrai agenda Google de l'utilisateur."
+        "daily/ (2026-10-16) : agenda par lien iCal secret (agenda_ics, lecture seule, sans OAuth ; récurrences, exceptions, occurrences déplacées et fuseaux par recurring-ical-events, vérifiés sur un vrai fichier) ; articles qui racontent la même chose regroupés en une nouvelle (mots du titre ou même adresse), la plus reprise d'abord, jamais deux jours de suite ; préparé en fond et rafraîchi toutes les 30 min (l'accueil n'attend aucun réseau) ; à l'heure choisie (briefing_time), livré une fois par jour par le canal de la politique de contexte (voix, téléphone + HUD, ou plus tard ; heures silencieuses respectées). Non vérifié : en vraie session vocale, et avec un vrai agenda Google de l'utilisateur.",
+        "Fuseau (2026-10-21) : réglage « timezone » (ex. \"Europe/Paris\") dans config/api_keys.json ; sinon le fuseau du système. Sans lui, sur une machine en UTC (Oracle, runner GitHub), un cours de 9 h à Paris s'annonçait à 7 h — relevé par le veilleur de nuit ; daily.selftest n°2 le vérifie dans les deux fuseaux."
       ],
       "files": [
         "daily/__init__.py",
@@ -230,7 +231,8 @@
         "daily/selftest.py",
         "main.py",
         "memory/memory_manager.py"
-      ]
+      ],
+      "updated": "2026-10-21"
     },
     {
       "id": "tool.briefing",
@@ -1116,13 +1118,15 @@
         "Ce qui protège vraiment : la provenance (SHA-256 montrée, épinglée si donnée, installation après CONFIRMER) ; la transparence (analyse statique sans exécution : réseau, commandes, écriture de fichiers, code dynamique, clavier, écran, micro — et l'écart avec ce que le plugin déclare) ; lire ou agir appliqué par le code (chaque action « act » passe par core/confirm.py, une action non listée compte comme « act »).",
         "Ce qui ne protège pas, et n'est pas prétendu : une liste de permissions n'empêche rien à un code qui tourne dans le processus de JARVIS.",
         "MCP : les annotations des serveurs restent ignorées ; l'utilisateur décide (mcp_allow / mcp_confirm → auto_approve de config/mcp.json). Un outil installé est déclaré à Gemini à la reconnexion suivante (Gemini rouvre la session toutes les 2 à 3 min).",
-        "Vérifié : extensions.selftest manager 1-4 (dont la garde avec le vrai core/confirm). Non vérifié : dans JARVIS lancé."
+        "Vérifié : extensions.selftest manager 1-4 (dont la garde avec le vrai core/confirm). Non vérifié : dans JARVIS lancé.",
+        "Dépendances (2026-10-21) : sans le paquet packaging, les paquets absents sont quand même signalés (seule la comparaison de versions en a besoin) ; avant, la liste restait vide — échec n°manager 1 relevé chaque nuit sur le runner Linux."
       ],
       "files": [
         "extensions/manager.py",
         "extensions/selftest.py",
         "main.py"
-      ]
+      ],
+      "updated": "2026-10-21"
     },
     {
       "id": "tool.extensions",

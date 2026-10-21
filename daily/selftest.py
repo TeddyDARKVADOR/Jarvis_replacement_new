@@ -104,8 +104,9 @@ def check(name: str):
     return deco
 
 
-def _day(d: date):
-    return A.day({"agenda_ics": "x"}, d, fetcher=lambda u: ICS)[0]
+def _day(d: date, tz: str = "Europe/Paris"):
+    # Le fuseau est fixé : sans lui, le test dépend de la machine (07:00 sur un runner en UTC, vu le 2026-10-21).
+    return A.day({"agenda_ics": "x", "timezone": tz}, d, fetcher=lambda u: ICS)[0]
 
 
 @check("1 contrat V2 : daily/ n'importe rien de JARVIS au chargement")
@@ -128,13 +129,14 @@ def _agenda():
     assert lundi[0] == ("jour", "Salon de l'emploi"), lundi
     assert ("09:00", "Cours CDA") in lundi and not any("Sport" in t for _, t in lundi), lundi
     ny = next(e for e in _day(date(2026, 10, 19)) if "New York" in e.title)
-    local = datetime(2026, 10, 19, 11, 0).astimezone()   # sert seulement à savoir où tourne le test
-    assert ny.start.hour == (datetime.fromisoformat("2026-10-19T11:00:00-04:00").astimezone().hour), ny
+    assert ny.start.strftime("%H:%M") == "17:00", ny
     assert norm(date(2026, 10, 21)) == [], "mercredi : séance annulée (EXDATE)"
     assert norm(date(2026, 10, 22)) == [("14:00", "Cours CDA (déplacé)")], "jeudi : déplacée à 14 h"
     assert norm(date(2026, 10, 24)) == [], "samedi : pas de cours"
-    del local
-    return f"lundi {len(lundi)} événements (11 h à New York → {ny.start:%H:%M} ici) ; mercredi annulé ; jeudi déplacé"
+    utc = [(e.start.strftime("%H:%M"), e.title) for e in _day(date(2026, 10, 19), "UTC") if not e.all_day]
+    assert utc == [("07:00", "Cours CDA"), ("15:00", "Appel client New York")], utc
+    return (f"lundi {len(lundi)} événements (11 h à New York → {ny.start:%H:%M} à Paris) ; mercredi annulé ; "
+            "jeudi déplacé ; réglé en UTC, le cours passe à 07:00")
 
 
 @check("3 agenda : un agenda en panne n'empêche pas les autres, et son adresse (secrète) n'est jamais affichée")
@@ -164,7 +166,7 @@ def _news():
 
 @check("5 briefing complet : sections, réglages, phrase courte, détail avec sources, livré une fois par jour")
 def _compose():
-    cfg = {"agenda_ics": "x", "briefing_sections": {"meeting": False}}
+    cfg = {"agenda_ics": "x", "timezone": "Europe/Paris", "briefing_sections": {"meeting": False}}
     news = [{"title": "Verstappen remporte le Grand Prix du Japon", "url": "https://a.fr/x", "source": "L'Équipe", "snippet": ""},
             {"title": "Grand Prix du Japon : Verstappen remporte la course", "url": "https://b.fr/y", "source": "Le Monde", "snippet": ""}]
     b = D.compose(cfg, now=datetime(2026, 10, 19, 8, 30), fetcher=lambda u: ICS, search=lambda t, n: news,

@@ -17,7 +17,8 @@ DEUX MOMENTS
     du contexte) sont respectées.
 
 RÉGLAGES (config/api_keys.json) : agenda_ics (adresse(s) iCal secrète(s)),
-briefing_time, briefing_sections ({"agenda", "reminders", "news", "meeting"}).
+briefing_time, briefing_sections ({"agenda", "reminders", "news", "meeting"}),
+timezone (ex. "Europe/Paris" ; sinon le fuseau du système).
 Les sujets suivis sont ceux de l'outil manage_monitor. L'outil vocal est
 plugins/briefing.py. État (nouvelles déjà annoncées, livraison du jour) :
 memory/daily.json, ignoré par Git.
@@ -167,7 +168,7 @@ def _meeting(now: datetime) -> dict | None:
 
 def compose(cfg: dict, now: datetime | None = None, fetcher=A.fetch, search=_search, topics=_topics,
             reminders_of=_reminders, meeting_of=_meeting, state: dict | None = None) -> Briefing:
-    now = now or datetime.now()
+    now = now or A.now(cfg)
     on = {**{s: True for s in SECTIONS}, **(cfg.get("briefing_sections") or {})}
     b = Briefing(now)
     if on["agenda"] and A.urls(cfg):
@@ -230,7 +231,7 @@ class Daily:
         """Pour l'accueil de main.py : instantané (le briefing est déjà prêt), et une seule fois par jour."""
         st = load_state()
         b = self.cached
-        if b is None or st.get("delivered") == date.today().isoformat() or b.empty():
+        if b is None or st.get("delivered") == A.now(self.settings()).date().isoformat() or b.empty():
             return ""
         mark_delivered(b, st)
         # Le panneau des actualités du briefing de main.py s'affiche quelques secondes après l'accueil :
@@ -268,9 +269,10 @@ class Daily:
                 if time.time() - last_refresh > REFRESH_S:
                     self.refresh()
                     last_refresh = time.time()
-                at = str(self.settings().get("briefing_time") or "").strip()
+                cfg = self.settings()
+                at, here = str(cfg.get("briefing_time") or "").strip(), A.now(cfg)
                 st = load_state()
-                if at and st.get("delivered") != date.today().isoformat() and datetime.now().strftime("%H:%M") >= at:
+                if at and st.get("delivered") != here.date().isoformat() and here.strftime("%H:%M") >= at:
                     out = self.deliver()
                     self.log(f"SYS: Briefing du jour : {out}")
             except Exception as e:

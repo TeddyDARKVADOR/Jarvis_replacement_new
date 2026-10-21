@@ -141,11 +141,17 @@ def _missing(requires: list) -> list[str]:
     from importlib.metadata import PackageNotFoundError, version
     try:
         from packaging.requirements import Requirement
-    except ImportError:
-        return []
+    except ImportError:              # sans packaging (runner Linux, vu le 2026-10-21) : présence seule, pas les versions
+        Requirement = None
     out = []
     for spec in requires or []:
         try:
+            if Requirement is None:
+                name = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", str(spec))
+                if not name:
+                    raise ValueError(spec)
+                version(name.group(1))
+                continue
             req = Requirement(str(spec))
             have = version(req.name)
             if req.specifier and have not in req.specifier:

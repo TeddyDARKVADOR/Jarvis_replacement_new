@@ -797,7 +797,9 @@ def _vitrine_flag():
     clock = Clock()
     cfg = {**CFG, "vitrine_publish": True, "vitrine_repo": str(TMP)}
     calls = []
-    pub_ok = lambda: calls.append(1) or {"ok": True, "pushed": True}
+
+    def pub_ok():
+        return calls.append(1) or {"ok": True, "pushed": True}
     assert V.run(root, cfg, publisher=pub_ok, clock=clock)["ran"] is False
     V.flag("code : nouveau commit", root)
     V.flag("IA : nouveau champion", root)
@@ -806,7 +808,9 @@ def _vitrine_flag():
     V.flag("code : encore", root)
     assert V.run(root, cfg, publisher=pub_ok, clock=clock)["ran"] is False, "moins de 5 min après"
     clock.t += 600
-    fail = lambda: {"ok": False, "reason": "réseau"}
+
+    def fail():
+        return {"ok": False, "reason": "réseau"}
     assert V.run(root, cfg, publisher=fail, clock=clock)["ok"] is False
     assert (root / "vitrine" / "FLAG").exists(), "échec : le drapeau reste levé"
     # Crochets Git : ajoutés à la fin d'un crochet existant, une seule fois.
@@ -1116,7 +1120,7 @@ def _contract():
         for n in ast.walk(tree):
             if isinstance(n, (ast.Import, ast.ImportFrom)):
                 mod = (n.module or "") if isinstance(n, ast.ImportFrom) else n.names[0].name
-                assert not mod.split(".")[0] in ("main", "core", "actions", "server", "plugins"), (f.name, mod)
+                assert mod.split(".")[0] not in ("main", "core", "actions", "server", "plugins"), (f.name, mod)
     return "retirable"
 
 
