@@ -1,13 +1,13 @@
 {
  "schema": "jarvis.nightshift-queue/1",
- "run_id": "39393526695",
- "created": "2026-10-20T10:29:28+02:00",
+ "run_id": "39528331945",
+ "created": "2026-10-21T03:38:57+02:00",
  "tasks": [
   {
-   "id": "resume-39393526695",
+   "id": "resume-39528331945",
    "kind": "resume",
    "input": {
-    "summary": "18/20 suites vertes ; aucune régression ; ruff : 0 remarque ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
+    "summary": "18/20 suites vertes ; aucune régression ; ruff : 3 remarques dont 3 nouvelles ; indicateurs : 2 changements à relire (coût en contexte (server)) ; tâche extensions « manager 1 examen sans exécution : déclaré, réellem » : correctif rejeté (le n°manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empr).",
     "red": [
      {
       "suite": "extensions.selftest",
@@ -30,6 +30,32 @@
         "detail": "[('jour', \"Salon de l'emploi\"), ('07:00', 'Cours CDA'), ('15:00', 'Appel client New York')]"
        }
       ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "triage-39528331945",
+   "kind": "triage",
+   "input": {
+    "findings": [
+     {
+      "code": "E731",
+      "path": "matthew/selftest.py",
+      "line": 800,
+      "message": "Do not assign a `lambda` expression, use a `def`"
+     },
+     {
+      "code": "E731",
+      "path": "matthew/selftest.py",
+      "line": 809,
+      "message": "Do not assign a `lambda` expression, use a `def`"
+     },
+     {
+      "code": "E713",
+      "path": "matthew/selftest.py",
+      "line": 1119,
+      "message": "Test for membership should be `not in`"
      }
     ]
    }
