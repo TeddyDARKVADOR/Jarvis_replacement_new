@@ -270,7 +270,7 @@ class Flywheel:
             except Exception as e:
                 step("archive", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
         cp = self._runner(["ollama", "cp", cand, self.cfg["serve_model"]],
-                          capture_output=True, text=True, timeout=600)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
         if cp.returncode != 0:
             step("promotion", ok=False, reason=(cp.stderr or "")[-200:])
             return self._finish(rep, "échec promotion")

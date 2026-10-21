@@ -167,7 +167,7 @@ def prepare(out: Path, pack_dir: Path | None = None, owner: str = "matthew", clo
 
 
 def _run(args: list[str], runner=subprocess.run, timeout: int = 1800) -> subprocess.CompletedProcess:
-    return runner(cli() + args, capture_output=True, text=True, timeout=timeout)
+    return runner(cli() + args, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
 
 
 def last_packs(owner: str, runner=subprocess.run) -> str | None:

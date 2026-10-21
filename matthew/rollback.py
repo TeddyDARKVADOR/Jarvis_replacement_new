@@ -63,7 +63,7 @@ class Champions:
 
     def _ollama_cp(self, src: str, dst: str) -> tuple[bool, str]:
         try:
-            r = self._run(["ollama", "cp", src, dst], capture_output=True, text=True, timeout=600)
+            r = self._run(["ollama", "cp", src, dst], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
         except (OSError, subprocess.SubprocessError) as e:
             return False, str(e)
         return r.returncode == 0, (r.stderr or "")[-200:]

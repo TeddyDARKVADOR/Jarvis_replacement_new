@@ -84,7 +84,7 @@ def _install_linux(name: str, launcher: Path, cron: str, calendar: str | None, m
         for f, text in files.items():
             (d / f).write_text(text, encoding="utf-8", newline="\n")
         for c in cmds:
-            cp = runner(c, capture_output=True, text=True, timeout=60)
+            cp = runner(c, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
             if cp.returncode != 0:
                 return {"ok": False, "how": "systemd", "out": (cp.stderr or cp.stdout).strip()[:200]}
         return {"ok": True, "how": "systemd", "out": f"minuterie {unit(name)}.timer active"
@@ -92,9 +92,9 @@ def _install_linux(name: str, launcher: Path, cron: str, calendar: str | None, m
     line = f"{cron} {launcher} {CRON_MARK}{unit(name)}"
     if dry:
         return {"ok": True, "how": "cron", "line": line}
-    cur = runner(["crontab", "-l"], capture_output=True, text=True, timeout=30)
+    cur = runner(["crontab", "-l"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     keep = [x for x in (cur.stdout or "").splitlines() if not x.endswith(CRON_MARK + unit(name))]
-    cp = runner(["crontab", "-"], input="\n".join(keep + [line]) + "\n", capture_output=True, text=True, timeout=30)
+    cp = runner(["crontab", "-"], input="\n".join(keep + [line]) + "\n", capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     return {"ok": cp.returncode == 0, "how": "cron", "out": (cp.stderr or line).strip()[:200]}
 
 
@@ -105,7 +105,7 @@ def daily(name: str, hour: str, argv: list[str], log: Path, folder: Path, runner
         cmd = ["schtasks", "/Create", "/TN", name, "/SC", "DAILY", "/ST", hour, "/TR", f'"{launcher}"', "/F"]
         if dry:
             return {"ok": True, "how": "schtasks", "commands": [cmd]}
-        cp = runner(cmd, capture_output=True, text=True)
+        cp = runner(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         return {"ok": cp.returncode == 0, "how": "schtasks", "out": (cp.stdout or cp.stderr).strip()[:200]}
     h, m = hour.split(":")
     return _install_linux(name, launcher, f"{int(m)} {int(h)} * * *", f"*-*-* {int(h):02d}:{int(m):02d}:00", None, runner, dry)
@@ -118,7 +118,7 @@ def every(name: str, minutes: int, argv: list[str], log: Path, folder: Path, run
         cmd = ["schtasks", "/Create", "/TN", name, "/SC", "MINUTE", "/MO", str(minutes), "/TR", f'"{launcher}"', "/F"]
         if dry:
             return {"ok": True, "how": "schtasks", "commands": [cmd]}
-        cp = runner(cmd, capture_output=True, text=True)
+        cp = runner(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         return {"ok": cp.returncode == 0, "how": "schtasks", "out": (cp.stdout or cp.stderr).strip()[:200]}
     return _install_linux(name, launcher, f"*/{minutes} * * * *", None, minutes, runner, dry)
 
@@ -148,7 +148,7 @@ def at_login(name: str, argv: list[str], log: Path, folder: Path, runner=subproc
         d.mkdir(parents=True, exist_ok=True)
         (d / f"{u}.service").write_text(service, encoding="utf-8", newline="\n")
         for c in cmds:
-            cp = runner(c, capture_output=True, text=True, timeout=60)
+            cp = runner(c, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
             if cp.returncode != 0:
                 return {"ok": False, "how": "systemd", "out": (cp.stderr or cp.stdout).strip()[:200]}
         return {"ok": True, "how": "systemd", "out": f"service {u}.service actif"}
@@ -170,7 +170,7 @@ def next_run(name: str, runner=subprocess.run, now=None) -> dict | None:
               f"$t = Get-ScheduledTask -TaskName '{name}' -ErrorAction Stop; "
               "if ($i.NextRunTime) { $i.NextRunTime.ToString('yyyy-MM-ddTHH:mm:sszzz') } else { '-' }; [string]$t.State")
         try:
-            cp = runner(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True, text=True, timeout=30)
+            cp = runner(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
         except (OSError, subprocess.TimeoutExpired):
             return None
         lines = [x.strip() for x in (cp.stdout or "").splitlines() if x.strip()]
@@ -182,14 +182,14 @@ def next_run(name: str, runner=subprocess.run, now=None) -> dict | None:
         if has_systemd():
             cp = runner(["systemctl", "--user", "show", f"{u}.timer", "--timestamp=unix",
                          "-p", "NextElapseUSecRealtime", "-p", "UnitFileState", "-p", "LoadState"],
-                        capture_output=True, text=True, timeout=30)
+                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
             props = dict(x.split("=", 1) for x in (cp.stdout or "").splitlines() if "=" in x)
             if cp.returncode != 0 or props.get("LoadState") != "loaded":
                 return None
             m = re.match(r"@(\d+)", props.get("NextElapseUSecRealtime", ""))
             at = datetime.fromtimestamp(int(m.group(1))).astimezone().isoformat(timespec="seconds") if m else None
             return {"at": at, "enabled": props.get("UnitFileState") == "enabled"}
-        cp = runner(["crontab", "-l"], capture_output=True, text=True, timeout=30)
+        cp = runner(["crontab", "-l"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return None
     line = next((x for x in (cp.stdout or "").splitlines() if x.endswith(CRON_MARK + u)), None)

@@ -284,7 +284,7 @@ def tailscale_ip(runner=None) -> str | None:
     if not exe:
         return None
     try:
-        out = (runner or subprocess.run)([exe, "ip", "-4"], capture_output=True, text=True, timeout=10).stdout
+        out = (runner or subprocess.run)([exe, "ip", "-4"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10).stdout
     except (OSError, ValueError):
         return None
     ip = (out or "").strip().splitlines()[0] if (out or "").strip() else ""

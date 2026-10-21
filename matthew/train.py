@@ -167,7 +167,7 @@ def missing_deps(cfg: dict | None = None) -> list[str]:
     probe = ("import importlib.util as u;print(','.join(m for m in ('torch','unsloth','trl','datasets')"
              " if u.find_spec(m) is None))")
     try:
-        cp = subprocess.run([py, "-c", probe], capture_output=True, text=True, timeout=60)
+        cp = subprocess.run([py, "-c", probe], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     except (OSError, subprocess.TimeoutExpired) as e:
         return [f"python d'entraînement injoignable ({e})"]
     return [m for m in cp.stdout.strip().split(",") if m]
@@ -198,13 +198,13 @@ def free_gpu(runner=subprocess.run) -> list[str]:
     """Décharge les modèles qu'Ollama garde en mémoire vidéo : l'entraînement prend
     ~10 Go des 12 de la RTX 3060, un modèle chargé de plus et c'est le dépassement."""
     try:
-        cp = runner(["ollama", "ps"], capture_output=True, text=True, timeout=30)
+        cp = runner(["ollama", "ps"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return []
     names = [l.split()[0] for l in (cp.stdout or "").splitlines()[1:] if l.strip()]
     for n in names:
         try:
-            runner(["ollama", "stop", n], capture_output=True, text=True, timeout=60)
+            runner(["ollama", "stop", n], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
         except (OSError, subprocess.TimeoutExpired):
             pass
     return names
@@ -303,7 +303,7 @@ def finish(run: Path) -> str | None:
 def ollama_create(run: Path, name: str, runner=subprocess.run) -> dict:
     try:
         cp = runner(["ollama", "create", name, "-f", "Modelfile"], cwd=run,
-                    capture_output=True, text=True, timeout=1800)
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800)
     except (OSError, subprocess.TimeoutExpired) as e:
         return {"ok": False, "reason": str(e)}
     return {"ok": cp.returncode == 0, "reason": (cp.stderr or cp.stdout)[-300:]}

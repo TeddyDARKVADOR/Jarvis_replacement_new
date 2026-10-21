@@ -684,7 +684,7 @@ def build(out: Path, root: Path | None = None) -> dict:
 
 
 def _git(repo: Path, *args, runner=subprocess.run):
-    return runner(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=180)
+    return runner(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
 
 
 def publish(repo: Path | None = None, cfg: dict | None = None, runner=subprocess.run,
@@ -813,7 +813,7 @@ def setup(repo: Path, name: str = "matthew-vitrine", runner=subprocess.run) -> d
     repo = Path(repo)
     if not (repo / ".git").exists():
         return {"ok": False, "reason": f"pas de dépôt local à {repo} : python -m matthew.vitrine build {repo}"}
-    who = runner(["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True, timeout=60)
+    who = runner(["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
     owner = (who.stdout or "").strip()
     if not owner:
         return {"ok": False, "reason": "gh n'est pas connecté (gh auth login)"}
@@ -822,7 +822,7 @@ def setup(repo: Path, name: str = "matthew-vitrine", runner=subprocess.run) -> d
              ["gh", "api", "-X", "POST", f"repos/{owner}/{name}/pages",
               "-f", "source[branch]=main", "-f", "source[path]=/"]]
     for cmd in steps:
-        cp = runner(cmd, capture_output=True, text=True, timeout=180)
+        cp = runner(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180)
         if cp.returncode != 0 and "already" not in (cp.stderr or "").lower():
             return {"ok": False, "step": cmd[1:3], "reason": (cp.stderr or cp.stdout)[-300:]}
     return {"ok": True, "url": f"https://{owner.lower()}.github.io/{name}/",
