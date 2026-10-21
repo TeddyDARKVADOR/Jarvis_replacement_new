@@ -1,28 +1,28 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "39569721584",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39569721584",
+ "run_id": "39582967118",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39582967118",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
- "event": "schedule",
- "commit": "7212e01",
- "commit_full": "7212e010ad076a73b3b46bd743e1e2c0becc3fb9",
+ "event": "workflow_dispatch",
+ "commit": "87a6794",
+ "commit_full": "87a67943a108b62d434e73913610b5465dd9e727",
  "previous": {
-  "run_id": "39553403191",
+  "run_id": "39569721584",
   "commit": "7212e01",
-  "finished_at": "2026-10-21T08:08:30+02:00",
+  "finished_at": "2026-10-21T10:32:07+02:00",
   "status": "partial_success"
  },
- "started_at": "2026-10-21T10:30:47+02:00",
- "finished_at": "2026-10-21T10:32:07+02:00",
- "duration_s": 80.0,
+ "started_at": "2026-10-21T12:14:04+02:00",
+ "finished_at": "2026-10-21T12:15:26+02:00",
+ "duration_s": 82.0,
  "status": "partial_success",
- "summary": "18/20 suites vertes ; aucune régression ; ruff : 3 remarques ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
+ "summary": "20/21 suites vertes ; aucune régression ; 1 échec sans référence (matthew « vitrine : liste blanche, aucun texte du journal, g ») ; réparé : extensions « manager 1 examen sans exécution : déclaré, réellem », daily n°2 ; ruff : 0 remarque ; rien à corriger dans la zone autorisée.",
  "environment": {
   "runner": "github",
   "os": "Ubuntu 24.04.5 LTS",
   "python": "3.12.15",
-  "image": "ubuntu24 20261018.339.1"
+  "image": "ubuntu24 20261012.334.1"
  },
  "suites": [
   {
@@ -77,7 +77,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.8,
    "outcome": "ok"
   },
   {
@@ -99,7 +99,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 7.3,
+   "duration_s": 7.5,
    "outcome": "ok"
   },
   {
@@ -138,22 +138,13 @@
   {
    "name": "extensions.selftest",
    "platform": "linux",
-   "passed": 14,
+   "passed": 15,
    "total": 15,
-   "status": "failing",
-   "failures": [
-    "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
-   ],
-   "failed": [
-    {
-     "id": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-     "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-     "detail": "[]",
-     "class": "preexisting"
-    }
-   ],
+   "status": "ok",
+   "failures": [],
+   "failed": [],
    "duration_s": 0.8,
-   "outcome": "failing"
+   "outcome": "ok"
   },
   {
    "name": "offline.selftest",
@@ -191,12 +182,12 @@
   {
    "name": "nightshift.selftest",
    "platform": "linux",
-   "passed": 34,
-   "total": 34,
+   "passed": 36,
+   "total": 36,
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.5,
+   "duration_s": 6.9,
    "outcome": "ok"
   },
   {
@@ -235,22 +226,13 @@
   {
    "name": "daily.selftest",
    "platform": "linux",
-   "passed": 7,
+   "passed": 8,
    "total": 8,
-   "status": "failing",
-   "failures": [
-    "2 agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau"
-   ],
-   "failed": [
-    {
-     "id": "2",
-     "label": "agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau",
-     "detail": "[('jour', \"Salon de l'emploi\"), ('07:00', 'Cours CDA'), ('15:00', 'Appel client New York')]",
-     "class": "preexisting"
-    }
-   ],
-   "duration_s": 15.3,
-   "outcome": "failing"
+   "status": "ok",
+   "failures": [],
+   "failed": [],
+   "duration_s": 15.2,
+   "outcome": "ok"
   },
   {
    "name": "incidents.selftest",
@@ -262,48 +244,57 @@
    "failed": [],
    "duration_s": 0.2,
    "outcome": "ok"
+  },
+  {
+   "name": "matthew.selftest",
+   "platform": "linux",
+   "passed": 34,
+   "total": 35,
+   "status": "failing",
+   "failures": [
+    "vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite : AssertionError:"
+   ],
+   "failed": [
+    {
+     "id": "vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite : AssertionError:",
+     "label": "vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite : AssertionError:",
+     "detail": "",
+     "class": "unreferenced"
+    }
+   ],
+   "duration_s": 1.8,
+   "outcome": "failing"
   }
  ],
  "regressions": [],
- "repaired": [],
- "preexisting": [
+ "repaired": [
   {
    "suite": "extensions.selftest",
    "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-   "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
+   "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
+   "was_known": false
   },
   {
    "suite": "daily.selftest",
    "check": "2",
-   "label": "agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau"
+   "label": "agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau",
+   "was_known": false
   }
  ],
- "unreferenced": [],
+ "preexisting": [],
+ "unreferenced": [
+  {
+   "suite": "matthew.selftest",
+   "check": "vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite : AssertionError:",
+   "label": "vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite : AssertionError:"
+  }
+ ],
  "lint": {
   "tool": "ruff",
   "available": true,
   "version": "0.17.0",
-  "count": 3,
-  "findings": [
-   {
-    "code": "E731",
-    "path": "matthew/selftest.py",
-    "line": 800,
-    "message": "Do not assign a `lambda` expression, use a `def`"
-   },
-   {
-    "code": "E731",
-    "path": "matthew/selftest.py",
-    "line": 809,
-    "message": "Do not assign a `lambda` expression, use a `def`"
-   },
-   {
-    "code": "E713",
-    "path": "matthew/selftest.py",
-    "line": 1119,
-    "message": "Test for membership should be `not in`"
-   }
-  ],
+  "count": 0,
+  "findings": [],
   "new": []
  },
  "metrics": {
@@ -405,21 +396,15 @@
   "files": [],
   "attempts": 0,
   "outcome": "skipped",
-  "reason": "rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant",
+  "reason": "rien à corriger dans la zone autorisée",
   "out_of_zone": [
    {
-    "id": "fail-daily-2-7212e01",
+    "id": "fail-matthew-vitrine-liste-blanche-aucun-texte-du-journal-garde-fou-qui-r-87a6794",
     "source": "failing_check",
-    "reason": "hors de la liste blanche : daily/__init__.py"
+    "reason": "hors de la liste blanche : matthew/__init__.py"
    }
   ],
-  "skipped": [
-   {
-    "id": "fail-extensions-manager-1-examen-sans-ex-cution-d-clar-r-ellement-fait-carts-7212e01",
-    "idea": "check:extensions.selftest:manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-    "reason": "déjà tentée au commit 7212e01 avec le même contexte"
-   }
-  ]
+  "skipped": []
  },
  "pull_request_url": null,
  "usage": {
@@ -714,7 +699,7 @@
   }
  ],
  "pass": {
-  "n": 3,
+  "n": 0,
   "of": 3
  },
  "diagnostics": [
@@ -760,6 +745,16 @@
   {
    "pass": 3,
    "run_id": "39569721584",
+   "status": "partial_success",
+   "task": null,
+   "outcome": "skipped",
+   "ref": {},
+   "tokens": 0,
+   "pr": null
+  },
+  {
+   "pass": 0,
+   "run_id": "39582967118",
    "status": "partial_success",
    "task": null,
    "outcome": "skipped",

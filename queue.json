@@ -1,61 +1,24 @@
 {
  "schema": "jarvis.nightshift-queue/1",
- "run_id": "39569721584",
- "created": "2026-10-21T10:32:07+02:00",
+ "run_id": "39582967118",
+ "created": "2026-10-21T12:15:26+02:00",
  "tasks": [
   {
-   "id": "resume-39569721584",
+   "id": "resume-39582967118",
    "kind": "resume",
    "input": {
-    "summary": "18/20 suites vertes ; aucune régression ; ruff : 3 remarques ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
+    "summary": "20/21 suites vertes ; aucune régression ; 1 échec sans référence (matthew « vitrine : liste blanche, aucun texte du journal, g ») ; réparé : extensions « manager 1 examen sans exécution : déclaré, réellem », daily n°2 ; ruff : 0 remarque ; rien à corriger dans la zone autorisée.",
     "red": [
      {
-      "suite": "extensions.selftest",
+      "suite": "matthew.selftest",
       "status": "failing",
       "failures": [
        {
-        "check": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-        "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte",
-        "detail": "[]"
+        "check": "vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite : AssertionError:",
+        "label": "vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite : AssertionError:",
+        "detail": ""
        }
       ]
-     },
-     {
-      "suite": "daily.selftest",
-      "status": "failing",
-      "failures": [
-       {
-        "check": "2",
-        "label": "agenda : récurrence, exception, occurrence déplacée, journée entière, annulé, autre fuseau",
-        "detail": "[('jour', \"Salon de l'emploi\"), ('07:00', 'Cours CDA'), ('15:00', 'Appel client New York')]"
-       }
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "id": "triage-39569721584",
-   "kind": "triage",
-   "input": {
-    "findings": [
-     {
-      "code": "E731",
-      "path": "matthew/selftest.py",
-      "line": 800,
-      "message": "Do not assign a `lambda` expression, use a `def`"
-     },
-     {
-      "code": "E731",
-      "path": "matthew/selftest.py",
-      "line": 809,
-      "message": "Do not assign a `lambda` expression, use a `def`"
-     },
-     {
-      "code": "E713",
-      "path": "matthew/selftest.py",
-      "line": 1119,
-      "message": "Test for membership should be `not in`"
      }
     ]
    }
