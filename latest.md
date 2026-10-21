@@ -1,26 +1,26 @@
-## JARVIS Night Shift — 2026-10-21 · passe 1/3
+## JARVIS Night Shift — 2026-10-21 · passe 2/3
 
-**18/20 suites vertes ; aucune régression ; ruff : 3 remarques dont 3 nouvelles ; indicateurs : 2 changements à relire (coût en contexte (server)) ; tâche extensions « manager 1 examen sans exécution : déclaré, réellem » : correctif rejeté (le n°manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empr).**
+**18/20 suites vertes ; aucune régression ; ruff : 3 remarques ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.**
 
-commit `7212e01` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 19 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39528331945)
+commit `7212e01` · branche `main` · ubuntu24 20261018.339.1 · Python 3.12.15 · 1 min 19 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39553403191)
 
 | Suite | Score | État | Durée |
 |---|---:|---|---:|
 | capabilities.selftest | 11/11 | ✅ vert | 0.6 s |
 | context.selftest | 33/33 | ✅ vert | 0.1 s |
-| server.selftest | 35/35 | ✅ vert | 2.3 s |
-| server.routing_selftest | 35/35 | ✅ vert | 0.8 s |
-| client_desktop --selftest | 28/28 | ✅ vert | 0.7 s |
+| server.selftest | 35/35 | ✅ vert | 2.1 s |
+| server.routing_selftest | 35/35 | ✅ vert | 0.7 s |
+| client_desktop --selftest | 28/28 | ✅ vert | 0.8 s |
 | cognition.selftest | 64/64 | ✅ vert | 3.6 s |
-| eval_lab.selftest | 28/28 | ✅ vert | 7.0 s |
+| eval_lab.selftest | 28/28 | ✅ vert | 7.3 s |
 | core.code_workspace.selftest | 34/34 | ✅ vert | 33.7 s |
 | reminders.selftest | 4/4 | ✅ vert | 0.3 s |
-| resilience.selftest | 15/15 | ✅ vert | 0.6 s |
+| resilience.selftest | 15/15 | ✅ vert | 0.7 s |
 | extensions.selftest | 14/15 | ❌ rouge (déjà) | 0.8 s |
 | offline.selftest | 10/10 | ✅ vert | 1.3 s |
 | core.token_usage_selftest | 1/1 | ✅ vert | 0.0 s |
 | actions.repository_review_selftest | 1/1 | ✅ vert | 0.0 s |
-| nightshift.selftest | 34/34 | ✅ vert | 6.4 s |
+| nightshift.selftest | 34/34 | ✅ vert | 6.6 s |
 | meeting.selftest | 21/21 | ✅ vert | 1.0 s |
 | pilot.selftest | 13/13 | ✅ vert | 1.7 s |
 | quota.selftest | 7/7 | ✅ vert | 0.1 s |
@@ -29,10 +29,18 @@ commit `7212e01` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 
 
 ### Tâche de la nuit
 
-- **extensions « manager 1 examen sans exécution : déclaré, réellem »** (contrôle rouge) — correctif rejeté : le n°manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte échoue encore
-- 1 fichier(s) : `extensions/manager.py` · 1 tentative(s) · groq/openai/gpt-oss-120b
-- Consommation : 1 appel(s) sur 12 · 3685 tokens sur 60000
+- rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant
+- Consommation : 0 appel(s) sur 12 · 0 tokens sur 60000
 - Hors zone (pour un humain) : fail-daily-2-7212e01 — hors de la liste blanche : daily/__init__.py
+
+### Mémoire — tâches passées cette nuit
+
+- `check:extensions.selftest:manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte` — déjà tentée au commit 7212e01 avec le même contexte
+
+### Cette nuit, passe par passe
+
+- Passe 1 : extensions « manager 1 examen sans exécution : déclaré, réellem » — correctif rejeté · 3685 tokens
+- Passe 2 : rien de tenté — rien de tenté · 0 tokens
 
 ### Échec persistant — manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte
 
@@ -51,8 +59,6 @@ Idée `check:extensions.selftest:manager 1 examen sans exécution : déclaré, r
 - eval_lab regressions : 9/9 réussis
 - Coût en contexte : prompt 3540 car. + outils 30893 car. (42 outils, mode local) ≈ 9838 tokens par connexion
 - Cognition : 14 valeurs mesurées (architecture complète)
-- **coût en contexte (server)** : 28658 → 29657 (hausse) — +999 caractères (+3.5%) envoyés à chaque connexion
-- **coût en contexte (local)** : 29894 → 30893 (hausse) — +999 caractères (+3.3%) envoyés à chaque connexion
 
 ### Modèle local
 
@@ -88,6 +94,6 @@ Idée `check:extensions.selftest:manager 1 examen sans exécution : déclaré, r
 
 ### ruff 0.17.0 — 3 remarque(s)
 
-- `matthew/selftest.py:800` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
-- `matthew/selftest.py:809` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
-- `matthew/selftest.py:1119` E713 Test for membership should be `not in` **(nouvelle)**
+- `matthew/selftest.py:800` E731 Do not assign a `lambda` expression, use a `def`
+- `matthew/selftest.py:809` E731 Do not assign a `lambda` expression, use a `def`
+- `matthew/selftest.py:1119` E713 Test for membership should be `not in`
