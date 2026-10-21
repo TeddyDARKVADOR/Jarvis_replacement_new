@@ -7,7 +7,10 @@ Ordre du plan (phase 2) :
   1. une régression ;
   2. un contrôle rouge qui n'est pas un échec connu (déjà rouge ou sans référence) ;
   3. une remarque ruff « vrai bug » : F821, F811, F841, F82x, E9xx, erreur de syntaxe ;
-  4. (phase 3) un nœud bug ou partiel du graphe.
+  4. une remarque ruff que ruff corrige lui-même sans changer le sens (correctif
+     « safe ») : le patch vient de `ruff check --fix --diff`, pas du modèle —
+     aucun appel, aucun token ; il passe par la même validation et la même PR ;
+  5. (phase 3) un nœud bug ou partiel du graphe.
 Une tâche n'est candidate que si ce qu'il faudrait corriger est dans la zone
 autorisée (zone.py) : le paquet testé pour un contrôle, le fichier pour ruff.
 Les autres sont listées « hors zone » : elles reviennent à un humain.
@@ -31,6 +34,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -54,6 +58,28 @@ def _check_task(source: str, x: dict, report: dict, detail: str = "") -> dict:
     return {"id": f"{prefix}-{_slug(short(x['suite']))}-{_slug(x['check'])}-{commit}", "source": source,
             "suite": x["suite"], "check": str(x["check"]), "label": x.get("label", ""), "detail": detail,
             "since_commit": x.get("since_commit"), "suspects": x.get("suspects") or []}
+
+
+def autofix(task: dict, repo: Path = REPO) -> str | None:
+    """Le diff que ruff appliquerait pour cette remarque (son code, ce fichier), ou None. N'écrit rien."""
+    try:
+        p = subprocess.run([sys.executable, "-m", "ruff", "check", task["path"], "--select", task["code"], "--fix",
+                            "--diff", "--no-cache"], cwd=str(repo), capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=120)
+    except Exception:
+        return None
+    lines, started = [], False
+    for ln in (p.stdout or "").splitlines():
+        if ln.startswith(("--- ", "+++ ")):
+            started = True
+            ln = ln[:4] + ln[4:].replace("\\", "/")       # ruff sous Windows écrit pkg\m.py
+        elif started and not ln.startswith((" ", "-", "+", "@@", "\\")) and ln.strip():
+            break                                         # « Would fix 1 error. »
+        if started:
+            lines.append(ln)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return zone.normalize("\n".join(lines)) if lines else None
 
 
 def candidates(report: dict, repo: Path = REPO) -> tuple[list[dict], list[dict]]:
@@ -89,11 +115,16 @@ def candidates(report: dict, repo: Path = REPO) -> tuple[list[dict], list[dict]]
             consider(_check_task("failing_check", x, report, details.get((x["suite"], str(x["check"])), "")),
                      pkg_target(x["suite"]))
     lint = report.get("lint") or {}
+    fixable = []
     for f in lint.get("findings") or []:
+        task = {"id": f"ruff-{f['code']}-{_slug(f['path'])}-{report.get('commit') or '?'}", "source": "ruff",
+                "code": f["code"], "path": f["path"], "line": f.get("line"), "message": f.get("message", "")}
         if REAL_BUG.match(str(f.get("code"))):
-            task = {"id": f"ruff-{f['code']}-{_slug(f['path'])}-{report.get('commit') or '?'}", "source": "ruff",
-                    "code": f["code"], "path": f["path"], "line": f.get("line"), "message": f.get("message", "")}
             consider(task, f["path"])
+        elif f.get("fix") == "safe":
+            fixable.append((task, f["path"]))
+    for task, path in fixable:                      # après les vrais bugs : ce sont les plus sûrs, pas les plus utiles
+        consider({**task, "autofix": True}, path)
     return found, out
 
 
@@ -116,6 +147,13 @@ def choose(report: dict, max_tasks: int = 1, repo: Path = REPO, state: dict | No
         if why:
             base["skipped"].append({"id": task["id"], "idea": memory.idea_key(task), "reason": why})
             continue
+        if task.get("autofix"):
+            diff = autofix(task, repo)
+            if not diff:
+                base["skipped"].append({"id": task["id"], "idea": memory.idea_key(task),
+                                        "reason": "ruff ne propose plus de correctif sûr"})
+                continue
+            task["autofix_diff"] = diff
         task.update(fingerprint=fp, idea=memory.idea_key(task), prompt_tokens=prompt["estimated_tokens"],
                     sections=prompt["sections"])
         return {**base, "task": task, "prompt": prompt, "reason": ""}

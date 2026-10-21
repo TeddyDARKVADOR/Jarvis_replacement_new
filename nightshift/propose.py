@@ -22,6 +22,9 @@ Une tentative ratée renvoie l'erreur exacte au modèle pour la suivante. Chaque
 tentative garde un extrait de la réponse du modèle (passé par redact) : sans
 lui, un échec ne se diagnostique pas.
 
+Une tâche « autofix » (remarque ruff à correctif sûr, tasks.py) arrive avec
+son diff, écrit par ruff : pas d'appel au modèle, mais les mêmes étapes 3 et 5.
+
 Écrit proposal.json (toujours : issue, raison, tentatives, consommation) et
 patch.diff (seulement si un patch est proposé).
 """
@@ -84,8 +87,27 @@ def _feedback(reason: str) -> dict:
         "from the code shown, editable paths only (or NO_PATCH: reason).")}
 
 
+def from_ruff(task: dict, repo: Path, log=print) -> dict:
+    """Le correctif écrit par ruff --fix : vérifié comme celui d'un modèle, sans aucun appel."""
+    diff = zone.normalize(task.get("autofix_diff") or "")
+    check = zone.check_patch(diff)
+    ok, err = apply_check(diff, repo) if check.ok else (False, " ; ".join(check.reasons))
+    attempt = {"n": 1, "result": "ok" if ok else ("apply_failed" if check.ok else "out_of_zone"),
+               "model": "ruff --fix", "files": check.files, "detail": err[:300]}
+    out = {"task_id": task.get("id"), "outcome": "patch_proposed" if ok else "no_patch",
+           "reason": "" if ok else f"correctif de ruff refusé : {err}"[:300], "attempts": [attempt],
+           "usage": llm.Budget().usage(), "files": check.files if ok else []}
+    if ok:
+        out["diff"] = diff
+        out["patch_sha256"] = hashlib.sha256(diff.encode("utf-8")).hexdigest()
+    log(f"  ruff --fix : {'patch accepté' if ok else out['reason']}")
+    return out
+
+
 def propose(task: dict, prompt: dict, repo: Path, chain: llm.Chain, log=print) -> dict:
     """Jusqu'à MAX_ATTEMPTS tentatives. → proposal (dict), avec « diff » si un patch passe."""
+    if task.get("autofix"):
+        return from_ruff(task, repo, log)
     messages = list(prompt["messages"])
     attempts: list[dict] = []
     outcome, reason, diff_ok = "no_patch", "", None

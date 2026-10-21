@@ -56,6 +56,10 @@ sont des rapports simulés.
      timed_out, heure limite, 2 tentatives, pas de veille sans l'option
  30  côté GitHub : la file ne demande que des avis ; sans PC « indisponible » ;
      un avis local n'atteint jamais le briefing
+  — seconde vitesse (2026-10-21) —
+ 35  le modèle voit la machine : système, fuseau, modules absents du paquet
+ 36  ruff --fix : une remarque à correctif sûr devient un patch sans modèle,
+     vérifié comme les autres ; un correctif « unsafe » n'est pas pris
   — leçon du premier vrai run —
  31  réancrage : un diff de modèle sans numéros de ligne (« @@ ... @@ »), aux
      faux numéros ou aux espaces mangés est régénéré ; introuvable, ambigu ou
@@ -1457,6 +1461,59 @@ def _incidents():
     candidates, _ = tasks.candidates({**_night([_suite("a")]), "incidents": sec, "lint": {}}, REPO)
     assert not [c for c in candidates if c.get("source") == "incident"], "principe n°3 : pas de tâche sans contrôle"
     return "le plus fréquent d'abord ; résumé périmé signalé ; absent → rien d'inventé ; aucune tâche au modèle"
+
+
+@check("35 le modèle voit la machine : système, fuseau, modules absents du paquet")
+def _environment():
+    from nightshift import context
+    d = TMP / "envrepo"
+    (d / "reminders").mkdir(parents=True)
+    (d / "reminders" / "__init__.py").write_text(
+        "import json\nfrom reminders import x\n\ndef f():\n    import paquet_absent_ns\n    from packaging import version\n",
+        encoding="utf-8")
+    text = context.environment(d, "reminders/")
+    assert "paquet_absent_ns" in text and "json" not in text.split("NOT installed here:")[-1], text
+    assert "reminders" not in text.split("NOT installed here:")[-1], "un paquet du dépôt n'est pas « absent »"
+    assert "time zone" in text and "Python" in text, text
+    assert all(z in context.SYSTEM for z in zone.ALLOWED_DIRS) and "{zone}" not in context.SYSTEM, \
+        "la liste donnée au modèle est celle de zone.py"
+    return text.splitlines()[0][:70] + " ; module absent nommé"
+
+
+@check("36 ruff --fix : une remarque à correctif sûr devient un patch sans modèle, vérifié comme les autres")
+def _autofix():
+    from nightshift import propose, tasks
+    lint = {"available": True, "findings": [
+        {"code": "E713", "path": "reminders/__init__.py", "line": 2, "message": "Test for membership", "fix": "safe"},
+        {"code": "E731", "path": "reminders/__init__.py", "line": 3, "message": "lambda", "fix": "unsafe"},
+        {"code": "E713", "path": "main.py", "line": 1, "message": "Test for membership", "fix": "safe"}]}
+    found, out = tasks.candidates({"commit": "abc", "lint": lint}, REPO)
+    assert [t["code"] for t in found] == ["E713"] and found[0]["autofix"], found
+    assert any("main.py" in x["reason"] for x in out), "hors zone, même sûr : écarté"
+    import importlib.util
+    if importlib.util.find_spec("ruff") is None:
+        return "ruff non installé ici : seul le choix des tâches est vérifié"
+    d = TMP / "autofix"
+    (d / "reminders").mkdir(parents=True)
+    (d / "pyproject.toml").write_text('[tool.ruff.lint]\nselect = ["E7"]\n', encoding="utf-8")
+    (d / "reminders" / "__init__.py").write_text("def f(x):\n    if not x in (1, 2):\n        return 1\n",
+                                                 encoding="utf-8")
+    for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
+                ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]):
+        subprocess.run(cmd, cwd=d, check=True, capture_output=True, timeout=30)
+    task = {**found[0], "autofix_diff": tasks.autofix(found[0], d)}
+    assert task["autofix_diff"] and "+    if x not in (1, 2):" in task["autofix_diff"], task["autofix_diff"]
+
+    class _NoModel:
+        def complete(self, *a, **k):
+            raise AssertionError("aucun appel au modèle pour un correctif de ruff")
+    got = propose.propose(task, {"messages": []}, d, _NoModel(), log=lambda *_: None)
+    assert got["outcome"] == "patch_proposed" and got["attempts"][0]["model"] == "ruff --fix", got
+    assert _clean(d), "vérifié sans toucher au dépôt"
+    bad = propose.from_ruff({**task, "autofix_diff": task["autofix_diff"].replace("reminders/", "core/")}, d,
+                            log=lambda *_: None)
+    assert bad["outcome"] == "no_patch" and "core/" in bad["reason"], bad
+    return "E713 corrigé par ruff, aucun appel au modèle ; E731 (unsafe) et main.py écartés"
 
 
 def main() -> int:

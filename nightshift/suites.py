@@ -110,6 +110,8 @@ SUITES: tuple[Suite, ...] = (
                 "sans réseau, le n°7 se déclare sans objet"),
     Suite("incidents.selftest", ("-m", "incidents.selftest"),
           linux="à mesurer sur GitHub (bibliothèque standard et git seulement)"),
+    Suite("matthew.selftest", ("-m", "matthew.selftest"),
+          linux="à mesurer sur GitHub (ajoutée le 2026-10-21 : faux Ollama, faux GPU, aucun réseau)"),
 )
 
 

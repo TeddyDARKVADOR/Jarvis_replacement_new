@@ -311,7 +311,9 @@ def run_ruff(repo: Path = REPO, python: str | None = None) -> dict:
             rel = path.relative_to(repo).as_posix() if path.is_relative_to(repo) else path.name
             findings.append({"code": d.get("code") or "syntax", "path": rel,
                              "line": int((d.get("location") or {}).get("row") or 0),
-                             "message": redact(d.get("message", ""))[:200]})
+                             "message": redact(d.get("message", ""))[:200],
+                             # « safe » : ruff sait la corriger sans changer le sens (tasks.autofix)
+                             "fix": ((d.get("fix") or {}).get("applicability") or None)})
         except Exception:
             continue
     findings.sort(key=lambda f: (f["path"], f["line"], f["code"]))

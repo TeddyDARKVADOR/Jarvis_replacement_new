@@ -13,15 +13,23 @@ Ce qui entre, par ordre de priorité, jusqu'au budget :
   3. pour une régression, le diff des commits suspects, limité à la zone ;
   4. les fonctions que le contrôle appelle dans le paquet testé, ou la fonction
      qui entoure une remarque ruff ;
-  5. le plan du fichier suspect (imports, signatures).
+  5. le plan du fichier suspect (imports, signatures) ;
+  6. la machine où le contrôle échoue : système, Python, fuseau, et les modules
+     importés par le paquet mais absents (calculé dans le job « veille », sur
+     le runner même des suites). Sans ça, le 2026-10-21, deux échecs dus au
+     runner (packaging absent, fuseau UTC) sont restés hors de portée.
 Jamais un fichier entier s'il dépasse le budget ; une section trop longue est
 coupée et le dit. Le code du dépôt est montré au modèle, jamais exécuté.
 """
 from __future__ import annotations
 
 import ast
+import importlib.util
+import platform
 import re
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 from nightshift import zone
@@ -42,10 +50,15 @@ Rules:
 - Make the smallest change that fixes the root cause in the product code. No refactoring,
   no reformatting, keep the surrounding style.
 - Never edit tests or selftests, CI, dependencies or configuration: such a patch is rejected.
-- You may only edit files under: context/ cognition/ eval_lab/ (not eval_lab/corpus/)
-  capabilities/ reminders/ resilience/ offline/ extensions/ skills/.
+- You may only edit files under: {zone} (not eval_lab/corpus/).
+- The check runs on the machine described under "Environment". A failure can come from it
+  (an optional package missing, another time zone, another OS): then make the product code
+  handle that machine, never assume the developer's PC.
 - If the code shown is not enough to fix it safely, answer exactly: NO_PATCH: <one-line reason>.
 """
+
+
+SYSTEM = SYSTEM.replace("{zone}", " ".join(zone.ALLOWED_DIRS))
 
 
 def estimate(text: str) -> int:
@@ -277,6 +290,43 @@ def symptom(task: dict, outputs_dir: Path | None) -> str:
     return redact("\n".join(lines))
 
 
+# ── la machine ───────────────────────────────────────────────────────────────
+
+def missing_modules(repo: Path, pkg: str) -> list[str]:
+    """Les modules que le paquet importe (même à l'appel) et qui manquent ici. Lu par l'AST, rien d'importé."""
+    local = {p.name for p in repo.iterdir() if p.is_dir()} | {p.stem for p in repo.glob("*.py")}
+    names: set[str] = set()
+    for f in sorted((repo / pkg).rglob("*.py")):
+        try:
+            tree = ast.parse(f.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names.update(a.name.split(".")[0] for a in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names.add(node.module.split(".")[0])
+    out = []
+    for n in sorted(names - local):
+        try:
+            if importlib.util.find_spec(n) is None:
+                out.append(n)
+        except (ImportError, ValueError):
+            out.append(n)
+    return out
+
+
+def environment(repo: Path, pkg: str | None) -> str:
+    """Une ligne ou deux sur la machine : où le contrôle échoue, ce qui y manque."""
+    lines = [f"OS: {platform.system()} {platform.release()} ({sys.platform}) · Python {platform.python_version()} · "
+             f"local time zone: {time.strftime('%Z')} (UTC{time.strftime('%z')})"]
+    if pkg:
+        gone = missing_modules(repo, pkg)
+        lines.append(f"Modules imported by {pkg} but NOT installed here: {', '.join(gone)}" if gone
+                     else f"Every module imported by {pkg} is installed here.")
+    return "\n".join(lines)
+
+
 # ── assemblage ───────────────────────────────────────────────────────────────
 
 def _block(title: str, body: str, lang: str = "") -> str:
@@ -342,6 +392,7 @@ def build(task: dict, repo: Path, outputs_dir: Path | None = None, budget: int =
                     500)
             if defs:
                 add("plan", _block(f"Outline of {defs[0][0]}", outline(repo, defs[0][0])), 400)
+        add("environnement", _block("Environment (where the check fails)", environment(repo, pkg)), 200)
 
     user = "\n".join(text for _, text in sections)
     user += "\nAnswer with the ```diff block only (or NO_PATCH: reason)."
