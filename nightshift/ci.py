@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import py_compile
+import re
 import subprocess
 import sys
 import tomllib
@@ -36,8 +37,18 @@ MAX_LINES = 40                      # NIGHTLY_AUTO_MERGE_MAX_LINES par défaut
 
 # ── gate : le verdict des suites ─────────────────────────────────────────────
 
-def gate(report: dict) -> list[str]:
-    """Ce qui rend la CI rouge : une suite en erreur ou hors délai, un contrôle rouge qui n'est pas connu."""
+#: Ce que l'environnement de la CI empêche, et pourquoi : (suite, motif du détail, raison).
+#: Seul le détail exact est toléré — un autre échec de la même suite reste rouge.
+CI_ENVIRONMENT = (
+    ("core.code_workspace.selftest", re.compile(r"(avec les droits administrateur|tourne en administrateur)"),
+     "runner Windows de GitHub en session administrateur : le Studio refuse volontairement d'y exécuter quoi "
+     "que ce soit (la garde est donc vérifiée ; les commandes du Studio, elles, ne le sont que sur un vrai PC)"),
+)
+
+
+def gate(report: dict, tolerated: list | None = None) -> list[str]:
+    """Ce qui rend la CI rouge : une suite en erreur ou hors délai, un contrôle rouge qui n'est pas connu.
+    Les échecs dus à l'environnement de la CI (CI_ENVIRONMENT) vont dans `tolerated`, avec leur raison."""
     if not report.get("suites"):
         return ["aucune suite n'a tourné"]
     bad = []
@@ -46,8 +57,15 @@ def gate(report: dict) -> list[str]:
         if status in ("error", "timeout"):
             bad.append(f"{s['name']} : {status} ({(s.get('reason') or '').strip()[:120]})")
         for f in s.get("failed") or []:
-            if f.get("class") != "known":
-                bad.append(f"{s['name']} n°{f.get('id')} : {(f.get('label') or '')[:100]}")
+            if f.get("class") == "known":
+                continue
+            why = next((r for name, rx, r in CI_ENVIRONMENT if name == s["name"] and rx.search(f.get("detail") or "")),
+                       None)
+            if why:
+                if tolerated is not None:
+                    tolerated.append(f"{s['name']} n°{f.get('id')} — {why}")
+                continue
+            bad.append(f"{s['name']} n°{f.get('id')} : {(f.get('label') or '')[:100]}")
     return bad
 
 
@@ -165,8 +183,13 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     if args.cmd == "gate":
         report = json.loads(Path(args.report).read_text(encoding="utf-8"))
-        n = len(report.get("suites") or [])
-        return _finish("Suites", gate(report), f"{n} suites, aucun échec hors liste connue")
+        n, tolerated = len(report.get("suites") or []), []
+        bad = gate(report, tolerated)
+        if tolerated:
+            print(f"Tolérés ({len(tolerated)}, dus à l'environnement de la CI) :")
+            for t in tolerated:
+                print(f"  ~ {t}")
+        return _finish("Suites", bad, f"{n} suites, aucun échec hors liste connue")
     if args.cmd == "audit":
         commits = nightshift_commits(args.since)
         return _finish("Commits de la nuit", audit(commits, args.max_lines),

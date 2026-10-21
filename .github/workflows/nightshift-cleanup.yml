@@ -105,7 +105,7 @@ jobs:
             if [ "$state" = "OPEN" ]; then continue; fi
             if [ -z "$state" ]; then
               when="$(gh api "repos/$REPO/commits/$ref" --jq '.commit.committer.date' 2>/dev/null || echo "")"
-              [ -n "$when" ] && [[ "$when" < "$CUTOFF" ]] || continue
+              if [ -z "$when" ] || [[ ! "$when" < "$CUTOFF" ]]; then continue; fi
             fi
             do_it gh api -X DELETE "repos/$REPO/git/refs/heads/$b" --silent
             branches=$((branches + 1))

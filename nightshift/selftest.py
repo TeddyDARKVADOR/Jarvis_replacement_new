@@ -1534,6 +1534,12 @@ def _ci_gate():
     red = {"suites": [{"name": "a", "status": "failing", "failed": [{"id": "1", "label": "x", "class": "unreferenced"}]},
                       {"name": "d", "status": "timeout", "failed": []}]}
     assert len(ci.gate(red)) == 2 and ci.gate({"suites": []}), "rouge, délai dépassé, rien mesuré : échec"
+    cw = "core.code_workspace.selftest"
+    admin = {"suites": [{"name": cw, "status": "failing", "failed": [
+        {"id": "8", "class": "unreferenced", "detail": "CommandRefused: JARVIS tourne avec les droits administrateur : …"},
+        {"id": "9", "class": "unreferenced", "detail": "AssertionError: code de sortie 1"}]}]}
+    seen: list = []
+    assert [b.split(" : ")[0] for b in ci.gate(admin, seen)] == [f"{cw} n°9"] and len(seen) == 1, (seen, admin)
     d = TMP / "audit"
     (d / "reminders").mkdir(parents=True)
     (d / "reminders" / "__init__.py").write_text("a = 1\n", encoding="utf-8")
