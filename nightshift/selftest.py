@@ -1540,6 +1540,9 @@ def _ci_gate():
         {"id": "9", "class": "unreferenced", "detail": "AssertionError: code de sortie 1"}]}]}
     seen: list = []
     assert [b.split(" : ")[0] for b in ci.gate(admin, seen)] == [f"{cw} n°9"] and len(seen) == 1, (seen, admin)
+    hook = lambda ms: {"suites": [{"name": "cognition.selftest", "status": "failing",   # noqa: E731
+                                   "failed": [{"id": "19", "class": "unreferenced", "detail": f"{ms} ms par hook"}]}]}
+    assert ci.gate(hook("1.916")) == [] and ci.gate(hook("12.500")), "bruit toléré sous 5 ms, hook bloquant rouge"
     d = TMP / "audit"
     (d / "reminders").mkdir(parents=True)
     (d / "reminders" / "__init__.py").write_text("a = 1\n", encoding="utf-8")

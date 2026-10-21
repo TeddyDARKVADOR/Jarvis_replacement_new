@@ -37,12 +37,22 @@ MAX_LINES = 40                      # NIGHTLY_AUTO_MERGE_MAX_LINES par défaut
 
 # ── gate : le verdict des suites ─────────────────────────────────────────────
 
-#: Ce que l'environnement de la CI empêche, et pourquoi : (suite, motif du détail, raison).
+def _slow_hook(detail: str) -> bool:
+    """cognition n°19 : « 1.916 ms par hook » — le bruit d'une machine partagée, pas un hook bloquant (< 5 ms)."""
+    m = re.search(r"([\d.]+) ms par hook", detail)
+    return bool(m) and float(m.group(1)) < 5.0
+
+
+#: Ce que l'environnement de la CI empêche, et pourquoi : (suite, test du détail, raison).
 #: Seul le détail exact est toléré — un autre échec de la même suite reste rouge.
 CI_ENVIRONMENT = (
-    ("core.code_workspace.selftest", re.compile(r"(avec les droits administrateur|tourne en administrateur)"),
+    ("core.code_workspace.selftest",
+     re.compile(r"(avec les droits administrateur|tourne en administrateur)").search,
      "runner Windows de GitHub en session administrateur : le Studio refuse volontairement d'y exécuter quoi "
      "que ce soit (la garde est donc vérifiée ; les commandes du Studio, elles, ne le sont que sur un vrai PC)"),
+    ("cognition.selftest", _slow_hook,
+     "chronométrage sur un runner partagé (2 cœurs) : toléré jusqu'à 5 ms par hook ; au-delà, le hook bloque "
+     "vraiment et la CI reste rouge (la nuit le mesure sous la limite de 1 ms)"),
 )
 
 
@@ -59,8 +69,7 @@ def gate(report: dict, tolerated: list | None = None) -> list[str]:
         for f in s.get("failed") or []:
             if f.get("class") == "known":
                 continue
-            why = next((r for name, rx, r in CI_ENVIRONMENT if name == s["name"] and rx.search(f.get("detail") or "")),
-                       None)
+            why = next((r for name, ok, r in CI_ENVIRONMENT if name == s["name"] and ok(f.get("detail") or "")), None)
             if why:
                 if tolerated is not None:
                     tolerated.append(f"{s['name']} n°{f.get('id')} — {why}")
