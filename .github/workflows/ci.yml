@@ -1,0 +1,135 @@
+# CI de vérification — un autre environnement que la nuit, et ce que la nuit ne vérifie pas.
+#
+# Depuis le 2026-10-21, le veilleur de nuit fusionne seul sur main ce qu'il a
+# entièrement prouvé (NIGHTLY_AUTO_MERGE). Sa preuve est faite sous Linux,
+# Python 3.12, avec les seules dépendances du serveur. Cette CI la refait :
+#   - windows : la vraie machine de JARVIS — Windows, Python 3.13, toutes les
+#     dépendances du PC (requirements.txt) ;
+#   - linux-py311 : la plus vieille version visée (pyproject : py311) ;
+#   - controles : compilation de chaque fichier en 3.11, fichiers de données,
+#     workflows (actionlint + shellcheck), et l'audit des commits « nightshift: »
+#     (dans la zone, aucun test touché, sous le plafond de lignes).
+# Elle tourne à chaque push et PR vers main, et après chaque passe de la nuit
+# (workflow_run) : une fusion faite avec le jeton d'Actions ne déclenche pas de
+# « push ». Tant qu'elle n'est pas verte sur main, la publication ne fusionne plus
+# rien (nightly.yml, garde « CI de main »).
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_run:
+    workflows: [nightly]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controles:
+    name: Contrôles — compilation 3.11, données, workflows, commits de la nuit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Outils (versions épinglées, depuis PyPI)
+        run: python -m pip install pyyaml "ruff==0.17.0" "actionlint-py==1.7.7.23"
+
+      - name: Chaque fichier Python compile en 3.11
+        run: python -m nightshift.ci compile
+
+      - name: Chaque JSON, TOML et YAML se lit
+        run: python -m nightshift.ci data
+
+      - name: ruff (mêmes règles que la nuit)
+        run: python -m ruff check . --no-cache
+
+      - name: "Les commits « nightshift: » restent dans la zone"
+        run: python -m nightshift.ci audit
+
+      - name: Workflows (actionlint, avec shellcheck)
+        run: actionlint -color
+
+  windows:
+    name: Windows — Python 3.13, toutes les dépendances du PC
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      PYTHONIOENCODING: utf-8
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Dépendances du PC
+        run: python -m pip install -r requirements.txt
+
+      - name: Toutes les suites
+        run: python -m nightshift.run --out out --no-ruff
+
+      - name: Verdict
+        run: python -m nightshift.ci gate out/report.json
+
+      - name: Garder le rapport
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-windows
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
+
+  linux-py311:
+    name: Linux — Python 3.11, dépendances du serveur
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Dépendances du serveur
+        run: python -m pip install -r deployment/requirements-server.txt pyyaml
+
+      - name: Toutes les suites
+        run: python -m nightshift.run --out out --no-ruff
+
+      - name: Verdict
+        run: python -m nightshift.ci gate out/report.json
+
+      - name: Garder le rapport
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-linux-py311
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn

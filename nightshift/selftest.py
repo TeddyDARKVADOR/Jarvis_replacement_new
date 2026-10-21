@@ -60,6 +60,8 @@ sont des rapports simulés.
  35  le modèle voit la machine : système, fuseau, modules absents du paquet
  36  ruff --fix : une remarque à correctif sûr devient un patch sans modèle,
      vérifié comme les autres ; un correctif « unsafe » n'est pas pris
+ 37  CI : verdict des suites, audit des commits « nightshift: »
+ 38  CI : Windows, Python 3.11, contrôles ; disjoncteur avant toute fusion
   — leçon du premier vrai run —
  31  réancrage : un diff de modèle sans numéros de ligne (« @@ ... @@ »), aux
      faux numéros ou aux espaces mangés est régénéré ; introuvable, ambigu ou
@@ -1520,6 +1522,55 @@ def _autofix():
                             log=lambda *_: None)
     assert bad["outcome"] == "no_patch" and "core/" in bad["reason"], bad
     return "E713 corrigé par ruff, aucun appel au modèle ; E731 (unsafe) et main.py écartés"
+
+
+@check("37 CI : verdict des suites et audit des commits « nightshift: » (zone, tests, plafond)")
+def _ci_gate():
+    from nightshift import ci
+    green = {"suites": [{"name": "a", "status": "ok", "failed": []},
+                        {"name": "b", "status": "failing", "failed": [{"id": "2", "class": "known"}]},
+                        {"name": "c", "status": "skipped", "failed": []}]}
+    assert ci.gate(green) == [], "un échec connu ou une suite sans objet ne rend pas la CI rouge"
+    red = {"suites": [{"name": "a", "status": "failing", "failed": [{"id": "1", "label": "x", "class": "unreferenced"}]},
+                      {"name": "d", "status": "timeout", "failed": []}]}
+    assert len(ci.gate(red)) == 2 and ci.gate({"suites": []}), "rouge, délai dépassé, rien mesuré : échec"
+    d = TMP / "audit"
+    (d / "reminders").mkdir(parents=True)
+    (d / "reminders" / "__init__.py").write_text("a = 1\n", encoding="utf-8")
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", "init", "-q"], cwd=d, check=True, capture_output=True, timeout=30)
+    for rel, text, msg in (("reminders/__init__.py", "a = 2\n", "nightshift: correctif dans la zone"),
+                           ("reminders/selftest.py", "x = 1\n", "nightshift: réécrit sa propre preuve"),
+                           ("main.py", "y = 1\n", "un commit humain hors zone : pas audité")):
+        (d / rel).write_text(text, encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=d, check=True, capture_output=True, timeout=30)
+        subprocess.run(git + ["commit", "-q", "-m", msg], cwd=d, check=True, capture_output=True, timeout=30)
+    commits = ci.nightshift_commits(repo=d)
+    assert [c["subject"][:20] for c in commits] == ["nightshift: réécrit ", "nightshift: correcti"], commits
+    bad = ci.audit(commits)
+    assert len(bad) == 1 and "selftest" in bad[0], bad
+    assert ci.audit([{"sha": "x", "subject": "nightshift: long", "files": ["reminders/a.py"], "changed": 90}]), \
+        "plafond de lignes"
+    return "échec connu et sans objet tolérés ; test réécrit par la nuit détecté ; commit humain ignoré"
+
+
+@check("38 CI : Windows, Python 3.11, contrôles ; la fusion automatique attend la CI verte de main")
+def _ci_workflow():
+    wf = _src(".github/workflows/ci.yml")
+    assert "pull_request_target" not in wf and re.search(r"^permissions:\n  contents: read\n", wf, re.MULTILINE)
+    assert "workflow_run:" in wf and "workflows: [nightly]" in wf, "après chaque passe : la fusion ne déclenche pas push"
+    assert "runs-on: windows-" in wf and "requirements.txt" in wf and 'python-version: "3.13"' in wf
+    assert 'python-version: "3.11"' in wf and "nightshift.ci compile" in wf and "nightshift.ci audit" in wf
+    assert "nightshift.ci data" in wf and "actionlint" in wf and "nightshift.ci gate" in wf
+    assert "secrets." not in wf and "curl" not in wf, "aucun secret, aucun script téléchargé puis exécuté"
+    uses = re.findall(r"uses:\s*(\S+)", wf)
+    assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", u) for u in uses), f"non épinglées : {uses}"
+    assert wf.count("persist-credentials: false") == wf.count("actions/checkout@")
+    pub = _src(".github/workflows/nightly.yml").split("\n  publication:\n", 1)[1].split("\n  assemblage:\n", 1)[0]
+    assert "--workflow ci.yml" in pub and "actions: read" in pub
+    assert pub.index("--workflow ci.yml") < pub.index("gh pr merge") and 'ci" != "completed success"' in pub, \
+        "la CI de main est lue avant toute fusion"
+    return f"3 jobs, {len(uses)} actions épinglées ; disjoncteur avant gh pr merge"
 
 
 def main() -> int:
