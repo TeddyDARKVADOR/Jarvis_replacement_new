@@ -751,7 +751,11 @@ def _vitrine():
     site = TMP / "site"
     res = V.build(site, root)
     assert (site / "index.html").exists() and (site / "data" / "vitrine.json").exists() and (site / ".nojekyll").exists()
-    assert res["og"] and (site / "og.png").stat().st_size > 1000
+    import importlib.util
+    if importlib.util.find_spec("PIL") is None:   # runner Linux sans Pillow (vu le 2026-10-21) : site sans carte
+        assert res["og"] is False and not (site / "og.png").exists(), res
+    else:
+        assert res["og"] and (site / "og.png").stat().st_size > 1000
     repo = TMP / "vrepo"
     (repo / ".git").mkdir(parents=True)
     calls = []
