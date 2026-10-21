@@ -1,8 +1,8 @@
-## JARVIS Night Shift — 2026-10-21 · passe 2/3
+## JARVIS Night Shift — 2026-10-21 · passe 3/3
 
 **18/20 suites vertes ; aucune régression ; ruff : 3 remarques ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.**
 
-commit `7212e01` · branche `main` · ubuntu24 20261018.339.1 · Python 3.12.15 · 1 min 19 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39553403191)
+commit `7212e01` · branche `main` · ubuntu24 20261018.339.1 · Python 3.12.15 · 1 min 20 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39569721584)
 
 | Suite | Score | État | Durée |
 |---|---:|---|---:|
@@ -10,8 +10,8 @@ commit `7212e01` · branche `main` · ubuntu24 20261018.339.1 · Python 3.12.15 
 | context.selftest | 33/33 | ✅ vert | 0.1 s |
 | server.selftest | 35/35 | ✅ vert | 2.1 s |
 | server.routing_selftest | 35/35 | ✅ vert | 0.7 s |
-| client_desktop --selftest | 28/28 | ✅ vert | 0.8 s |
-| cognition.selftest | 64/64 | ✅ vert | 3.6 s |
+| client_desktop --selftest | 28/28 | ✅ vert | 0.7 s |
+| cognition.selftest | 64/64 | ✅ vert | 3.7 s |
 | eval_lab.selftest | 28/28 | ✅ vert | 7.3 s |
 | core.code_workspace.selftest | 34/34 | ✅ vert | 33.7 s |
 | reminders.selftest | 4/4 | ✅ vert | 0.3 s |
@@ -20,11 +20,11 @@ commit `7212e01` · branche `main` · ubuntu24 20261018.339.1 · Python 3.12.15 
 | offline.selftest | 10/10 | ✅ vert | 1.3 s |
 | core.token_usage_selftest | 1/1 | ✅ vert | 0.0 s |
 | actions.repository_review_selftest | 1/1 | ✅ vert | 0.0 s |
-| nightshift.selftest | 34/34 | ✅ vert | 6.6 s |
+| nightshift.selftest | 34/34 | ✅ vert | 6.5 s |
 | meeting.selftest | 21/21 | ✅ vert | 1.0 s |
 | pilot.selftest | 13/13 | ✅ vert | 1.7 s |
 | quota.selftest | 7/7 | ✅ vert | 0.1 s |
-| daily.selftest | 7/8 | ❌ rouge (déjà) | 15.2 s |
+| daily.selftest | 7/8 | ❌ rouge (déjà) | 15.3 s |
 | incidents.selftest | 6/6 | ✅ vert | 0.2 s |
 
 ### Tâche de la nuit
@@ -41,6 +41,7 @@ commit `7212e01` · branche `main` · ubuntu24 20261018.339.1 · Python 3.12.15 
 
 - Passe 1 : extensions « manager 1 examen sans exécution : déclaré, réellem » — correctif rejeté · 3685 tokens
 - Passe 2 : rien de tenté — rien de tenté · 0 tokens
+- Passe 3 : rien de tenté — rien de tenté · 0 tokens
 
 ### Échec persistant — manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte
 
