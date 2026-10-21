@@ -5,6 +5,11 @@
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const OG = new URLSearchParams(location.search).has("og");          // capture pour l'image de partage
+// Écran tactile (téléphone, tablette, en portrait comme en paysage) : la scène ne reçoit plus le
+// doigt (CSS : pointer-events none), sinon défiler devient presque impossible ; un toucher
+// court sur une lumière ou un bâtiment est rattrapé au niveau du document (pickAt).
+const TOUCH = matchMedia("(pointer: coarse)").matches;
+document.documentElement.classList.toggle("touch", TOUCH);
 const $ = (id) => document.getElementById(id);
 const pct = (x) => (x == null ? "—" : Math.round(x * 100) + " %");
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -455,7 +460,7 @@ async function startScene() {
   let composer = null;
 
   const renderer = new THREE.WebGLRenderer({ antialias: !small, alpha: false, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, small ? 1.5 : 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, small || TOUCH ? 1.25 : 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -473,7 +478,7 @@ async function startScene() {
   controls.enableDamping = true; controls.enablePan = false;
   // La scène est le fond de la page : la molette et le doigt font défiler, pas zoomer.
   controls.enableZoom = false;
-  if (small) { controls.enabled = false; renderer.domElement.style.touchAction = "pan-y"; }
+  if (small || TOUCH) { controls.enabled = false; renderer.domElement.style.touchAction = "pan-y"; }
   controls.minDistance = 12; controls.maxDistance = 46; controls.maxPolarAngle = Math.PI * 0.47;
   controls.autoRotate = !REDUCED; controls.autoRotateSpeed = 0.3;
   controls.target.set(small ? 0 : 3, 2.2, 0);
@@ -717,12 +722,25 @@ async function startScene() {
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   renderer.domElement.addEventListener("pointerdown", (e) => (down = [e.clientX, e.clientY]));
   renderer.domElement.addEventListener("pointerup", (e) => {
-    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6 || !pickCb) return;
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) return;
+    pickAt(e.clientX, e.clientY);
+  });
+  function pickAt(x, y) {
+    for (const el of host.querySelectorAll(".lbl-domain.pick")) {
+      const b = el.getBoundingClientRect();
+      if (x >= b.left - 8 && x <= b.right + 8 && y >= b.top - 8 && y <= b.bottom + 8) { el.click(); return; }
+    }
+    if (!pickCb) return;
     const r = renderer.domElement.getBoundingClientRect();
-    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const got = ray.intersectObjects(hits, false)[0];
     if (got) pickCb(got.object.userData.tool);
+  }
+  // Tactile : un « click » n'arrive qu'après un toucher court (pas après un défilement).
+  if (TOUCH) addEventListener("click", (e) => {
+    if (e.target.closest("a, button, input, select, label, .card:not(.bare), .details, .drawer, .langbtn")) return;
+    pickAt(e.clientX, e.clientY);
   });
   const training = !!DATA.live;
   // Survol : la caméra et sa cible glissent ensemble (1,6 s, accélération douce) ; la rotation
@@ -759,7 +777,12 @@ async function startScene() {
   }
   if (OG) controls.autoRotate = false;
   const clock = new THREE.Clock(), ONE = new THREE.Vector3(1, 1, 1);
+  // Tactile : pendant que le doigt fait défiler, une image sur trois seulement — le défilement
+  // passe avant la 3D (un GPU de téléphone saturé fait saccader la page entière).
+  let scrolling = 0, frame = 0;
+  if (TOUCH) addEventListener("scroll", () => (scrolling = performance.now()), { passive: true });
   (function loop() {
+    if (TOUCH && performance.now() - scrolling < 200 && ++frame % 3) { requestAnimationFrame(loop); return; }
     const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
     fresnel.uniforms.uTime.value = t;
     fresnel.uniforms.uPulse.value *= 0.94;

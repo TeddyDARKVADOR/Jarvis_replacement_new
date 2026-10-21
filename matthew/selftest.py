@@ -1082,7 +1082,7 @@ def _vitrine_more():
     finally:
         V.BROWSERS = saved
     js = (REPO / "matthew" / "vitrine_site" / "app.js").read_text(encoding="utf-8")
-    for key in ("fillBeforeAfter", "startTimeline", "fillCounters", "flyToTool", "setDay", "I18N", "OG"):
+    for key in ("fillBeforeAfter", "startTimeline", "fillCounters", "flyToTool", "setDay", "I18N", "OG", "TOUCH", "pickAt"):
         assert key in js, key
     site = TMP / "vitrine-site"
     V.build(site, root)

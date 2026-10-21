@@ -354,7 +354,8 @@
         "ANGLAIS : bouton EN / FR, dictionnaire I18N dans app.js, libellés d'outils traduits (label_en).",
         "IMAGE DE PARTAGE : og.png = capture de la vraie scène du jour (Edge ou Chrome sans interface, rendu logiciel, page ?og=1), sinon la carte texte d'avant. Vérifiée en local le 2026-10-21.",
         "DÉCOR SPATIAL : textures Lune, Terre (+ nuages), Mars, Jupiter, Saturne (+ anneau), Neptune et Voie lactée de Solar System Scope (CC BY 4.0, créditées dans LICENSES.txt et en pied de page), 4,3 Mo.",
-        "CACHE (2026-10-21) : GitHub Pages autorise 10 min de cache ; une page neuve avec l'ancien style.css / app.js s'affichait sans décor ni scène. bust_cache appelle désormais style.css et app.js avec l'empreinte de leur contenu (?v=…). Vérifié en ligne avec un profil de navigateur vierge, puis republié."
+        "CACHE (2026-10-21) : GitHub Pages autorise 10 min de cache ; une page neuve avec l'ancien style.css / app.js s'affichait sans décor ni scène. bust_cache appelle désormais style.css et app.js avec l'empreinte de leur contenu (?v=…). Vérifié en ligne avec un profil de navigateur vierge, puis republié.",
+        "TÉLÉPHONE (2026-10-21) : défiler était très dur. Écran tactile détecté (pointer: coarse, portrait comme paysage) → la scène ne reçoit plus le doigt (un toucher court sur une lumière ou un bâtiment est rattrapé par pickAt), hauteur fixe en lvh (la barre d'adresse ne redimensionne plus la 3D), pas de flou derrière les cartes, densité 1,25, une image sur trois pendant le défilement ; mise en page compacte en paysage (hauteur ≤ 520 px). Vérifié par glissements tactiles émulés (Playwright, 390×844 et 844×390) : la page défile, le toucher d'un bâtiment marche. Pas de forçage du paysage : iOS l'ignore, Android l'exige en plein écran. À confirmer sur un vrai téléphone."
       ],
       "files": [
         "matthew/vitrine.py",
