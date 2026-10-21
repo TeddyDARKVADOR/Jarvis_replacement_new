@@ -34,6 +34,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from matthew import augment as A
 from matthew import config
 from matthew.client import Client, ClientError, QuotaError, to_openai_tools
 from matthew.journal import Journal
@@ -72,8 +73,9 @@ de ces outils ne permet de réaliser (commander un repas, appeler un vrai taxi, 
 réserver une table, deviner le loto, contrôler un appareil absent…). Varie le ton et la longueur.
 Réponds uniquement en JSON : {{"requests": ["...", "..."]}}"""
 
-#: Quotas à atteindre pour la conversation et les refus, avant les outils (ils manquaient :
-#: « salut ça va » appelait briefing ; refus justes 50 % au premier champion).
+#: Quotas MINIMAUX pour la conversation et les refus, avant les outils (ils manquaient :
+#: « salut ça va » appelait briefing ; refus justes 50 % au premier champion). Au-delà,
+#: l'objectif suit le nombre d'exemples avec outil (augment.no_tool_goal, 40 % du jeu).
 NO_TOOL_TARGETS = {"__chat__": 40, "__none__": 40}
 
 _TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool,
@@ -267,21 +269,27 @@ class Bootstrap:
         # Leurres = ce que le routeur réel confond avec la cible (négatifs difficiles).
         router = default_router(decls) if self.journal.root == data_dir() else Router(decls)
         stats = {"ok": 0, "rejected": 0, "tools_done": 0, "reasons": {}}
+
+        def top_up():
+            n_tool = sum(n for t, n in oks.items() if t and not str(t).startswith("__"))
+            for kind, floor in NO_TOOL_TARGETS.items():
+                goal, rounds = A.no_tool_goal(n_tool, floor), 0
+                while oks.get(kind, 0) < goal and rounds < 3:
+                    rounds += 1
+                    oks[kind] = oks.get(kind, 0) + self._no_tool(kind, decls, router, min(20, chitchat), stats)
         try:
             # 1. Conversation et refus D'ABORD : ce sont eux qui manquaient au premier champion.
             if chitchat:
-                for kind, goal in NO_TOOL_TARGETS.items():
-                    rounds = 0
-                    while oks.get(kind, 0) < goal and rounds < 3:
-                        rounds += 1
-                        got = self._no_tool(kind, decls, router, min(20, chitchat), stats)
-                        oks[kind] = oks.get(kind, 0) + got
+                top_up()
             # 2. Les outils pas encore amorcés.
             for d in decls:
                 if d["name"] in done:
                     continue
-                self._tool(d, decls, router, per_tool, stats)
+                oks[d["name"]] = oks.get(d["name"], 0) + self._tool(d, decls, router, per_tool, stats)
                 stats["tools_done"] += 1
+            # 2 bis. L'appoint : les nouveaux outils ne doivent pas noyer conversation et refus.
+            if chitchat:
+                top_up()
             # 3. La remédiation : outils ratés, et refus si le dernier candidat en manque.
             self._remediate(decls, router, stats)
         except StopIteration as e:
@@ -297,7 +305,7 @@ class Bootstrap:
                      "teacher": self.teacher["model"], "ts": time.time()})
 
     def _tool(self, d, decls, router, n, stats, extra: str = "", round_: str | None = None,
-              agree: bool = False):
+              agree: bool = False) -> int:
         schema = to_openai_tools([d])[0]["function"]["parameters"]
         has_args = bool(schema.get("properties"))
         agree = agree and has_args
@@ -311,7 +319,8 @@ class Bootstrap:
         items = _items_of(gen["content"]) if agree else [(r, None) for r in _requests_of(gen["content"])]
         if not items:
             self._reject(stats, d["name"], "", "génération illisible")
-            return
+            return 0
+        kept = 0
         for req, expect in items[:n]:
             sid = f"syn-{uuid.uuid4().hex[:10]}"
             subset = tool_subset(decls, [d["name"]], sid, router=router, query=req)
@@ -346,6 +355,8 @@ class Bootstrap:
                                               "tool_calls": [{"id": "call_0", "type": "function",
                                                               "function": {"name": d["name"], "arguments": args}}]}]})
             stats["ok"] += 1
+            kept += 1
+        return kept
 
     def _remediate(self, decls, router, stats, per_tool: int = 4):
         """Remédiation (iTool, AgenticQwen) : pour chaque outil où le dernier candidat

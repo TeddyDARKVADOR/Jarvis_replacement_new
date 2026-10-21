@@ -36,10 +36,22 @@ IRRELEVANT_REPLIES = [
     "Je n'ai pas ce qu'il faut pour m'en charger, malheureusement.",
     "Je ne peux pas m'en occuper pour l'instant.",
 ]
-IRRELEVANCE_SHARE = 0.10
+# 0,10 → 0,20 le 2026-10-21 : au 3e cycle, le candidat appelait un outil voisin dans 36 % des
+# demandes hors de portée (pertinence 0,64 contre 0,91 au champion) et n'a pas été promu.
+IRRELEVANCE_SHARE = 0.20
 MASK_SHARE = 0.15
 DUP_COSINE = 0.93
 NO_TOOL_CAP = 40
+#: Part minimale des exemples SANS outil (conversation + refus) dans le jeu. Un plafond fixe
+#: ne suit pas l'amorçage : au 3e cycle, 64 exemples d'outils de plus et le plafond de 40
+#: ont fait tomber cette part de ~40 % à 29 %, et le candidat a reculé sur les refus.
+NO_TOOL_SHARE = 0.40
+
+
+def no_tool_goal(n_tool: int, floor: int = NO_TOOL_CAP) -> int:
+    """Exemples à viser pour CHACUNE des deux catégories sans outil (__chat__, __none__),
+    pour que leur somme fasse NO_TOOL_SHARE du jeu face à `n_tool` exemples avec outil."""
+    return max(floor, math.ceil(NO_TOOL_SHARE / (1 - NO_TOOL_SHARE) * n_tool / 2))
 
 
 def _h(text: str, salt: str) -> float:
@@ -153,10 +165,12 @@ def balance(rows: list[dict], factor: float = 3.0, floor: int = 30) -> tuple[lis
     if not by:
         return rows, 0
     cap = max(floor, int(factor * statistics.median(len(v) for v in by.values())))
+    # Conversation et refus : peu d'outils les concernent mais ils comptent pour chaque tour ;
+    # leur plafond suit le nombre d'exemples avec outil gardés (NO_TOOL_SHARE).
+    n_tool = sum(min(cap, len(v)) for t, v in by.items() if not t.startswith("__"))
     out, dropped = [], 0
     for t, v in by.items():
-        # Conversation et refus : peu d'outils les concernent mais ils comptent pour chaque tour.
-        c = max(cap, NO_TOOL_CAP) if t.startswith("__") else cap
+        c = max(cap, no_tool_goal(n_tool)) if t.startswith("__") else cap
         keep = sorted(v, key=lambda r: (r["origin"] != "human", _h(_user(r), "bal")))[:c]
         dropped += len(v) - len(keep)
         out += keep

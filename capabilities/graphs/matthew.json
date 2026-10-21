@@ -89,14 +89,15 @@
         "Remédiation des refus : si le dernier candidat refuse juste moins de 75 % du temps, une ronde de demandes impossibles.",
         "Professeur de secours : quota Groq épuisé → qwen3.6 (génère) et gemma4:12b (vérifie), deux familles différentes, Apache-2.0, servis par Ollama sur ce PC ; l'amorçage continue toute la nuit.",
         "DOUBLE ANNOTATION (2026-10-22) : agree=True — le générateur écrit l'appel attendu, le vérificateur le refait sans le voir ; gardé si les valeurs concordent (args_agree : norm.same, texte libre de plus de 5 mots toléré à 60 % de mots communs). Visait le point faible du deuxième champion : arguments 0,795.",
-        "Licence du vérificateur contrôlée comme celle du professeur (ses appels deviennent les cibles) ; date du jour donnée au générateur (des rappels tombaient en 2024)."
+        "Licence du vérificateur contrôlée comme celle du professeur (ses appels deviennent les cibles) ; date du jour donnée au générateur (des rappels tombaient en 2024).",
+        "2026-10-21 : les 40 exemples de conversation et de refus sont un plancher ; l'objectif suit le nombre d'exemples d'outils (augment.no_tool_goal, 40 % du jeu), et un appoint repasse après l'amorçage des nouveaux outils."
       ],
       "files": [
         "matthew/bootstrap.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 34/34",
-      "updated": "2026-10-22"
+      "verified": "2026-10-23 — matthew.selftest : 44/44",
+      "updated": "2026-10-23"
     },
     {
       "id": "m.teacher",
@@ -134,18 +135,20 @@
       "id": "m.augment",
       "label": "augment.py — données plus instructives",
       "kind": "module",
-      "summary": "Sans un appel de plus : ~10 % d'exemples « aucun outil ne convient » (bon outil retiré, réponse sans appel), ~15 % d'exemples masqués (noms d'outils et de paramètres aléatoires, descriptions gardées), doublons retirés par le sens (cosinus ≥ 0,93), aucun outil au-delà de 3 × la médiane. Conversation (« __chat__ ») et refus (« __none__ ») sont deux catégories distinctes, plafonnées à 40 au moins chacune.",
+      "summary": "Sans un appel de plus : ~20 % d'exemples « aucun outil ne convient » (bon outil retiré, réponse sans appel), ~15 % d'exemples masqués (noms d'outils et de paramètres aléatoires, descriptions gardées), doublons retirés par le sens (cosinus ≥ 0,93), aucun outil au-delà de 3 × la médiane. Conversation (« __chat__ ») et refus (« __none__ ») sont deux catégories distinctes, plafonnées à 40 au moins chacune.",
       "details": [
         "Hammer (arXiv 2410.04587) : masquage des fonctions §4.1 ; données d'impertinence §4.2, ~10 % = meilleur compromis §5.6 ; masquage élevé = apprentissage ralenti §5.5.",
         "Dédoublonnage : POLLUX, MergeIT (ACL 2026) — la diversité compte plus que le volume.",
         "L'évaluation reçoit les exemples d'impertinence (mesurés à part), jamais les masqués.",
-        "Bug corrigé le 2026-10-21 : les deux catégories sans outil étaient confondues et plafonnées ensemble à 30 — 61 exemples de conversation et de refus écartés."
+        "Bug corrigé le 2026-10-21 : les deux catégories sans outil étaient confondues et plafonnées ensemble à 30 — 61 exemples de conversation et de refus écartés.",
+        "2026-10-21, après le 3e cycle (candidat non promu, pertinence 0,64 contre 0,91) : impertinence 10 % → 20 %, et le plafond fixe de 40 exemples sans outil devient une part minimale NO_TOOL_SHARE = 40 % du jeu (no_tool_goal) — un plafond fixe ne suivait pas l'amorçage de nouveaux outils (part tombée à 29 %). Vérifié par matthew.selftest (200 exemples d'outils → 67 conversations gardées) ; effet sur l'entraînement à mesurer au prochain cycle."
       ],
       "files": [
         "matthew/augment.py"
       ],
       "status": "ok",
-      "verified": "2026-10-21 — matthew.selftest : 35/35"
+      "verified": "2026-10-21 — matthew.selftest : 36/36",
+      "updated": "2026-10-21"
     },
     {
       "id": "m.dataset",
@@ -165,27 +168,28 @@
       "id": "m.train",
       "label": "train.py — l'entraînement",
       "kind": "module",
-      "summary": "Script Unsloth autonome lancé dans le Python d'entraînement sur D: : LoRA bf16 r=16 sur les réponses seules, réflexion coupée, 3 époques évaluées, meilleure gardée, export GGUF Q5_K_M, Modelfile Ollama (RENDERER/PARSER qwen3.5). Libère la carte (ollama stop) avant, et ~8,7 Go de poids fusionnés après.",
+      "summary": "Script Unsloth autonome lancé dans le Python d'entraînement sur D: : LoRA bf16 r=16 sur les réponses seules, réflexion coupée, 2 époques évaluées, meilleure gardée, export GGUF Q5_K_M, Modelfile Ollama (RENDERER/PARSER qwen3.5). Libère la carte (ollama stop) avant, et ~8,7 Go de poids fusionnés après.",
       "details": [
         "Essai réel 2026-10-20 sur la RTX 3060 : 3 pas en 166 s, GGUF, import Ollama avec la capacité tools ; le modèle appelle system_status et close_camera, éval 0,92 sur 4 exemples.",
         "Pièges trouvés et corrigés : le gabarit Qwen3.5 veut les arguments d'outil en dict (pas en JSON texte) ; Arrow ne sait pas unifier des schémas d'outils variés (texte rendu en Python) ; Unsloth écrit le GGUF dans gguf_gguf/.",
         "Mémoire vidéo : 11,9 Go sur 12 pendant l'entraînement — tout autre modèle chargé fait déborder.",
         "Lu ligne par ligne (parse_progress) : chaque perte part à la vitrine en direct pendant l'entraînement.",
         "2026-10-21 : sortie non tamponnée (PYTHONUNBUFFERED) — sinon les pertes n'arrivaient au direct que par blocs de 8 Ko ; train_runtime écrit dans result.json (heures de GPU de la vitrine).",
-        "2026-10-22 : précision choisie selon la carte (bf16 sur la RTX 3060, fp16 sur la T4 de Kaggle) ; chemins de données relatifs au dossier d'entraînement."
+        "2026-10-22 : précision choisie selon la carte (bf16 sur la RTX 3060, fp16 sur la T4 de Kaggle) ; chemins de données relatifs au dossier d'entraînement.",
+        "2026-10-21 : 3 → 2 époques — la meilleure fut la 2e, la 2e puis la 1re aux trois cycles réels ; la 3e n'a jamais servi (≈ 10 min de carte graphique)."
       ],
       "files": [
         "matthew/train.py"
       ],
       "status": "ok",
-      "verified": "2026-10-21 — matthew.selftest : 35/35 ; cycle réel de 38 min",
-      "updated": "2026-10-22"
+      "verified": "2026-10-23 — matthew.selftest : 44/44",
+      "updated": "2026-10-23"
     },
     {
       "id": "r.reglages",
       "label": "Réglages d'entraînement fondés sur la recherche",
       "kind": "regle",
-      "summary": "3 époques avec arrêt sur la perte d'évaluation ; r = alpha = 16, lr 2e-4 ; Q5_K_M ; service sans réflexion (0,3 s par réponse au lieu de 1,5 à 34 s).",
+      "summary": "2 époques avec arrêt sur la perte d'évaluation ; r = alpha = 16, lr 2e-4 ; Q5_K_M ; service sans réflexion (0,3 s par réponse au lieu de 1,5 à 34 s).",
       "details": [
         "Unsloth : 1–3 époques, au-delà sur-apprentissage ; Unsloth déconseille le QLoRA 4 bits pour Qwen3.5.",
         "Quantification : un petit modèle perd davantage, une sortie structurée exacte (comme le code) mérite ≥ Q5.",
@@ -196,7 +200,8 @@
         "matthew/flywheel.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 25/25"
+      "verified": "2026-10-21 — matthew.selftest : 36/36",
+      "updated": "2026-10-21"
     },
     {
       "id": "m.evaluate",

@@ -34,12 +34,14 @@ from pathlib import Path
 from matthew import config, data_dir
 
 # Recherche du 2026-10-20 (graphe matthew, nœud r.reglages) :
-#  - 3 époques, évaluées à chacune ; on garde la meilleure sur la perte d'évaluation
+#  - Époques évaluées à chacune ; on garde la meilleure sur la perte d'évaluation
 #    (Unsloth : 1–3 époques, au-delà sur-apprentissage ; arrêt précoce sur le hold-out).
+#    3 → 2 le 2026-10-21 : la meilleure fut la 2e, la 2e et la 1re aux trois cycles réels ;
+#    la 3e n'a jamais servi (≈ 10 min de carte graphique par cycle).
 #  - Q5_K_M plutôt que Q4_K_M : un 4B perd davantage à la quantification, et un appel
 #    d'outil est une sortie exacte (comme le code, qu'on conseille ≥ Q5).
 #  - r = alpha = 16, lr 2e-4 : point de départ conseillé ; rsLoRA inutile à ce rang.
-HYPER = {"lora_r": 16, "lora_alpha": 16, "lora_dropout": 0.0, "lr": 2e-4, "epochs": 3,
+HYPER = {"lora_r": 16, "lora_alpha": 16, "lora_dropout": 0.0, "lr": 2e-4, "epochs": 2,
          "batch": 1, "grad_accum": 8, "max_seq": 2048, "warmup_ratio": 0.05, "seed": 3407,
          "quant": "q5_k_m"}
 

@@ -662,7 +662,7 @@ def _augment():
     from matthew import augment as A
     rows = [_tool_row(i) for i in range(400)]
     irr = A.irrelevance(rows)
-    assert 20 <= len(irr) <= 60, len(irr)
+    assert abs(len(irr) - 400 * A.IRRELEVANCE_SHARE) <= 20, len(irr)
     r = irr[0]
     assert all(t["function"]["name"] != "weather" for t in r["tools"]) and r["tools"]
     assert r["messages"][-1]["role"] == "assistant" and "tool_calls" not in r["messages"][-1]
@@ -689,6 +689,18 @@ def _augment():
             "origin": "teacher", "ts": i} for i in range(10)]
     bal, cut = A.balance(rows[:300] + chat + vol)        # médiane 10 → plafond 30
     assert cut == 300 - 30 and len(bal) == 50, (cut, len(bal))
+    # part sans outil (3e cycle) : 20 outils × 10 exemples → 67 conversations gardées, pas 40
+    def call(name, i):
+        return {"messages": [{"role": "user", "content": f"{name} {i}"}, {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "c", "type": "function", "function": {"name": name, "arguments": {}}}]}],
+                "origin": "teacher", "ts": i}
+    many = [call(f"outil{k}", i) for k in range(20) for i in range(10)]
+    talk = [{"messages": [{"role": "user", "content": f"bonjour {i}"}, {"role": "assistant", "content": "salut"}],
+             "origin": "teacher", "ts": i} for i in range(100)]
+    bal2, _ = A.balance(many + talk)
+    kept_talk = sum(1 for r in bal2 if A.target(r) == "__chat__")
+    assert kept_talk == A.no_tool_goal(200) == 67, kept_talk
+    assert A.no_tool_goal(10) == A.NO_TOOL_CAP, "le plancher reste 40"
     return f"pertinence {len(irr)}/400, masqués {len(msk)}/400"
 
 
