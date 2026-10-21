@@ -1,27 +1,6 @@
 {
  "schema": "jarvis.nightshift-queue/1",
- "run_id": "39582967118",
- "created": "2026-10-21T12:15:26+02:00",
- "tasks": [
-  {
-   "id": "resume-39582967118",
-   "kind": "resume",
-   "input": {
-    "summary": "20/21 suites vertes ; aucune régression ; 1 échec sans référence (matthew « vitrine : liste blanche, aucun texte du journal, g ») ; réparé : extensions « manager 1 examen sans exécution : déclaré, réellem », daily n°2 ; ruff : 0 remarque ; rien à corriger dans la zone autorisée.",
-    "red": [
-     {
-      "suite": "matthew.selftest",
-      "status": "failing",
-      "failures": [
-       {
-        "check": "vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite : AssertionError:",
-        "label": "vitrine : liste blanche, aucun texte du journal, garde-fou qui refuse chaque fuite : AssertionError:",
-        "detail": ""
-       }
-      ]
-     }
-    ]
-   }
-  }
- ]
+ "run_id": "39584355316",
+ "created": "2026-10-21T12:26:24+02:00",
+ "tasks": []
 }
