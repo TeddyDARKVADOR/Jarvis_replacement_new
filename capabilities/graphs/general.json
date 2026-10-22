@@ -15,13 +15,15 @@
         "Un seul cerveau (main.py, JarvisLive) dans deux modes : sur ce PC (python main.py --local) ou sur le serveur Oracle (server.run_headless), avec le même HUD.",
         "Python 3.11+ (asyncio.TaskGroup). Client Android en Kotlin. HUD en page web dans Qt WebEngine.",
         "Règle d'or (contrat V2) : toute fonctionnalité ajoutée après V1 se retire sans casser V1.",
-        "NOM (2026-10-22) : l'assistant devient Matthew, comme son modèle ouvert (droits d'auteur : JARVIS est un personnage de Marvel). Fait : ce qu'il dit de lui (nom par défaut, core/prompt.txt sans « Jarvis d'Iron Man », constitution 0.2.0, prompts de la cognition), HUD de bureau, notifications, tableau de bord, application Android (nom, onglet, textes). Reste, pas à pas : le mot d'éveil « Hey Jarvis » (modèle openWakeWord pré-entraîné ; « Hey Matthew » demande d'en entraîner un), les identifiants (JarvisLive, com.jarvis, JARVIS_DATA_DIR, jarvis-preprod, jarvis.toml, shutdown_jarvis), les scripts portables, l'étiquette de journal Android JARVIS (filtrée par la pré-production). Les lectures des échanges acceptent « Matthew » et « Jarvis » pendant la transition."
+        "NOM (2026-10-22) : l'assistant devient Matthew, comme son modèle ouvert (droits d'auteur : JARVIS est un personnage de Marvel). Fait : ce qu'il dit de lui (nom par défaut, core/prompt.txt sans « Jarvis d'Iron Man », constitution 0.2.0, prompts de la cognition), HUD de bureau, notifications, tableau de bord, application Android (nom, onglet, textes). Reste, pas à pas : le mot d'éveil « Hey Jarvis » (modèle openWakeWord pré-entraîné ; « Hey Matthew » demande d'en entraîner un), les identifiants (JarvisLive, com.jarvis, JARVIS_DATA_DIR, jarvis-preprod, jarvis.toml, shutdown_jarvis), les scripts portables, l'étiquette de journal Android JARVIS (filtrée par la pré-production). Les lectures des échanges acceptent « Matthew » et « Jarvis » pendant la transition.",
+        "LINUX (2026-10-22) : tout tourne sous Windows comme sous Linux. Déjà portable avant : Pilot (AT-SPI), réunions (pactl, /proc), voix hors-ligne (espeak-ng), réglages, démarrage auto, rappels, tableau de bord. Porté ce jour : planification de Matthew (sched.py, systemd / cron), instance unique du HUD (socket abstrait), bac à sable et plafonds du Code Studio, Tailscale, chemins d'entraînement, navigateurs de la vitrine ; setup.py liste et installe (--system) les paquets Linux. Audit du 2026-10-22 : aucun import, appel ou chemin Windows sans garde ; un premier passage des suites dans un conteneur Debian n'a montré aucun échec propre à Linux (dépendances incomplètes, connexion lente) ; passage complet et vrai bureau Linux à faire."
       ],
       "files": [
         "main.py",
         "local_hud.py",
         "setup.py",
-        "requirements.txt"
+        "requirements.txt",
+        "deployment/matthew-train-linux.sh"
       ],
       "updated": "2026-10-22"
     },

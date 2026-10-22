@@ -151,8 +151,10 @@ def test_connection(host: str, port: int, use_tls: bool, token: str) -> dict:
             # The trap documented in capabilities/graphs/client_desktop.json (l.a_tester): the service runs
             # but sits in NoState until the tray app activates the profile.
             return {"ok": False, "step": "reach",
-                    "detail": "Tailscale n'est pas lancé sur ce PC (tailscale-ipn.exe). "
-                              "Ouvrez Tailscale depuis le menu Démarrer, puis retestez."}
+                    "detail": ("Tailscale n'est pas connecté sur ce PC : « sudo tailscale up », puis retestez."
+                               if sys.platform.startswith("linux") else
+                               "Tailscale n'est pas lancé sur ce PC (tailscale-ipn.exe). "
+                               "Ouvrez Tailscale depuis le menu Démarrer, puis retestez.")}
         return {"ok": False, "step": "reach",
                 "detail": f"Serveur injoignable ({type(exc).__name__}). Tailscale est-il connecté ?"}
     if not info.get("ok"):
@@ -178,7 +180,18 @@ def test_connection(host: str, port: int, use_tls: bool, token: str) -> dict:
 
 
 def _tailscale_app_running() -> bool:
-    """True if the Tailscale tray app is running — or if we cannot tell."""
+    """True if the Tailscale tray app is running — or if we cannot tell.
+    Linux has no tray app: the daemon must be up and logged in (`tailscale status`)."""
+    if sys.platform.startswith("linux"):
+        import shutil
+        import subprocess
+        exe = shutil.which("tailscale")
+        if not exe:
+            return True
+        try:
+            return subprocess.run([exe, "status"], capture_output=True, timeout=5).returncode == 0
+        except Exception:
+            return True
     if sys.platform != "win32":
         return True
     try:

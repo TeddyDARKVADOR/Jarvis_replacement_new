@@ -4,7 +4,8 @@ matthew/flywheel.py — la boucle d'amélioration, de bout en bout, sans humain.
     python -m matthew.flywheel              un cycle « à sec » : école, données, plan
     python -m matthew.flywheel --execute    idem + entraîne, importe, évalue, promeut
     python -m matthew.flywheel --status     où en est Matthew
-    python -m matthew.flywheel --schedule   la commande schtasks pour chaque nuit (affichée, pas lancée)
+    python -m matthew.flywheel --schedule   la commande qui pose la tâche de chaque nuit (affichée, pas lancée)
+    python -m matthew.flywheel --install    la pose (Planificateur de tâches, minuterie systemd ou crontab)
 
 Un cycle :
   1. école      le professeur ouvert réécrit les nouveaux épisodes (budget borné)
@@ -63,11 +64,15 @@ def _write(path: Path, data) -> None:
 class Flywheel:
     def __init__(self, root: Path | None = None, cfg: dict | None = None, *, school=None,
                  client_factory=None, runner=subprocess.run, trainer=None, clock=time.time,
-                 bootstrap=None, reference=None):
+                 bootstrap=None, reference=None, packs=None, bench=None):
         self._bootstrap = bootstrap        # fabrique (selftest) ; None = la vraie
         # La référence des spécialités (un autre modèle, noté sur les mêmes épreuves) : la vraie
         # seulement avec le vrai client de Matthew — un selftest n'appelle jamais Groq.
         self._reference = reference or ((lambda: None) if client_factory else None)
+        # Paquets de données (matthew/pack.py) et banc scellé (matthew/bench.py) : les vrais
+        # seulement avec le vrai client ; un selftest les fournit ou s'en passe.
+        self._packs = packs if packs is not None else (None if client_factory else "repo")
+        self._bench = bench if bench is not None else ((lambda: []) if client_factory else None)
         self.root = Path(root) if root else data_dir()
         self.cfg = cfg or config()
         self.journal = Journal(self.root, clock=clock)
@@ -113,6 +118,15 @@ class Flywheel:
             return self._finish(rep, "occupé")
         try:
             self._phase("prep")
+            # 0a. paquets : la donnée vérifiée fabriquée sur un autre PC (matthew/pack.py)
+            if self._packs:
+                try:
+                    from matthew import pack
+                    step("paquets", ok=True, **pack.import_all(self.root, None if self._packs == "repo" else self._packs))
+                except Exception as e:
+                    step("paquets", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
+            # 0b. santé du champion servi ; retour arrière automatique s'il a cédé (matthew/rollback.py)
+            self._health(step)
             # 0. amorçage : complète les outils pas encore amorcés (budget borné, reprise)
             if self.cfg.get("bootstrap_budget", 0):
                 try:
@@ -183,6 +197,16 @@ class Flywheel:
                                   progress=self._exam("duel")) if champ else None
             ok, why = E.gate(cand_score, champ_score, self.cfg["promote_margin"],
                              min_eval=self.cfg.get("min_eval", 30))
+            # Banc scellé (jamais appris) : aucune régression critique ni recul essentiel permis.
+            cases, decls = self._bench_cases(), self.journal.tools()
+            bench_c = bench_h = None
+            if cases:
+                from matthew import bench as B
+                bench_c = B.run(self._client_factory(cand), cases, decls)
+                bench_h = B.run(self._client_factory(self.cfg["serve_model"]), cases, decls) if champ else None
+                ok_b, why_b = B.gate(bench_c, bench_h)
+                if ok and not ok_b:
+                    ok, why = False, why_b
             # Banc de cognition (juge de mémoire, planificateur) : décide de sa place dans la cognition.
             try:
                 from matthew import cogbench
@@ -191,11 +215,20 @@ class Flywheel:
                 cog = {"score": None, "error": f"{type(e).__name__}: {e}"}
             # Les points faibles du candidat orientent le prochain amorçage (remédiation).
             _write(self.root / "last_eval.json", {"at": stamp, "model": cand, **cand_score})
+            brief = lambda b: {k: b.get(k) for k in ("composite", "per", "critical", "n")} if b else None
             step("évaluation", ok=True, candidate=cand_score, champion=champ_score, promote=ok, why=why,
-                 cognition={k: cog.get(k) for k in ("score", "judge", "planner")})
+                 cognition={k: cog.get(k) for k in ("score", "judge", "planner")},
+                 bench={"candidate": brief(bench_c), "champion": brief(bench_h)})
             if not ok:
                 return self._finish(rep, "candidat non promu")
-            # 7. promouvoir
+            # 7. promouvoir — l'ancien champion d'abord archivé sous une étiquette immuable
+            from matthew import rollback as R
+            champions = R.Champions(self.root, self.cfg, runner=self._runner, clock=self._clock)
+            if champ and not champions.history():
+                try:
+                    champions.archive(champ)
+                except Exception as e:
+                    step("archive", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
             cp = self._runner(["ollama", "cp", cand, self.cfg["serve_model"]],
                               capture_output=True, text=True, timeout=600)
             if cp.returncode != 0:
@@ -204,8 +237,21 @@ class Flywheel:
             _write(self.root / "champion.json", {"model": self.cfg["serve_model"], "since": stamp,
                                                  "run": str(run), "score": cand_score,
                                                  "cognition": {k: cog.get(k) for k in ("score", "judge", "planner", "n")},
+                                                 "bench": brief(bench_c),
                                                  "base": base["model"], "base_license": base["license"]})
             step("promotion", ok=True)
+            # La copie servie se comporte-t-elle comme le candidat évalué ? Sinon, retour arrière.
+            try:
+                h = R.health(self._client_factory(self.cfg["serve_model"]), cases, decls) if cases else None
+                h = h if h and h.get("status") == "mesuré" else None
+                entry = champions.archive(_read(self.root / "champion.json", {}), health=h)
+                step("archive", ok=True, tag=entry["tag"])
+                if h and bench_c and h["critical"] > bench_c["critical"]:
+                    rb = champions.rollback("la copie servie ne se comporte pas comme le candidat évalué")
+                    step("retour arrière", **rb)
+                    return self._finish(rep, "retour arrière")
+            except Exception as e:
+                step("archive", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
             # Direction 3 : le nouveau champion repasse chaque épreuve de spécialité, contre la
             # référence ; il ne garde que les tâches qu'il mérite (matthew/specialist.py).
             try:
@@ -219,6 +265,29 @@ class Flywheel:
             return self._finish(rep, "nouveau champion")
         finally:
             self._unlock()
+
+    def _bench_cases(self) -> list[dict]:
+        if self._bench:
+            return self._bench()
+        from matthew import bench as B
+        return B.load()
+
+    def _health(self, step) -> None:
+        """Début de nuit : le champion servi est-il toujours celui qu'on a promu ?"""
+        champ = _read(self.root / "champion.json", None)
+        try:
+            cases = self._bench_cases()
+            if not champ or not cases:
+                return
+            from matthew import rollback as R
+            champions = R.Champions(self.root, self.cfg, runner=self._runner, clock=self._clock)
+            if not champions.history():
+                champions.archive(champ)          # champion d'avant ce module : archivé une fois
+            res = R.check(champions, self._client_factory(self.cfg["serve_model"]), cases, self.journal.tools())
+            step("santé", ok=res.get("action") != "retour arrière",
+                 **{k: res.get(k) for k in ("status", "composite", "critical", "action", "rollback") if k in res})
+        except Exception as e:
+            step("santé", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
 
     def pick_base(self, st: dict, total: int) -> tuple[dict, str]:
         """Le modèle de base de ce cycle. Par défaut celui du champion (un challenger
@@ -331,66 +400,53 @@ class Flywheel:
 TASK = "Matthew flywheel"
 
 
-def wrapper(root: Path | None = None) -> Path:
-    """Le script que lance le planificateur : dossier, Python, journal de sortie."""
+def _plan(root: Path | None = None):
     root = root or data_dir()
-    path = root / "flywheel.cmd"
-    path.write_text("\r\n".join([
-        "@echo off",
-        "rem Matthew : cycle de nuit (genere par matthew/flywheel.py)",
-        f'cd /d "{REPO}"',
-        "set PYTHONIOENCODING=utf-8",
-        f'echo === %DATE% %TIME% >> "{root / "flywheel.log"}"',
-        f'"{sys.executable}" -m matthew.flywheel --execute >> "{root / "flywheel.log"}" 2>&1',
-        ""]), encoding="utf-8")
-    return path
+    return (TASK, ["-m", "matthew.flywheel", "--execute"], root / "flywheel.log", root)
 
 
-_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$")
+def wrapper(root: Path | None = None) -> Path:
+    """Le script que lance le planificateur (run.cmd sous Windows, run.sh sous Linux)."""
+    from matthew import sched
+    name, argv, log, folder = _plan(root)
+    return sched.script(name, argv, log, folder, stem="flywheel")
 
 
 def next_run(runner=subprocess.run) -> dict | None:
-    """La prochaine nuit, lue dans le Planificateur de tâches : jamais une heure écrite en dur.
-
-    {"at": "2026-10-22T02:30:00+02:00" (ou None), "enabled": bool}, ou None sans tâche
-    (autre système, tâche absente). Changer l'heure de la tâche change la vitrine."""
-    if sys.platform != "win32":
-        return None
-    ps = (f"$i = Get-ScheduledTaskInfo -TaskName '{TASK}' -ErrorAction Stop; "
-          f"$t = Get-ScheduledTask -TaskName '{TASK}' -ErrorAction Stop; "
-          "if ($i.NextRunTime) { $i.NextRunTime.ToString('yyyy-MM-ddTHH:mm:sszzz') } else { '-' }; [string]$t.State")
-    try:
-        cp = runner(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-                    capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    lines = [x.strip() for x in (cp.stdout or "").splitlines() if x.strip()]
-    if cp.returncode != 0 or len(lines) < 2:
-        return None
-    at = lines[0] if _ISO.match(lines[0]) else None
-    return {"at": at, "enabled": lines[1].lower() != "disabled"}
+    """La prochaine nuit, lue dans le planificateur du système (Planificateur de tâches, minuterie
+    systemd ou crontab) : jamais une heure écrite en dur. {"at", "enabled"}, ou None sans tâche."""
+    from matthew import sched
+    return sched.next_run(TASK, runner=runner)
 
 
 def schedule_command(hour: str = "02:30", root: Path | None = None) -> list[str]:
-    return ["schtasks", "/Create", "/TN", TASK, "/SC", "DAILY", "/ST", hour,
-            "/TR", f'"{wrapper(root)}"', "/F"]
+    """La commande qui pose la tâche de chaque nuit (affichée par --schedule, rien n'est posé)."""
+    from matthew import sched
+    name, argv, log, folder = _plan(root)
+    out = sched.daily(name, hour, argv, log, folder, dry=True, stem="flywheel")
+    return out["commands"][-1] if out.get("commands") else ["crontab", out["line"]]
+
+
+def install(hour: str = "02:30", runner=subprocess.run) -> dict:
+    from matthew import sched
+    name, argv, log, folder = _plan()
+    return sched.daily(name, hour, argv, log, folder, runner=runner, stem="flywheel")
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="matthew.flywheel")
     ap.add_argument("--execute", action="store_true")
     ap.add_argument("--status", action="store_true")
-    ap.add_argument("--schedule", action="store_true", help="affiche la commande schtasks")
+    ap.add_argument("--schedule", action="store_true", help="affiche la commande qui pose la tâche (schtasks, systemd ou cron)")
     ap.add_argument("--install", action="store_true", help="pose la tâche planifiée (chaque nuit 02 h 30)")
     ap.add_argument("--budget", type=int)
     a = ap.parse_args(argv)
-    if a.schedule or a.install:
-        cmd = schedule_command()
-        print(subprocess.list2cmdline(cmd))
-        if a.install:
-            cp = subprocess.run(cmd, capture_output=True, text=True)
-            print((cp.stdout or cp.stderr).strip())
-            return cp.returncode
+    if a.install:
+        out = install()
+        print(out.get("out") or out)
+        return 0 if out["ok"] else 1
+    if a.schedule:
+        print(" ".join(schedule_command()))
         return 0
     fw = Flywheel()
     out = fw.status() if a.status else fw.cycle(execute=a.execute, budget=a.budget)

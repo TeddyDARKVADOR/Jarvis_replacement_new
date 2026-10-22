@@ -224,7 +224,7 @@ def clean_env(project_dir: Path, tmp_dir: Path) -> dict:
 # ── Windows Job Object ──────────────────────────────────────────────────────
 
 class _Job:
-    """Memory / process caps and kill-the-whole-tree. No-op off Windows."""
+    """Memory / process caps and kill-the-whole-tree, Windows side. Linux: linux_scope()."""
 
     def __init__(self, memory_mb: int = MEMORY_LIMIT_MB, max_procs: int = MAX_PROCESSES) -> None:
         self.handle = None
@@ -321,12 +321,37 @@ def _kill_tree(proc: subprocess.Popen, job: _Job) -> None:
                 proc.kill()
 
 
+_SCOPE: list[bool] = []
+
+
+def linux_scope() -> list[str]:
+    """Linux : le même plafond que le Job object Windows (mémoire, nombre de processus), par un
+    groupe de contrôle systemd (systemd-run --user --scope). Essayé une fois ; sans systemd
+    utilisateur, rien (temps limité et arrêt de tout l'arbre restent en vigueur)."""
+    if not sys.platform.startswith("linux"):
+        return []
+    if not _SCOPE:
+        ok = False
+        if shutil.which("systemd-run"):
+            try:
+                ok = subprocess.run(["systemd-run", "--user", "--scope", "--quiet", "true"],
+                                    capture_output=True, timeout=10).returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                ok = False
+        _SCOPE.append(ok)
+    if not _SCOPE[0]:
+        return []
+    return ["systemd-run", "--user", "--scope", "--quiet", "-p", f"MemoryMax={MEMORY_LIMIT_MB}M",
+            "-p", f"TasksMax={MAX_PROCESSES}", "--"]
+
+
 def _popen(argv: list[str], cwd: Path, env: dict) -> tuple[subprocess.Popen, _Job]:
     kwargs: dict = {}
     if sys.platform == "win32":
         kwargs["creationflags"] = 0x08000000 | 0x00000200 | 0x00004000  # NO_WINDOW|NEW_GROUP|BELOW_NORMAL
     else:
         kwargs["start_new_session"] = True
+        argv = [*linux_scope(), *argv]
     job = _Job()
     proc = subprocess.Popen(argv, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **kwargs)

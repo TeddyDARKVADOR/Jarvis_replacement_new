@@ -213,7 +213,7 @@ def _run_file(path: Path, args: list, timeout: int) -> str:
         ".js":  ["node"],
         ".ts":  ["ts-node"],
         ".sh":  ["bash"],
-        ".ps1": ["powershell", "-File"],
+        ".ps1": ["powershell" if sys.platform == "win32" else "pwsh", "-File"],   # Linux : PowerShell 7
         ".rb":  ["ruby"],
         ".php": ["php"],
     }

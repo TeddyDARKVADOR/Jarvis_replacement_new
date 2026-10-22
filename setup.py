@@ -5,6 +5,8 @@ Installs the Python dependencies for THIS operating system only: the OS-specific
 packages in requirements.txt carry `sys_platform` markers, so a macOS or Linux
 user never pulls Windows-only libraries (and vice-versa). Then it fetches the
 Playwright browsers needed for web automation (current-OS builds only).
+On Linux it lists the system packages the features need (LINUX_PACKAGES);
+`python setup.py --system` installs them with sudo.
 
 The optional local wake word ("Hey Jarvis") is NOT installed here — it's a
 one-click, opt-in download from the HUD's Paramètres → Audio.
@@ -16,6 +18,29 @@ import sys
 from pathlib import Path
 
 OS = platform.system()  # "Windows" | "Darwin" | "Linux"
+
+#: Linux: what Windows ships and Linux leaves to the package manager (apt names).
+#: `python setup.py --system` installs them all with sudo.
+LINUX_PACKAGES = [
+    ("libportaudio2", "microphone and voice (sounddevice)"),
+    ("pulseaudio-utils", "volume, and « a meeting is using the mic » (pactl)"),
+    ("brightnessctl", "screen brightness"),
+    ("xdg-utils", "open files, folders and links (xdg-open)"),
+    ("libnotify-bin", "desktop notifications (notify-send)"),
+    ("at", "one-off reminders when systemd-run is missing"),
+    ("wmctrl", "list and focus windows (X11)"),
+    ("xdotool", "keyboard and mouse automation (X11)"),
+    ("wtype", "typing under Wayland"),
+    ("scrot", "screenshots (X11); grim under Wayland"),
+    ("espeak-ng", "offline voice when Gemini and Oracle are down"),
+    ("python3-gi", "Pilot: reading windows (AT-SPI)"),
+    ("gir1.2-atspi-2.0", "Pilot: reading windows (AT-SPI)"),
+    ("at-spi2-core", "Pilot: reading windows (AT-SPI)"),
+    ("bubblewrap", "Code Studio sandbox (Linux twin of Windows Sandbox)"),
+    ("libegl1", "the HUD (Qt WebEngine)"),
+    ("libxkbcommon0", "the HUD (Qt WebEngine)"),
+    ("libnss3", "the HUD (Qt WebEngine)"),
+]
 
 
 def _run(label: str, args: list[str]) -> None:
@@ -48,14 +73,15 @@ def main() -> None:
                 f'    "{sys.executable}" "{postinstall}" -install'
             )
     elif OS == "Linux":
-        print(
-            "\nℹ️  Linux note — a few voice-controlled OS actions shell out to "
-            "native tools. Install the ones you'll use via your package manager:\n"
-            "    • volume      → pulseaudio-utils   (pactl)\n"
-            "    • brightness  → brightnessctl\n"
-            "    • reminders   → systemd (systemd-run) or 'at'\n"
-            "    • open URLs   → xdg-utils          (xdg-open)"
-        )
+        apt = "sudo apt install -y " + " ".join(pkg for pkg, _ in LINUX_PACKAGES)
+        print("\nℹ️  Linux — the native tools Matthew shells out to (Debian / Ubuntu names):")
+        for pkg, why in LINUX_PACKAGES:
+            print(f"    • {pkg:<22} {why}")
+        print(f"\n    All at once:\n    {apt}")
+        print("    Pilot reads windows through AT-SPI (python3-gi): create the venv with\n"
+              "    `python3 -m venv --system-site-packages .venv` so it sees the system's gi.")
+        if "--system" in sys.argv:
+            _run("Installing the Linux system packages (sudo)…", apt.split())
     elif OS == "Darwin":
         print(
             "\nℹ️  macOS note — volume, brightness and reminders use the built-in "

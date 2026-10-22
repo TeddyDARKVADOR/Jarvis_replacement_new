@@ -18,10 +18,19 @@ the kernel when that process dies, however it dies.
 who double-clicks the shortcut wants to *see* JARVIS. The second instance sets
 the event and exits; the first sees it and shows its panel. That is a better
 answer than a silent no-op, which reads as a broken shortcut.
+
+**On Linux, an abstract Unix socket plays both parts.** Binding a name in the
+abstract namespace succeeds for exactly one process and the kernel frees the name
+when that process dies — the mutex — and the second launch connects to it and
+writes "show" — the event. No file is left behind after a crash. The name carries
+the user id and the graphical session, so it is per session as on Windows.
 """
 
 from __future__ import annotations
 
+import os
+import socket
+import sys
 import threading
 from typing import Callable
 
@@ -41,6 +50,16 @@ except Exception:  # pragma: no cover - non-Windows or pywin32 absent
 MUTEX_NAME = "Local\\JarvisDesktop.SingleInstance"
 EVENT_NAME = "Local\\JarvisDesktop.ShowPanel"
 
+_UNIX = sys.platform.startswith("linux")
+
+
+def _unix_name() -> str:
+    """Abstract-namespace address: one per user and graphical session."""
+    session = (os.environ.get("XDG_SESSION_ID") or os.environ.get("WAYLAND_DISPLAY")
+               or os.environ.get("DISPLAY") or "0")
+    uid = os.getuid() if hasattr(os, "getuid") else 0
+    return f"\0JarvisDesktop.SingleInstance.{uid}.{session}"
+
 
 class SingleInstance:
     """Held for the life of the process. Release happens on exit, or on crash."""
@@ -59,6 +78,8 @@ class SingleInstance:
         missing guard is a worse failure than a duplicate instance, because it
         stops JARVIS starting at all.
         """
+        if _UNIX:
+            return self._acquire_unix()
         if not _AVAILABLE:
             return True
         try:
@@ -73,6 +94,15 @@ class SingleInstance:
 
     def signal_existing(self) -> None:
         """Ask the instance that is already running to show itself."""
+        if _UNIX:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as c:
+                    c.settimeout(2)
+                    c.connect(_unix_name())
+                    c.sendall(b"show")
+            except OSError:
+                pass
+            return
         if not _AVAILABLE:
             return
         try:
@@ -87,6 +117,9 @@ class SingleInstance:
     def listen(self, on_show: Callable[[], None]) -> None:
         """Watch for a second launch. `on_show` runs on this helper thread, so a
         Qt caller must marshal — a queued signal does it for free."""
+        if _UNIX:
+            self._listen_unix(on_show)
+            return
         if not _AVAILABLE or self._event is None or self._thread is not None:
             return
 
@@ -107,8 +140,55 @@ class SingleInstance:
         )
         self._thread.start()
 
+    # ── Linux ────────────────────────────────────────────────────────────────
+
+    def _acquire_unix(self) -> bool:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            sock.bind(_unix_name())
+        except OSError:
+            sock.close()
+            self.is_first = False
+            return False
+        sock.listen(4)
+        sock.settimeout(0.5)
+        self._mutex = sock
+        self.is_first = True
+        return True
+
+    def _listen_unix(self, on_show: Callable[[], None]) -> None:
+        sock = self._mutex
+        if sock is None or self._thread is not None:
+            return
+
+        def loop() -> None:
+            while not self._stop.is_set():
+                try:
+                    conn, _ = sock.accept()
+                except socket.timeout:
+                    continue
+                except OSError:
+                    return
+                with conn:
+                    try:
+                        conn.settimeout(1)
+                        if conn.recv(16).startswith(b"show"):
+                            on_show()
+                    except Exception:
+                        pass
+
+        self._thread = threading.Thread(target=loop, name="JarvisSingleInstance", daemon=True)
+        self._thread.start()
+
     def release(self) -> None:
         self._stop.set()
+        if isinstance(self._mutex, socket.socket):
+            try:
+                self._mutex.close()
+            except OSError:
+                pass
+            self._mutex = None
+            return
         for handle in (self._event, self._mutex):
             if handle is not None:
                 try:

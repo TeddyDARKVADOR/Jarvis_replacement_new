@@ -31,6 +31,15 @@ from .runner import CommandRefused, Runner, classify, clean_env, free_port, is_a
 from .sandbox import SandboxError, Workspace, default_root, safe_project_name, validate_root
 from .tasks import TaskList
 
+
+def _isolation():
+    """Le bac à sable de ce système : Windows Sandbox, ou bubblewrap / podman sous Linux."""
+    if sys.platform.startswith("linux"):
+        from . import linuxsandbox as m
+        return m, "le bac à sable Linux"
+    from . import winsandbox as m
+    return m, "Windows Sandbox"
+
 CONFIG_NS = "code_studio"
 DEFAULT_OPTIONS = {"max_fix_attempts": 4, "command_timeout": 120, "confirm_plan": False,
                    "auto_preview": True, "auto_run_scripts": True}
@@ -426,21 +435,24 @@ class Studio:
                 "ts": shot.stat().st_mtime}
 
     def sandbox(self, project: str | None) -> dict:
-        """Launch the project inside Windows Sandbox (winsandbox.py). Only on request."""
-        from . import winsandbox
+        """Launch the project in this system's sandbox (winsandbox.py, linuxsandbox.py). Only on request."""
+        box, label = _isolation()
         project = self._existing(project)
         if self.job is not None and self.job.running and self.job.project == project:
             raise SandboxError("Le Studio travaille encore sur ce projet : attendez la fin.")
-        why = winsandbox.available()
+        why = box.available()
         if why:
             return {"ok": False, "error": why}
         ctx = self.project_ctx(project)
-        wsb = winsandbox.prepare(project, self.workspace().project_dir(project), ctx.meta, self.project_map(project))
-        winsandbox.launch(wsb)
-        ctx.journal.add("preview", "▶ Projet lancé dans Windows Sandbox : machine jetable, réseau coupé, "
+        spec = box.prepare(project, self.workspace().project_dir(project), ctx.meta, self.project_map(project))
+        box.launch(spec)
+        ctx.journal.add("preview", f"▶ Projet lancé dans {label} : copie jetable, réseau coupé, "
                                    "dossier du projet en lecture seule", key=f"sandbox:{project}")
-        return {"ok": True, "message": "Windows Sandbox démarre (quelques secondes) : le projet s'y lance seul. "
-                                       "Fermer sa fenêtre efface tout."}
+        if label == "Windows Sandbox":
+            return {"ok": True, "message": "Windows Sandbox démarre (quelques secondes) : le projet s'y lance seul. "
+                                           "Fermer sa fenêtre efface tout."}
+        return {"ok": True, "message": "Le projet tourne dans le bac à sable Linux (sans réseau, copie jetable) : "
+                                       "ce qu'il écrit disparaît quand il s'arrête."}
 
     def stop_previews(self, project: str | None = None) -> dict:
         n = 0
@@ -456,8 +468,7 @@ class Studio:
         provider = str(cfg.get("provider") or "auto").lower()
         coder = ("Groq" + (f" · {cfg['groq_model']}" if cfg.get("groq_model") else "")
                  if provider == "groq" or (provider == "auto" and groq_key()) else "Gemini")
-        from . import winsandbox
-        why = winsandbox.available()
+        why = _isolation()[0].available()
         out: dict = {"root": self.root_setting(), "options": self.options(), "admin": is_admin(), "coder": coder,
                      "safety": SAFETY_NOTE, "projects": [], "job": None,
                      "sandbox": {"available": not why, "reason": why}}
@@ -560,6 +571,13 @@ class Studio:
                 target = self.workspace().project_dir(self._existing(project)) if project else self.workspace().root
                 if sys.platform == "win32":
                     os.startfile(str(target))           # noqa: S606 - Explorer on our own folder
+                else:                                   # le gestionnaire de fichiers du bureau
+                    import shutil
+                    import subprocess
+                    opener = shutil.which("xdg-open") or shutil.which("open")
+                    if opener:
+                        subprocess.Popen([opener, str(target)], stdout=subprocess.DEVNULL,
+                                         stderr=subprocess.DEVNULL, start_new_session=True)
                 return {"ok": True, "folder": str(target)}
             return {"error": f"opération inconnue : {op}"}
         except (SandboxError, CommandRefused) as e:

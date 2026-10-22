@@ -70,8 +70,10 @@ DEFAULTS: dict = {
     "min_eval": 30,                  # pas de promotion sur une évaluation plus petite
     # Environnement d'entraînement séparé (Python 3.12 + torch CUDA + unsloth),
     # et cache des modèles Hugging Face : sur D: par défaut, C: étant plein.
-    "train_python": r"D:\DEV\matthew-train\.venv\Scripts\python.exe",
-    "hf_home": r"D:\DEV\matthew-train\hf",
+    # Linux : ~/matthew-train (Unsloth et CUDA y sont chez eux ; WSL2 compris).
+    "train_python": (r"D:\DEV\matthew-train\.venv\Scripts\python.exe" if os.name == "nt"
+                     else str(Path.home() / "matthew-train" / ".venv" / "bin" / "python")),
+    "hf_home": r"D:\DEV\matthew-train\hf" if os.name == "nt" else str(Path.home() / "matthew-train" / "hf"),
     "use_in_cognition": True,
     # Autres bases essayées à tour de rôle (licence ouverte obligatoire) ; un challenger
     # qui bat le champion devient la base. Ex. : [{"model": "Qwen/Qwen3.5-9B", "license": "apache-2.0"}]

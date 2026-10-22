@@ -87,13 +87,16 @@
         "Reprise : un outil est fait à son premier exemple vérifié ou après 3 échecs ; la boucle de nuit continue avec 150 appels.",
         "Ordre revu (2026-10-20) : conversation (__chat__) et refus (__none__ : demandes qu'aucun outil ne sait faire) D'ABORD, 40 exemples vérifiés chacun, puis les outils ; « salut ça va » appelait briefing et le premier champion ne refusait juste qu'une fois sur deux.",
         "Remédiation des refus : si le dernier candidat refuse juste moins de 75 % du temps, une ronde de demandes impossibles.",
-        "Professeur de secours : quota Groq épuisé → qwen3.6 (génère) et gemma4:12b (vérifie), deux familles différentes, Apache-2.0, servis par Ollama sur ce PC ; l'amorçage continue toute la nuit."
+        "Professeur de secours : quota Groq épuisé → qwen3.6 (génère) et gemma4:12b (vérifie), deux familles différentes, Apache-2.0, servis par Ollama sur ce PC ; l'amorçage continue toute la nuit.",
+        "DOUBLE ANNOTATION (2026-10-22) : agree=True — le générateur écrit l'appel attendu, le vérificateur le refait sans le voir ; gardé si les valeurs concordent (args_agree : norm.same, texte libre de plus de 5 mots toléré à 60 % de mots communs). Visait le point faible du deuxième champion : arguments 0,795.",
+        "Licence du vérificateur contrôlée comme celle du professeur (ses appels deviennent les cibles) ; date du jour donnée au générateur (des rappels tombaient en 2024)."
       ],
       "files": [
         "matthew/bootstrap.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 34/34"
+      "verified": "2026-10-20 — matthew.selftest : 34/34",
+      "updated": "2026-10-22"
     },
     {
       "id": "m.teacher",
@@ -219,7 +222,8 @@
         "Premier cycle réel : champion promu le 2026-10-20 à 20 h 52 — 116 exemples amorcés (23 outils) + augmentations, 3 époques sur la RTX 3060 (meilleure : la 2e, perte d'éval 0,125), GGUF Q5_K_M 3,2 Go ; éval sur 18 exemples : composite 0,85, bon outil 100 %, arguments 79 %, JSON 100 %, refus quand aucun outil ne convient 50 %, 1,1 s ; servi par Ollama, choisi par le mode hors-ligne et placé en tête de la cognition.",
         "Deuxième cycle réel (2026-10-21, 00 h 52 → 01 h 39) : nouveau champion — 193 exemples d'entraînement / 56 d'éval (dont conversation et refus), 3 époques en 38 min (meilleure : la 2e, perte d'éval 0,366) ; composite 0,90 (avant 0,85), bon outil 97 %, arguments 79 %, réponses sans outil 94 % (avant 50 %), refus justes 91 % (avant 50 %), 1,0 s. Point faible : file_processor (transcription audio : répond au lieu d'appeler l'outil). Deux exemples amorcés mal étiquetés (« surveille les actualités » → manage_monitor, qui gère les écrans) : à corriger dans l'amorçage.",
         "Tâche planifiée Windows « Matthew flywheel », chaque nuit à 02 h 30 (posée le 2026-10-20) : memory/matthew/flywheel.cmd, journal memory/matthew/flywheel.log.",
-        "2026-10-21 : next_run() lit la prochaine exécution de la tâche planifiée ; _phase()/_exam() écrivent le direct de chaque étape (l'examen au plus toutes les 20 s) ; evaluate.score(progress=…) raconte sa progression sans jamais faire échouer l'examen."
+        "2026-10-21 : next_run() lit la prochaine exécution de la tâche planifiée ; _phase()/_exam() écrivent le direct de chaque étape (l'examen au plus toutes les 20 s) ; evaluate.score(progress=…) raconte sa progression sans jamais faire échouer l'examen.",
+        "2026-10-22 : paquets importés en début de nuit ; santé du champion servi (retour arrière automatique) ; banc scellé dans le critère de promotion ; archive immuable avant et après chaque promotion ; issue « retour arrière »."
       ],
       "files": [
         "matthew/flywheel.py"
@@ -227,7 +231,7 @@
       "status": "partiel",
       "verified": "2026-10-21 — matthew.selftest : 35/35 ; cycle réel, nouveau champion",
       "test": "python -m matthew.flywheel --status",
-      "updated": "2026-10-21"
+      "updated": "2026-10-22"
     },
     {
       "id": "m.cloud",
@@ -294,13 +298,17 @@
       "kind": "procedure",
       "summary": "D:\\DEV\\matthew-train : Python 3.12 (uv), torch 2.11 CUDA 12.8 (RTX 3060 vue), unsloth 2026.10.7, trl 1.15, datasets 4.8 ; cache Hugging Face sur D: (Qwen3.5-4B, 8,8 Go). Réinstaller : bash D:/DEV/matthew-train/setup.sh.",
       "details": [
-        "Réglages train_python et hf_home dans DEFAULTS (matthew/__init__.py) ; C: est plein, rien ne doit y aller."
+        "Réglages train_python et hf_home dans DEFAULTS (matthew/__init__.py) ; C: est plein, rien ne doit y aller.",
+        "Linux / WSL2 (2026-10-22) : bash deployment/matthew-train-linux.sh → ~/matthew-train (uv, Python 3.12, torch CUDA 12.8, unsloth, trl, datasets) ; réglages par défaut hors Windows. Pas encore lancé."
       ],
       "files": [
-        "matthew/train.py"
+        "matthew/train.py",
+        "deployment/matthew-train-linux.sh",
+        "matthew/__init__.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — installé et utilisé"
+      "verified": "2026-10-20 — installé et utilisé",
+      "updated": "2026-10-22"
     },
     {
       "id": "p.feuille",
@@ -311,7 +319,8 @@
         "GRPO (récompense = appel d'outil vérifié) : Qwen3-4B de 33 % à 67 % d'appels justes en 200 exemples (Red Hat, 2026) — mais il faut vLLM, absent de Windows : GPU loué sous Linux.",
         "Contexte multi-tours : les tours précédents sont des réponses Gemini ; il faut les masquer de la perte avant de les inclure.",
         "Voix : Moshi (Kyutai) full-duplex ~200 ms mais anglais ; Kyutai Unmute = cascade autour d'un LLM texte, la voie actuelle.",
-        "Direction 3 (2026-10-22) : spécialiste autonome mais évalué — une tâche à la fois, chacune gagnée sur sa propre épreuve contre une référence (m.specialist)."
+        "Direction 3 (2026-10-22) : spécialiste autonome mais évalué — une tâche à la fois, chacune gagnée sur sa propre épreuve contre une référence (m.specialist).",
+        "Plan du 2026-10-22 : banc représentatif scellé (fait), spécialités évaluées séparément (fait), tâches réelles en production (à mesurer : taux de réussite, erreurs dangereuses, latence), champion immuable et retour arrière automatique (fait, à éprouver)."
       ],
       "files": [
         "matthew/flywheel.py"
@@ -368,7 +377,8 @@
         "GUIDE (2026-10-22) : à la première visite, Matthew en personne présente la page comme un tutoriel de jeu vidéo — robot 3D animé (« RobotExpressive » de Tomás Laulhé, CC0, trouvé en ligne, recoloré cyan) qui salue, acquiesce, lève le pouce et danse ; bouche animée pendant qu'il « parle » ; texte tapé lettre à lettre ; 7 à 8 étapes qui déplacent la caméra et éclairent l'élément dont il parle (compte à rebours, score, direct) ; voix du navigateur en option ; Échap / Entrée ; vu une fois → plus automatique, bouton « ? » pour le revoir, ?notour pour l'éviter. Pas de WebGL → un noyau lumineux le remplace.",
         "PARTAGER (2026-10-22) : bouton de partage (feuille de partage du téléphone, sinon lien copié).",
         "SPÉCIALITÉS (2026-10-22) : chapitre « Ses spécialités » (Direction 3), affiché seulement si data/vitrine.json en publie : par spécialité, score, seuil, référence, « il s'en charge / pas encore ». Agrégats seulement (specialist.public) : ni cas raté, ni nom de modèle ; libellés et bornes vérifiés par check_public.",
-        "Vérifié le 2026-10-22 en local (Chrome sans interface, 1440×900 et Pixel 7, données publiques du jour) : visite complète, mise en lumière, retour au plan d'ensemble, chapitre des spécialités. PAS ENCORE PUBLIÉ ; le ressenti de fluidité est à confirmer sur l'ordinateur qui saccadait."
+        "Vérifié le 2026-10-22 en local (Chrome sans interface, 1440×900 et Pixel 7, données publiques du jour) : visite complète, mise en lumière, retour au plan d'ensemble, chapitre des spécialités. PAS ENCORE PUBLIÉ ; le ressenti de fluidité est à confirmer sur l'ordinateur qui saccadait.",
+        "Linux (2026-10-22) : tâche toutes les 30 min par minuterie systemd ou crontab ; capture og.png avec Chrome, Chromium ou Edge pour Linux ; publication détachée (nouvelle session)."
       ],
       "files": [
         "matthew/vitrine.py",
@@ -422,13 +432,15 @@
         "Écoute sur 127.0.0.1 ; l'ouvrir au téléphone passe par Tailscale. Pas encore de streaming.",
         "Sonde réelle 2026-10-20 : réponse de Matthew via la passerelle, 59 tokens comptés, compteur du jour renvoyé en en-tête.",
         "Streaming (stream=true) : morceaux relayés dès leur arrivée, tokens comptés au dernier morceau (stream_options.include_usage) ; sonde réelle : premier mot en 0,53 s.",
-        "Téléphone : `serve --tailscale` écoute aussi sur l'adresse Tailscale (absente de ce PC le 2026-10-20 : à installer) ; `install` la lance à chaque ouverture de session (dossier Démarrage : la tâche planifiée exigeait les droits administrateur)."
+        "Téléphone : `serve --tailscale` écoute aussi sur l'adresse Tailscale (absente de ce PC le 2026-10-20 : à installer) ; `install` la lance à chaque ouverture de session (dossier Démarrage : la tâche planifiée exigeait les droits administrateur).",
+        "Linux (2026-10-22) : install pose un service systemd utilisateur (sinon ~/.config/autostart)."
       ],
       "files": [
         "matthew/gateway.py"
       ],
       "test": "python -m matthew.gateway usage",
-      "verified": "2026-10-20 — matthew.selftest : 34/34"
+      "verified": "2026-10-20 — matthew.selftest : 34/34",
+      "updated": "2026-10-22"
     },
     {
       "id": "m.norm",
@@ -491,6 +503,100 @@
       ],
       "test": "python -m matthew.specialist run",
       "verified": "2026-10-22 — matthew.selftest : 37/37 (modèles factices)",
+      "updated": "2026-10-22"
+    },
+    {
+      "id": "m.bench",
+      "label": "bench.py — le banc représentatif, scellé",
+      "kind": "module",
+      "status": "a_tester",
+      "summary": "Un examen jamais appris, noté par règles, par catégorie : outil, arguments, refus, conversation, consignes (contrainte vérifiable), injection (ordre caché dans un résultat d'outil), français. Erreur critique : un outil dangereux appelé sans raison ou un code canari révélé.",
+      "details": [
+        "SCELLÉ : matthew/bench/sealed.jsonl.gz + empreinte SHA-256 (SEAL) ; load() refuse un banc modifié.",
+        "ANTI-CONTAMINATION : dataset.build écarte tout exemple d'entraînement trop proche d'un cas du banc (mots, Jaccard ≥ 0,6) ; manifest.dropped_bench.",
+        "GATE (critères fixés d'avance) : pas plus d'erreurs critiques que le champion, pas de recul de plus de 5 points sur outil, arguments, refus, injection ; s'ajoute au gate de l'examen (evaluate.gate).",
+        "Construit le 2026-10-22 sur un portable sans GPU, par gpt-oss-120b (générateur) et Gemma 4 31B (vérificateur), cloud Ollama, double annotation ; consignes et injections écrites à la main. Scellé : 151 cas (84 outil, 24 conversation, 15 refus, 16 consignes, 12 injections), 38 outils sur 43 — manquent code_helper, mcp, save_memory, screen_process, self_state.",
+        "Limite : le banc est dans le dépôt public — « privé » veut dire jamais appris par la boucle, pas secret.",
+        "Pas encore passé par le vrai champion (il vit sur le PC à la RTX 3060)."
+      ],
+      "files": [
+        "matthew/bench.py",
+        "matthew/bench/SEAL"
+      ],
+      "test": "python -m matthew.bench run",
+      "verified": "2026-10-22 — matthew.selftest : 42/42",
+      "updated": "2026-10-22"
+    },
+    {
+      "id": "m.rollback",
+      "label": "rollback.py — champions immuables et retour arrière",
+      "kind": "module",
+      "status": "a_tester",
+      "summary": "Chaque champion est archivé sous une étiquette Ollama qui ne change plus (matthew-champion-<date>), avec son historique. Santé = la partie critique du banc rejouée sur le modèle servi ; retour arrière automatique si une erreur critique apparaît ou si la santé baisse de plus de 0,15 ; panne du serveur ≠ régression.",
+      "details": [
+        "Boucle de nuit : santé au début de chaque nuit ; avant une promotion, l'ancien champion est archivé ; après, la copie servie est remesurée et retirée si elle fait plus d'erreurs critiques que le candidat évalué.",
+        "À la main : python -m matthew.rollback status | check | now \"raison\". Chaque retour est écrit dans rollback.jsonl et lève le drapeau de la vitrine.",
+        "Les fonctions de base continuent pendant un retour : seul le modèle servi change (Gemini, cognition, mode hors-ligne intacts).",
+        "Vérifié avec un faux Ollama ; jamais encore déclenché en vrai."
+      ],
+      "files": [
+        "matthew/rollback.py",
+        "matthew/flywheel.py"
+      ],
+      "test": "python -m matthew.rollback check",
+      "verified": "2026-10-22 — matthew.selftest : 42/42",
+      "updated": "2026-10-22"
+    },
+    {
+      "id": "m.pack",
+      "label": "pack.py — la donnée vérifiée voyage d'un PC à l'autre",
+      "kind": "module",
+      "status": "a_tester",
+      "summary": "Exporte les exemples SYNTHÉTIQUES vérifiés (licence ouverte, scrub sans effet, jamais le journal réel) dans matthew/packs/*.jsonl.gz ; la boucle de nuit les importe sans doublon avant de construire ses données.",
+      "files": [
+        "matthew/pack.py",
+        "matthew/flywheel.py"
+      ],
+      "test": "python -m matthew.pack status",
+      "verified": "2026-10-22 — matthew.selftest : 42/42",
+      "updated": "2026-10-22"
+    },
+    {
+      "id": "m.session",
+      "label": "session.py — une grosse session de données sans GPU",
+      "kind": "module",
+      "status": "partiel",
+      "summary": "Fabrique de la donnée vérifiée en quantité sur n'importe quel PC : conversation et refus, puis chaque outil (les plus faibles d'abord, d'après la vitrine) en double annotation, puis une ronde difficile ; pause sur quota, heure limite, état dans memory/matthew/session.json.",
+      "details": [
+        "Professeurs par défaut : gpt-oss:120b-cloud (Apache-2.0) génère, gemma4:31b-cloud (Apache-2.0) vérifie — deux familles ; DeepSeek-V3.1 et Qwen3-Coder ont été retirés du cloud Ollama le 2026-07-15.",
+        "Première session lancée le 2026-10-22 sur le portable (Inspiron, Iris Xe, sans GPU) : objectif 30 exemples par outil + 10 difficiles, 80 conversations, 80 refus."
+      ],
+      "files": [
+        "matthew/session.py"
+      ],
+      "test": "python -m matthew.session --hours 1",
+      "verified": "2026-10-22 — essai réel (35 exemples en 105 s)",
+      "updated": "2026-10-22"
+    },
+    {
+      "id": "m.sched",
+      "label": "sched.py — planifier sous Windows comme sous Linux",
+      "kind": "module",
+      "status": "partiel",
+      "summary": "Chaque nuit, toutes les N minutes, à l'ouverture de session : Planificateur de tâches et dossier Démarrage sous Windows ; minuteries systemd utilisateur (Persistent : une nuit manquée est rattrapée) ou crontab sous Linux. La prochaine exécution est lue dans le système (compte à rebours de la vitrine).",
+      "details": [
+        "Lanceurs gardés : flywheel.cmd / vitrine/run.cmd / gateway.cmd, et leurs jumeaux .sh (LF, exécutables).",
+        "Linux : loginctl enable-linger $USER pour tourner sans session ouverte.",
+        "Vérifié : selftest (unités systemd, crontab sans écraser l'existant, prochaine heure) ; jamais posé sur un vrai Linux."
+      ],
+      "files": [
+        "matthew/sched.py",
+        "matthew/flywheel.py",
+        "matthew/vitrine.py",
+        "matthew/gateway.py"
+      ],
+      "test": "python -m matthew.flywheel --schedule",
+      "verified": "2026-10-22 — matthew.selftest : 42/42",
       "updated": "2026-10-22"
     }
   ],
@@ -848,6 +954,81 @@
     [
       "m.flywheel",
       "m.specialist",
+      "utilise"
+    ],
+    [
+      "matthew",
+      "m.bench",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.rollback",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.pack",
+      "contient"
+    ],
+    [
+      "matthew",
+      "m.session",
+      "contient"
+    ],
+    [
+      "m.bench",
+      "m.flywheel",
+      "protege"
+    ],
+    [
+      "m.bench",
+      "m.dataset",
+      "protege"
+    ],
+    [
+      "m.rollback",
+      "m.bench",
+      "utilise"
+    ],
+    [
+      "m.flywheel",
+      "m.rollback",
+      "utilise"
+    ],
+    [
+      "m.session",
+      "m.bootstrap",
+      "utilise"
+    ],
+    [
+      "m.session",
+      "m.pack",
+      "alimente"
+    ],
+    [
+      "m.pack",
+      "m.flywheel",
+      "alimente"
+    ],
+    [
+      "matthew",
+      "m.sched",
+      "contient"
+    ],
+    [
+      "m.flywheel",
+      "m.sched",
+      "utilise"
+    ],
+    [
+      "v.vitrine",
+      "m.sched",
+      "utilise"
+    ],
+    [
+      "m.gateway",
+      "m.sched",
       "utilise"
     ]
   ]

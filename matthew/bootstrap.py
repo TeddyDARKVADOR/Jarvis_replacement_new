@@ -109,6 +109,64 @@ def _requests_of(text: str) -> list[str]:
     return [r.strip() for r in reqs if isinstance(r, str) and 3 < len(r.strip()) < 300]
 
 
+#: Double annotation (accord) : le générateur écrit aussi l'appel attendu ; le vérificateur, qui
+#: ne le voit pas, doit retrouver les MÊMES valeurs. Les arguments étaient le point faible du
+#: deuxième champion (0,795) : le vérificateur seul ne contrôlait que le nom et le schéma.
+AGREE_HINT = """
+
+Pour CHAQUE demande, donne aussi les arguments exacts de l'appel attendu (mêmes noms que le
+schéma, valeurs telles qu'on les déduit de la phrase). Réponds uniquement en JSON :
+{{"items": [{{"request": "...", "args": {{...}}}}]}}"""
+
+
+def _items_of(text: str) -> list[tuple[str, dict]]:
+    """L'objet {"items": …}, même précédé d'un autre objet JSON (le modèle écrivait parfois
+    d'abord {"requests": …} puis {"items": …} : 37 générations illisibles sur 144 au banc)."""
+    text, dec, items = text or "", json.JSONDecoder(), []
+    for i, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = dec.raw_decode(text, i)
+        except ValueError:
+            continue
+        if isinstance(obj, dict) and isinstance(obj.get("items"), list):
+            items = obj["items"]
+            break
+    out = []
+    for it in items if isinstance(items, list) else []:
+        if isinstance(it, dict) and isinstance(it.get("request"), str) and isinstance(it.get("args"), dict):
+            r = it["request"].strip()
+            if 3 < len(r) < 300:
+                out.append((r, it["args"]))
+    return out
+
+
+def args_agree(expected: dict, got: dict) -> tuple[bool, str]:
+    """Mêmes clés renseignées, mêmes valeurs (forme canonique de norm.same)."""
+    from matthew.norm import same
+    want = {k: v for k, v in expected.items() if v not in ("", None, [], {})}
+    have = {k: v for k, v in got.items() if v not in ("", None, [], {})}
+    if set(want) != set(have):
+        return False, f"clés {sorted(want)} ≠ {sorted(have)}"
+    for k in want:
+        if not (same(want[k], have[k]) or _same_text(want[k], have[k])):
+            return False, f"« {k} » : {str(want[k])[:30]!r} ≠ {str(have[k])[:30]!r}"
+    return True, ""
+
+
+def _same_text(a, b) -> bool:
+    """Texte libre (une tâche, un message de plus de 5 mots) : la même chose dite autrement
+    passe — mots communs (racines) ≥ 60 %. Noms, nombres, dates restent exacts (norm.same)."""
+    if not (isinstance(a, str) and isinstance(b, str)):
+        return False
+    from matthew.router import tokens
+    x, y = set(tokens(a)), set(tokens(b))
+    if len(a.split()) <= 5 or len(b.split()) <= 5 or not x or not y:
+        return False
+    return len(x & y) / len(x | y) >= 0.6
+
+
 class Bootstrap:
     def __init__(self, journal: Journal | None = None, client: Client | None = None,
                  cfg: dict | None = None, sleep=time.sleep, max_calls: int = 400, verifier=None):
@@ -122,6 +180,8 @@ class Bootstrap:
         # Vérificateur : un AUTRE modèle ouvert (indépendance du contrôle, et un quota
         # séparé chez Groq : le débit double). Sans réglage, le professeur lui-même.
         self.verifier_model = t.get("verifier_model") or t["model"]
+        # Ses appels deviennent les cibles : sa licence compte autant que celle du professeur.
+        check_teacher({"model": self.verifier_model, "license": t.get("verifier_license", t["license"])})
         self.verifier = verifier or (self.client if self.verifier_model == t["model"] or client else
                                      Client(t["base_url"], self.verifier_model, t.get("api_key"),
                                             purpose="teacher", usage_root=self.journal.root))
@@ -236,17 +296,23 @@ class Bootstrap:
         self._write({"target": target, "status": "rejected", "user": req, "reason": why,
                      "teacher": self.teacher["model"], "ts": time.time()})
 
-    def _tool(self, d, decls, router, n, stats, extra: str = "", round_: str | None = None):
+    def _tool(self, d, decls, router, n, stats, extra: str = "", round_: str | None = None,
+              agree: bool = False):
         schema = to_openai_tools([d])[0]["function"]["parameters"]
-        gen = self._chat([{"role": "user", "content": GEN_PROMPT.format(
-            name=d["name"], description=str(d.get("description", ""))[:900],
-            params=json.dumps(schema, ensure_ascii=False)[:1500], n=n) + extra}],
-            max_tokens=1500, temperature=0.9, json_mode=True)
-        reqs = _requests_of(gen["content"])
-        if not reqs:
+        has_args = bool(schema.get("properties"))
+        agree = agree and has_args
+        prompt = GEN_PROMPT.format(name=d["name"], description=str(d.get("description", ""))[:900],
+                                   params=json.dumps(schema, ensure_ascii=False)[:1500], n=n)
+        if agree:                      # un seul format annoncé : sinon deux objets JSON à la suite
+            prompt = prompt.rsplit("Réponds uniquement en JSON", 1)[0].rstrip()
+        gen = self._chat([{"role": "user", "content": prompt + extra + (AGREE_HINT if agree else "")
+            + f"\n\nNous sommes le {time.strftime('%Y-%m-%d')} : toute date future est postérieure."}],
+            max_tokens=3000 if agree else 1500, temperature=0.9, json_mode=True)
+        items = _items_of(gen["content"]) if agree else [(r, None) for r in _requests_of(gen["content"])]
+        if not items:
             self._reject(stats, d["name"], "", "génération illisible")
             return
-        for req in reqs[:n]:
+        for req, expect in items[:n]:
             sid = f"syn-{uuid.uuid4().hex[:10]}"
             subset = tool_subset(decls, [d["name"]], sid, router=router, query=req)
             tools = to_openai_tools(subset)
@@ -266,10 +332,16 @@ class Bootstrap:
             if not ok:
                 self._reject(stats, d["name"], req, f"arguments : {why}")
                 continue
+            if expect is not None:
+                ok, why = args_agree(expect, args)
+                if not ok:
+                    self._reject(stats, d["name"], req, f"désaccord : {why}")
+                    continue
             self._write({"episode": sid, "target": d["name"], "status": "ok", "synthetic": True,
                          "teacher": self.teacher["model"], "license": self.teacher["license"],
                          "verifier": self.verifier_model, **({"round": round_} if round_ else {}),
-                         "verified": "independent", "ts": time.time(), "tools": [x["name"] for x in subset],
+                         "verified": "agreement" if expect is not None else "independent",
+                         "ts": time.time(), "tools": [x["name"] for x in subset],
                          "messages": msgs + [{"role": "assistant", "content": got.get("content", ""),
                                               "tool_calls": [{"id": "call_0", "type": "function",
                                                               "function": {"name": d["name"], "arguments": args}}]}]})

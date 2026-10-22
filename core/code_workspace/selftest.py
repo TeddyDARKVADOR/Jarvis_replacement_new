@@ -702,7 +702,8 @@ def _():
     for bad in ("node app.js", "npm start", "calc.exe", "python main.py & del *"):
         assert refuses(W.launch_line, "script", bad, "", ""), bad
     assert refuses(W.launch_line, "library", "", "", "")
-    why = W.available()
+    from core.code_workspace.service import _isolation
+    why = _isolation()[0].available()            # le bac à sable de CE système (Windows ou Linux)
     st = _studio(FakeLLM())
     r = st.hud("studio.sandbox", {"project": "sbx"})
     if why:
@@ -869,6 +870,34 @@ def _():
     r = st.hud("studio.screenshot", {"project": "demo"})
     assert r.get("ok") is False and "navigateur" in r.get("error", ""), r
     return "options enregistrées, pas de fausse capture"
+
+
+@check("35 bac à sable Linux : système en lecture seule, copie jetable, sans réseau, Python ou Node")
+def _linux_sandbox():
+    from pathlib import PurePosixPath as Path
+    from core.code_workspace import linuxsandbox as L
+    from core.code_workspace.runner import CommandRefused
+    assert L.command("script", "python main.py --x", "", "main.py") == ["python3", "main.py", "--x"]
+    assert L.command("script", "", "pytest -q", "") == ["python3", "-m", "pytest", "-q"]
+    assert L.command("script", "node app.js", "", "")[0] == "node"
+    for bad in (("web", "", "", "index.html"), ("script", "npm install", "", ""), ("script", "", "", "")):
+        try:
+            L.command(*bad)
+            raise AssertionError(f"accepté : {bad}")
+        except CommandRefused:
+            pass
+    argv = L.bwrap_argv(Path("/home/u/Jarvis_Workspace/demo"), ["python3", "main.py"])
+    core = argv[argv.index("bwrap"):]
+    assert core[:4] == ["bwrap", "--ro-bind", "/", "/"], "le système est en lecture seule"
+    assert "--unshare-all" in core and "--die-with-parent" in core, "pas de réseau, meurt avec son parent"
+    i = core.index("/home/u/Jarvis_Workspace/demo")
+    assert core[i - 1] == "--ro-bind" and core[i + 1] == L.SOURCE, "le projet n'est monté qu'en lecture"
+    assert core[core.index(L.WORKDIR) - 1] == "--tmpfs", "le projet tourne dans une copie en mémoire"
+    assert core[-2:] == ["python3", "main.py"]
+    c = L.container_argv("podman", Path("/p"), ["python3", "x.py"])
+    assert c[c.index("--network") + 1] == "none" and "/p:/source:ro" in c
+    assert L.available(which=lambda n: None) in (L.ENABLE_HINT, "Ce bac à sable n'existe que sous Linux.")
+    return "bwrap : / en lecture, /projet en mémoire, réseau coupé ; podman / docker : --network none"
 
 
 

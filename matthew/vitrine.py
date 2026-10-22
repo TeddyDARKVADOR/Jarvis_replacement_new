@@ -603,7 +603,11 @@ def og_image(data: dict, path: Path) -> bool:
 
 BROWSERS = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
             r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-            r"C:\Program Files\Google\Chrome\Application\chrome.exe"]
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            "/usr/bin/microsoft-edge", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser",
+            "/snap/bin/chromium"]
+#: Noms cherchés dans le PATH si aucun chemin connu n'existe (Windows comme Linux).
+BROWSER_NAMES = ("msedge", "chrome", "microsoft-edge", "google-chrome", "chromium", "chromium-browser")
 
 
 def og_screenshot(out: Path, timeout: float = 120) -> bool:
@@ -614,7 +618,8 @@ def og_screenshot(out: Path, timeout: float = 120) -> bool:
     import tempfile
     import threading
     from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-    exe = next((b for b in BROWSERS if Path(b).exists()), None) or sh.which("msedge") or sh.which("chrome")
+    exe = next((b for b in BROWSERS if Path(b).exists()), None) or next(
+        (w for w in map(sh.which, BROWSER_NAMES) if w), None)
     if not exe:
         return False
 
@@ -772,7 +777,7 @@ def spawn() -> None:
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
     subprocess.Popen([sys.executable, "-m", "matthew.vitrine", "run"], cwd=str(REPO),
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
-                     creationflags=flags, close_fds=True)
+                     creationflags=flags, close_fds=True, start_new_session=sys.platform != "win32")
 
 
 def install_hooks(repo: Path | None = None) -> list[str]:
@@ -793,15 +798,13 @@ def install_hooks(repo: Path | None = None) -> list[str]:
 
 
 def schedule(minutes: int = 30, runner=subprocess.run) -> dict:
-    """Tâche Windows « Matthew vitrine » : toutes les N minutes, publier si le drapeau est levé."""
-    from matthew import REPO
-    cmd_file = data_dir() / "vitrine" / "run.cmd"
-    cmd_file.write_text("\r\n".join(["@echo off", f'cd /d "{REPO}"', "set PYTHONIOENCODING=utf-8",
-                                      f'"{sys.executable}" -m matthew.vitrine run >> "{data_dir() / "vitrine" / "run.log"}" 2>&1',
-                                      ""]), encoding="utf-8")
-    cp = runner(["schtasks", "/Create", "/TN", "Matthew vitrine", "/SC", "MINUTE", "/MO", str(minutes),
-                 "/TR", f'"{cmd_file}"', "/F"], capture_output=True, text=True)
-    return {"ok": cp.returncode == 0, "out": (cp.stdout or cp.stderr).strip()[:200]}
+    """Tâche « Matthew vitrine » : toutes les N minutes, publier si le drapeau est levé
+    (Planificateur de tâches sous Windows, minuterie systemd ou crontab sous Linux)."""
+    from matthew import sched
+    d = data_dir() / "vitrine"
+    out = sched.every("Matthew vitrine", minutes, ["-m", "matthew.vitrine", "run"], d / "run.log", d,
+                      runner=runner, stem="run")
+    return {"ok": out["ok"], "out": str(out.get("out") or out.get("how"))[:200]}
 
 
 def setup(repo: Path, name: str = "matthew-vitrine", runner=subprocess.run) -> dict:

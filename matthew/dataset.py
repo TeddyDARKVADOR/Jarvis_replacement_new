@@ -148,6 +148,13 @@ def build(journal: Journal | None = None, school: School | None = None, out: Pat
     bad = [e for e in examples if e["origin"] not in TRAINABLE_ORIGINS]
     if bad:
         raise AssertionError(f"{len(bad)} exemple(s) d'origine non autorisée")
+    # Le banc scellé n'est jamais appris : tout exemple trop proche d'un de ses cas est écarté
+    # (un banc modifié depuis son scellement arrête tout : SealError).
+    from matthew.bench import Contamination, user_text
+    near = Contamination(cfg.get("bench_cases"))
+    kept = [e for e in examples if not near(user_text(e["messages"]))]
+    n_bench = len(examples) - len(kept)
+    examples = kept
     base = len(examples)
     if embed == "auto":
         embed = A.ollama_embedder() if cfg.get("dedup", True) else None
@@ -177,7 +184,7 @@ def build(journal: Journal | None = None, school: School | None = None, out: Pat
     manifest = {"schema": "matthew.dataset/1", "created": stamp, "dir": str(out),
                 "train": len(train), "eval": len(evals), "dpo": len(pairs),
                 "origins": origins, "gemini_targets": 0, "base": base,
-                "dropped_duplicates": n_dup, "dropped_balance": n_bal,
+                "dropped_duplicates": n_dup, "dropped_balance": n_bal, "dropped_bench": n_bench,
                 "irrelevance": n_irr, "masked": sum(1 for e in train if e.get("aug") == "masked"),
                 "per_target": dict(sorted(Counter(A.target(e) for e in examples).items())),
                 "synthetic": sum(1 for e in examples if e.get("synthetic")),

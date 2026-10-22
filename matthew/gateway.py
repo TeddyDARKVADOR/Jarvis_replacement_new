@@ -310,22 +310,12 @@ def serve(host: str = "127.0.0.1", port: int = 11500, root: Path | None = None, 
 
 
 def install(port: int = 11500, runner=None) -> dict:
-    """Tâche Windows « Matthew passerelle » : la passerelle démarre à chaque ouverture de session."""
+    """La passerelle démarre à chaque ouverture de session : dossier Démarrage sous Windows,
+    service systemd utilisateur (sinon ~/.config/autostart) sous Linux."""
     import subprocess
-    from matthew import REPO
-    cmd = data_dir() / "gateway.cmd"
-    cmd.write_text("\r\n".join(["@echo off", f'cd /d "{REPO}"', "set PYTHONIOENCODING=utf-8",
-                                 f'"{sys.executable}" -m matthew.gateway serve --tailscale --port {port} '
-                                 f'>> "{data_dir() / "gateway.log"}" 2>&1', ""]), encoding="utf-8")
-    # Une tâche « à l'ouverture de session » exige les droits administrateur (refusé le
-    # 2026-10-20) : le dossier Démarrage du compte suffit, sans fenêtre (wscript, style 0).
-    import os
-    startup = Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
-    if not startup.is_dir():
-        return {"ok": False, "out": f"dossier Démarrage introuvable : {startup}"}
-    vbs = startup / "Matthew passerelle.vbs"
-    vbs.write_text(f'CreateObject("WScript.Shell").Run """{cmd}""", 0, False\r\n', encoding="utf-8")
-    return {"ok": True, "out": f"lancée à chaque ouverture de session : {vbs}"}
+    from matthew import sched
+    return sched.at_login("Matthew passerelle", ["-m", "matthew.gateway", "serve", "--tailscale", "--port", str(port)],
+                          data_dir() / "gateway.log", data_dir(), runner=runner or subprocess.run, stem="gateway")
 
 
 def main(argv=None) -> int:

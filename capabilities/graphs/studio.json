@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "studio",
   "title": "Jarvis Code Studio — son atelier de développement",
-  "updated": "2026-10-15",
+  "updated": "2026-10-22",
   "summary": "En mode local, un espace de travail dédié (C:\\Jarvis_Workspace par défaut, modifiable seulement depuis le HUD) où JARVIS planifie, écrit, lance les vrais tests, corrige un nombre limité de fois et rend un verdict mérité.",
   "replaces": [],
   "nodes": [
@@ -18,7 +18,8 @@
     {"id": "f.journal", "label": "Journal écrit par les outils", "kind": "fonction", "status": "ok", "summary": "Chaque ligne du suivi est écrite par l'outil qui a agi, jamais par le modèle.", "files": ["core/code_workspace/journal.py"]},
     {"id": "f.winsandbox", "label": "Windows Sandbox", "kind": "fonction", "status": "ok", "summary": "Sur demande seulement : le projet tourne dans une machine jetable, réseau coupé, projet et Python en lecture seule, presse-papiers, micro et caméra coupés ; fermer efface tout.", "details": ["Prérequis : fonctionnalité Windows « Bac à sable Windows » (Pro/Entreprise). Seuls la bibliothèque standard et _deps/ y sont disponibles ; pas de Node.js."], "files": ["core/code_workspace/winsandbox.py"]},
     {"id": "r.chemins", "label": "Chemins vérifiés par le code", "kind": "regle", "status": "ok", "summary": "Refusés : .., lecteurs, UNC, flux :, noms réservés, jonctions, liens physiques. Le dépôt JARVIS ne peut jamais être la racine.", "details": ["Selftest #2 : le test de jonction échoue sous Linux (NotADirectoryError)."], "files": ["core/code_workspace/sandbox.py"]},
-    {"id": "r.commandes", "label": "Terminal contrôlé", "kind": "regle", "status": "ok", "summary": "Sans shell, liste blanche (python, pytest, node, npm), délai maximal, Job Object Windows (mémoire, processus, arrêt de l'arbre), secrets retirés de l'environnement, refus si JARVIS est administrateur.", "details": ["Installer un paquet, python -c ou un exécutable inconnu demandent votre accord sur le HUD.", "Limite assumée : hors Sandbox, un programme lancé par le Studio a les droits de votre compte."], "files": ["core/code_workspace/runner.py"]}
+    {"id": "r.commandes", "label": "Terminal contrôlé", "kind": "regle", "status": "ok", "summary": "Sans shell, liste blanche (python, pytest, node, npm), délai maximal, Job Object Windows (mémoire, processus, arrêt de l'arbre), secrets retirés de l'environnement, refus si JARVIS est administrateur.", "details": ["Installer un paquet, python -c ou un exécutable inconnu demandent votre accord sur le HUD.", "Limite assumée : hors Sandbox, un programme lancé par le Studio a les droits de votre compte.", "Linux (2026-10-22) : mêmes plafonds que le Job object Windows (mémoire 2 Go, 48 processus) par un groupe de contrôle systemd (systemd-run --user --scope), essayé une fois ; sinon temps limité et arrêt de tout l'arbre (killpg). « Ouvrir le dossier » : xdg-open."], "files": ["core/code_workspace/runner.py"], "updated": "2026-10-22"},
+    {"id": "f.linuxsandbox", "label": "Bac à sable Linux (jumeau de Windows Sandbox)", "kind": "fonction", "status": "a_tester", "summary": "« Lancer dans un bac à sable » sous Linux : bubblewrap — tout le système en lecture seule, le projet copié dans une mémoire jetable (/projet), pas de réseau, /dev minimal (ni micro ni caméra), meurt avec son parent, 4 Go au plus (systemd-run). Sans bwrap : podman ou docker (--network none), scripts seulement. Python ou Node.", "details": ["Une page web n'y est pas lancée (sans réseau, son navigateur serait un programme de plus à croire) : l'aperçu du Studio ne sert déjà que des fichiers.", "Une application avec fenêtre reçoit seulement le socket d'affichage (X11 ou Wayland) ; sous X11 une fenêtre peut lire le clavier des autres fenêtres X11.", "Vérifié : construction des commandes (selftest 35) ; jamais exécuté sur un vrai Linux."], "files": ["core/code_workspace/linuxsandbox.py", "core/code_workspace/service.py"], "test": "python -m core.code_workspace.selftest", "updated": "2026-10-22"}
   ],
   "edges": [
     ["studio", "f.actions", "contient"],
@@ -42,6 +43,7 @@
     ["m.engine", "f.lint", "utilise"],
     ["r.chemins", "m.engine", "protege"],
     ["r.commandes", "m.engine", "protege"],
-    ["f.winsandbox", "r.commandes", "utilise"]
+    ["f.winsandbox", "r.commandes", "utilise"],
+    ["studio", "f.linuxsandbox", "contient"]
   ]
 }

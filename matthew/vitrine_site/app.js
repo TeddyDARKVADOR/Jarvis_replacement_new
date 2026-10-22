@@ -251,7 +251,8 @@ const DOM_EN = { "Système": "System", "Bureau": "Desktop", "Infos": "Info", "Co
 const AREA_EN = { "IA": "AI", "Interface": "Interface", "Voix": "Voice", "Fiabilité": "Reliability", "Système": "System" };
 const OUTCOME_EN = { "nouveau champion": "new champion", "candidat non promu": "candidate not promoted", "en attente de données": "waiting for data",
   "plan prêt (à sec)": "plan ready (dry run)", "échec entraînement": "training failed", "échec données": "data step failed",
-  "échec import Ollama": "import failed", "échec promotion": "promotion failed", "occupé": "busy" };
+  "échec import Ollama": "import failed", "échec promotion": "promotion failed", "occupé": "busy",
+  "retour arrière": "rolled back" };
 const label = (t) => (LANG === "en" ? t.label_en || t.label : t.label);
 const dom = (d) => (LANG === "en" ? DOM_EN[d] || d : d);
 const area = (a) => (LANG === "en" ? AREA_EN[a] || a : a);
