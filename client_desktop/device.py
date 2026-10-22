@@ -57,7 +57,9 @@ PROTOCOL_VERSION = 1
 DEVICE_BOUND_ACTIONS: dict[str, tuple[str, ...]] = {
     "open_app":          (),                 # subprocess / os.startfile
     "computer_control":  ("pyautogui",),     # this keyboard, this mouse
-    "computer_settings": ("comtypes",),      # this machine's volume, power, wifi
+    # this machine's volume, power, wifi — Windows through COM; Linux shells out
+    # to pactl / brightnessctl / nmcli (setup.py LINUX_PACKAGES), no Python module.
+    "computer_settings": ("comtypes",) if sys.platform == "win32" else (),
     "desktop_control":   ("pyautogui",),     # this machine's windows
     "send_message":      ("pyautogui",),     # types into an app running here
     "youtube_video":     ("pyautogui",),     # plays on this screen

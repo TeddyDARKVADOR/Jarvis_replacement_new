@@ -59,10 +59,15 @@ _TARGET_PARAM_SCHEMA = {
 class ActionRouter:
     """A drop-in for `ActionRegistry` that first decides where to run."""
 
-    def __init__(self, inner, hub: DeviceHub, log=print) -> None:
+    def __init__(self, inner, hub: DeviceHub, log=print, server_guard: bool = False) -> None:
         self._inner = inner
         self._hub = hub
         self._log = log
+        # Sur le serveur (install) : une action qui agit sur UN appareil (son écran, son clavier,
+        # ses fichiers, son alimentation) n'est jamais exécutée sur la machine du serveur. Le
+        # registre des appareils vit en mémoire : juste après un redémarrage, avant que le PC
+        # ne se reconnecte, « éteins l'ordinateur » aurait visé la VM elle-même.
+        self._guard = server_guard
 
     # ── the ActionRegistry surface, delegated ────────────────────────────────
 
@@ -110,6 +115,10 @@ class ActionRouter:
         # every command that names no device.
         if not registry.with_capability(name, online_only=False) and \
                 requested_hint(turn.current_text(), model_hint) is None:
+            if self._guard and name in device_bound():
+                self._log(f"[Route] capability={name} rule=server-guard : aucun appareil, refus sur le serveur")
+                return (f"Aucun appareil connecté ne sait faire « {name} » pour l'instant : le serveur n'a ni "
+                        "écran, ni clavier, ni tes fichiers. Allume le PC ou le téléphone, puis redemande.")
             return self._inner.run(name, parameters, ctx)
 
         origin = turn.origin(registry)
@@ -177,6 +186,27 @@ def _describe(device: DeviceInfo | None) -> str:
     return device.device_type.value
 
 
+#: Actions qui n'ont de sens que sur l'appareil de l'utilisateur, en plus de celles que le PC
+#: déclare (client_desktop/device.py) : l'écran, la caméra, les réunions, les jeux, l'écran
+#: secondaire, Pilot. Le serveur ne les exécute jamais pour lui-même.
+_DEVICE_ONLY = {"screen_process", "close_camera", "manage_monitor", "game_updater", "pilot", "meeting"}
+
+
+#: Ce que le serveur fait légitimement pour lui-même : analyser un fichier envoyé par le téléphone
+#: (POST /api/upload → headless_ui.current_file → file_processor).
+_SERVER_OK = {"file_processor"}
+
+
+def device_bound() -> set[str]:
+    try:
+        from client_desktop.device import DEVICE_BOUND_ACTIONS
+        names = set(DEVICE_BOUND_ACTIONS)
+    except Exception:              # client_desktop absent du serveur : la liste connue
+        names = {"open_app", "computer_control", "computer_settings", "desktop_control", "send_message",
+                 "youtube_video", "browser_control", "file_controller"}
+    return (names | _DEVICE_ONLY) - _SERVER_OK
+
+
 def install(jarvis, hub: DeviceHub, log=print) -> ActionRouter:
     """Swap `jarvis._action_registry` for a router around it.
 
@@ -189,7 +219,7 @@ def install(jarvis, hub: DeviceHub, log=print) -> ActionRouter:
             "This JarvisLive has no _action_registry — main.py changed shape "
             "and the router has nothing to wrap."
         )
-    router = ActionRouter(inner, hub, log=log)
+    router = ActionRouter(inner, hub, log=log, server_guard=True)
     jarvis._action_registry = router
     log("[Route] action registry wrapped — device routing active")
     return router

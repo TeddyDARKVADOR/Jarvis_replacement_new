@@ -1358,6 +1358,46 @@ def _kaggle():
     return f"préparé, lancé une fois, récupéré, jugé : {rep['outcome']}"
 
 
+@check("journal d'Oracle : rapatrié par SSH, préfixé, rejoué sans doublon, archive piégée sans effet")
+def _oracle_pull():
+    import io
+    import tarfile
+    from matthew import oracle as O
+
+    def tarball(members):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as t:
+            for name, data, kind in members:
+                info = tarfile.TarInfo(name)
+                if kind == "link":
+                    info.type, info.linkname = tarfile.SYMTYPE, "/etc/passwd"
+                    t.addfile(info)
+                else:
+                    info.size = len(data)
+                    t.addfile(info, io.BytesIO(data))
+        return buf.getvalue()
+
+    class _CP:
+        def __init__(self, out=b"", code=0, err=b""):
+            self.stdout, self.returncode, self.stderr = out, code, err
+    payload = tarball([("journal/2026-10-22.jsonl", b'{"kind": "episode", "id": "o1"}\n{"kind": "episode", "id": "o2"}\n', "file"),
+                       ("journal/../../evil.jsonl", b"x\n", "file"), ("journal/.cache.jsonl", b"x\n", "file"),
+                       ("journal/lien.jsonl", b"", "link"), ("journal/notes.txt", b"x", "file")])
+    seen = []
+    root = TMP / "oracle-pull"
+    out = O.pull("u@h", root, runner=lambda cmd, **k: (seen.append(cmd), _CP(payload))[1])
+    assert seen[0][0] == "ssh" and "BatchMode=yes" in seen[0] and seen[0][-2] == "u@h"
+    assert out["ok"] and out["files"] == 2 and out["records"] == 3, out
+    files = sorted(p.name for p in (root / "journal").iterdir())
+    assert files == ["oracle-2026-10-22.jsonl", "oracle-evil.jsonl"], files
+    assert not (TMP / "evil.jsonl").exists() and not any(p.is_symlink() for p in (root / "journal").iterdir())
+    O.pull("u@h", root, runner=lambda cmd, **k: _CP(payload))
+    assert len(list((root / "journal").iterdir())) == 2, "rejouer remplace, ne duplique pas"
+    assert O.pull("u@h", root, runner=lambda cmd, **k: _CP(code=255, err=b"Connection timed out"))["ok"] is False
+    assert O.pull("", root)["skipped"], "réglage vide : rien n'est tenté"
+    return "2 fichiers sur 5 gardés, chemins aplatis, liens ignorés"
+
+
 @check("streaming : morceaux relayés dès leur arrivée, tokens comptés à la fin")
 def _gateway_stream():
     import threading

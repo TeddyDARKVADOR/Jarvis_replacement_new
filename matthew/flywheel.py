@@ -125,6 +125,13 @@ class Flywheel:
                     step("paquets", ok=True, **pack.import_all(self.root, None if self._packs == "repo" else self._packs))
                 except Exception as e:
                     step("paquets", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
+            # 0a bis. le journal collecté sur Oracle (conversations venues du téléphone)
+            if self._packs and self.cfg.get("oracle_ssh"):
+                try:
+                    from matthew import oracle
+                    step("oracle", **oracle.pull(self.cfg["oracle_ssh"], self.root))
+                except Exception as e:
+                    step("oracle", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
             # 0b. santé du champion servi ; retour arrière automatique s'il a cédé (matthew/rollback.py)
             self._health(step)
             # 0. amorçage : complète les outils pas encore amorcés (budget borné, reprise)

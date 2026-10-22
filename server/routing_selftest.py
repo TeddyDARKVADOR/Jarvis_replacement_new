@@ -471,6 +471,34 @@ def _router_checks(report: "Report") -> None:  # noqa: C901
             result,
         )
 
+        # ── garde du serveur : après un redémarrage, aucun appareil n'est encore revenu ──
+        from server.routing import device_bound
+        fresh = DeviceHub()
+        fresh.loop = loop
+        guarded = ActionRouter(inner, fresh, log=lambda _m: None, server_guard=True)
+        fresh.turn.set("", "eteins l'ordinateur")
+        inner.calls.clear()
+        result = guarded.run("computer_settings", {"action": "shutdown"})
+        report.check(
+            "26f serveur sans appareil : une action de bureau n'est jamais executee sur le serveur",
+            inner.calls == [] and "Aucun appareil" in result,
+            result,
+        )
+        for name, args in (("web_search", {"q": "meteo"}), ("file_processor", {})):
+            inner.calls.clear()
+            result = guarded.run(name, args)
+            report.check(
+                f"26g serveur sans appareil : {name} reste execute sur le serveur",
+                result == f"local:{name}",
+                result,
+            )
+        report.check(
+            "26h la garde couvre le bureau, l'ecran et Pilot, pas l'analyse d'un fichier envoye",
+            {"computer_settings", "file_controller", "screen_process", "pilot"} <= device_bound()
+            and "file_processor" not in device_bound() and "web_search" not in device_bound(),
+            str(sorted(device_bound())),
+        )
+
     finally:
         loop.call_soon_threadsafe(loop.stop)
         thread.join(timeout=2)

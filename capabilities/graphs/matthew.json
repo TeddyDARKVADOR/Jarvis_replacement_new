@@ -626,6 +626,26 @@
       "test": "python -m matthew.kaggle prepare /tmp/matthew-cloud",
       "verified": "2026-10-22 — matthew.selftest : 43/43",
       "updated": "2026-10-22"
+    },
+    {
+      "id": "m.oracle",
+      "label": "oracle.py — le journal collecté sur Oracle rejoint l'entraînement",
+      "kind": "module",
+      "status": "partiel",
+      "summary": "Les conversations venues du téléphone passent par Oracle : leur journal y est écrit. Chaque nuit, le PC d'entraînement le rapatrie par Tailscale SSH (chiffré, entre tes machines seulement), sous journal/oracle-<jour>.jsonl, en remplaçant la copie précédente (pas de doublon).",
+      "details": [
+        "Extraction défensive : seulement des .jsonl à plat ; chemins aplatis, liens et fichiers cachés ignorés.",
+        "Réglage oracle_ssh (ubuntu@jarvis-vps par défaut ; vide le coupe). Étape « oracle » de la nuit.",
+        "Vérifié le 2026-10-22 : connexion et droits réels depuis le portable (aucun journal encore : la collecte a commencé avec le déploiement du jour) ; extraction testée par le selftest."
+      ],
+      "files": [
+        "matthew/oracle.py",
+        "matthew/flywheel.py",
+        "matthew/__init__.py"
+      ],
+      "test": "python -m matthew.oracle pull",
+      "verified": "2026-10-22 — matthew.selftest : 44/44",
+      "updated": "2026-10-22"
     }
   ],
   "edges": [
@@ -1077,6 +1097,21 @@
     [
       "m.kaggle",
       "m.train",
+      "utilise"
+    ],
+    [
+      "matthew",
+      "m.oracle",
+      "contient"
+    ],
+    [
+      "m.oracle",
+      "m.journal",
+      "alimente"
+    ],
+    [
+      "m.flywheel",
+      "m.oracle",
       "utilise"
     ]
   ]

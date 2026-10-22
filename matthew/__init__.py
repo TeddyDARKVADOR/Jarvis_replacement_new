@@ -78,6 +78,9 @@ DEFAULTS: dict = {
     # Entraînement dans le cloud (matthew/kaggle.py) : "kaggle" fait juger chaque nuit le candidat
     # entraîné sur Kaggle, s'il y en a un nouveau. None : seulement la boucle locale.
     "cloud_training": None,
+    # Le journal collecté sur le serveur (conversations venues du téléphone) : rapatrié chaque
+    # nuit par Tailscale SSH (matthew/oracle.py). None : rien.
+    "oracle_ssh": "ubuntu@jarvis-vps",
     # Autres bases essayées à tour de rôle (licence ouverte obligatoire) ; un challenger
     # qui bat le champion devient la base. Ex. : [{"model": "Qwen/Qwen3.5-9B", "license": "apache-2.0"}]
     "base_challengers": [],

@@ -179,7 +179,7 @@ fi
 step 9 "verification de la version"
 CHECK="$(remote "cd '$REMOTE_REPO'
     echo HEAD=\$(git rev-parse HEAD)
-    echo DRIFT=\$(sudo rsync -rlcni --delete --exclude .git --exclude __pycache__ --exclude .venv \
+    echo DRIFT=\$(sudo rsync -rlcni --delete --filter=':- .gitignore' --exclude .git --exclude __pycache__ --exclude .venv \
         --exclude config/api_keys.json --exclude config/device_credentials.json --exclude config/certs/ \
         --exclude config/whatsapp_web/ --exclude memory/long_term.json --exclude client-android/ \
         ./ /opt/jarvis/ | grep -v '/\$' | wc -l)

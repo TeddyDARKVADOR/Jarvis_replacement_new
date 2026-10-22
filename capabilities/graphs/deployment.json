@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "deployment",
   "title": "Déploiement — Oracle, Tailscale, redéploiement, retour arrière",
-  "updated": "2026-10-17",
+  "updated": "2026-10-22",
   "summary": "Installer MARK LIII sur une VM Oracle Always Free, la relier par Tailscale, la mettre à jour depuis n'importe quel PC qui a ce dépôt, et revenir en arrière.",
   "replaces": [
     "deployment/ORACLE.md",
@@ -30,8 +30,11 @@
       "summary": "Always Free : Ampere A1 (ARM, 1 OCPU / 6 Go suffisent) ou E2.1.Micro ; 1 Go de RAM suffit, l'assistant ne garde aucun modèle. Ubuntu 22.04+ ou Oracle Linux 9, Python 3.11+, ~500 Mo de disque.",
       "details": [
         "Ne rien ouvrir dans la liste de sécurité : Tailscale se connecte en sortie.",
-        "Nom sur le tailnet : jarvis-vps."
-      ]
+        "Nom sur le tailnet : jarvis-vps.",
+        "Mesuré le 2026-10-22 : VM.Standard.E2.1.Micro (AMD EPYC, 1 OCPU = 2 fils, 1 Go de RAM + 2 Go de swap, 45 Go de disque). Assez pour le serveur (~30 Mo), PAS pour servir Matthew (modèle 4B ≈ 3 Go) : l'entraînement va sur Kaggle, le service sur le PC. Une instance Ampere A1 (gratuite, 4 OCPU, 24 Go) le permettrait, à créer dans la console Oracle si la capacité est disponible."
+      ],
+      "files": [],
+      "updated": "2026-10-22"
     },
     {
       "id": "p.installation",
@@ -86,11 +89,14 @@
         "Le code voyage en git bundle (≈ 6 Mo) appliqué par merge --ff-only : rien n'est poussé ni tiré de GitHub.",
         "Variables : JARVIS_SSH (ubuntu@jarvis-vps), JARVIS_REMOTE_REPO, JARVIS_BACKUPS (/var/backups/jarvis), JARVIS_KEEP_BACKUPS (10).",
         "Chaque déploiement ajoute une ligne à ~/jarvis-deploys.log sur Oracle.",
-        "Prérequis : ce dépôt, bash, Python 3.11+, Tailscale sur le même compte, ssh/scp (Tailscale SSH, sans clé)."
+        "Prérequis : ce dépôt, bash, Python 3.11+, Tailscale sur le même compte, ssh/scp (Tailscale SSH, sans clé).",
+        "2026-10-22 : Oracle était à 0ada8dc, un commit de l'historique d'avant réécriture ; son jumeau sur main (b79111d) a un arbre identique (vérifié sur Oracle). Sauvegardes (/opt/jarvis et .git), copie recalée par git reset --keep, puis déploiement : 114 commits, selftest 35/35. Le contrôle de version suit désormais .gitignore (rsync --filter ':- .gitignore') : les fichiers d'exécution (quota.json, token_usage.jsonl, memory/matthew/…) ne comptent plus comme un écart ; un cache orphelin (presence/__pycache__) supprimé."
       ],
       "files": [
         "deployment/redeploy.sh"
-      ]
+      ],
+      "updated": "2026-10-22",
+      "verified": "2026-10-22 — déploiement réel de dca2fda, server.selftest 35/35 sur Oracle, aucun écart"
     },
     {
       "id": "p.retour",
