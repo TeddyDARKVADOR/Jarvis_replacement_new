@@ -72,21 +72,28 @@ def export(root: Path | None = None, out_dir: Path | None = None, clock=time.tim
     """Écrit les exemples pas encore emballés (identifiants déjà présents dans un paquet : sautés)."""
     root, out_dir = Path(root or data_dir()), Path(out_dir or PACKS)
     seen = {r.get("episode") for r in imported(out_dir)}
-    rows = []
+    rows, held = [], 0
     for r in _records(root):
         if exportable(r) and r.get("episode") not in seen:
-            check(r)
+            try:
+                check(r)
+            except PackError:              # une adresse ou un IBAN, même inventés : le dépôt est public
+                held += 1
+                continue
             rows.append(r)
-    if not rows:
-        return {"written": 0}
     out_dir.mkdir(parents=True, exist_ok=True)
+    decls = root / "tools.json"
+    if decls.exists():                  # les déclarations d'outils (tirées du code) : le cloud en a besoin
+        (out_dir / "tools.json").write_bytes(decls.read_bytes())
+    if not rows:
+        return {"written": 0, "held": held}
     name = f"{time.strftime('%Y%m%d-%H%M', time.localtime(clock()))}-{(host or platform.node() or 'pc').lower()[:20]}.jsonl.gz"
     head = {"schema": SCHEMA, "n": len(rows), "at": clock()}
     with gzip.open(out_dir / name, "wt", encoding="utf-8") as f:
         f.write(json.dumps(head) + "\n")
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    return {"written": len(rows), "file": name}
+    return {"written": len(rows), "file": name, "held": held}
 
 
 def imported(pack_dir: Path | None = None):

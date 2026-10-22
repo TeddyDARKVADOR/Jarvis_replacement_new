@@ -49,6 +49,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PLAN = json.loads((HERE / "plan.json").read_text(encoding="utf-8"))
 H = PLAN["hyper"]
+# Chemins relatifs au dossier de l'entraînement (paquet envoyé à Kaggle), absolus sur le PC.
+here = lambda p: Path(p) if Path(p).is_absolute() else HERE / p
+
+# bf16 sur la RTX 3060 ; la T4 de Kaggle ne le gère pas : fp16.
+import torch
+BF16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+print("précision :", "bf16" if BF16 else "fp16", "·", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "sans GPU")
 
 from unsloth.chat_templates import train_on_responses_only
 from datasets import Dataset
@@ -91,8 +98,8 @@ def rows(path):
         return []
     return [render(json.loads(l)) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
 
-train_ds = Dataset.from_list(rows(PLAN["train"]))
-eval_rows = rows(PLAN["eval"])
+train_ds = Dataset.from_list(rows(here(PLAN["train"])))
+eval_rows = rows(here(PLAN["eval"]))
 print("exemples :", len(train_ds), "entraînement,", len(eval_rows), "évaluation")
 print(train_ds[0]["text"][:1500])
 # Avec un hold-out : évaluer à chaque époque et garder la meilleure (arrêt précoce).
@@ -106,7 +113,7 @@ trainer = SFTTrainer(
                    num_train_epochs=H["epochs"], max_steps=H.get("max_steps", -1),
                    learning_rate=H["lr"], warmup_ratio=H["warmup_ratio"],
                    optim="adamw_8bit", logging_steps=5, seed=H["seed"], output_dir=str(HERE / "ckpt"),
-                   report_to="none", bf16=True))
+                   report_to="none", bf16=BF16, fp16=not BF16))
 trainer = train_on_responses_only(trainer, instruction_part=PLAN["instruction_part"],
                                   response_part=PLAN["response_part"])
 stats = trainer.train()

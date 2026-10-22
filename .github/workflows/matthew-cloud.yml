@@ -1,0 +1,72 @@
+# Matthew s'entraîne dans le cloud — sans aucun PC allumé.
+#
+# Chaque soir (et à la demande), ce workflow :
+#   1. construit le jeu de données à partir des paquets du dépôt (matthew/packs : donnée
+#      SYNTHÉTIQUE vérifiée ; jamais le journal réel, qui ne quitte pas les PC) ;
+#   2. l'envoie à Kaggle comme jeu de données privé, puis lance le noyau privé d'entraînement
+#      sur GPU (T4, gratuit, 30 h par semaine) — sans attendre la fin ;
+#   3. ne fait rien si les paquets n'ont pas changé depuis le dernier envoi.
+# Le PC qui sert Matthew récupère le candidat à sa nuit (cloud_training: "kaggle") et lui
+# fait passer le même duel que d'habitude : matthew/kaggle.py.
+#
+# Secrets : KAGGLE_USERNAME et KAGGLE_KEY (Kaggle → Settings → API → Create New Token).
+# Sans eux, le workflow s'arrête proprement.
+
+name: matthew-cloud
+
+on:
+  schedule:
+    - cron: "0 19 * * *"          # 21 h à Paris (heure d'été), 20 h l'hiver
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Relancer même si les paquets n'ont pas changé"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: matthew-cloud
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    name: Entraînement de Matthew sur Kaggle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Clé Kaggle présente ?
+        id: key
+        run: |
+          if [ -n "$KAGGLE_USERNAME" ] && [ -n "$KAGGLE_KEY" ]; then
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Pas de secrets KAGGLE_USERNAME / KAGGLE_KEY : rien n'est lancé."
+            echo "ok=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dépendances
+        if: steps.key.outputs.ok == '1'
+        run: python -m pip install "kaggle>=1.6,<3" requests
+
+      - name: Envoyer les données et lancer l'entraînement
+        if: steps.key.outputs.ok == '1'
+        env:
+          FORCE: ${{ inputs.force && '--force' || '' }}
+        run: |
+          # shellcheck disable=SC2086
+          python -m matthew.kaggle launch $FORCE

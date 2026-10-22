@@ -181,90 +181,121 @@ class Flywheel:
                 st["trained_examples"] = total
             st["last_run"] = str(run)
             _write(self.state_path, st)
-            # 5. importer
-            cand = f"{self.cfg['serve_model']}-candidate"
-            self._phase("import")
-            res = T.ollama_create(run, cand, runner=self._runner)
-            step("import", **res)
-            if not res["ok"]:
-                return self._finish(rep, "échec import Ollama")
-            # 6. évaluer
-            rows = E.load(Path(man["dir"]) / "eval.jsonl")
-            reps = self.cfg["eval_repeats"]
-            cand_score = E.score(self._client_factory(cand), rows, reps, progress=self._exam("exam"))
-            champ = _read(self.root / "champion.json", None)
-            champ_score = E.score(self._client_factory(self.cfg["serve_model"]), rows, reps,
-                                  progress=self._exam("duel")) if champ else None
-            ok, why = E.gate(cand_score, champ_score, self.cfg["promote_margin"],
-                             min_eval=self.cfg.get("min_eval", 30))
-            # Banc scellé (jamais appris) : aucune régression critique ni recul essentiel permis.
-            cases, decls = self._bench_cases(), self.journal.tools()
-            bench_c = bench_h = None
-            if cases:
-                from matthew import bench as B
-                bench_c = B.run(self._client_factory(cand), cases, decls)
-                bench_h = B.run(self._client_factory(self.cfg["serve_model"]), cases, decls) if champ else None
-                ok_b, why_b = B.gate(bench_c, bench_h)
-                if ok and not ok_b:
-                    ok, why = False, why_b
-            # Banc de cognition (juge de mémoire, planificateur) : décide de sa place dans la cognition.
-            try:
-                from matthew import cogbench
-                cog = cogbench.run(self._client_factory(cand))
-            except Exception as e:
-                cog = {"score": None, "error": f"{type(e).__name__}: {e}"}
-            # Les points faibles du candidat orientent le prochain amorçage (remédiation).
-            _write(self.root / "last_eval.json", {"at": stamp, "model": cand, **cand_score})
-            brief = lambda b: {k: b.get(k) for k in ("composite", "per", "critical", "n")} if b else None
-            step("évaluation", ok=True, candidate=cand_score, champion=champ_score, promote=ok, why=why,
-                 cognition={k: cog.get(k) for k in ("score", "judge", "planner")},
-                 bench={"candidate": brief(bench_c), "champion": brief(bench_h)})
-            if not ok:
-                return self._finish(rep, "candidat non promu")
-            # 7. promouvoir — l'ancien champion d'abord archivé sous une étiquette immuable
-            from matthew import rollback as R
-            champions = R.Champions(self.root, self.cfg, runner=self._runner, clock=self._clock)
-            if champ and not champions.history():
-                try:
-                    champions.archive(champ)
-                except Exception as e:
-                    step("archive", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
-            cp = self._runner(["ollama", "cp", cand, self.cfg["serve_model"]],
-                              capture_output=True, text=True, timeout=600)
-            if cp.returncode != 0:
-                step("promotion", ok=False, reason=(cp.stderr or "")[-200:])
-                return self._finish(rep, "échec promotion")
-            _write(self.root / "champion.json", {"model": self.cfg["serve_model"], "since": stamp,
-                                                 "run": str(run), "score": cand_score,
-                                                 "cognition": {k: cog.get(k) for k in ("score", "judge", "planner", "n")},
-                                                 "bench": brief(bench_c),
-                                                 "base": base["model"], "base_license": base["license"]})
-            step("promotion", ok=True)
-            # La copie servie se comporte-t-elle comme le candidat évalué ? Sinon, retour arrière.
-            try:
-                h = R.health(self._client_factory(self.cfg["serve_model"]), cases, decls) if cases else None
-                h = h if h and h.get("status") == "mesuré" else None
-                entry = champions.archive(_read(self.root / "champion.json", {}), health=h)
-                step("archive", ok=True, tag=entry["tag"])
-                if h and bench_c and h["critical"] > bench_c["critical"]:
-                    rb = champions.rollback("la copie servie ne se comporte pas comme le candidat évalué")
-                    step("retour arrière", **rb)
-                    return self._finish(rep, "retour arrière")
-            except Exception as e:
-                step("archive", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
-            # Direction 3 : le nouveau champion repasse chaque épreuve de spécialité, contre la
-            # référence ; il ne garde que les tâches qu'il mérite (matthew/specialist.py).
-            try:
-                from matthew import specialist
-                ref = self._reference() if self._reference else specialist.reference_client(self.cfg)
-                sp = specialist.run(self._client_factory(self.cfg["serve_model"]), ref,
-                                    champion=_read(self.root / "champion.json", {}), root=self.root)
-                step("spécialités", ok=True, **{k: v["delegated"] for k, v in sp["results"].items()})
-            except Exception as e:
-                step("spécialités", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
-            return self._finish(rep, "nouveau champion")
+            return self._judge(rep, step, run, Path(man["dir"]) / "eval.jsonl", base, stamp)
         finally:
             self._unlock()
+
+    def cloud(self, run: Path) -> dict:
+        """Un candidat entraîné dans le cloud (matthew/kaggle.py) : le même duel que la nuit locale."""
+        stamp = datetime.fromtimestamp(self._clock()).strftime("%Y%m%d-%H%M%S")
+        rep = {"schema": "matthew.cycle/1", "at": stamp, "execute": True, "cloud": True, "steps": []}
+
+        def step(name, **kw):
+            rep["steps"].append({"step": name, **kw})
+
+        if not self._lock():
+            step("verrou", ok=False, reason="un cycle tourne déjà")
+            return self._finish(rep, "occupé")
+        try:
+            run = Path(run)
+            plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
+            res = _read(run / "result.json", {})
+            step("cloud", ok=True, run=str(run), stamp=(plan.get("cloud") or {}).get("stamp"),
+                 examples=(plan.get("cloud") or {}).get("examples"), train_loss=res.get("train_loss"))
+            if T.finish(run) is None:                     # le Modelfile pointe sur le GGUF quantifié
+                step("import", ok=False, reason="aucun GGUF quantifié dans la sortie du cloud")
+                return self._finish(rep, "échec import Ollama")
+            base = {"model": plan["base_model"], "license": plan.get("base_license", self.cfg["base_license"])}
+            return self._judge(rep, step, run, run / "data" / "eval.jsonl", base, stamp)
+        finally:
+            self._unlock()
+
+    def _judge(self, rep: dict, step, run: Path, eval_path: Path, base: dict, stamp: str) -> dict:
+        """Importer le candidat dans Ollama, le faire passer contre le champion (examen, banc scellé,
+        cognition), le promouvoir s'il gagne, archiver, vérifier la copie servie, spécialités.
+        Partagé par la nuit locale et par le candidat entraîné dans le cloud (matthew/kaggle.py)."""
+        # 5. importer
+        cand = f"{self.cfg['serve_model']}-candidate"
+        self._phase("import")
+        res = T.ollama_create(run, cand, runner=self._runner)
+        step("import", **res)
+        if not res["ok"]:
+            return self._finish(rep, "échec import Ollama")
+        # 6. évaluer
+        rows = E.load(eval_path)
+        reps = self.cfg["eval_repeats"]
+        cand_score = E.score(self._client_factory(cand), rows, reps, progress=self._exam("exam"))
+        champ = _read(self.root / "champion.json", None)
+        champ_score = E.score(self._client_factory(self.cfg["serve_model"]), rows, reps,
+                              progress=self._exam("duel")) if champ else None
+        ok, why = E.gate(cand_score, champ_score, self.cfg["promote_margin"],
+                         min_eval=self.cfg.get("min_eval", 30))
+        # Banc scellé (jamais appris) : aucune régression critique ni recul essentiel permis.
+        cases, decls = self._bench_cases(), self.journal.tools()
+        bench_c = bench_h = None
+        if cases:
+            from matthew import bench as B
+            bench_c = B.run(self._client_factory(cand), cases, decls)
+            bench_h = B.run(self._client_factory(self.cfg["serve_model"]), cases, decls) if champ else None
+            ok_b, why_b = B.gate(bench_c, bench_h)
+            if ok and not ok_b:
+                ok, why = False, why_b
+        # Banc de cognition (juge de mémoire, planificateur) : décide de sa place dans la cognition.
+        try:
+            from matthew import cogbench
+            cog = cogbench.run(self._client_factory(cand))
+        except Exception as e:
+            cog = {"score": None, "error": f"{type(e).__name__}: {e}"}
+        # Les points faibles du candidat orientent le prochain amorçage (remédiation).
+        _write(self.root / "last_eval.json", {"at": stamp, "model": cand, **cand_score})
+        brief = lambda b: {k: b.get(k) for k in ("composite", "per", "critical", "n")} if b else None
+        step("évaluation", ok=True, candidate=cand_score, champion=champ_score, promote=ok, why=why,
+             cognition={k: cog.get(k) for k in ("score", "judge", "planner")},
+             bench={"candidate": brief(bench_c), "champion": brief(bench_h)})
+        if not ok:
+            return self._finish(rep, "candidat non promu")
+        # 7. promouvoir — l'ancien champion d'abord archivé sous une étiquette immuable
+        from matthew import rollback as R
+        champions = R.Champions(self.root, self.cfg, runner=self._runner, clock=self._clock)
+        if champ and not champions.history():
+            try:
+                champions.archive(champ)
+            except Exception as e:
+                step("archive", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
+        cp = self._runner(["ollama", "cp", cand, self.cfg["serve_model"]],
+                          capture_output=True, text=True, timeout=600)
+        if cp.returncode != 0:
+            step("promotion", ok=False, reason=(cp.stderr or "")[-200:])
+            return self._finish(rep, "échec promotion")
+        _write(self.root / "champion.json", {"model": self.cfg["serve_model"], "since": stamp,
+                                             "run": str(run), "score": cand_score,
+                                             "cognition": {k: cog.get(k) for k in ("score", "judge", "planner", "n")},
+                                             "bench": brief(bench_c),
+                                             "base": base["model"], "base_license": base["license"]})
+        step("promotion", ok=True)
+        # La copie servie se comporte-t-elle comme le candidat évalué ? Sinon, retour arrière.
+        try:
+            h = R.health(self._client_factory(self.cfg["serve_model"]), cases, decls) if cases else None
+            h = h if h and h.get("status") == "mesuré" else None
+            entry = champions.archive(_read(self.root / "champion.json", {}), health=h)
+            step("archive", ok=True, tag=entry["tag"])
+            if h and bench_c and h["critical"] > bench_c["critical"]:
+                rb = champions.rollback("la copie servie ne se comporte pas comme le candidat évalué")
+                step("retour arrière", **rb)
+                return self._finish(rep, "retour arrière")
+        except Exception as e:
+            step("archive", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
+        # Direction 3 : le nouveau champion repasse chaque épreuve de spécialité, contre la
+        # référence ; il ne garde que les tâches qu'il mérite (matthew/specialist.py).
+        try:
+            from matthew import specialist
+            ref = self._reference() if self._reference else specialist.reference_client(self.cfg)
+            sp = specialist.run(self._client_factory(self.cfg["serve_model"]), ref,
+                                champion=_read(self.root / "champion.json", {}), root=self.root)
+            step("spécialités", ok=True, **{k: v["delegated"] for k, v in sp["results"].items()})
+        except Exception as e:
+            step("spécialités", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
+        return self._finish(rep, "nouveau champion")
 
     def _bench_cases(self) -> list[dict]:
         if self._bench:
@@ -449,6 +480,13 @@ def main(argv=None) -> int:
         print(" ".join(schedule_command()))
         return 0
     fw = Flywheel()
+    # Entraînement dans le cloud (matthew/kaggle.py) : un candidat prêt passe d'abord son duel.
+    if a.execute and fw.cfg.get("cloud_training") == "kaggle":
+        try:
+            from matthew import kaggle
+            print(json.dumps({"cloud": kaggle.pull(fw)}, ensure_ascii=False))
+        except Exception as e:
+            print(f"[Matthew] cloud : {type(e).__name__}: {e}")
     out = fw.status() if a.status else fw.cycle(execute=a.execute, budget=a.budget)
     print(json.dumps(out, ensure_ascii=False, indent=1))
     return 0

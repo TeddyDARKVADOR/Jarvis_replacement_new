@@ -171,13 +171,15 @@
         "Pièges trouvés et corrigés : le gabarit Qwen3.5 veut les arguments d'outil en dict (pas en JSON texte) ; Arrow ne sait pas unifier des schémas d'outils variés (texte rendu en Python) ; Unsloth écrit le GGUF dans gguf_gguf/.",
         "Mémoire vidéo : 11,9 Go sur 12 pendant l'entraînement — tout autre modèle chargé fait déborder.",
         "Lu ligne par ligne (parse_progress) : chaque perte part à la vitrine en direct pendant l'entraînement.",
-        "2026-10-21 : sortie non tamponnée (PYTHONUNBUFFERED) — sinon les pertes n'arrivaient au direct que par blocs de 8 Ko ; train_runtime écrit dans result.json (heures de GPU de la vitrine)."
+        "2026-10-21 : sortie non tamponnée (PYTHONUNBUFFERED) — sinon les pertes n'arrivaient au direct que par blocs de 8 Ko ; train_runtime écrit dans result.json (heures de GPU de la vitrine).",
+        "2026-10-22 : précision choisie selon la carte (bf16 sur la RTX 3060, fp16 sur la T4 de Kaggle) ; chemins de données relatifs au dossier d'entraînement."
       ],
       "files": [
         "matthew/train.py"
       ],
       "status": "ok",
-      "verified": "2026-10-21 — matthew.selftest : 35/35 ; cycle réel de 38 min"
+      "verified": "2026-10-21 — matthew.selftest : 35/35 ; cycle réel de 38 min",
+      "updated": "2026-10-22"
     },
     {
       "id": "r.reglages",
@@ -551,7 +553,7 @@
       "id": "m.pack",
       "label": "pack.py — la donnée vérifiée voyage d'un PC à l'autre",
       "kind": "module",
-      "status": "a_tester",
+      "status": "ok",
       "summary": "Exporte les exemples SYNTHÉTIQUES vérifiés (licence ouverte, scrub sans effet, jamais le journal réel) dans matthew/packs/*.jsonl.gz ; la boucle de nuit les importe sans doublon avant de construire ses données.",
       "files": [
         "matthew/pack.py",
@@ -559,17 +561,21 @@
       ],
       "test": "python -m matthew.pack status",
       "verified": "2026-10-22 — matthew.selftest : 42/42",
-      "updated": "2026-10-22"
+      "updated": "2026-10-22",
+      "details": [
+        "2026-10-22 : premier paquet, 1 745 exemples (session du portable) ; les déclarations d'outils voyagent avec (packs/tools.json) ; un exemple que scrub retouche (adresse, IBAN, même inventés) est retenu, pas emballé (3 cette fois)."
+      ]
     },
     {
       "id": "m.session",
       "label": "session.py — une grosse session de données sans GPU",
       "kind": "module",
-      "status": "partiel",
+      "status": "ok",
       "summary": "Fabrique de la donnée vérifiée en quantité sur n'importe quel PC : conversation et refus, puis chaque outil (les plus faibles d'abord, d'après la vitrine) en double annotation, puis une ronde difficile ; pause sur quota, heure limite, état dans memory/matthew/session.json.",
       "details": [
         "Professeurs par défaut : gpt-oss:120b-cloud (Apache-2.0) génère, gemma4:31b-cloud (Apache-2.0) vérifie — deux familles ; DeepSeek-V3.1 et Qwen3-Coder ont été retirés du cloud Ollama le 2026-07-15.",
-        "Première session lancée le 2026-10-22 sur le portable (Inspiron, Iris Xe, sans GPU) : objectif 30 exemples par outil + 10 difficiles, 80 conversations, 80 refus."
+        "Première session lancée le 2026-10-22 sur le portable (Inspiron, Iris Xe, sans GPU) : objectif 30 exemples par outil + 10 difficiles, 80 conversations, 80 refus.",
+        "Bilan de la première session (2026-10-22, portable sans GPU, ~5 h) : 1 748 exemples vérifiés dont 1 318 en double annotation et 416 difficiles ; 84 conversations, 84 refus, 43 outils ; les moins fournis : screen_process (8), mcp (9), code_helper (13)."
       ],
       "files": [
         "matthew/session.py"
@@ -597,6 +603,28 @@
       ],
       "test": "python -m matthew.flywheel --schedule",
       "verified": "2026-10-22 — matthew.selftest : 42/42",
+      "updated": "2026-10-22"
+    },
+    {
+      "id": "m.kaggle",
+      "label": "kaggle.py — Matthew s'entraîne dans le cloud, sans PC allumé",
+      "kind": "module",
+      "status": "a_tester",
+      "summary": "Chaque soir, GitHub Actions (matthew-cloud.yml) construit le jeu de données à partir des paquets du dépôt, l'envoie à Kaggle comme jeu de données PRIVÉ et lance le noyau PRIVÉ d'entraînement sur GPU (T4 gratuit, 30 h par semaine, fp16), sans attendre la fin ; rien si les paquets n'ont pas changé. Le PC qui sert Matthew récupère le candidat (cloud_training: \"kaggle\", ou python -m matthew.kaggle pull) et lui fait passer le MÊME duel que la nuit locale (Flywheel._judge : examen, banc scellé, cognition, archive, retour arrière).",
+      "details": [
+        "Seule la donnée SYNTHÉTIQUE des paquets part dans le cloud ; le journal réel et les corrections restent sur les PC.",
+        "Le noyau efface points de contrôle, GGUF 16 bits et modèle fusionné (~8,7 Go) : seul le GGUF quantifié et le LoRA voyagent.",
+        "Pourquoi l'évaluation sur le PC : le format d'appel d'outils de Qwen3.5 est lu nativement par Ollama (PARSER qwen3.5) ; Oracle (VM.Standard.E2.1.Micro, 1 Go de RAM) ne peut pas servir un modèle 4B.",
+        "À faire par l'utilisateur : un compte Kaggle vérifié par téléphone, la clé API en secrets GitHub (KAGGLE_USERNAME, KAGGLE_KEY) et dans ~/.kaggle/kaggle.json sur le PC qui sert Matthew. Jamais lancé en vrai (pas encore de compte)."
+      ],
+      "files": [
+        "matthew/kaggle.py",
+        ".github/workflows/matthew-cloud.yml",
+        "matthew/flywheel.py",
+        "matthew/train.py"
+      ],
+      "test": "python -m matthew.kaggle prepare /tmp/matthew-cloud",
+      "verified": "2026-10-22 — matthew.selftest : 43/43",
       "updated": "2026-10-22"
     }
   ],
@@ -1029,6 +1057,26 @@
     [
       "m.gateway",
       "m.sched",
+      "utilise"
+    ],
+    [
+      "matthew",
+      "m.kaggle",
+      "contient"
+    ],
+    [
+      "m.pack",
+      "m.kaggle",
+      "alimente"
+    ],
+    [
+      "m.kaggle",
+      "m.flywheel",
+      "utilise"
+    ],
+    [
+      "m.kaggle",
+      "m.train",
       "utilise"
     ]
   ]

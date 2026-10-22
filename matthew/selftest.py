@@ -1248,6 +1248,116 @@ def _sched():
     return "Windows (.cmd, schtasks), Linux (systemd Persistent, sinon crontab sans écraser l'existant)"
 
 
+@check("cloud Kaggle : paquet préparé, lancé sans doublon, candidat récupéré puis jugé par la vraie boucle")
+def _kaggle():
+    import shutil
+    from matthew import kaggle as K
+    from matthew import pack as P
+    # 1. Des paquets comme ceux du dépôt : exemples synthétiques vérifiés + déclarations d'outils.
+    src, packs = TMP / "cloud-src", TMP / "cloud-packs"
+    (src / "synthetic").mkdir(parents=True)
+    decls = [{"name": "weather_report", "description": "Weather for a city",
+              "parameters": {"type": "OBJECT", "properties": {"city": {"type": "STRING"}}, "required": ["city"]}}]
+    (src / "tools.json").write_text(json.dumps({"digest": "x", "tools": decls}), encoding="utf-8")
+    rows = []
+    for i, city in enumerate(["Lyon", "Nantes", "Brest", "Dijon", "Rouen", "Metz", "Pau", "Nice"]):
+        rows.append({"episode": f"syn-c{i}", "target": "weather_report", "status": "ok", "synthetic": True,
+                     "license": "apache-2.0", "teacher": "gpt-oss:120b-cloud", "verifier": "gemma4:31b-cloud",
+                     "ts": 1_790_000_000 + i, "tools": ["weather_report"],
+                     "messages": [{"role": "system", "content": "s"}, {"role": "user", "content": f"Quel temps à {city} ?"},
+                                  {"role": "assistant", "content": "", "tool_calls": [{"id": "call_0", "type": "function",
+                                   "function": {"name": "weather_report", "arguments": {"city": city}}}]}]})
+    (src / "synthetic" / "records.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    P.export(src, packs, host="portable")
+    assert (packs / "tools.json").exists(), "les déclarations voyagent avec les paquets"
+    # 2. Préparer : jeu de données (chemins relatifs) et noyau privé sur GPU, avec Internet.
+    out = K.prepare(TMP / "cloud-out", packs, owner="teddy")
+    plan = json.loads((Path(out["dataset"]) / "plan.json").read_text(encoding="utf-8"))
+    assert plan["train"] == "data/train.jsonl" and (Path(out["dataset"]) / "data" / "train.jsonl").exists()
+    assert plan["cloud"]["packs"] == K.packs_hash(packs) and out["train"] + out["eval"] >= 8
+    meta = json.loads((Path(out["kernel"]) / "kernel-metadata.json").read_text(encoding="utf-8"))
+    assert meta["is_private"] and meta["enable_gpu"] and meta["enable_internet"]
+    assert meta["dataset_sources"] == ["teddy/matthew-run"] and meta["id"] == "teddy/matthew-train"
+    assert json.loads((Path(out["dataset"]) / "dataset-metadata.json").read_text(encoding="utf-8"))["id"] == "teddy/matthew-run"
+    assert "fp16=not BF16" in (Path(out["dataset"]) / "train_matthew.py").read_text(encoding="utf-8")
+    # 3. Lancer : envoi puis noyau ; rien si les paquets n'ont pas changé.
+    calls = []
+
+    class _CP:
+        def __init__(self, out="", code=0):
+            self.stdout, self.stderr, self.returncode = out, "", code
+
+    def runner(cmd, **kw):
+        args = cmd[len(K.cli()):]
+        calls.append(args[:2])
+        if args[:2] == ["datasets", "download"]:
+            d = Path(args[args.index("-p") + 1])
+            if fake["packs"]:
+                (d / "plan.json").write_text(json.dumps({"cloud": {"packs": fake["packs"]}}), encoding="utf-8")
+                return _CP()
+            return _CP(code=1)
+        if args[:2] == ["datasets", "status"]:
+            return _CP("ready") if fake["exists"] else _CP(code=1)
+        return _CP()
+    fake = {"packs": None, "exists": False}
+    r = K.launch(runner=runner, owner="teddy", out=TMP / "cloud-l1", pack_dir=packs)
+    assert r["ok"] and r["launched"] == "teddy/matthew-train", r
+    assert ["datasets", "create"] in calls and ["kernels", "push"] in calls
+    fake.update(packs=K.packs_hash(packs), exists=True)
+    calls.clear()
+    assert "skipped" in K.launch(runner=runner, owner="teddy", out=TMP / "cloud-l2", pack_dir=packs)
+    assert ["kernels", "push"] not in calls, "aucune donnée nouvelle : aucun GPU consommé"
+    assert K.launch(force=True, runner=runner, owner="teddy", out=TMP / "cloud-l3", pack_dir=packs)["ok"]
+    assert ["datasets", "version"] in calls
+    # 4. État du noyau, et récupération.
+    assert K.status("teddy", lambda c, **k: _CP('teddy/matthew-train has status "running"')) == "running"
+    assert K.pull(runner=lambda c, **k: _CP('teddy/matthew-train has status "running"'), owner="teddy",
+                  root=TMP / "cloud-root")["status"] == "running"
+    judged = []
+
+    class FakeFw:
+        def cloud(self, run):
+            judged.append(Path(run))
+            return {"outcome": "nouveau champion"}
+
+    def done(cmd, **kw):
+        args = cmd[len(K.cli()):]
+        if args[:2] == ["kernels", "status"]:
+            return _CP('teddy/matthew-train has status "complete"')
+        if args[:2] == ["kernels", "output"]:
+            run = Path(args[args.index("-p") + 1]) / "run"
+            (run / "data").mkdir(parents=True)
+            (run / "plan.json").write_text(json.dumps({"base_model": "Qwen/Qwen3.5-4B", "cloud": {"stamp": "20261022-210000"}}))
+            (run / "result.json").write_text(json.dumps({"train_loss": 0.2}))
+        return _CP()
+    root = TMP / "cloud-root"
+    out = K.pull(FakeFw(), runner=done, owner="teddy", root=root)
+    assert out["outcome"] == "nouveau champion" and judged[0].name == "cloud-20261022-210000", out
+    assert "déjà jugé" in K.pull(FakeFw(), runner=done, owner="teddy", root=root)["skipped"]
+    # 5. La vraie boucle juge un candidat du cloud : GGUF quantifié retrouvé, même duel.
+    sch, j = school_for(TMP / "cloud-fw")
+    for i in range(3):
+        j.episode(session="s", user=f"bonjour numéro {i}", tools=[], reply="r")
+    fw = Flywheel(TMP / "cloud-fw", CFG, school=sch, runner=lambda c, **k: Proc(), clock=Clock(),
+                  trainer=lambda run: {"ok": True},
+                  client_factory=lambda m: Client("http://x", m, post=fake_post(smart_teacher), usage_root=TMP / "cloud-fw"))
+    dry = fw.cycle(execute=False)
+    planned = Path(next(s for s in dry["steps"] if s["step"] == "plan")["run"])
+    cloud_run = TMP / "cloud-fw" / "runs" / "cloud-x"
+    shutil.copytree(planned, cloud_run)
+    (cloud_run / "data").mkdir()
+    shutil.copy2(Path(json.loads((planned / "plan.json").read_text(encoding="utf-8"))["eval"]), cloud_run / "data" / "eval.jsonl")
+    (cloud_run / "gguf_gguf").mkdir()
+    (cloud_run / "gguf_gguf" / "unsloth.Q5_K_M.gguf").write_bytes(b"GGUF")
+    rep = fw.cloud(cloud_run)
+    assert rep["steps"][0]["step"] == "cloud" and rep["outcome"] in ("nouveau champion", "candidat non promu"), rep
+    assert "FROM ./gguf_gguf/unsloth.Q5_K_M.gguf" in (cloud_run / "Modelfile").read_text(encoding="utf-8")
+    empty = TMP / "cloud-fw" / "runs" / "cloud-vide"
+    shutil.copytree(planned, empty)
+    assert fw.cloud(empty)["outcome"] == "échec import Ollama", "sans GGUF : rien n'est importé"
+    return f"préparé, lancé une fois, récupéré, jugé : {rep['outcome']}"
+
+
 @check("streaming : morceaux relayés dès leur arrivée, tokens comptés à la fin")
 def _gateway_stream():
     import threading
