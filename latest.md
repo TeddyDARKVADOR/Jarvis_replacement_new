@@ -1,37 +1,42 @@
-## JARVIS Night Shift — 2026-10-22 · passe 1/3
+## JARVIS Night Shift — 2026-10-22 · passe 2/3
 
 **21/21 suites vertes ; aucune régression ; ruff : 0 remarque ; rien à corriger.**
 
-commit `3b91e19` · branche `main` · ubuntu24 20261018.339.1 · Python 3.12.15 · 1 min 21 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39706293691)
+commit `3b91e19` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 21 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39732276807)
 
 | Suite | Score | État | Durée |
 |---|---:|---|---:|
-| capabilities.selftest | 11/11 | ✅ vert | 0.6 s |
+| capabilities.selftest | 11/11 | ✅ vert | 0.5 s |
 | context.selftest | 33/33 | ✅ vert | 0.1 s |
-| server.selftest | 35/35 | ✅ vert | 2.1 s |
+| server.selftest | 35/35 | ✅ vert | 2.2 s |
 | server.routing_selftest | 35/35 | ✅ vert | 0.7 s |
 | client_desktop --selftest | 28/28 | ✅ vert | 0.7 s |
-| cognition.selftest | 64/64 | ✅ vert | 3.6 s |
-| eval_lab.selftest | 28/28 | ✅ vert | 7.2 s |
+| cognition.selftest | 64/64 | ✅ vert | 4.7 s |
+| eval_lab.selftest | 28/28 | ✅ vert | 6.0 s |
 | core.code_workspace.selftest | 34/34 | ✅ vert | 33.7 s |
-| reminders.selftest | 4/4 | ✅ vert | 0.3 s |
-| resilience.selftest | 15/15 | ✅ vert | 0.7 s |
-| extensions.selftest | 15/15 | ✅ vert | 0.8 s |
+| reminders.selftest | 4/4 | ✅ vert | 0.2 s |
+| resilience.selftest | 15/15 | ✅ vert | 0.6 s |
+| extensions.selftest | 15/15 | ✅ vert | 0.7 s |
 | offline.selftest | 10/10 | ✅ vert | 1.3 s |
 | core.token_usage_selftest | 1/1 | ✅ vert | 0.0 s |
-| actions.repository_review_selftest | 1/1 | ✅ vert | 0.1 s |
-| nightshift.selftest | 38/38 | ✅ vert | 6.8 s |
-| meeting.selftest | 21/21 | ✅ vert | 1.0 s |
+| actions.repository_review_selftest | 1/1 | ✅ vert | 0.0 s |
+| nightshift.selftest | 38/38 | ✅ vert | 6.5 s |
+| meeting.selftest | 21/21 | ✅ vert | 0.9 s |
 | pilot.selftest | 13/13 | ✅ vert | 1.7 s |
 | quota.selftest | 7/7 | ✅ vert | 0.1 s |
 | daily.selftest | 8/8 | ✅ vert | 15.2 s |
 | incidents.selftest | 6/6 | ✅ vert | 0.2 s |
-| matthew.selftest | 36/36 | ✅ vert | 2.0 s |
+| matthew.selftest | 36/36 | ✅ vert | 1.8 s |
 
 ### Tâche de la nuit
 
 - rien à corriger
 - Consommation : 0 appel(s) sur 12 · 0 tokens sur 60000
+
+### Cette nuit, passe par passe
+
+- Passe 1 : rien de tenté — rien de tenté · 0 tokens
+- Passe 2 : rien de tenté — rien de tenté · 0 tokens
 
 ### Échec persistant — manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte
 
