@@ -148,7 +148,7 @@ private fun TabBar(current: Tab, badgeOnHome: Boolean, onSelect: (Tab) -> Unit) 
             .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        TabItem("JARVIS", current == Tab.HOME, badgeOnHome) { onSelect(Tab.HOME) }
+        TabItem("MATTHEW", current == Tab.HOME, badgeOnHome) { onSelect(Tab.HOME) }
         TabItem("HISTORY", current == Tab.HISTORY, false) { onSelect(Tab.HISTORY) }
         TabItem("SETTINGS", current == Tab.SETTINGS, false) { onSelect(Tab.SETTINGS) }
     }

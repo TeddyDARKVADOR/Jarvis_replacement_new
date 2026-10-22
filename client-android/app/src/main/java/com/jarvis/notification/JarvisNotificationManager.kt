@@ -63,16 +63,16 @@ class JarvisNotificationManager(private val context: Context) {
      *
      * Called at service start rather than at first notification: a channel that
      * only appears once something has been sent cannot be tuned in advance, and
-     * the user would have no way to pre-mute JARVIS's discreet notifications.
+     * the user would have no way to pre-mute Matthew's discreet notifications.
      */
     fun ensureChannels() {
         val mgr = manager ?: return
         val specs = listOf(
-            Triple(NotificationMapper.CHANNEL_CRITICAL, "JARVIS critique",
+            Triple(NotificationMapper.CHANNEL_CRITICAL, "MATTHEW critique",
                 "Interruptions : securite, argent, perte de donnees."),
-            Triple(NotificationMapper.CHANNEL_IMPORTANT, "JARVIS important",
+            Triple(NotificationMapper.CHANNEL_IMPORTANT, "MATTHEW important",
                 "Ce qui merite d'etre vu dans l'heure."),
-            Triple(NotificationMapper.CHANNEL_GENERAL, "JARVIS general",
+            Triple(NotificationMapper.CHANNEL_GENERAL, "MATTHEW general",
                 "Informations utiles, sans urgence. Discret."),
         )
         for ((id, name, description) in specs) {
@@ -157,8 +157,8 @@ class JarvisNotificationManager(private val context: Context) {
             .setContentTitle(spec.title)
             .setContentText(spec.text)
             // The app's own name sits in the sub-text, so the headline belongs
-            // to the message rather than being "JARVIS" every single time.
-            .setSubText("JARVIS")
+            // to the message rather than being "MATTHEW" every single time.
+            .setSubText("MATTHEW")
             .setSmallIcon(R.drawable.ic_stat_jarvis)
             .setContentIntent(open)
             // Tapping means read. Leaving it in the shade after a tap is how

@@ -100,11 +100,11 @@ data class JarvisSnapshot(
     val micLevel: Float = 0f,
 
     /**
-     * Loudness of JARVIS's own voice, 0..1, as it is played.
+     * Loudness of Matthew's own voice, 0..1, as it is played.
      *
      * Taken from the playback loop and not from the socket: audio arrives in
      * bursts far faster than real time, so a level measured on arrival would run
-     * ahead of the voice and then flatline while JARVIS was still speaking.
+     * ahead of the voice and then flatline while Matthew was still speaking.
      */
     val speakerLevel: Float = 0f,
 
@@ -141,7 +141,7 @@ data class JarvisSnapshot(
      * The irreversible action MARK LIII is waiting on, null when there is none.
      *
      * Deliberately three fields on the existing snapshot rather than a second
-     * state machine: a confirmation is something JARVIS is *doing*, concurrent
+     * state machine: a confirmation is something Matthew is *doing*, concurrent
      * with LISTENING or SPEAKING, not a mode the app enters.
      *
      * [confirmationId] is the part that matters. It is the server's id for this
@@ -174,8 +174,8 @@ data class JarvisSnapshot(
     val connected: Boolean get() = link == LinkState.CONNECTED
     val awaitingConfirmation: Boolean get() = confirmationId != null
 
-    /** The line the home screen puts under the core, or null while JARVIS has
-     *  said nothing yet. Only JARVIS's own words: showing the user their own
+    /** The line the home screen puts under the core, or null while Matthew has
+     *  said nothing yet. Only Matthew's own words: showing the user their own
      *  sentence back is the one thing they already know. */
     val lastSpokenLine: String?
         get() = messages.lastOrNull { it.fromJarvis }?.text

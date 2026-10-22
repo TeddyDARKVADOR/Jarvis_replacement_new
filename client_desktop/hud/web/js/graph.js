@@ -1,9 +1,9 @@
 /**
- * graph.js — le panneau GRAPHE : ce que JARVIS sait faire, tel que son graphe le décrit.
+ * graph.js — le panneau GRAPHE : ce que Matthew sait faire, tel que son graphe le décrit.
  *
  * Les données viennent de capabilities/graphs/ (lues par window.py, jamais par le
  * réseau) et arrivent par HUD.showGraph(). Il n'y a pas de bouton : le panneau
- * s'ouvre quand on demande à JARVIS de montrer son graphe (plugins/capabilities.py).
+ * s'ouvre quand on demande à Matthew de montrer son graphe (plugins/capabilities.py).
  *
  * Disposition radiale déterministe : la racine au centre, puis chaque anneau suit
  * les arêtes « contient ». Les autres relations ne s'allument qu'autour du nœud

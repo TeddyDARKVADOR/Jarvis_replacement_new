@@ -542,6 +542,29 @@ def _chain_config():
     return "ordre et modèles surchargeables ; un serveur local éteint ne coûte rien"
 
 
+@check("22b Matthew tâche par tâche : écarté de ce qu'il n'a pas gagné ; sans le paquet, rien ne change")
+def _chain_task():
+    import sys
+    import types
+    fake = types.ModuleType("matthew")
+    fake.allowed = lambda task: task == "juge"
+    saved = sys.modules.get("matthew")
+    sys.modules["matthew"] = fake
+    try:
+        chain = ProviderChain([_FakeProvider("matthew", ["M", "M2"]), _FakeProvider("groq", ["G", "G2"])])
+        chain._local_alive = lambda p: True
+        assert chain.complete("x", task="juge") == ("M", "matthew")
+        assert chain.complete("x", task="planif") == ("G", "groq"), "spécialité non gagnée : la suite répond"
+        sys.modules["matthew"] = None                     # paquet retiré : ImportError attrapée
+        assert chain.complete("x", task="planif") == ("M2", "matthew")
+    finally:
+        if saved is None:
+            sys.modules.pop("matthew", None)
+        else:
+            sys.modules["matthew"] = saved
+    return "juge : Matthew ; planif : le suivant ; sans matthew/ : l'ordre d'avant"
+
+
 # ── 23–25. Second avis, blanchiment ──────────────────────────────────────────
 
 class _FakeChain:
@@ -553,8 +576,8 @@ class _FakeChain:
         self.calls = []
 
     def complete(self, prompt, *, system="", max_tokens=400, temperature=0.3,
-                 prefer=None, exclude=()):
-        self.calls.append({"prompt": prompt, "system": system, "exclude": exclude})
+                 prefer=None, exclude=(), task=None):
+        self.calls.append({"prompt": prompt, "system": system, "exclude": exclude, "task": task})
         if self.fail:
             raise AllProvidersFailed("tout est en panne")
         return (self.answers.pop(0) if self.answers else "NO"), "fake"

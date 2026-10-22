@@ -234,7 +234,7 @@ class DeviceStateReporter(
 
     /**
      * Screen and headset changes are worth reporting the instant they happen:
-     * they are the two that change what JARVIS may do, and waiting up to a tick
+     * they are the two that change what Matthew may do, and waiting up to a tick
      * to learn a headset went in is exactly the delay a user would notice.
      */
     private fun registerReceiver() {

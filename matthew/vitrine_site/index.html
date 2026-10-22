@@ -32,7 +32,12 @@
 <!-- La scène est le fond de toute la page : le récit glisse par-dessus. -->
 <div id="scene" class="stage" role="img" data-i18n-aria="scene_aria" aria-label="Matthew sur la Lune."></div>
 <div class="veil" aria-hidden="true"></div>
-<button id="lang" type="button" class="langbtn">EN</button>
+<div class="toolbar">
+  <button id="tour-btn" type="button" class="langbtn round" data-i18n-aria="tour_btn" aria-label="Visite guidée" title="">?</button>
+  <button id="share" type="button" class="langbtn" data-i18n="share">Partager</button>
+  <button id="quality" type="button" class="langbtn">AUTO</button>
+  <button id="lang" type="button" class="langbtn">EN</button>
+</div>
 <div class="progress-dots" id="dots" aria-hidden="true"></div>
 
 <main id="story">
@@ -122,6 +127,16 @@
     </div>
   </section>
 
+  <!-- 5 bis. Les spécialités (Direction 3) : seulement si data/vitrine.json en publie -->
+  <section class="chapter right" id="c-spec" data-shot="domains" hidden>
+    <div class="card">
+      <p class="label" data-i18n="sp_k">Ses spécialités</p>
+      <h2 data-i18n="sp_h">Il ne prend une tâche que s'il la mérite.</h2>
+      <p data-i18n="sp_p">Matthew ne remplace pas tout d'un coup. Pour chaque type de tâche, il passe une épreuve à part. Il ne s'en charge que s'il atteint le seuil et fait au moins aussi bien que le modèle qu'il remplacerait.</p>
+      <ul class="specs" id="specs"></ul>
+    </div>
+  </section>
+
   <!-- 6. La promesse -->
   <section class="chapter center" id="c6" data-shot="far">
     <div class="card">
@@ -188,6 +203,21 @@
   <h3 data-i18n="dr_cases">Ses questions d'examen</h3>
   <ul id="dr-cases"></ul>
 </aside>
+
+<!-- Le guide : Matthew en personne présente la page à la première visite (bouton « ? » ensuite) -->
+<div class="guide" id="guide" hidden role="dialog" aria-modal="false" aria-labelledby="g-text">
+  <div class="g-spot" id="g-spot" aria-hidden="true"></div>
+  <div class="g-bot" id="g-bot" aria-hidden="true"></div>
+  <div class="g-bubble">
+    <p class="g-name">MATTHEW <span class="g-step" id="g-step"></span></p>
+    <p class="g-text" id="g-text" aria-live="polite"></p>
+    <div class="g-actions">
+      <button type="button" id="g-voice" class="g-ico" data-i18n-aria="g_voice" aria-pressed="false">🔇</button>
+      <button type="button" id="g-skip" class="g-link" data-i18n="g_skip">Passer la visite</button>
+      <button type="button" id="g-next" class="g-next" data-i18n="g_next">Suivant</button>
+    </div>
+  </div>
+</div>
 
 <noscript><p class="noscript">Cette page a besoin de JavaScript. · This page needs JavaScript.</p></noscript>
 <script type="module" src="app.js"></script>

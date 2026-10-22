@@ -1,5 +1,5 @@
 """
-The tray icon — where JARVIS goes when the panel is not wanted, and where
+The tray icon — where Matthew goes when the panel is not wanted, and where
 notifications come from.
 
 `QSystemTrayIcon.showMessage` rather than `win10toast`, which is in the
@@ -76,7 +76,7 @@ class JarvisTray(QSystemTrayIcon):
                 self._base_icon = QIcon(str(candidate))
                 break
         self.setIcon(self._base_icon or _fallback_icon(MUTED))
-        self.setToolTip("JARVIS — hors ligne")
+        self.setToolTip("Matthew — hors ligne")
 
         menu = QMenu()
         self._show_action = QAction("Afficher / masquer", menu)
@@ -98,7 +98,7 @@ class JarvisTray(QSystemTrayIcon):
         menu.addAction(debug)
 
         menu.addSeparator()
-        quit_action = QAction("Quitter JARVIS", menu)
+        quit_action = QAction("Quitter Matthew", menu)
         quit_action.triggered.connect(self.quit_requested.emit)
         menu.addAction(quit_action)
 
@@ -125,13 +125,13 @@ class JarvisTray(QSystemTrayIcon):
             colour = OK
         # The bundled .ico has no state variants, so a coloured dot is the only
         # honest way to show one. When the file is present it is still preferred
-        # for the connected case, where it is simply "JARVIS".
+        # for the connected case, where it is simply "Matthew".
         self.setIcon(
             self._base_icon
             if (self._base_icon and snapshot.connected and not snapshot.gate_open)
             else _fallback_icon(colour)
         )
-        self.setToolTip(f"JARVIS — {state}")
+        self.setToolTip(f"Matthew — {state}")
 
         self._mic_action.blockSignals(True)
         self._mic_action.setChecked(snapshot.gate_open)

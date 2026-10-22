@@ -124,7 +124,7 @@ class HeadlessUI:
     @property
     def muted(self) -> bool:
         # Must stay False: _relay_phone_audio drops the phone's microphone
-        # while muted, so a True here makes a headless JARVIS deaf.
+        # while muted, so a True here makes a headless Matthew deaf.
         return self._muted
 
     @muted.setter
@@ -154,9 +154,9 @@ class HeadlessUI:
             from config import api_key_path
             cfg = json.loads(api_key_path(BASE_DIR)
                              .read_text(encoding="utf-8"))
-            return (cfg.get("assistant_name") or "JARVIS").strip()
+            return (cfg.get("assistant_name") or "Matthew").strip()
         except Exception:
-            return "JARVIS"
+            return "Matthew"
 
     # ── the HUD surface ──────────────────────────────────────────────────────
 
@@ -164,7 +164,7 @@ class HeadlessUI:
         line = str(text)
         self.state.log(line)
         if self._echo:
-            print(f"[JARVIS] {line}", flush=True)
+            print(f"[Matthew] {line}", flush=True)
         self._emit({"type": "sys", "text": line[:500]})
 
     def set_state(self, state: str) -> None:

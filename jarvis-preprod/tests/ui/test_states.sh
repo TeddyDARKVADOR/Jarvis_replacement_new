@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/ui/test_states.sh — l'interface reste celle de JARVIS.
+# tests/ui/test_states.sh — l'interface reste celle de Matthew.
 #
 # La vérification la plus utile ici n'est pas qu'un bouton existe : c'est que
 # l'écran d'accueil n'a pas redérivé vers un tableau de bord technique. C'est
@@ -19,7 +19,7 @@ lab_init "ui"
 # Appairer ici, pas compter sur la suite d'avant : lancee seule (ou apres
 # `smoke`, qui reinstalle l'app), cette suite trouvait le service arrete et
 # echouait sur l'etat du lien. connect_app relance l'activite ; il finit sur
-# SETTINGS, la navigation ci-dessous repart de JARVIS.
+# SETTINGS, la navigation ci-dessous repart de Matthew.
 "$LAB_ROOT/tools/connect_app.sh" >/dev/null 2>&1 || true
 "$ADB" shell am start -n "$LAB_PACKAGE/$LAB_ACTIVITY" >/dev/null 2>&1 || true
 sleep 3
@@ -27,14 +27,14 @@ sleep 3
 # bouton deja dans l'autre etat). Le bouton de l'accueil est l'action de l'app
 # elle-meme : s'en servir si le lien n'est pas monte.
 if ! "$LINK" --is-up >/dev/null 2>&1; then
-    "$UI" tap text "JARVIS" >/dev/null 2>&1 || true
-    "$UI" tap text "WAKE JARVIS" >/dev/null 2>&1 || true
+    "$UI" tap text "MATTHEW" >/dev/null 2>&1 || true
+    "$UI" tap text "WAKE MATTHEW" >/dev/null 2>&1 || true
     "$LINK" --wait 60 >/dev/null 2>&1 || true
 fi
 
 # ── navigation ───────────────────────────────────────────────────────────────
 
-for tab in JARVIS HISTORY SETTINGS; do
+for tab in MATTHEW HISTORY SETTINGS; do
     if "$UI" tap text "$tab" >/dev/null 2>&1; then
         sleep 2
         if "$UI" exists text "$tab" >/dev/null 2>&1; then
@@ -48,9 +48,9 @@ for tab in JARVIS HISTORY SETTINGS; do
     fi
 done
 
-# ── l'accueil parle le langage JARVIS ────────────────────────────────────────
+# ── l'accueil parle le langage Matthew ────────────────────────────────────────
 
-"$UI" tap text "JARVIS" >/dev/null 2>&1 || true
+"$UI" tap text "MATTHEW" >/dev/null 2>&1 || true
 sleep 2
 home="$("$UI" texts 2>/dev/null || true)"
 screenshot "home"
@@ -110,8 +110,8 @@ else
     "$ADB" shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
     "$ADB" shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
     "$ADB" shell am start -n "$LAB_PACKAGE/$LAB_ACTIVITY" >/dev/null 2>&1 || true
-    "$UI" tap text "JARVIS" >/dev/null 2>&1 || true
-    if ! wait_for "accueil" 10 sh -c "\"$UI\" texts | grep -qE '^(MIC|MUTE|WAKE JARVIS)$'"; then
+    "$UI" tap text "MATTHEW" >/dev/null 2>&1 || true
+    if ! wait_for "accueil" 10 sh -c "\"$UI\" texts | grep -qE '^(MIC|MUTE|WAKE MATTHEW)$'"; then
         ko "accueil atteint avant les etats" "$("$UI" texts 2>/dev/null | tr '\n' '|' | cut -c1-120)"
     fi
     bearer="$("$LAB_ROOT/tools/server.sh" bearer)"

@@ -32,7 +32,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * JARVIS, drawn.
+ * Matthew, drawn.
  *
  * One Canvas, four primitives — a filled centre, two arcs, a ring, a halo — and
  * everything else is those five values moving. There is no particle system and
@@ -43,7 +43,7 @@ import kotlin.math.sin
  * **What drives it.** Two numbers and one enum:
  *
  * ```
- *   level      0..1   the voice being heard — the user's or JARVIS's
+ *   level      0..1   the voice being heard — the user's or Matthew's
  *   rotation   0..1   a slow sweep, only where a state calls for one
  *   state             what MARK LIII says it is doing
  * ```
@@ -243,7 +243,7 @@ private fun DrawScope.drawCore(
     )
 
     // Two arcs, opposed, sweeping. Two rather than one because a single arc
-    // reads as a loading spinner, and JARVIS is not loading.
+    // reads as a loading spinner, and Matthew is not loading.
     if (mood.arcs > 0.01f) {
         val alpha = mood.arcs * (0.55f + voice * 0.45f)
         rotate(degrees = sweep * 360f, pivot = c) {

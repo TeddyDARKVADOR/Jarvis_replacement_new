@@ -5,6 +5,21 @@ la raison. Le hash SHA-256 du fichier est enregistré dans `memory/cognition.db`
 (table `constitution_versions`) au premier chargement de chaque version : une
 modification sans changement de version est détectée et signalée.
 
+## 0.2.0 — 2026-10-22
+
+L'assistant s'appelle désormais Matthew (droits d'auteur : « JARVIS » est un
+personnage de Marvel). Demandé par Teddy.
+
+- `identite.nom` : « JARVIS » → « Matthew ». Le nom vient du modèle ouvert
+  entraîné chaque nuit (`matthew/`) : l'assistant et son futur cerveau portent
+  le même nom.
+- `priorites.Style` : la référence à « Jarvis d'Iron Man » est retirée ; le
+  style (professionnel, efficace, une pointe d'esprit) reste, avec une
+  personnalité propre.
+- `identite.histoire` : la date du changement de nom.
+- Inchangé : le nom du fichier (`jarvis.toml`) et les identifiants internes,
+  renommés plus tard, pas à pas.
+
 ## 0.1.0 — 2026-10-13
 
 Premier jet, rédigé par Claude à la demande de Teddy, à amender.

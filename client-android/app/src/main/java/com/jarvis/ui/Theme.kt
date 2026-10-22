@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.Color
 /**
  * One palette, dark, and no light variant.
  *
- * JARVIS is a lit core on a near-black field; a light theme would not be the
+ * Matthew is a lit core on a near-black field; a light theme would not be the
  * same design with different values, it would be a different design. Rather than
  * ship a second one badly, this one is the only one.
  *

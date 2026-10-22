@@ -102,7 +102,7 @@ fun SettingsScreen(
 
         Toggle(
             label = "Animations",
-            detail = "The core still changes with JARVIS's state when this is " +
+            detail = "The core still changes with Matthew's state when this is " +
                      "off — it just stops moving.",
             checked = animField,
             onChange = { animField = it; save() },
@@ -115,10 +115,10 @@ fun SettingsScreen(
         Label("Notifications")
         Detail(
             if (notificationsGranted) {
-                "Allowed. The ongoing notification is what keeps JARVIS running " +
+                "Allowed. The ongoing notification is what keeps Matthew running " +
                     "when the screen is off."
             } else {
-                "Not allowed. Android will not let JARVIS stay connected in the " +
+                "Not allowed. Android will not let Matthew stay connected in the " +
                     "background without it."
             }
         )
@@ -151,7 +151,7 @@ fun SettingsScreen(
         }
         Spacer(Modifier.height(10.dp))
 
-        // Masked by default. It is full control of JARVIS, this screen is the
+        // Masked by default. It is full control of Matthew, this screen is the
         // one people open to read their address out loud to someone, and a
         // secret that is visible by default is a secret that eventually gets
         // photographed, screen-shared or typed into the wrong box.

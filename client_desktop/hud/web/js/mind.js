@@ -92,7 +92,7 @@ export function createMind(ctx) {
     if (t === 'matthew') loadMatthew(ctx, status);
   }
 
-  // ── usage : ce que JARVIS a coûté et réussi (cognition/usage.py) ──
+  // ── usage : ce que Matthew a coûté et réussi (cognition/usage.py) ──
   let usageDays = 7;
   const kfmt = (n) => (n == null ? '—'
     : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.', ',')} M`
@@ -199,7 +199,7 @@ export function createMind(ctx) {
       const auto = (r.autonomy || {});
       const blocker = (auto.goals || {})[g.id];
       const autoBtn = g.status === 'active'
-        ? `<button class="mini-btn ${g.autonomy ? 'on' : ''}" data-goal="${esc(g.id)}" data-act="autonomy" data-on="${g.autonomy ? 0 : 1}" title="${g.autonomy ? 'Retirer l’autonomie' : 'Autoriser JARVIS à avancer seul (recherche web uniquement)'}">AUTONOMIE ${g.autonomy ? 'ON' : 'OFF'}</button>`
+        ? `<button class="mini-btn ${g.autonomy ? 'on' : ''}" data-goal="${esc(g.id)}" data-act="autonomy" data-on="${g.autonomy ? 0 : 1}" title="${g.autonomy ? 'Retirer l’autonomie' : 'Autoriser Matthew à avancer seul (recherche web uniquement)'}">AUTONOMIE ${g.autonomy ? 'ON' : 'OFF'}</button>`
           + (g.autonomy ? `<button class="mini-btn" data-goal="${esc(g.id)}" data-act="run" title="${esc(blocker || 'Lancer une séance maintenant')}" ${blocker && !blocker.startsWith('dernière séance') ? 'disabled' : ''}>LANCER</button>` : '')
         : '';
       const budget = g.budget_actions ? Math.min(100, (g.spent_actions / g.budget_actions) * 100) : 0;
@@ -212,7 +212,7 @@ export function createMind(ctx) {
         ${g.status === 'active' && g.autonomy && blocker ? `<div class="mc-line wait"><span>Autonomie</span>en attente : ${esc(blocker)}</div>` : ''}
         <div class="mc-foot">
           <div class="mc-budget" title="${g.spent_actions}/${g.budget_actions} actions"><i style="width:${budget}%"></i></div>
-          <span>${g.spent_actions}/${g.budget_actions} actions${g.deadline ? ` · échéance ${esc(g.deadline)}` : ''} · ${g.origin === 'user' ? 'demandé par vous' : 'proposé par JARVIS'}</span>
+          <span>${g.spent_actions}/${g.budget_actions} actions${g.deadline ? ` · échéance ${esc(g.deadline)}` : ''} · ${g.origin === 'user' ? 'demandé par vous' : 'proposé par Matthew'}</span>
           <span class="mc-actions">${autoBtn}${actions.map(([a, label, cls]) => `<button class="mini-btn ${cls}" data-goal="${esc(g.id)}" data-act="${a}">${label}</button>`).join('')}</span>
         </div></div>`;
     }).join('') : '<div class="mind-empty">Aucun objectif ouvert. Dites par exemple : « mon objectif, c’est de… ».</div>';

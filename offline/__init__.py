@@ -1,9 +1,9 @@
 """
-offline/ — quand Gemini ou Oracle tombe, JARVIS continue de parler.
+offline/ — quand Gemini ou Oracle tombe, Matthew continue de parler.
 
 Micro → faster-whisper (local) → Ollama avec outils (local) → voix du système
 (pyttsx3). Rien ne sort de la machine, aucune clé n'est utilisée. C'est un mode
-dégradé : moins fin que Gemini Live, sans vision ni recherche web, mais JARVIS
+dégradé : moins fin que Gemini Live, sans vision ni recherche web, mais Matthew
 répond, ouvre une application, règle le volume, crée un rappel.
 
 Idée reprise de bertrandmbanwi/Jarvis (OFFLINE_MODE, MIT) et des modules
@@ -15,7 +15,7 @@ DEUX POINTS D'ENTRÉE (paquet racine, contrat V2)
   - client_desktop (HUD relié à Oracle) : `Supervisor` créé par app.py, nourri
     par l'état du lien. Le client reste sans Gemini : ce second cerveau est
     Ollama, local, et ne s'allume que quand Oracle est injoignable.
-  Supprimer le dossier : plus de relais, JARVIS se tait pendant une panne
+  Supprimer le dossier : plus de relais, Matthew se tait pendant une panne
   comme avant.
 
 QUAND IL PARLE
@@ -66,7 +66,7 @@ def _settings() -> dict:
 
 
 def _names() -> list[str]:
-    names = ["jarvis"]
+    names = ["matthew", "jarvis"]
     try:
         from memory.config_manager import get_assistant_name
         names.append(get_assistant_name())
@@ -117,7 +117,7 @@ class OfflineVoice:
 
     def _say(self, voice, text: str, out_dev) -> None:
         from . import audio
-        self.log(f"JARVIS (hors-ligne) : {text}")
+        self.log(f"Matthew (hors-ligne) : {text}")
         try:
             pcm, rate = voice.synthesize(text)
             audio.play(pcm, rate, device=out_dev, mic=self._mic)
@@ -137,7 +137,7 @@ class OfflineVoice:
         model, caps = picked
         self.model = model                  # lu par le badge « qui répond » du HUD (matthew/hud.py)
         brain = llm.Brain(model, caps,
-                          SYSTEM.format(name=self.names[-1] or "JARVIS"),
+                          SYSTEM.format(name=self.names[-1] or "Matthew"),
                           tools.build(self.log))
         threading.Thread(target=brain.warm, daemon=True, name="offline-warm").start()
         voice = tts.shared(self.language or cfg.get("language"))

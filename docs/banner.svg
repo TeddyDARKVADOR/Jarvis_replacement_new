@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-label="J.A.R.V.I.S — MARK LIII">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-label="MATTHEW">
   <defs>
     <radialGradient id="bg" cx="24%" cy="50%" r="80%">
       <stop offset="0" stop-color="#0B1A2A"/>
@@ -58,7 +58,7 @@
 
   <!-- the name -->
   <g font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
-    <text x="470" y="150" font-size="76" font-weight="300" letter-spacing="18" fill="url(#title)" filter="url(#glow)">J.A.R.V.I.S</text>
+    <text x="470" y="150" font-size="76" font-weight="300" letter-spacing="18" fill="url(#title)" filter="url(#glow)">MATTHEW</text>
     <text x="474" y="196" font-size="20" letter-spacing="7" fill="#7DD3FC" fill-opacity=".85">MARK LIII · ASSISTANT VOCAL TEMPS RÉEL</text>
     <text x="474" y="236" font-size="15" letter-spacing="2" fill="#6B7A93">entend · voit · se souvient · agit — 24 h/24, sur le PC et le téléphone</text>
     <text x="1180" y="290" font-size="13" letter-spacing="3" fill="#6EE7B7" text-anchor="end">● EN LIGNE</text>

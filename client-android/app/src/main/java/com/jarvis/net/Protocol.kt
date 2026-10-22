@@ -112,7 +112,7 @@ object Protocol {
     const val EV_CONFIRM = "confirm"       // {"id","title","detail","timeout_s"}
     const val EV_CONFIRM_HIDE = "confirm_hide"  // no payload — take the banner down
 
-    /** Something JARVIS decided belongs in the notification shade, not in speech.
+    /** Something Matthew decided belongs in the notification shade, not in speech.
      *
      *  `{"id","priority","title","text","ts"}` — see `server/notify.py`. The
      *  priority is already decided against the user's situation by
@@ -134,7 +134,7 @@ object Protocol {
     // doors.
     const val CMD_COMMAND = "command"
 
-    /** Stop JARVIS mid-sentence. No payload — "stop talking" has no parameters.
+    /** Stop Matthew mid-sentence. No payload — "stop talking" has no parameters.
      *
      *  The server drops what it has queued for us, but it cannot reach into
      *  this process: the client must also call `AudioPlayer.flush()`, or the
@@ -153,7 +153,7 @@ object Protocol {
     /** What this phone can see about its own situation: `{"state": {...}}`.
      *
      *  Read by the server's optional `context/` package, which decides from it
-     *  whether JARVIS may speak right now (see capabilities/graphs/context.json). Every
+     *  whether Matthew may speak right now (see capabilities/graphs/context.json). Every
      *  field inside `state` is optional and the server merges what arrives into
      *  what it already had, so a phone that cannot read a signal omits it
      *  rather than sending a placeholder — and an older phone sending half the

@@ -131,7 +131,7 @@ function humanError(e) {
   const t = String(e || '');
   if (/401|refus|unauthori[sz]ed|invalid token/i.test(t)) return 'Jeton refusé par le serveur — vérifiez-le dans Paramètres (⚙).';
   if (/10061|refused|NewConnectionError|Max retries|getaddrinfo|Name or service|timed? ?out|unreachable|injoignable/i.test(t))
-    return 'Serveur JARVIS injoignable — nouvelle tentative automatique. Tailscale est-il connecté ?';
+    return 'Serveur Matthew injoignable — nouvelle tentative automatique. Tailscale est-il connecté ?';
   return t.length > 140 ? `${t.slice(0, 137)}…` : t;
 }
 
@@ -170,7 +170,7 @@ function messageEl(m, animate) {
   const card = m.j && m.ti;
   el.className = `msg ${m.j ? 'j' : 'u'}${card ? ' card' : ''}`;
   if (!animate) el.style.animation = 'none';
-  const who = m.j ? '<b>JARVIS</b>' : 'VOUS';
+  const who = m.j ? '<b>MATTHEW</b>' : 'VOUS';
   el.innerHTML = card
     ? `<div class="meta">${who}<span>${fmtTime(m.a)}</span></div><div class="title">${escapeHtml(m.ti)}</div><div class="body">${linkify(m.t)}</div>`
     : `<div class="meta">${who}<span>${fmtTime(m.a)}</span></div><div>${linkify(m.t)}</div>`;
@@ -205,7 +205,7 @@ function renderMessages(list) {
 // ── caption (subtitles) ───────────────────────────────────────────────────
 let typeTimer = null;
 let clipText = '', clipTimer = null;
-function caption(text, who = 'JARVIS', user = false) {
+function caption(text, who = 'MATTHEW', user = false) {
   const el = $('caption-text');
   setText($('caption-who'), who);
   el.classList.toggle('user', user);
@@ -230,7 +230,7 @@ function renderLog(lines) {
   el.scrollTop = el.scrollHeight;
   const newest = lines[lines.length - 1] || '';
   if (newest !== lastLogLine && lastLogLine && /sans réponse/i.test(newest)) {
-    toast('COMMANDE PERDUE', 'JARVIS n\'a pas répondu — renvoyez-la si elle comptait.', '#FBBF6B', 8000);
+    toast('COMMANDE PERDUE', 'Matthew n\'a pas répondu — renvoyez-la si elle comptait.', '#FBBF6B', 8000);
   }
   lastLogLine = newest;
 }

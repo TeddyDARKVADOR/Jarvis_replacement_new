@@ -357,7 +357,17 @@ def gather(root: Path | None = None, next_run=None) -> dict:
         "live": live,
         "next": nxt,
         "counters": counters(root, cycles, toks),
+        "specialties": _specialties(root),
     }
+
+
+def _specialties(root: Path) -> list[dict]:
+    """Direction 3 : chaque spécialité, son score, son seuil, sa référence (agrégats seulement)."""
+    try:
+        from matthew.specialist import public
+        return public(root)
+    except Exception:
+        return []
 
 
 def counters(root: Path, cycles: list[dict], toks: dict) -> dict:
@@ -387,7 +397,8 @@ def counters(root: Path, cycles: list[dict], toks: dict) -> dict:
 
 ALLOWED = {
     "": {"schema", "name", "generated", "champion", "coverage", "tools", "domains", "history", "cycles",
-         "tokens", "showcase", "changes", "live", "next", "counters"},
+         "tokens", "showcase", "changes", "live", "next", "counters", "specialties"},
+    "specialties[]": {"id", "label", "label_en", "score", "floor", "reference", "n", "delegated"},
     "live": {"phase", "epoch", "epochs", "losses", "since", "done", "total", "right"},
     "next": {"at", "enabled"},
     "champion": {"since", "base", "score"},
@@ -477,7 +488,7 @@ def check_public(data: dict, root: Path | None = None) -> int:
                          "showcase": "showcase[]", "results": "results", "score": "score",
                          "champion": "champion", "coverage": "coverage", "tokens": "tokens",
                          "live": "live", "next": "next", "per_tool": "per_tool",
-                         "counters": "counters"}.get(k, "leaf")
+                         "counters": "counters", "specialties": "specialties[]"}.get(k, "leaf")
                 walk(x, f"{path}.{k}", child if isinstance(x, (dict, list)) else
                      ("request" if k in ("request", "answer") else "leaf"))
         elif isinstance(v, list):
@@ -511,6 +522,13 @@ def check_public(data: dict, root: Path | None = None) -> int:
             fail("vitrine.tools", f"outil inconnu {t['id']!r}")
         if t["domain"] not in DOMAINS:
             fail("vitrine.tools", f"domaine inconnu {t['domain']!r}")
+    from matthew.specialist import SPECIALTIES
+    for sp in data.get("specialties", []):
+        if sp["id"] not in SPECIALTIES or (sp["label"], sp["label_en"]) != SPECIALTIES[sp["id"]][:2]:
+            fail("vitrine.specialties", f"spécialité inconnue {sp['id']!r}")
+        for k in ("score", "floor", "reference"):
+            if sp.get(k) is not None and not (isinstance(sp[k], (int, float)) and 0 <= sp[k] <= 1):
+                fail("vitrine.specialties", f"{k} hors de [0, 1]")
     for s in data["showcase"]:
         if not re.fullmatch(r"[0-9a-f]{8}", s["id"]):
             fail("vitrine.showcase", f"identifiant {s['id']!r}")

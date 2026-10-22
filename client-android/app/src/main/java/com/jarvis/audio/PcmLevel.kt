@@ -7,7 +7,7 @@ import kotlin.math.sqrt
  * Loudness of a PCM16 buffer, 0..1.
  *
  * One implementation for both directions on purpose. The microphone meter and
- * JARVIS's own voice drive the same animation, and if they used different floors
+ * Matthew's own voice drive the same animation, and if they used different floors
  * the core would breathe differently depending on who was talking — which reads
  * as a bug in the animation rather than as a difference in the audio.
  *

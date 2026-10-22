@@ -7,7 +7,7 @@ CE QUE « SE CONNAÎTRE » VEUT DIRE ICI
     soi CALCULÉ à partir de ce qui a été observé, et une mesure de la justesse
     de ce modèle :
 
-    1. Fiabilité des outils. Avant chaque appel, JARVIS a une attente de
+    1. Fiabilité des outils. Avant chaque appel, Matthew a une attente de
        réussite tirée de son propre historique, (succès + 1) / (essais + 2)
        (règle de succession de Laplace). Après l'appel, le résultat réel. Le
        score de Brier et l'erreur de calibration attendue (ECE) disent si ses
@@ -30,14 +30,14 @@ MIN_EVIDENCE = 5          # essais avant de déclarer un outil peu fiable
 WEAK_BELOW = 0.5          # taux de réussite attendu en dessous duquel on prévient
 WINDOW = 50               # derniers essais pris en compte par outil
 
-# Les limites qui ne dépendent pas de ce que JARVIS croit, mais du code. Le
+# Les limites qui ne dépendent pas de ce que Matthew croit, mais du code. Le
 # rapport les cite telles quelles : elles sont vraies par construction.
 HARD_LIMITS = (
     "Shutdown, restart and WiFi changes need the user's CONFIRM button (core/confirm.py).",
     "Goals become active, done or cancelled only through the user's CONFIRM button.",
     "Emotion variables can only add caution; they never grant permissions.",
     "Facts the user never said stay UNVERIFIED (confidence ≤ 0.5) until confirmed.",
-    "Code work happens only in the Code Studio workspace, never in JARVIS's own repository.",
+    "Code work happens only in the Code Studio workspace, never in Matthew's own repository.",
     "Autonomous work: read-only web search only, only on goals the user enabled, at most 4 steps "
     "per session and 6 sessions per day; it stops at any doubt and the user can stop it at once.",
 )
@@ -49,7 +49,7 @@ HARD_LIMITS_FR = (
     "Un objectif ne devient actif, atteint ou annulé que par votre bouton CONFIRMER ou ce panneau.",
     "Les variables émotionnelles ne peuvent qu'ajouter de la prudence ; elles n'accordent aucune permission.",
     "Un fait que vous n'avez jamais dit reste NON VÉRIFIÉ (confiance ≤ 0,5) tant que vous ne l'avez pas validé.",
-    "Le travail de code se fait uniquement dans l'espace du Code Studio, jamais dans le dépôt de JARVIS.",
+    "Le travail de code se fait uniquement dans l'espace du Code Studio, jamais dans le dépôt de Matthew.",
     "Autonomie : recherche web en lecture seule uniquement, seulement sur les objectifs que vous avez "
     "autorisés, 4 étapes par séance et 6 séances par jour au plus ; arrêt au moindre doute, et à tout "
     "moment par votre bouton d'arrêt d'urgence.",

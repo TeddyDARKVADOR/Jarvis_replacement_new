@@ -88,7 +88,7 @@ class JarvisClient(
         // The single most important line in this file for a phone. Losing Wi-Fi
         // does not close a TCP socket; it leaves it silent. Without a ping the
         // client believes it is connected until something tries to send — which,
-        // if JARVIS happens not to be speaking, may be minutes.
+        // if Matthew happens not to be speaking, may be minutes.
         .pingInterval(Protocol.PING_SECONDS, TimeUnit.SECONDS)
         .build()
 
@@ -290,7 +290,7 @@ class JarvisClient(
     }
 
     /**
-     * Stop JARVIS mid-sentence.
+     * Stop Matthew mid-sentence.
      *
      * Only half of an interrupt: this tells the server to stop producing and to
      * throw away what it has queued for us. Audio already delivered is sitting

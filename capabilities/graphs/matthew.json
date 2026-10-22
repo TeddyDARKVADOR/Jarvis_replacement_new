@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "matthew",
   "title": "Matthew — notre propre modèle",
-  "updated": "2026-10-21",
+  "updated": "2026-10-22",
   "summary": "La transition vers un cerveau à nous : collecte dans tous les modes, amorçage vérifié par un second modèle ouvert, routeur par le sens, données augmentées, LoRA de Qwen3.5-4B sur la RTX 3060, juge par outil, promotion et changement de base automatiques, chaque nuit. Gemini reste en service pendant ce temps.",
   "replaces": [],
   "nodes": [
@@ -259,17 +259,20 @@
       "id": "h.providers",
       "label": "Hook : Matthew dans la cognition (phase 1)",
       "kind": "regle",
-      "summary": "matthew.cognition_order() met Matthew en tête des tâches de fond de la cognition dès qu'un champion évalué existe (score ≥ 0,5) ; un ordre écrit à la main gagne toujours ; use_in_cognition=false le coupe. Sonde de vie par serveur local.",
+      "summary": "Tâche par tâche (Direction 3) : cognition_order() met Matthew en tête dès qu'une tâche lui revient, puis ProviderChain.complete(task=…) l'écarte de chaque tâche qu'il n'a pas gagnée (matthew.allowed). Le juge de mémoire passe task=\"juge\", le planificateur autonome task=\"planif\" ; une tâche sans nom garde la règle d'avant (champion ≥ 0,5 et banc de cognition ≥ 0,75). Un ordre écrit à la main gagne toujours ; use_in_cognition=false le coupe.",
       "details": [
         "Limite : le juge mesure les appels d'outils, pas l'extraction ni la réflexion de la cognition.",
         "Banc de cognition exigé (matthew/cogbench.py) : Matthew ne tient la cognition que si son score ≥ 0,75 ; premier champion : 0,96 (juge de mémoire 11/12, planificateur 4/4)."
       ],
       "files": [
+        "cognition/autonomy.py",
         "cognition/providers.py",
+        "cognition/runtime.py",
         "matthew/__init__.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — matthew.selftest : 34/34"
+      "verified": "2026-10-22 — matthew.selftest : 37/37 (chaîne factice : Matthew répond au juge, pas à une spécialité perdue)",
+      "updated": "2026-10-22"
     },
     {
       "id": "h.offline",
@@ -307,7 +310,8 @@
       "details": [
         "GRPO (récompense = appel d'outil vérifié) : Qwen3-4B de 33 % à 67 % d'appels justes en 200 exemples (Red Hat, 2026) — mais il faut vLLM, absent de Windows : GPU loué sous Linux.",
         "Contexte multi-tours : les tours précédents sont des réponses Gemini ; il faut les masquer de la perte avant de les inclure.",
-        "Voix : Moshi (Kyutai) full-duplex ~200 ms mais anglais ; Kyutai Unmute = cascade autour d'un LLM texte, la voie actuelle."
+        "Voix : Moshi (Kyutai) full-duplex ~200 ms mais anglais ; Kyutai Unmute = cascade autour d'un LLM texte, la voie actuelle.",
+        "Direction 3 (2026-10-22) : spécialiste autonome mais évalué — une tâche à la fois, chacune gagnée sur sa propre épreuve contre une référence (m.specialist)."
       ],
       "files": [
         "matthew/flywheel.py"
@@ -358,18 +362,25 @@
         "DÉCOR SPATIAL : textures Lune, Terre (+ nuages), Mars, Jupiter, Saturne (+ anneau), Neptune et Voie lactée de Solar System Scope (CC BY 4.0, créditées dans LICENSES.txt et en pied de page), 4,3 Mo.",
         "CACHE (2026-10-21) : GitHub Pages autorise 10 min de cache ; une page neuve avec l'ancien style.css / app.js s'affichait sans décor ni scène. bust_cache appelle désormais style.css et app.js avec l'empreinte de leur contenu (?v=…). Vérifié en ligne avec un profil de navigateur vierge, puis republié.",
         "TÉLÉPHONE (2026-10-21) : défiler était très dur. Écran tactile détecté (pointer: coarse, portrait comme paysage) → la scène ne reçoit plus le doigt (un toucher court sur une lumière ou un bâtiment est rattrapé par pickAt), hauteur fixe en lvh (la barre d'adresse ne redimensionne plus la 3D), pas de flou derrière les cartes, densité 1,25, une image sur trois pendant le défilement ; mise en page compacte en paysage (hauteur ≤ 520 px). Vérifié par glissements tactiles émulés (Playwright, 390×844 et 844×390) : la page défile, le toucher d'un bâtiment marche. Pas de forçage du paysage : iOS l'ignore, Android l'exige en plein écran. À confirmer sur un vrai téléphone.",
-        "Compte à rebours et direct (2026-10-21) : la prochaine nuit est lue dans le Planificateur de tâches (flywheel.next_run → Get-ScheduledTaskInfo « Matthew flywheel », heure avec son fuseau) et publiée dans data/vitrine.json → next ; rien n'est écrit en dur, changer l'heure de la tâche change la page. La page compte à la seconde, dit l'heure du visiteur (et celle de Matthew s'il vit ailleurs), propose un rappel .ics, et dit honnêtement « attend que son ordinateur se réveille » si l'heure passe sans nuit. Le direct suit chaque étape : préparation → entraînement (époques, courbe d'erreur) → empaquetage → installation → examen du candidat → duel avec le champion (questions faites et réussies), publié au plus toutes les 5 min ; la page se relit seule (60 s autour de la nuit, 5 min sinon, en contournant le cache de 10 min de GitHub Pages) et annonce un nouveau champion. Garde-fou : next et les nouvelles clés du direct sont dans la liste blanche, une date mal formée ou une phase inconnue est refusée. Vérifié : matthew.selftest (36/36 sous Windows et Ubuntu), captures d'Edge sans interface des trois états. Pas encore vu pendant une vraie nuit."
+        "Compte à rebours et direct (2026-10-21) : la prochaine nuit est lue dans le Planificateur de tâches (flywheel.next_run → Get-ScheduledTaskInfo « Matthew flywheel », heure avec son fuseau) et publiée dans data/vitrine.json → next ; rien n'est écrit en dur, changer l'heure de la tâche change la page. La page compte à la seconde, dit l'heure du visiteur (et celle de Matthew s'il vit ailleurs), propose un rappel .ics, et dit honnêtement « attend que son ordinateur se réveille » si l'heure passe sans nuit. Le direct suit chaque étape : préparation → entraînement (époques, courbe d'erreur) → empaquetage → installation → examen du candidat → duel avec le champion (questions faites et réussies), publié au plus toutes les 5 min ; la page se relit seule (60 s autour de la nuit, 5 min sinon, en contournant le cache de 10 min de GitHub Pages) et annonce un nouveau champion. Garde-fou : next et les nouvelles clés du direct sont dans la liste blanche, une date mal formée ou une phase inconnue est refusée. Vérifié : matthew.selftest (36/36 sous Windows et Ubuntu), captures d'Edge sans interface des trois états. Pas encore vu pendant une vraie nuit.",
+        "FLUIDITÉ (2026-10-22) : la page lagait sur certains ordinateurs. Causes : flou (backdrop-filter) des cartes recalculé sur une scène 3D qui redessine sans arrêt, halo (bloom) plein écran, définition 2, rendu continu même sous les détails. Désormais : quatre niveaux de qualité (3 tout ; 2 sans halo ni flou ; 1 définition 1 et 30 images/s ; 0 définition 0,75 sans étiquettes d'outils), niveau deviné d'après la machine (puce graphique intégrée → 2, logiciel → 0, ≤ 4 cœurs ou ≤ 4 Go → 1), puis adaptatif : moyenne d'intervalle sur 90 images au-delà de 24 ms (48 ms à 30 i/s) → un niveau de moins, une seule annonce. Bouton AUTO / ÉCO / HAUTE (mémorisé, ?q=…). La scène ne se dessine plus quand les détails la recouvrent. Halo chargé seulement au niveau 3.",
+        "VAISSEAU (2026-10-22) : il volait à reculons (les modèles Kenney regardent vers −Z, le code supposait +Z) et à contre-sens de la rotation de la caméra et du rover. Désormais rotation.y = π − a sur une orbite dans le sens de la caméra ; même correction pour le rover. Vérifié à l'image (Chrome sans interface, vue de dessus des modèles puis trois images de la scène).",
+        "GUIDE (2026-10-22) : à la première visite, Matthew en personne présente la page comme un tutoriel de jeu vidéo — robot 3D animé (« RobotExpressive » de Tomás Laulhé, CC0, trouvé en ligne, recoloré cyan) qui salue, acquiesce, lève le pouce et danse ; bouche animée pendant qu'il « parle » ; texte tapé lettre à lettre ; 7 à 8 étapes qui déplacent la caméra et éclairent l'élément dont il parle (compte à rebours, score, direct) ; voix du navigateur en option ; Échap / Entrée ; vu une fois → plus automatique, bouton « ? » pour le revoir, ?notour pour l'éviter. Pas de WebGL → un noyau lumineux le remplace.",
+        "PARTAGER (2026-10-22) : bouton de partage (feuille de partage du téléphone, sinon lien copié).",
+        "SPÉCIALITÉS (2026-10-22) : chapitre « Ses spécialités » (Direction 3), affiché seulement si data/vitrine.json en publie : par spécialité, score, seuil, référence, « il s'en charge / pas encore ». Agrégats seulement (specialist.public) : ni cas raté, ni nom de modèle ; libellés et bornes vérifiés par check_public.",
+        "Vérifié le 2026-10-22 en local (Chrome sans interface, 1440×900 et Pixel 7, données publiques du jour) : visite complète, mise en lumière, retour au plan d'ensemble, chapitre des spécialités. PAS ENCORE PUBLIÉ ; le ressenti de fluidité est à confirmer sur l'ordinateur qui saccadait."
       ],
       "files": [
         "matthew/vitrine.py",
         "matthew/vitrine_site/index.html",
         "matthew/vitrine_site/app.js",
         "matthew/vitrine_site/style.css",
-        "matthew/vitrine_site/assets/LICENSES.txt"
+        "matthew/vitrine_site/assets/LICENSES.txt",
+        "matthew/vitrine_site/assets/models/matthew_guide.glb"
       ],
       "status": "ok",
-      "verified": "2026-10-21 — matthew.selftest : 35/35 ; rendu local (Edge sans interface) et publiée",
-      "updated": "2026-10-21"
+      "verified": "2026-10-22 — matthew.selftest : 37/37 ; rendu local (Chrome sans interface) ; nouvelle version non publiée",
+      "updated": "2026-10-22"
     },
     {
       "id": "l.outils",
@@ -459,6 +470,28 @@
         "local_hud.py"
       ],
       "verified": "2026-10-20 — matthew.selftest : 34/34"
+    },
+    {
+      "id": "m.specialist",
+      "label": "specialist.py — Matthew spécialiste, mais évalué (Direction 3)",
+      "kind": "module",
+      "status": "a_tester",
+      "summary": "Matthew ne remplace pas les grands modèles d'un bloc : chaque type de tâche est une spécialité avec son épreuve, son seuil et sa référence (le modèle qu'il remplacerait, noté sur la même épreuve). Il ne prend une tâche que si score ≥ seuil ET score ≥ référence − 0,02, et la perd dès qu'une mesure ne le prouve plus.",
+      "details": [
+        "Spécialités : outil (choisir le bon outil, score de l'examen de la nuit, seuil 0,80), intention (action / question / conversation / mémoire / arrêt, 20 cas, seuil 0,85), extraction (JSON d'un rappel ou d'un message, 8 cas, champ par champ via norm.same, seuil 0,80), juge (juge de mémoire de cogbench, seuil 0,80), planif (planificateur de cogbench, seuil 0,75).",
+        "Référence : réglage specialist_reference, sinon gpt-oss-20b chez Groq si la clé existe, sinon le modèle local de secours du professeur ; false la coupe. Mesurée sur les mêmes épreuves, gardée 7 jours (quotas gratuits). Une référence n'est qu'un concurrent : jamais une cible d'entraînement.",
+        "Tout est noté par règles (aucun modèle juge). Résultat : memory/matthew/specialties.json ; la boucle de nuit relance les épreuves après chaque promotion (étape « spécialités ») ; `python -m matthew.specialist run | status` à la main.",
+        "L'outil n'a pas encore de référence : Gemini Live choisit ses outils dans la conversation vocale, sans banc rejouable à coût nul.",
+        "Pas encore lancé sur le vrai champion : vérifié seulement avec des modèles factices (oracle, cancre, référence plus forte, référence gardée 7 jours)."
+      ],
+      "files": [
+        "matthew/specialist.py",
+        "matthew/__init__.py",
+        "matthew/flywheel.py"
+      ],
+      "test": "python -m matthew.specialist run",
+      "verified": "2026-10-22 — matthew.selftest : 37/37 (modèles factices)",
+      "updated": "2026-10-22"
     }
   ],
   "edges": [
@@ -790,6 +823,31 @@
     [
       "m.hud",
       "v.vitrine",
+      "utilise"
+    ],
+    [
+      "matthew",
+      "m.specialist",
+      "contient"
+    ],
+    [
+      "m.specialist",
+      "m.cogbench",
+      "utilise"
+    ],
+    [
+      "m.specialist",
+      "h.providers",
+      "alimente"
+    ],
+    [
+      "m.specialist",
+      "v.vitrine",
+      "alimente"
+    ],
+    [
+      "m.flywheel",
+      "m.specialist",
       "utilise"
     ]
   ]

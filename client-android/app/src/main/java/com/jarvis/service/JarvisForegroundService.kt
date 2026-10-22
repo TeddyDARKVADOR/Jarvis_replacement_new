@@ -42,11 +42,11 @@ import kotlinx.coroutines.cancel
 import org.json.JSONObject
 
 /**
- * What keeps JARVIS alive when the screen goes off.
+ * What keeps Matthew alive when the screen goes off.
  *
  * **Why the app cannot simply record in the background.** Since Android 11 an
  * app that is not in the foreground and holds an AudioRecord does not get an
- * error — it gets *silence*. Everything appears to work and JARVIS never hears
+ * error — it gets *silence*. Everything appears to work and Matthew never hears
  * anything. A foreground service of type `microphone` is the supported way to
  * be allowed to keep listening, and it costs an ongoing notification. That
  * notification is the point, not the price: the phone is holding the microphone
@@ -64,7 +64,7 @@ import org.json.JSONObject
  *
  * **Nothing here bypasses a restriction.** It is started from a visible
  * Activity, after RECORD_AUDIO has been granted and the user has switched
- * "JARVIS 24/7" on. No boot receiver, no background start, no battery
+ * "Matthew 24/7" on. No boot receiver, no background start, no battery
  * exemption claimed in the manifest.
  */
 class JarvisForegroundService : Service() {
@@ -278,7 +278,7 @@ class JarvisForegroundService : Service() {
     }
 
     /**
-     * Stop JARVIS mid-sentence.
+     * Stop Matthew mid-sentence.
      *
      * Both halves, and the local one first. The server drops what it has queued
      * for us, but the audio already delivered is in this process — in the
@@ -286,7 +286,7 @@ class JarvisForegroundService : Service() {
      * server can reach it. Flushing after sending would leave a window in which
      * the phone is still speaking an answer the server has already abandoned.
      *
-     * Harmless when JARVIS is not speaking: both sides are then empty.
+     * Harmless when Matthew is not speaking: both sides are then empty.
      */
     private fun interrupt() {
         player.flush()
@@ -319,7 +319,7 @@ class JarvisForegroundService : Service() {
      * A typed command, on the channel the web dashboard has always used.
      *
      * Echoed locally as a user turn: the server only broadcasts `speaker:user`
-     * for speech it transcribed, so without this the history would show JARVIS
+     * for speech it transcribed, so without this the history would show Matthew
      * answering a question nobody appears to have asked.
      */
     private fun sendText(text: String) {
@@ -357,7 +357,7 @@ class JarvisForegroundService : Service() {
      * **The server's own `ts` is deliberately not used.** It is
      * `datetime.now().isoformat()`: a naive ISO string with no offset on it, and
      * nothing on the wire says which zone produced it. Reading it as local time
-     * put JARVIS's turns two hours behind the user's on the very first test —
+     * put Matthew's turns two hours behind the user's on the very first test —
      * the VPS runs UTC, the phone runs Europe/Paris — and a wrong hour is worse
      * than no hour.
      *
@@ -468,7 +468,7 @@ class JarvisForegroundService : Service() {
                             Message(fromJarvis, text, turnTimestamp())
                         )
                     }
-                    JarvisState.log("${if (fromJarvis) "JARVIS" else "You"}: $text")
+                    JarvisState.log("${if (fromJarvis) "MATTHEW" else "You"}: $text")
                 }
                 Protocol.EV_SYS -> JarvisState.log(json.optString("text"))
                 Protocol.EV_CONTENT -> {
@@ -524,9 +524,9 @@ class JarvisForegroundService : Service() {
     private fun startForegroundNotification() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "JARVIS link", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL, "MATTHEW link", NotificationManager.IMPORTANCE_LOW)
                 .apply {
-                    description = "Shown while JARVIS is connected and may be listening."
+                    description = "Shown while Matthew is connected and may be listening."
                     setShowBadge(false)
                 }
         )
@@ -583,7 +583,7 @@ class JarvisForegroundService : Service() {
         )
 
         return Notification.Builder(this, CHANNEL)
-            .setContentTitle("JARVIS")
+            .setContentTitle("MATTHEW")
             .setContentText(notificationText())
             .setSmallIcon(R.drawable.ic_stat_jarvis)
             .setContentIntent(open)

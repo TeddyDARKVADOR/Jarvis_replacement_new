@@ -74,7 +74,7 @@ SAFE_TOOLS = {"web_search": _valid_web_search}
 INTERNAL = ("recall", "note", "ask_user", "request_done", "stop")
 BLOCKING_DIRECTIVES = ("caution", "change_strategy")
 
-PLANNER_PROMPT = """You are the planning step of JARVIS's autonomous mode. You work ALONE on one goal the user approved, between conversations. The user is not watching.
+PLANNER_PROMPT = """You are the planning step of Matthew's autonomous mode. You work ALONE on one goal the user approved, between conversations. The user is not watching.
 
 GOAL: {title}
 Why: {why}
@@ -311,7 +311,7 @@ class Autonomy:
             session="\n".join(session) or "(nothing yet)")
         if self.planner is not None:
             return self.planner(prompt)
-        return self.cog.generate(prompt, quality=True, max_tokens=PLANNER_MAX_TOKENS)
+        return self.cog.generate(prompt, quality=True, max_tokens=PLANNER_MAX_TOKENS, task="planif")
 
     def _check(self, proposal: dict, done_keys: set) -> str | None:
         """None si la proposition est permise ; sinon la raison du refus."""

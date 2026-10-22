@@ -33,7 +33,7 @@ export function createSim(HUD) {
       if (/éteins|eteins|shutdown|redémarre/i.test(text)) {
         thinkUntil = now() + 1;
         setTimeout(() => {
-          S.confirm = { id: 'c1', title: 'Arrêt du poste', detail: 'JARVIS va éteindre cet ordinateur.', remaining: 90 };
+          S.confirm = { id: 'c1', title: 'Arrêt du poste', detail: 'Matthew va éteindre cet ordinateur.', remaining: 90 };
           confirmAt = now();
         }, 1000);
         return;

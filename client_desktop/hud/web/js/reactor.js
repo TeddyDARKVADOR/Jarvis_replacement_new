@@ -11,7 +11,7 @@
  *              "breathes" with the voice (SPEAKING) or the microphone (LISTENING)
  *   lattice    a slowly counter-rotating wireframe icosahedron
  *   shell      ~2 400 points on a Fibonacci sphere, pushed outward by the
- *              same noise; they swirl when JARVIS is thinking
+ *              same noise; they swirl when Matthew is thinking
  *   orbits     three tilted hairline rings with a satellite each
  *
  * No post-processing pass: the glow is additive blending and sprites, which

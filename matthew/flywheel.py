@@ -63,8 +63,11 @@ def _write(path: Path, data) -> None:
 class Flywheel:
     def __init__(self, root: Path | None = None, cfg: dict | None = None, *, school=None,
                  client_factory=None, runner=subprocess.run, trainer=None, clock=time.time,
-                 bootstrap=None):
+                 bootstrap=None, reference=None):
         self._bootstrap = bootstrap        # fabrique (selftest) ; None = la vraie
+        # La référence des spécialités (un autre modèle, noté sur les mêmes épreuves) : la vraie
+        # seulement avec le vrai client de Matthew — un selftest n'appelle jamais Groq.
+        self._reference = reference or ((lambda: None) if client_factory else None)
         self.root = Path(root) if root else data_dir()
         self.cfg = cfg or config()
         self.journal = Journal(self.root, clock=clock)
@@ -203,6 +206,16 @@ class Flywheel:
                                                  "cognition": {k: cog.get(k) for k in ("score", "judge", "planner", "n")},
                                                  "base": base["model"], "base_license": base["license"]})
             step("promotion", ok=True)
+            # Direction 3 : le nouveau champion repasse chaque épreuve de spécialité, contre la
+            # référence ; il ne garde que les tâches qu'il mérite (matthew/specialist.py).
+            try:
+                from matthew import specialist
+                ref = self._reference() if self._reference else specialist.reference_client(self.cfg)
+                sp = specialist.run(self._client_factory(self.cfg["serve_model"]), ref,
+                                    champion=_read(self.root / "champion.json", {}), root=self.root)
+                step("spécialités", ok=True, **{k: v["delegated"] for k, v in sp["results"].items()})
+            except Exception as e:
+                step("spécialités", ok=False, reason=f"{type(e).__name__}: {e}"[:200])
             return self._finish(rep, "nouveau champion")
         finally:
             self._unlock()

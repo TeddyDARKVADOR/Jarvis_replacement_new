@@ -952,6 +952,73 @@ def _cogbench():
     return f"{len(CB.JUDGE_CASES)} jugements, {len(CB.PLANNER_CASES)} plans"
 
 
+@check("spécialités (Direction 3) : une tâche par épreuve, seuil ET référence, filtre de la cognition")
+def _specialist():
+    from matthew import cogbench as CB, specialist as SP
+
+    class Oracle:
+        """Répond juste à chaque épreuve."""
+        def __init__(self, model="matthew"):
+            self.model = model
+        def chat(self, messages, *a, **k):
+            p = messages[-1]["content"]
+            for text, want in SP.INTENT_CASES:
+                if p.endswith(f"Demande : {text}") and "UNE catégorie" in p:
+                    return {"content": want.capitalize() + "."}
+            for text, want in SP.EXTRACT_CASES:
+                if p.endswith(f"Demande : {text}"):
+                    got = dict(want)
+                    if "quand" in got:
+                        got["quand"] = got["quand"].replace(" ", " à ", 1) if " " in got["quand"] else got["quand"]
+                    return {"content": "```json\n" + json.dumps(got, ensure_ascii=False) + "\n```"}
+            if "YES or NO" in p:
+                for said, fact, want in CB.JUDGE_CASES:
+                    if f"store:\n{fact}\n" in p and said[0] in p:
+                        return {"content": "YES" if want else "NO"}
+            return {"content": '{"action": "web_search", "args": {"query": "vols Rome mai"}, "reason": "r"}'}
+
+    class Dumb:
+        model = "dumb"
+        calls = 0
+        def chat(self, *a, **k):
+            Dumb.calls += 1
+            return {"content": "bof"}
+
+    root = TMP / "spec"
+    root.mkdir()
+    champ = {"score": {"tool_name": 0.9, "composite": 0.8}}
+    clock = [1_000_000.0]
+    out = SP.run(Oracle(), Dumb(), champion=champ, root=root, clock=lambda: clock[0])
+    r = out["results"]
+    assert all(r[k]["score"] == 1.0 for k in ("intention", "extraction", "juge", "planif")), r
+    assert all(x["delegated"] for x in r.values()), "tout gagné : seuil atteint, référence battue"
+    assert r["outil"]["score"] == 0.9 and r["outil"]["reference"] is None
+    n = Dumb.calls
+    SP.run(Oracle(), Dumb(), champion=champ, root=root, clock=lambda: clock[0] + 3600)
+    assert Dumb.calls == n, "la référence est gardée REF_TTL_DAYS jours, pas re-mesurée"
+    # Matthew cancre, référence oracle : il ne prend rien.
+    bad = SP.run(Dumb(), Oracle("ref"), champion={"score": {"tool_name": 0.5}}, root=root,
+                 clock=lambda: clock[0] + 2 * 86400)["results"]
+    assert not any(x["delegated"] for x in bad.values()) and "seuil" in bad["intention"]["why"]
+    assert SP.decide(0.9, 0.8, 0.95) == (False, "moins bon que la référence (0.90 < 0.95)")
+    assert SP.decide(0.94, 0.8, 0.95)[0], "dans la marge"
+    assert SP.extract_score({"type": "rappel", "quand": "demain 9h", "quoi": "x"}, {"type": "message"}) == 0.0
+    pub = SP.public(root)
+    assert [p["id"] for p in pub] == list(SP.SPECIALTIES) and "failures" not in pub[0] and "model" not in json.dumps(pub)
+    # Ce que lit le hook de la cognition (le filtre lui-même : cognition.selftest, 22b).
+    import matthew as M
+    saved = M.data_dir
+    try:
+        M.data_dir = lambda: root
+        SP.run(Oracle(), None, champion={"score": {"tool_name": 0.5}}, root=root)
+        assert M.allowed("juge") and not M.allowed("outil"), "outil 0,5 < seuil 0,8"
+        assert M.cognition_order(["groq"], {}) == ["matthew", "groq"], "une tâche gagnée suffit pour entrer dans la chaîne"
+        assert M.cognition_order(["groq"], {"cognition_provider_order": ["groq"]}) == ["groq"], "l'ordre écrit à la main gagne"
+    finally:
+        M.data_dir = saved
+    return f"{len(SP.SPECIALTIES)} spécialités, référence gardée {SP.REF_TTL_DAYS} j"
+
+
 @check("streaming : morceaux relayés dès leur arrivée, tokens comptés à la fin")
 def _gateway_stream():
     import threading
@@ -1158,8 +1225,11 @@ def _vitrine_more():
     finally:
         V.BROWSERS = saved
     js = (REPO / "matthew" / "vitrine_site" / "app.js").read_text(encoding="utf-8")
-    for key in ("fillBeforeAfter", "startTimeline", "fillCounters", "flyToTool", "setDay", "I18N", "OG", "TOUCH", "pickAt"):
+    for key in ("fillBeforeAfter", "startTimeline", "fillCounters", "flyToTool", "setDay", "I18N", "OG", "TOUCH", "pickAt",
+                "startGuide", "fillSpecs", "guessLevel", "matthew_guide.glb", "Math.PI - a"):
         assert key in js, key
+    assert (REPO / "matthew" / "vitrine_site" / "assets" / "models" / "matthew_guide.glb").stat().st_size > 100_000
+    assert "RobotExpressive" in (REPO / "matthew" / "vitrine_site" / "assets" / "LICENSES.txt").read_text(encoding="utf-8")
     site = TMP / "vitrine-site"
     V.build(site, root)
     html = (site / "index.html").read_text(encoding="utf-8")

@@ -1,7 +1,7 @@
 """
 server/assistant_control.py — what the HUD can change about the assistant itself.
 
-    memory.list · memory.forget          what JARVIS knows about you
+    memory.list · memory.forget          what Matthew knows about you
     profile.get · profile.set            his name, yours, his voice, the briefing
     plugins.list · plugins.toggle        drop-in skills, on and off
     plugins.save · plugins.test          their settings forms, and the test button
@@ -89,7 +89,7 @@ class AssistantControl:
     def _op_profile_set(self, data: dict) -> dict:
         from memory import config_manager as cm
         before = self._op_profile_get({})
-        name = str(data.get("assistant_name", before["assistant_name"])).strip()[:32] or "JARVIS"
+        name = str(data.get("assistant_name", before["assistant_name"])).strip()[:32] or "Matthew"
         user = str(data.get("user_name", before["user_name"])).strip()[:48]
         voice = str(data.get("voice", before["voice"]))
         if voice not in cm.AVAILABLE_VOICES:
@@ -143,7 +143,7 @@ class AssistantControl:
         if not name:
             return {"error": "nom requis"}
         save_plugin_enabled(name, bool(data.get("enabled")))
-        return {"ok": True, "detail": "Pris en compte au prochain démarrage de JARVIS."}
+        return {"ok": True, "detail": "Pris en compte au prochain démarrage de Matthew."}
 
     def _op_plugins_save(self, data: dict) -> dict:
         from memory.config_manager import save_plugin_config
@@ -186,7 +186,7 @@ def attach(dashboard, control: AssistantControl, log=print) -> None:  # noqa: AN
             return JSONResponse({"error": "JSON invalide"}, status_code=400)
         op = str(body.get("op", ""))
         # Plugin tests and memory reads touch the disk or the network: never on
-        # the event loop that also carries JARVIS's voice.
+        # the event loop that also carries Matthew's voice.
         result = await asyncio.to_thread(control.call, op, body.get("data"))
         return JSONResponse(result, status_code=400 if "error" in result else 200)
 

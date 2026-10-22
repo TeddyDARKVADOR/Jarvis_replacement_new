@@ -97,8 +97,8 @@ private fun Turn(message: Message) {
             .padding(if (jarvis) 14.dp else 2.dp),
     ) {
         Row(
-            who = message.title?.uppercase() ?: if (jarvis) "JARVIS" else "YOU",
-            // A `content` panel is not JARVIS talking — it is something it put
+            who = message.title?.uppercase() ?: if (jarvis) "MATTHEW" else "YOU",
+            // A `content` panel is not Matthew talking — it is something it put
             // on screen. Its own colour keeps a search result from reading as a
             // sentence the assistant said out loud.
             colour = when {

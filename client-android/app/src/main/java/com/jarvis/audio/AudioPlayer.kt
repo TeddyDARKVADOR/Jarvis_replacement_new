@@ -9,7 +9,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
 /**
- * JARVIS's voice, arriving as 24 kHz PCM and going to whatever the phone is
+ * Matthew's voice, arriving as 24 kHz PCM and going to whatever the phone is
  * playing through.
  *
  * **The rate is the server's, not a constant here.** `/ws/phone-out` announces
@@ -38,7 +38,7 @@ class AudioPlayer(
      * Reported from the playback loop rather than from the socket, and that is
      * the whole point: audio arrives in bursts up to 3.7× faster than real time
      * (see [QUEUE_CAPACITY]), so a level taken on arrival would race ahead of
-     * the voice and then sit at zero while JARVIS was still talking. The loop
+     * the voice and then sit at zero while Matthew was still talking. The loop
      * below is paced by AudioTrack, so it is paced by the speaker.
      */
     private val onLevel: (Float) -> Unit = {},
@@ -175,7 +175,7 @@ class AudioPlayer(
             }
             if (chunk == null) {
                 // Nothing to play. Say so, or the core would hold whatever
-                // amplitude the last syllable had for as long as JARVIS is quiet.
+                // amplitude the last syllable had for as long as Matthew is quiet.
                 onLevel(0f)
                 continue
             }
@@ -213,7 +213,7 @@ class AudioPlayer(
          * playback: a twenty-second answer lands in about five seconds and
          * leaves fifteen seconds of audio waiting. At 25 slots the queue
          * overflowed a few seconds in and dropped the OLDEST frames — cutting
-         * the middle out of JARVIS's sentence while the end played normally.
+         * the middle out of Matthew's sentence while the end played normally.
          * The kind of fault that gets blamed on the network.
          *
          * 400 × 9600 B is under 4 MB in the worst case, and `flush()` still

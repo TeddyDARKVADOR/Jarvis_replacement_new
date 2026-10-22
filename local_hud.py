@@ -1,5 +1,5 @@
 """
-JARVIS on this PC, with the same HUD as JARVIS on Oracle.
+Matthew on this PC, with the same HUD as Matthew on Oracle.
 
 ```
 python main.py --local          the brain here (Gemini key in config/api_key.json or legacy api_keys.json)
@@ -97,24 +97,24 @@ class LocalUI(HeadlessUI):
     def write_log(self, text: str) -> None:
         line = str(text)
         try:
-            print(f"[JARVIS] {line}", flush=True)
+            print(f"[Matthew] {line}", flush=True)
         except Exception:
             pass
         m = _LINE.match(line)
         who = m.group(1).strip() if m else ""
         body = m.group(2).strip() if m else line
-        name = (self.assistant_name or "JARVIS").lower()
+        name = (self.assistant_name or "Matthew").lower()
 
         if who in ("You", "Vous", "[Web]") and body:
             self.store.add_message(Message(False, body, time.time()))
-        elif who.lower() in (name, "jarvis") and body:
+        elif who.lower() in (name, "matthew", "jarvis") and body:
             self.store.add_message(Message(True, body, time.time()))
         else:
             self.store.log(line)
             self._follow_link(line)
 
     def _follow_link(self, line: str) -> None:
-        """The 'link' of a local JARVIS is its Gemini Live session."""
+        """The 'link' of a local Matthew is its Gemini Live session."""
         low = line.lower()
         if "jarvis online" in low or "reconnected — conversation restored" in low:
             self.store.set_link(LinkState.CONNECTED)
@@ -137,7 +137,7 @@ class LocalUI(HeadlessUI):
     def set_state(self, state: str) -> None:
         s = str(state).upper()
         # Assistant activity is not evidence of a live Gemini connection.
-        # The session watcher below and the explicit "JARVIS online" log own
+        # The session watcher below and the explicit "Matthew online" log own
         # link transitions; otherwise the THINKING state at the start of a
         # failed connection attempt would make the HUD claim it was connected.
         snap = self.store.snapshot()
@@ -345,7 +345,7 @@ class LocalBackend:
                 return {"error": "module cognition absent"}
             cog = get_active()
             if cog is None:
-                return {"error": "la cognition n'est pas active (JARVIS démarre encore ?)"}
+                return {"error": "la cognition n'est pas active (Matthew démarre encore ?)"}
             return cog.hud(op, data)
         if str(op).startswith("nightshift."):
             # Onglet NUIT (module nightshift.hud) : le rapport de la nuit des tests,
@@ -379,7 +379,7 @@ class LocalBackend:
         jarvis = self._brain.get("jarvis")
         make = getattr(jarvis, "_make_remote_key", None)
         if not callable(make):
-            return {"error": "JARVIS démarre encore — réessayez dans un instant."}
+            return {"error": "Matthew démarre encore — réessayez dans un instant."}
         made = make()
         if not made:
             return {"error": "tableau de bord indisponible (pip install fastapi \"uvicorn[standard]\" cryptography)"}
@@ -413,7 +413,7 @@ def main(argv: list[str] | None = None) -> int:
     guard = SingleInstance()
     if not guard.acquire():
         guard.signal_existing()
-        print("JARVIS est déjà en cours d'exécution — instance existante affichée.")
+        print("Matthew est déjà en cours d'exécution — instance existante affichée.")
         return 0
 
     if not boot.prepare():
@@ -421,7 +421,7 @@ def main(argv: list[str] | None = None) -> int:
         guard.release()
         return 1
     app = QApplication(sys.argv[:1])
-    app.setApplicationName("JARVIS")
+    app.setApplicationName("Matthew")
     app.setQuitOnLastWindowClosed(False)
 
     from client_desktop.hud.window import HudWindow
@@ -466,10 +466,10 @@ def main(argv: list[str] | None = None) -> int:
             hud.show()
             hud.raise_()
             if settings.notifications:
-                tray.notify(f"JARVIS — confirmation : {payload[1]}", payload[2] or "")
+                tray.notify(f"Matthew — confirmation : {payload[1]}", payload[2] or "")
         elif kind == "message" and getattr(payload, "from_jarvis", False) and settings.notifications:
             if not hud.isVisible() or hud.isMinimized() or hud._mini:
-                tray.notify("JARVIS", payload.text[:180])
+                tray.notify("Matthew", payload.text[:180])
 
     bridge.event.connect(on_event)
 
@@ -641,7 +641,7 @@ def main(argv: list[str] | None = None) -> int:
             finally:
                 watch_stop.set()
         except Exception as exc:
-            store.set_link(LinkState.ERROR, f"JARVIS local s'est arrêté : {exc}")
+            store.set_link(LinkState.ERROR, f"Matthew local s'est arrêté : {exc}")
             store.log(f"ERR: {exc!r}")
 
     tray.show()
@@ -652,7 +652,7 @@ def main(argv: list[str] | None = None) -> int:
     # The microphone starts SHUT: nothing leaves this PC until you open it
     # (mic button, Ctrl+Space, or a click on the core). A microphone open by
     # default sent every word in the room to Gemini — and the room's language
-    # became JARVIS's language.
+    # became Matthew's language.
     ui.muted = True
     threading.Thread(target=runner, name="jarvis-local", daemon=True).start()
 

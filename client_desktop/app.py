@@ -22,7 +22,7 @@ Three threads, and exactly two rules keep it honest:
 
 **The microphone is not held open when it is not needed.** It runs when the wake
 word is listening or the gate is open, and stops otherwise. On a work laptop the
-difference between "the microphone is on whenever JARVIS is running" and "the
+difference between "the microphone is on whenever Matthew is running" and "the
 microphone is on when it has a reason to be" is the difference between a tool
 and a thing people put tape over.
 """
@@ -80,7 +80,7 @@ class JarvisDesktop(QObject):
         self.store = JarvisStore()
         #: (text, sent_at) while a typed command is waiting for an answer.
         self._pending_command: tuple[str, float] | None = None
-        #: `time.monotonic()` of the last thing JARVIS said. See _check_unanswered.
+        #: `time.monotonic()` of the last thing Matthew said. See _check_unanswered.
         self._last_jarvis_at = 0.0
 
         # ── the pieces ───────────────────────────────────────────────────────
@@ -176,7 +176,7 @@ class JarvisDesktop(QObject):
 
         if autostart.is_enabled() and not autostart.matches_current_install():
             # Silent-at-login failures are the worst kind: the user just sees
-            # that JARVIS "stopped starting one day".
+            # that Matthew "stopped starting one day".
             self.store.log(
                 "Démarrage auto : la commande enregistrée ne pointe plus ici. "
                 "Ré-activez la case pour la corriger."
@@ -197,11 +197,11 @@ class JarvisDesktop(QObject):
             from .config import settings_dir
             self._meeting = meeting.client.start(
                 self.store.log, self.worker.http_session,
-                lambda _kind, text: self.store.notice("JARVIS — réunion", text), settings_dir())
+                lambda _kind, text: self.store.notice("Matthew — réunion", text), settings_dir())
         except Exception as exc:
             self.store.log(f"Copilote de réunion indisponible : {exc}")
 
-        # pilot/ (optionnel) : JARVIS prend la main sur ce PC ; Oracle choisit
+        # pilot/ (optionnel) : Matthew prend la main sur ce PC ; Oracle choisit
         # chaque action, confirme et annonce (server/assist.py).
         try:
             import pilot.client
@@ -375,7 +375,7 @@ class JarvisDesktop(QObject):
             elif payload in (LinkState.DISCONNECTED, LinkState.RECONNECTING, LinkState.ERROR):
                 self._offline.on_down()
 
-        # Asked for by the user, through JARVIS: not a notification.
+        # Asked for by the user, through Matthew: not a notification.
         if kind == "graph" and isinstance(payload, dict):
             self.hud.show_graph(payload.get("graph", "general"), payload.get("focus", ""))
             return
@@ -393,22 +393,22 @@ class JarvisDesktop(QObject):
             # This one is raised whatever the HUD is doing: the request dies
             # in ninety seconds and the user is looking at their editor.
             _, title, detail = payload  # type: ignore[misc]
-            self.tray.notify(f"JARVIS — confirmation : {title}", detail or "")
+            self.tray.notify(f"Matthew — confirmation : {title}", detail or "")
             self._show_hud()
 
         elif kind == "message":
             message = payload  # type: ignore[assignment]
             if getattr(message, "from_jarvis", False) and not self._hud_readable():
-                self.tray.notify("JARVIS", getattr(message, "text", "")[:180])
+                self.tray.notify("Matthew", getattr(message, "text", "")[:180])
 
         elif kind == "link":
             if payload is LinkState.ERROR and snapshot.last_error:
-                self.tray.notify("JARVIS — erreur", snapshot.last_error)
+                self.tray.notify("Matthew — erreur", snapshot.last_error)
 
     def _check_unanswered(self) -> None:
         """Notice a command that never came back, and say so exactly once.
 
-        The answer is whatever JARVIS says next, so any incoming line from it
+        The answer is whatever Matthew says next, so any incoming line from it
         clears the wait — this is not trying to match a reply to a request,
         only to catch total silence.
         """
@@ -434,7 +434,7 @@ class JarvisDesktop(QObject):
         )
         if self.settings.notifications:
             self.tray.notify(
-                "JARVIS n'a pas répondu",
+                "Matthew n'a pas répondu",
                 "La commande s'est perdue. Renvoyez-la si elle comptait.",
             )
 

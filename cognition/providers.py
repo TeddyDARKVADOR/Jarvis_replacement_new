@@ -239,13 +239,20 @@ class ProviderChain:
 
     def complete(self, prompt: str, *, system: str = "", max_tokens: int = 400,
                  temperature: float = 0.3, prefer: str | None = None,
-                 exclude: tuple[str, ...] = ()) -> tuple[str, str]:
+                 exclude: tuple[str, ...] = (), task: str | None = None) -> tuple[str, str]:
         """(texte, nom du fournisseur). Lève AllProvidersFailed si tous échouent.
 
         `exclude` écarte des fournisseurs pour une tâche qui demande de la
         qualité (le petit modèle local sans réflexion s'est trompé de signe sur
-        une valence au banc d'essai du 2026-10-13)."""
+        une valence au banc d'essai du 2026-10-13). `task` nomme la tâche
+        (« juge », « planif »…) : Matthew n'y répond que s'il a gagné cette
+        spécialité (matthew/specialist.py)."""
         order = [p for p in self.providers if p.name not in exclude]
+        if any(p.name == "matthew" for p in order):    # matthew/ (optionnel) : tâche par tâche
+            try:
+                order = order if __import__("matthew").allowed(task) else [p for p in order if p.name != "matthew"]
+            except ImportError:
+                pass
         if prefer:
             order.sort(key=lambda p: p.name != prefer)
         errors = []

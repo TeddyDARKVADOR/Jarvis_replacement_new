@@ -28,7 +28,7 @@ if _REPO_ROOT not in sys.path:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="client_desktop",
-        description="JARVIS — le HUD de ce poste, relié à MARK LIII.",
+        description="Matthew — le HUD de ce poste, relié à MARK LIII.",
     )
     parser.add_argument("--selftest", action="store_true", help="run the offline checks and exit")
     parser.add_argument("--debug", action="store_true", help="open the developer window at startup")
@@ -62,7 +62,7 @@ def _run_app(open_debug: bool, mini: bool) -> int:
     guard = SingleInstance()
     if not guard.acquire():
         guard.signal_existing()
-        print("JARVIS est déjà en cours d'exécution — instance existante affichée.")
+        print("Matthew est déjà en cours d'exécution — instance existante affichée.")
         return 0
 
     if not boot.prepare():
@@ -76,7 +76,7 @@ def _run_app(open_debug: bool, mini: bool) -> int:
     from .config import load
 
     app = QApplication(sys.argv[:1])
-    app.setApplicationName("JARVIS Desktop")
+    app.setApplicationName("Matthew Desktop")
     app.setOrganizationName("MARK LIII")
     # The HUD can be hidden; the client stays in the tray. Without this, hiding
     # it would quit — and an assistant that stops existing when you tidy your

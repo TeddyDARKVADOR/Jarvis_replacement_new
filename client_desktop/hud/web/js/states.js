@@ -1,5 +1,5 @@
 /**
- * states.js — what each of JARVIS's eight states looks like and says.
+ * states.js — what each of Matthew's eight states looks like and says.
  *
  * One table, read by every renderer, so the orb, the rings, the chip and the
  * caption can never disagree about what "THINKING" means. Colours are the
@@ -30,7 +30,7 @@ export function hintFor(state, ctx) {
     case 'OFFLINE':
       return ctx.paired ? 'Liaison coupée — cliquez sur ⚙ pour vous reconnecter'
                         : 'Non appairé — ouvrez ⚙ pour saisir l\'hôte et le jeton';
-    case 'CONNECTING':   return ctx.local ? 'Démarrage de JARVIS sur ce PC…' : 'Connexion à MARK LIII…';
+    case 'CONNECTING':   return ctx.local ? 'Démarrage de Matthew sur ce PC…' : 'Connexion à MARK LIII…';
     case 'RECONNECTING': return ctx.retry ? `Nouvelle tentative dans ${ctx.retry} s` : 'Reconnexion…';
     case 'ERROR':        return ctx.error || 'Erreur de liaison';
     case 'CONNECTED':    return ctx.wake ? 'Dites « Hey Jarvis » ou cliquez sur le noyau' : 'Cliquez sur le noyau ou Ctrl+Espace pour parler';

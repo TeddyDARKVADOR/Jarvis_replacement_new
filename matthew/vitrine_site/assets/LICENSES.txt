@@ -6,3 +6,7 @@ https://polyhaven.com/a/qwantani_night_puresky
 
 Lune, Terre, planètes et Voie lactée : textures Solar System Scope — Creative Commons Attribution 4.0 (CC BY 4.0)
 https://www.solarsystemscope.com/textures/ — https://creativecommons.org/licenses/by/4.0/
+
+Le guide (models/matthew_guide.glb) : « RobotExpressive » par Tomás Laulhé (Quaternius),
+modifications Don McCurdy — Creative Commons Zero (CC0 1.0), recoloré par la page.
+https://github.com/mrdoob/three.js/tree/r169/examples/models/gltf/RobotExpressive

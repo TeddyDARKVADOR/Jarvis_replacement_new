@@ -1,5 +1,5 @@
 """
-`HudWindow` — JARVIS on this PC: one window, whichever brain it shows.
+`HudWindow` — Matthew on this PC: one window, whichever brain it shows.
 
 WHO DRIVES IT
     Online, `app.JarvisDesktop` (the network worker's store, Oracle's events).
@@ -226,7 +226,7 @@ class HudBridge(QObject):
 
     @pyqtSlot()
     def attachFile(self) -> None:  # noqa: N802
-        path, _ = QFileDialog.getOpenFileName(self._w, "Fichier à analyser par JARVIS")
+        path, _ = QFileDialog.getOpenFileName(self._w, "Fichier à analyser par Matthew")
         if path:
             self._w.attach_file(path)
 
@@ -247,7 +247,7 @@ class HudBridge(QObject):
 
 
 class _Page(QWebEnginePage):
-    """Links in JARVIS's answers open in the real browser, never inside the HUD."""
+    """Links in Matthew's answers open in the real browser, never inside the HUD."""
 
     def acceptNavigationRequest(self, url, nav_type, is_main_frame):  # noqa: N802, ANN001
         if url.scheme() in ("http", "https"):
@@ -320,7 +320,7 @@ class HudWindow(QWidget):
         self._own_copy = ""
         self._preview = None
 
-        self.setWindowTitle("J.A.R.V.I.S — HUD")
+        self.setWindowTitle("MATTHEW — HUD")
         self.setWindowIcon(_app_icon())
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setMinimumSize(*MINI_SIZE)
@@ -361,7 +361,7 @@ class HudWindow(QWidget):
             lambda r: self._run(f"window.HUD&&HUD.fileAttached({json.dumps(r, ensure_ascii=False)})"))
         self._preview_requested.connect(self._show_preview)
 
-        # A file dropped anywhere on the HUD is a file for JARVIS. The view must
+        # A file dropped anywhere on the HUD is a file for Matthew. The view must
         # not take the drop itself, or Chromium would navigate to the file.
         self._view.setAcceptDrops(False)
         self.setAcceptDrops(True)
@@ -473,11 +473,11 @@ class HudWindow(QWidget):
     # ── the capability graph ─────────────────────────────────────────────────
 
     def show_graph(self, graph: str = "general", focus: str = "") -> None:
-        """Open the GRAPHE panel: JARVIS was asked to show what he can do.
+        """Open the GRAPHE panel: Matthew was asked to show what he can do.
 
         The graphs are read here, from this PC's copy of capabilities/graphs/,
         never sent over the wire. There is no button for this panel on purpose:
-        it opens when the user asks JARVIS for it (plugins/capabilities.py)."""
+        it opens when the user asks Matthew for it (plugins/capabilities.py)."""
         try:
             import capabilities as cap
             cap.reset()
@@ -528,7 +528,7 @@ class HudWindow(QWidget):
         # "Enregistrer" on an unchanged form should still mean "it is on disk".
         self.settings_saved.emit(changed)
         if set(changed) & settings_mod.RECONNECT_KEYS:
-            result["detail"] = "Enregistré — reconnexion à JARVIS…"
+            result["detail"] = "Enregistré — reconnexion à Matthew…"
         self._run(f"window.HUD&&HUD.settingsSaved({json.dumps(result, ensure_ascii=False)})")
         self._push_settings()
         server = {"host": self.settings.host, "port": self.settings.port, "tls": self.settings.use_tls,
@@ -565,7 +565,7 @@ class HudWindow(QWidget):
         threading.Thread(target=work, name=f"hud-rpc-{op}", daemon=True).start()
 
     def attach_file(self, path: str) -> None:
-        """Hand a file to JARVIS ("analyse ce fichier"). Uploads can be slow."""
+        """Hand a file to Matthew ("analyse ce fichier"). Uploads can be slow."""
         backend = self.backend
         self._run("window.HUD&&HUD.fileAttached({\"busy\":true})")
 

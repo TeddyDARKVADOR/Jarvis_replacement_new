@@ -61,7 +61,7 @@ export function createSettings(ctx) {
       assistant_name: $('a-name').value, user_name: $('a-user').value, voice, brief: $('a-brief').checked });
     if (r.error) { line($('a-status'), r.error, 'err'); ctx.sound.play('error'); return; }
     profile = r;
-    line($('a-status'), r.reconnecting ? '✓ Appliqué — JARVIS reprend la conversation avec sa nouvelle identité.' : '✓ Enregistré.', 'ok');
+    line($('a-status'), r.reconnecting ? '✓ Appliqué — Matthew reprend la conversation avec sa nouvelle identité.' : '✓ Enregistré.', 'ok');
     ctx.sound.play('reply');
   };
 
@@ -83,7 +83,7 @@ export function createSettings(ctx) {
         <span class="kv"><b>${esc(e.key.replace(/_/g, ' '))}</b>${esc(e.value)}</span>
         <span class="date">${esc(e.updated || '')}</span>
         <button title="Oublier" data-i="${memory.indexOf(e)}">✕</button></div>`).join('')
-      : '<div class="set-note">Rien pour l\'instant. JARVIS retient ce que vous lui dites de vous.</div>';
+      : '<div class="set-note">Rien pour l\'instant. Matthew retient ce que vous lui dites de vous.</div>';
   }
   $('m-search').addEventListener('input', renderMemory);
   $('m-refresh').onclick = (e) => { e.preventDefault(); loadMemory(); };
@@ -105,7 +105,7 @@ export function createSettings(ctx) {
     $('p-forms').innerHTML = '';
     const r = await ctx.rpc('plugins.list');
     if (r.error) { $('p-list').innerHTML = `<div class="set-note">${esc(r.error)}</div>`; return; }
-    if (!r.ready) { $('p-list').innerHTML = '<div class="set-note">JARVIS démarre encore — rouvrez cet onglet dans un instant.</div>'; return; }
+    if (!r.ready) { $('p-list').innerHTML = '<div class="set-note">Matthew démarre encore — rouvrez cet onglet dans un instant.</div>'; return; }
     $('p-list').innerHTML = (r.plugins || []).map((pl) => `
       <div class="plugin-row"><div><div class="pname">${esc(pl.name)}</div>
         ${pl.valid ? `<div class="pdesc">${esc(pl.description || '')}</div>` : `<div class="perr">${esc(pl.error || 'invalide')}</div>`}</div>
@@ -220,7 +220,7 @@ export function createSettings(ctx) {
     rangeLabels();
     dirty = false;
     // A refresh right after a save must not wipe the "saved" message.
-    if ($('s-status').textContent === 'Chargement…') status(d.paired ? '' : 'Ce PC n\'est pas encore relié à JARVIS.');
+    if ($('s-status').textContent === 'Chargement…') status(d.paired ? '' : 'Ce PC n\'est pas encore relié à Matthew.');
   }
 
   function rangeLabels() {

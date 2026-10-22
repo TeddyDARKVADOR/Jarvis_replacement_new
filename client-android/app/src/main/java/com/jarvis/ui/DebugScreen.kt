@@ -30,7 +30,7 @@ import java.util.Locale
  * Everything the home screen used to show, and a little more.
  *
  * This is the screen that diagnoses. Keeping it whole and keeping it *here* is
- * what let the home screen become about JARVIS: nothing had to be deleted to
+ * what let the home screen become about Matthew: nothing had to be deleted to
  * make room, it only had to stop being the first thing anyone saw.
  */
 @Composable

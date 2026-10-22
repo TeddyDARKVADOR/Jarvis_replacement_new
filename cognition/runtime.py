@@ -398,7 +398,7 @@ class Cognition:
                 said="\n".join(f"- {t}" for t in turns) or "(nothing)",
                 fact=f"{key.replace('_', ' ')}: {value}")
             text, used = self.chain.complete(prompt, max_tokens=300, temperature=0,
-                                             exclude=("local",))
+                                             exclude=("local",), task="juge")
             ok = policy.parse_judgement(text)
             method = f"judge:{used}"
         except Exception as e:
@@ -717,7 +717,7 @@ class Cognition:
         return g
 
     def generate(self, prompt: str, *, system: str = "", quality: bool = False,
-                 max_tokens: int = 400, with_state: bool = True) -> str:
+                 max_tokens: int = 400, with_state: bool = True, task: str | None = None) -> str:
         """Générateurs de secours, IA locale comprise. Le prompt système reçoit
         la constitution et, par défaut, l'état affectif courant : le même JARVIS,
         quel que soit le modèle qui répond. `quality=True` écarte le petit
@@ -731,7 +731,7 @@ class Cognition:
             sys_parts.append(system)
         text, _ = self.chain.complete(prompt, system="\n\n".join(sys_parts),
                                       max_tokens=max_tokens,
-                                      exclude=("local",) if quality else ())
+                                      exclude=("local",) if quality else (), task=task)
         return text
 
     @_safe(default=dict)

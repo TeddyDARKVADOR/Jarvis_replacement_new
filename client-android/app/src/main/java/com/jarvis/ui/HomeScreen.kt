@@ -54,12 +54,12 @@ import com.jarvis.LinkState
 import kotlinx.coroutines.delay
 
 /**
- * The one screen that is about JARVIS rather than about the app.
+ * The one screen that is about Matthew rather than about the app.
  *
  * It shows a core, a word, and a sentence. Every number this used to display —
  * bytes, frames, sockets — moved to Settings → Developer, because a person
  * looking at their assistant is not diagnosing it, and a screen that reports
- * `RX 691 KB` is a screen about a client rather than about JARVIS.
+ * `RX 691 KB` is a screen about a client rather than about Matthew.
  */
 @Composable
 fun HomeScreen(
@@ -84,7 +84,7 @@ fun HomeScreen(
     BackHandler(enabled = composing) { composing = false }
 
     // One number feeds the core, from whichever side is making sound. While
-    // JARVIS speaks, the microphone is either gated or picking up JARVIS itself,
+    // Matthew speaks, the microphone is either gated or picking up Matthew itself,
     // so preferring the speaker here is what keeps the core honest.
     val level = if (snap.assistant == AssistantState.SPEAKING) {
         snap.speakerLevel
@@ -101,7 +101,7 @@ fun HomeScreen(
     ) {
         Spacer(Modifier.height(28.dp))
         Text(
-            "JARVIS",
+            "MATTHEW",
             color = Color(0xFFD7E1F2),
             fontSize = 24.sp,
             fontWeight = FontWeight.Light,
@@ -111,7 +111,7 @@ fun HomeScreen(
         Spacer(Modifier.weight(1f))
 
         // Tapping interrupts. It is the largest target on the screen and the
-        // one thing the user is already looking at when they want JARVIS to
+        // one thing the user is already looking at when they want Matthew to
         // stop talking.
         val tap = if (snap.connected) onInterrupt else null
         JarvisCore(
@@ -149,8 +149,8 @@ fun HomeScreen(
 
         when {
             !configured -> Hint("No server yet.", "SET UP", onOpenSettings)
-            !micGranted -> Hint("JARVIS cannot hear you.", "ALLOW MIC", onRequestPermissions)
-            !snap.serviceRunning -> Hint(null, "WAKE JARVIS", onConnect)
+            !micGranted -> Hint("Matthew cannot hear you.", "ALLOW MIC", onRequestPermissions)
+            !snap.serviceRunning -> Hint(null, "WAKE MATTHEW", onConnect)
             composing -> ComposeBar(
                 onSend = { onSend(it); composing = false },
                 onDismiss = { composing = false },
@@ -169,7 +169,7 @@ fun HomeScreen(
 }
 
 /**
- * What JARVIS is doing, in words, and the last thing it said.
+ * What Matthew is doing, in words, and the last thing it said.
  *
  * Two lines and never more. The sentence is capped rather than scrolled: a wall
  * of text under the core turns this back into a transcript viewer, and there is
@@ -181,7 +181,7 @@ private fun CaptionLine(
     link: LinkState,
     lastLine: String?,
 ) {
-    // A quote goes stale. After a while the last thing JARVIS said stops being
+    // A quote goes stale. After a while the last thing Matthew said stops being
     // "what is happening" and becomes a sentence sitting under the core from
     // some earlier conversation, so the screen falls back to its own state.
     var stale by remember(lastLine) { mutableStateOf(false) }
@@ -195,7 +195,7 @@ private fun CaptionLine(
 
     val caption = when {
         link == LinkState.DISCONNECTED -> "Offline."
-        link == LinkState.ERROR -> "Cannot reach JARVIS."
+        link == LinkState.ERROR -> "Cannot reach Matthew."
         link == LinkState.CONNECTING -> "Waking up…"
         link == LinkState.RECONNECTING -> "Reaching out…"
         assistant == AssistantState.LISTENING -> "I'm listening."
@@ -288,7 +288,7 @@ private fun Controls(
  *
  * `{"type":"command","text":…}` has been in the protocol since the web
  * dashboard, and the phone had no way to send it — so in a meeting, on a train,
- * or any time the wake word will not fire, JARVIS was simply unreachable from
+ * or any time the wake word will not fire, Matthew was simply unreachable from
  * the device it lives on. One field closes that.
  *
  * It replaces the controls rather than sitting beside them: a keyboard is
@@ -402,7 +402,7 @@ fun ConfirmationCard(
             // Nothing to press. The request is gone on the server too, so the
             // only honest thing left is to say so and let the user dismiss it.
             Text(
-                "JARVIS stopped waiting. Ask again if you still want it.",
+                "Matthew stopped waiting. Ask again if you still want it.",
                 color = Color(0xFF8A7466), fontSize = 12.sp,
             )
             Button(

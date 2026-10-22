@@ -1,11 +1,11 @@
 /**
- * studio.js — the Jarvis Code Studio panel.
+ * studio.js — the Matthew Code Studio panel.
  *
  * Everything here is read from `studio.status` (core/code_workspace/service.py):
  * the journal the tools write, the task list, the terminal lines of commands
  * that really ran, the checkpoints on disk. The page invents nothing — it
  * polls once a second while open, and asks `studio.ping` every few seconds
- * while closed so the header button can glow when JARVIS is at work (and the
+ * while closed so the header button can glow when Matthew is at work (and the
  * panel opens by itself when a new job starts).
  *
  * The summary keeps apart what was CHECKED (tests, browser paths), what was
@@ -101,7 +101,7 @@ export function createStudio(ctx) {
     }
     if (job && job.running && job.started !== lastStarted) {
       lastStarted = job.started;
-      ctx.toast('CODE STUDIO', `JARVIS travaille sur « ${job.project} »`, null, 4000);
+      ctx.toast('CODE STUDIO', `Matthew travaille sur « ${job.project} »`, null, 4000);
       // "montre-moi ce que tu fais": a job that starts opens the panel.
       if (!open && !ctx.isMini()) { project = null; show(); }
     }
@@ -161,7 +161,7 @@ export function createStudio(ctx) {
     $('st-phase').textContent = job ? `${job.phase_label}${job.step ? ' — ' + job.step : ''}` : (s.project ? 'Au repos' : '');
     $('st-attempt').textContent = job && job.attempt ? `correction ${job.attempt}/${job.max_attempts}` : '';
     $('st-request').textContent = job ? job.request : ((s.map && s.map.summary) || '');
-    $('st-title').textContent = (s.map && s.map.title) || s.project || 'JARVIS CODE STUDIO';
+    $('st-title').textContent = (s.map && s.map.title) || s.project || 'MATTHEW CODE STUDIO';
 
     if (!force && s.seq === lastSeq && jobKey === lastJobKey) return;
     lastSeq = s.seq; lastJobKey = jobKey;

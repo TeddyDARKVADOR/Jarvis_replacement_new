@@ -60,7 +60,7 @@ const I18N = {
     steps: "<li><b>Inventer.</b> Un modèle ouvert écrit des demandes réalistes pour chaque outil.</li><li><b>Vérifier.</b> Un autre modèle, à l'aveugle, doit retrouver le bon outil. Sinon, la demande est jetée.</li><li><b>S'entraîner.</b> Sur une carte graphique de salon, depuis un modèle ouvert (Qwen3.5-4B).</li><li><b>Passer l'examen.</b> Sur des demandes jamais vues, outil par outil.</li><li><b>Prendre la relève</b> seulement s'il bat la version précédente. Sinon, rien ne change.</li>",
     rules: "Règles : aucune vraie conversation n'est publiée ici ; aucune réponse de Gemini ou de Claude ne lui sert de modèle — seulement des modèles sous licence ouverte et les corrections de son utilisateur.",
     dr_cases: "Ses questions d'examen", f_updated: "Mis à jour le", f_base: "base",
-    credits: "Page en lecture seule, régénérée à chaque amélioration · <a href=\"feed.xml\">flux des améliorations (Atom)</a>. Décor : <a href=\"https://kenney.nl/assets/space-kit\">Space Kit de Kenney</a> et éclairage <a href=\"https://polyhaven.com/a/qwantani_night_puresky\">Poly Haven</a> (CC0) · Lune, planètes et Voie lactée : <a href=\"https://www.solarsystemscope.com/textures/\">Solar System Scope</a> (CC BY 4.0) · rendu <a href=\"https://threejs.org\">three.js</a>.",
+    credits: "Page en lecture seule, régénérée à chaque amélioration · <a href=\"feed.xml\">flux des améliorations (Atom)</a>. Décor : <a href=\"https://kenney.nl/assets/space-kit\">Space Kit de Kenney</a> et éclairage <a href=\"https://polyhaven.com/a/qwantani_night_puresky\">Poly Haven</a> (CC0) · Matthew en guide : robot de <a href=\"https://quaternius.com\">Tomás Laulhé</a> (CC0) · Lune, planètes et Voie lactée : <a href=\"https://www.solarsystemscope.com/textures/\">Solar System Scope</a> (CC BY 4.0) · rendu <a href=\"https://threejs.org\">three.js</a>.",
     no_data: "Les données du jour ne sont pas encore publiées.", first_exam: "Premier examen ce soir.",
     todo: "à venir", learned: "appris", never_seen: "jamais vu", seen_train: "vu à l'entraînement",
     ok: "réussi", ko: "raté", no_tool: "aucun outil", today: "Aujourd'hui", j7: "J-7",
@@ -83,6 +83,28 @@ const I18N = {
     ics_title: "Matthew apprend (nuit d'entraînement)",
     dr_meta: (ex, n) => `${ex} exemples vérifiés · ${n} examen${n > 1 ? "s" : ""} noté${n > 1 ? "s" : ""}`,
     dr_soon: " · il l'apprendra dans les prochaines nuits", dr_none: "Pas encore de scénario d'examen pour cet outil.",
+    share: "Partager", shared: "Lien copié !", share_text: "Regardez une IA apprendre chaque nuit, en public.",
+    q_auto: "AUTO", q_high: "HAUTE", q_eco: "ÉCO",
+    q_title: { auto: "Qualité automatique : la page s'allège seule si l'ordinateur peine", high: "Qualité haute : tous les effets", eco: "Qualité éco : pour les ordinateurs modestes" },
+    q_toast: "La page s'est allégée pour rester fluide (bouton AUTO en haut).",
+    tour_btn: "Visite guidée par Matthew",
+    sp_k: "Ses spécialités", sp_h: "Il ne prend une tâche que s'il la mérite.",
+    sp_p: "Matthew ne remplace pas tout d'un coup. Pour chaque type de tâche, il passe une épreuve à part. Il ne s'en charge que s'il atteint le seuil et fait au moins aussi bien que le modèle qu'il remplacerait.",
+    sp_on: "il s'en charge", sp_off: "pas encore", sp_ref: (r) => ` · référence ${r}`, sp_floor: (f) => `seuil ${f}`,
+    sp_n: (n) => `${n} cas notés`,
+    g_skip: "Passer la visite", g_next: "Suivant", g_end: "C'est parti !", g_voice: "Voix de Matthew",
+    g: {
+      hello: "Salut ! Moi, c'est Matthew. Je suis une intelligence artificielle qui apprend un peu plus chaque nuit. Je te fais visiter ?",
+      base: "Voici ma base, sur la Lune. En vrai, je vis sur un ordinateur de salon… mais avoue que c'est plus joli comme ça. Le noyau bleu, au centre, c'est mon esprit.",
+      skills: "Chaque lumière autour de moi est un savoir-faire : ouvrir une application, donner la météo, envoyer un message… Verte : je maîtrise. Éteinte : pas encore appris. Tu pourras toucher une lumière pour y voler.",
+      night: "Chaque nuit, pendant que tout le monde dort, je m'entraîne sur de nouveaux exemples. Ce compte à rebours dit quand commence ma prochaine nuit.",
+      night_plain: "Chaque nuit, pendant que tout le monde dort, je m'entraîne sur de nouveaux exemples.",
+      night_live: "D'ailleurs, je suis en plein entraînement en ce moment ! Tu peux suivre chaque étape ici, en direct.",
+      exam: "Ensuite, je passe un examen : des questions inventées, que je n'ai souvent jamais vues. Une nouvelle version de moi ne prend ma place que si elle fait mieux. Je ne régresse jamais.",
+      score: (s) => `À mon dernier examen : ${s} de bonnes réponses. Pas encore parfait, mais chaque nuit compte !`,
+      spec: "Je me spécialise petit à petit : je ne reprends une tâche que si une épreuve prouve que je la fais bien.",
+      bye: "Rien de privé ici : tout ce que tu vois est inventé pour l'examen. Fais défiler pour l'histoire complète. Pour me revoir, clique sur « ? » en haut. Bonne visite !",
+    },
   },
   en: {
     doc_title: "Matthew — an AI that learns every night",
@@ -128,7 +150,7 @@ const I18N = {
     steps: "<li><b>Invent.</b> An open model writes realistic requests for each tool.</li><li><b>Verify.</b> Another model, blind, must find the right tool. Otherwise the request is thrown away.</li><li><b>Train.</b> On a home graphics card, from an open model (Qwen3.5-4B).</li><li><b>Sit the exam.</b> On requests it has never seen, tool by tool.</li><li><b>Take over</b> only if it beats the previous version. Otherwise nothing changes.</li>",
     rules: "Rules: no real conversation is ever published here; no answer from Gemini or Claude is ever used as a model to learn from — only openly licensed models and its user's corrections.",
     dr_cases: "Its exam questions", f_updated: "Updated", f_base: "base",
-    credits: "Read-only page, regenerated after every improvement · <a href=\"feed.xml\">improvements feed (Atom)</a>. Scenery: <a href=\"https://kenney.nl/assets/space-kit\">Kenney's Space Kit</a> and <a href=\"https://polyhaven.com/a/qwantani_night_puresky\">Poly Haven</a> lighting (CC0) · Moon, planets and Milky Way: <a href=\"https://www.solarsystemscope.com/textures/\">Solar System Scope</a> (CC BY 4.0) · rendered with <a href=\"https://threejs.org\">three.js</a>.",
+    credits: "Read-only page, regenerated after every improvement · <a href=\"feed.xml\">improvements feed (Atom)</a>. Scenery: <a href=\"https://kenney.nl/assets/space-kit\">Kenney's Space Kit</a> and <a href=\"https://polyhaven.com/a/qwantani_night_puresky\">Poly Haven</a> lighting (CC0) · Matthew as a guide: robot by <a href=\"https://quaternius.com\">Tomás Laulhé</a> (CC0) · Moon, planets and Milky Way: <a href=\"https://www.solarsystemscope.com/textures/\">Solar System Scope</a> (CC BY 4.0) · rendered with <a href=\"https://threejs.org\">three.js</a>.",
     no_data: "Today's data is not published yet.", first_exam: "First exam tonight.",
     todo: "coming", learned: "learned", never_seen: "never seen", seen_train: "seen in training",
     ok: "passed", ko: "failed", no_tool: "no tool", today: "Today", j7: "D-7",
@@ -151,6 +173,28 @@ const I18N = {
     ics_title: "Matthew learns (training night)",
     dr_meta: (ex, n) => `${ex} verified examples · ${n} exam${n > 1 ? "s" : ""} scored`,
     dr_soon: " · it will learn it in the coming nights", dr_none: "No exam scenario for this tool yet.",
+    share: "Share", shared: "Link copied!", share_text: "Watch an AI learn every night, in public.",
+    q_auto: "AUTO", q_high: "HIGH", q_eco: "ECO",
+    q_title: { auto: "Automatic quality: the page lightens itself if the computer struggles", high: "High quality: every effect", eco: "Eco quality: for modest computers" },
+    q_toast: "The page lightened itself to stay smooth (AUTO button at the top).",
+    tour_btn: "Guided tour by Matthew",
+    sp_k: "Its specialties", sp_h: "It only takes a task once it has earned it.",
+    sp_p: "Matthew doesn't replace everything at once. Each kind of task has its own test. It only takes one over if it reaches the bar and does at least as well as the model it would replace.",
+    sp_on: "it handles it", sp_off: "not yet", sp_ref: (r) => ` · reference ${r}`, sp_floor: (f) => `bar ${f}`,
+    sp_n: (n) => `${n} scored cases`,
+    g_skip: "Skip the tour", g_next: "Next", g_end: "Let's go!", g_voice: "Matthew's voice",
+    g: {
+      hello: "Hi! I'm Matthew. I'm an artificial intelligence that learns a little more every night. Want a tour?",
+      base: "This is my base, on the Moon. In real life I live on a home computer… but admit it, this looks better. The blue core in the middle is my mind.",
+      skills: "Every light around me is a skill: opening an app, giving the weather, sending a message… Green: I've got it. Off: not learned yet. You can tap a light to fly there.",
+      night: "Every night, while everyone sleeps, I train on new examples. This countdown says when my next night begins.",
+      night_plain: "Every night, while everyone sleeps, I train on new examples.",
+      night_live: "In fact, I'm training right now! You can follow every step here, live.",
+      exam: "Then I sit an exam: made-up questions, often ones I've never seen. A new version of me only takes over if it does better. I never go backwards.",
+      score: (s) => `At my last exam: ${s} right answers. Not perfect yet, but every night counts!`,
+      spec: "I'm specialising bit by bit: I only take a task over once a test proves I do it well.",
+      bye: "Nothing private here: everything you see is made up for the exam. Scroll for the full story. To see me again, click \"?\" at the top. Enjoy!",
+    },
   },
 };
 function pickLang() {
@@ -161,6 +205,47 @@ function pickLang() {
 }
 const LANG = pickLang();
 const T = (k, ...a) => { const v = I18N[LANG][k] ?? I18N.fr[k] ?? k; return typeof v === "function" ? v(...a) : v; };
+const G = (k, ...a) => { const v = I18N[LANG].g[k] ?? I18N.fr.g[k]; return typeof v === "function" ? v(...a) : v; };
+const store = {
+  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* stockage indisponible */ } },
+};
+
+// ── Qualité : la page s'adapte à la machine ──────────────────────────────────
+// « auto » (défaut) : un niveau deviné d'après la machine, puis la page s'allège seule si les
+// images tardent. « high » et « eco » fixent le niveau (bouton en haut, ou ?q=high|eco|auto).
+// Niveaux : 3 tout (halo, définition 1,5, flou des cartes) · 2 sans halo ni flou, définition 1,25
+// · 1 définition 1 et 30 images/s · 0 définition 0,75, étiquettes des outils masquées.
+const QUALITIES = ["auto", "eco", "high"];
+function pickQuality() {
+  const q = new URLSearchParams(location.search).get("q");
+  if (QUALITIES.includes(q)) return q;
+  const s = store.get("matthew-quality");
+  return QUALITIES.includes(s) ? s : "auto";
+}
+let QUALITY = pickQuality();
+function guessLevel() {
+  if (QUALITY === "high") return 3;
+  if (QUALITY === "eco") return 1;
+  let lvl = TOUCH || innerWidth < 860 ? 1 : 3;
+  const mem = navigator.deviceMemory, cpu = navigator.hardwareConcurrency;
+  if ((mem && mem <= 4) || (cpu && cpu <= 4) || (navigator.connection && navigator.connection.saveData)) lvl = Math.min(lvl, 1);
+  try {
+    const gl = document.createElement("canvas").getContext("webgl");
+    const ext = gl && gl.getExtension("WEBGL_debug_renderer_info");
+    const gpu = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : "";
+    if (/swiftshader|llvmpipe|software|basic render/i.test(gpu)) lvl = 0;
+    // Puces graphiques intégrées : sans halo d'emblée (l'adaptatif descend plus bas si besoin).
+    else if (/intel|mali|adreno|powervr|videocore|vega \d+ graphics|radeon\(tm\) graphics/i.test(gpu) && !/\barc\b/i.test(gpu)) lvl = Math.min(lvl, 2);
+    const lose = gl && gl.getExtension("WEBGL_lose_context");
+    if (lose) lose.loseContext();
+  } catch { /* pas de WebGL : la scène ne démarrera pas */ }
+  return lvl;
+}
+function setQualityClasses(level) {
+  document.documentElement.classList.toggle("lite", level <= 2);
+  document.documentElement.classList.toggle("minimal", level === 0);
+}
 const fmtDate = (d) => new Date(d + "T12:00:00").toLocaleDateString(LANG === "fr" ? "fr-FR" : "en-GB", { day: "numeric", month: "short" });
 const DOM_EN = { "Système": "System", "Bureau": "Desktop", "Infos": "Info", "Communication": "Messages", "Mémoire": "Memory", "Code": "Code", "Noyau": "Core", "Autres": "Other" };
 const AREA_EN = { "IA": "AI", "Interface": "Interface", "Voix": "Voice", "Fiabilité": "Reliability", "Système": "System" };
@@ -195,6 +280,23 @@ function applyStatic() {
     const u = new URL(location.href); u.searchParams.set("lang", next); location.href = u.toString();
   };
   if (OG) document.body.classList.add("og");
+  $("tour-btn").title = T("tour_btn");
+  renderQualityBtn();
+  $("share").onclick = async () => {
+    const url = location.origin + location.pathname;
+    if (navigator.share) {
+      try { await navigator.share({ title: T("doc_title"), text: T("share_text"), url }); } catch { /* annulé */ }
+      return;
+    }
+    try { await navigator.clipboard.writeText(url); toast(T("shared")); } catch { /* presse-papiers refusé */ }
+  };
+}
+
+function renderQualityBtn() {
+  const b = $("quality");
+  b.textContent = T("q_" + QUALITY);
+  b.title = I18N[LANG].q_title[QUALITY];
+  b.setAttribute("aria-label", b.title);
 }
 
 async function main() {
@@ -217,6 +319,7 @@ async function main() {
   fillChanges();
   fillLive();
   fillNext();
+  fillSpecs();
   watchData();
   const closeTool = () => { $("drawer").hidden = true; history.replaceState(null, "", location.pathname + location.search); };
   $("dr-close").onclick = closeTool;
@@ -230,6 +333,31 @@ async function main() {
   const timeline = startTimeline(scene);
   startReplay(scene);
   startStory(scene, timeline);
+  $("quality").onclick = () => {
+    QUALITY = QUALITIES[(QUALITIES.indexOf(QUALITY) + 1) % QUALITIES.length];
+    store.set("matthew-quality", QUALITY);
+    renderQualityBtn();
+    if (scene) scene.setQuality(); else setQualityClasses(guessLevel());
+  };
+  // Première visite : Matthew se présente lui-même (une seule fois ; « ? » le rappelle).
+  $("tour-btn").onclick = () => startGuide(scene);
+  if (!OG && store.get("matthew-tour") !== "1" && !new URLSearchParams(location.search).has("notour")) {
+    setTimeout(() => startGuide(scene), scene ? 900 : 300);
+  }
+}
+
+// Ses spécialités (Direction 3) : chaque type de tâche a son épreuve, son seuil et sa référence.
+function fillSpecs() {
+  const S = DATA.specialties;
+  $("c-spec").hidden = !(Array.isArray(S) && S.length);
+  if ($("c-spec").hidden) return;
+  $("specs").innerHTML = S.map((s) => {
+    const w = Math.round((s.score ?? 0) * 100), f = Math.round((s.floor ?? 0) * 100);
+    const detail = T("sp_floor", pct(s.floor)) + (s.reference != null ? T("sp_ref", pct(s.reference)) : "") + (s.n ? " · " + T("sp_n", s.n) : "");
+    return `<li class="${s.delegated ? "on" : ""}"><span>${esc(LANG === "en" ? s.label_en || s.label : s.label)}<span class="st">${esc(T(s.delegated ? "sp_on" : "sp_off"))}</span></span>`
+      + `<span class="sv">${s.score == null ? "—" : pct(s.score)}</span><span class="bar"><i style="width:${w}%"></i><b style="left:${f}%"></b></span>`
+      + `<span class="sd">${esc(detail)}</span></li>`;
+  }).join("");
 }
 
 // L'accroche : un seul chiffre, en mots simples.
@@ -243,7 +371,7 @@ function fillHero() {
 // Le récit : chaque chapitre qui entre à l'écran déplace la caméra ; la frise se rejoue
 // d'elle-même au chapitre des nuits ; des points à droite disent où l'on en est.
 function startStory(scene, timeline) {
-  const chapters = [...document.querySelectorAll(".chapter")];
+  const chapters = [...document.querySelectorAll(".chapter:not([hidden])")];
   const dots = $("dots");
   dots.innerHTML = chapters.map(() => "<i></i>").join("");
   let played = false;
@@ -530,7 +658,7 @@ function watchData() {
           const champ = (DATA.champion || {}).since !== (fresh.champion || {}).since;
           const ended = DATA.live && !fresh.live;
           DATA = fresh;
-          fillHero(); fillStats(); fillCounters(); fillLive(); fillNext();
+          fillHero(); fillStats(); fillCounters(); fillLive(); fillNext(); fillSpecs();
           if (champ) toast(T("toast_champ")); else if (ended) toast(T("toast_done"));
         }
       } catch { /* hors ligne : on réessaie au prochain tour */ }
@@ -607,9 +735,14 @@ async function startScene() {
   const { RGBELoader } = await import("three/addons/loaders/RGBELoader.js");
   const small = innerWidth < 860;
   let composer = null;
+  // La définition de rendu par niveau (voir guessLevel) : 2 en plein écran avec halo saturait
+  // les ordinateurs modestes ; 1,5 se distingue à peine sur un écran haute densité.
+  const PR = [0.75, 1, 1.25, 1.5];
+  let level = guessLevel();
+  setQualityClasses(level);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: !small, alpha: false, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, small || TOUCH ? 1.25 : 2));
+  const renderer = new THREE.WebGLRenderer({ antialias: level >= 3 && !small, alpha: false, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, PR[level]));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -818,27 +951,42 @@ async function startScene() {
   const rover = place("rover", 15, 0, 1.6);
   const ship = place("craft_speederA", 0, 20, 1.8, 0, 9);
 
-  // Halo (bloom) sur les grands écrans : seules les lumières vives brillent.
-  if (!small && !REDUCED) {
-    try {
-      const { EffectComposer } = await import("three/addons/postprocessing/EffectComposer.js");
-      const { RenderPass } = await import("three/addons/postprocessing/RenderPass.js");
-      const { UnrealBloomPass } = await import("three/addons/postprocessing/UnrealBloomPass.js");
-      const { OutputPass } = await import("three/addons/postprocessing/OutputPass.js");
-      composer = new EffectComposer(renderer);
-      composer.addPass(new RenderPass(scene, camera));
-      composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.8, 0.45, 0.9));
-      composer.addPass(new OutputPass());
-    } catch (e) { composer = null; }
+  // Halo (bloom) au niveau 3 seulement : seules les lumières vives brillent. C'est la passe la
+  // plus chère (plusieurs flous plein écran par image) ; chargée à la demande.
+  let composerLoading = null;
+  function ensureComposer() {
+    if (composer || composerLoading || small || REDUCED) return;
+    composerLoading = (async () => {
+      try {
+        const { EffectComposer } = await import("three/addons/postprocessing/EffectComposer.js");
+        const { RenderPass } = await import("three/addons/postprocessing/RenderPass.js");
+        const { UnrealBloomPass } = await import("three/addons/postprocessing/UnrealBloomPass.js");
+        const { OutputPass } = await import("three/addons/postprocessing/OutputPass.js");
+        const c = new EffectComposer(renderer);
+        c.addPass(new RenderPass(scene, camera));
+        c.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.8, 0.45, 0.9));
+        c.addPass(new OutputPass());
+        c.setSize(host.clientWidth, host.clientHeight);
+        composer = c;
+      } catch (e) { composer = null; }
+    })();
   }
+  if (level >= 3) await (ensureComposer(), composerLoading);
 
   function resize() {
     const w = host.clientWidth, h = host.clientHeight;
     renderer.setSize(w, h); labels.setSize(w, h);
     camera.aspect = w / h; camera.updateProjectionMatrix();
-    if (composer) composer.setSize(w, h);
+    if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h); }
   }
   new ResizeObserver(resize).observe(host); resize();
+  function applyLevel(lv) {
+    level = lv;
+    renderer.setPixelRatio(Math.min(devicePixelRatio, PR[level]));
+    resize();
+    setQualityClasses(level);
+    if (level >= 3) ensureComposer();
+  }
 
   // Faisceaux : un point lumineux voyage du noyau à la balise, sur un arc.
   const beams = [];
@@ -930,8 +1078,33 @@ async function startScene() {
   // passe avant la 3D (un GPU de téléphone saturé fait saccader la page entière).
   let scrolling = 0, frame = 0;
   if (TOUCH) addEventListener("scroll", () => (scrolling = performance.now()), { passive: true });
-  (function loop() {
+  // Les détails (fond plein) recouvrent la scène : inutile de la dessiner sous eux.
+  const details = $("details");
+  let offstage = false;
+  const checkStage = () => { offstage = details.getBoundingClientRect().top < -200; };
+  addEventListener("scroll", checkStage, { passive: true }); checkStage();
+  // Adaptatif (qualité « auto ») : toutes les 90 images, si l'intervalle moyen dépasse le budget
+  // du niveau (24 ms, soit moins de ~40 i/s ; 48 ms quand on vise 30 i/s), on descend d'un niveau.
+  let last = performance.now(), sum = 0, count = 0, settleUntil = last + 3000, warned = false;
+  function adapt(now) {
+    const gap = now - last;
+    last = now;
+    if (QUALITY !== "auto" || document.hidden || gap > 250 || now < settleUntil) { sum = count = 0; return; }
+    sum += gap; count++;
+    if (count < 90) return;
+    const avg = sum / count;
+    sum = count = 0;
+    if (avg > (level <= 1 ? 48 : 24) && level > 0) {
+      applyLevel(level - 1);
+      settleUntil = now + 2500;
+      if (!warned && level <= 1 && $("guide").hidden) { warned = true; toast(T("q_toast")); }
+    }
+  }
+  (function loop(now = performance.now()) {
     if (TOUCH && performance.now() - scrolling < 200 && ++frame % 3) { requestAnimationFrame(loop); return; }
+    if (offstage && !fly) { last = now; requestAnimationFrame(loop); return; }
+    if (level <= 1 && now - last < 31) { requestAnimationFrame(loop); return; }   // 30 images/s
+    adapt(now);
     const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
     fresnel.uniforms.uTime.value = t;
     fresnel.uniforms.uPulse.value *= 0.94;
@@ -942,8 +1115,11 @@ async function startScene() {
       core.position.y = CORE_Y + Math.sin(t * 1.2) * 0.12;
       for (const s of spinners) s.rotation.y += dt * 0.25;
       for (const [m, sp] of planets) m.rotation.y += dt * sp;
-      if (rover) { const a = t * 0.08; rover.position.set(Math.cos(a) * 15.5, -drop(15.5, 0), Math.sin(a) * 15.5); rover.rotation.y = -a; }
-      if (ship) { const a = -t * 0.15; ship.position.set(Math.cos(a) * 21, 9 + Math.sin(t * 0.7) * 0.8, Math.sin(a) * 21); ship.rotation.y = -a + Math.PI; }
+      // Les modèles Kenney regardent vers −Z : sur le cercle (cos a, sin a), la marche avant
+      // (−sin a, cos a) demande rotation.y = π − a. Le vaisseau tourne dans le même sens que la
+      // caméra (rotation automatique) et que le rover : il y volait à reculons et à contre-sens.
+      if (rover) { const a = t * 0.08; rover.position.set(Math.cos(a) * 15.5, -drop(15.5, 0), Math.sin(a) * 15.5); rover.rotation.y = Math.PI - a; }
+      if (ship) { const a = t * 0.15; ship.position.set(Math.cos(a) * 21, 9 + Math.sin(t * 0.7) * 0.8, Math.sin(a) * 21); ship.rotation.y = Math.PI - a; }
     }
     for (const s of stations.values()) { s.mesh.material.color.lerp(s.base, 0.04); s.mesh.scale.lerp(ONE, 0.08); }
     for (let i = beams.length - 1; i >= 0; i--) {
@@ -971,13 +1147,14 @@ async function startScene() {
       }
     } else if (resumeAt && t > resumeAt && !REDUCED && !OG) { controls.autoRotate = true; resumeAt = 0; }
     controls.update();
-    composer ? composer.render() : renderer.render(scene, camera);
+    composer && level >= 3 ? composer.render() : renderer.render(scene, camera);
     labels.render(scene, camera);
     requestAnimationFrame(loop);
   })();
 
   return {
     fire, focus, setDay, goShot, onPick: (cb) => (pickCb = cb),
+    setQuality: () => { applyLevel(guessLevel()); settleUntil = performance.now() + 3000; },
     flyToTool: (id, cb) => { const s = stations.get(id); if (s) flyTo(s.mesh.position.clone(), 9, cb); else if (cb) cb(); },
   };
 }
@@ -1020,6 +1197,215 @@ function startReplay(scene) {
   }
   step();
   if (!OG) setInterval(() => { if (!document.hidden) { idx++; step(); } }, REDUCED ? 7000 : 4200);
+}
+
+// ── Le guide : Matthew présente la page lui-même, façon tutoriel de jeu vidéo ──────────
+// Un robot (« RobotExpressive », Tomás Laulhé, CC0) dans un petit canevas à part : il salue,
+// acquiesce, lève le pouce, danse ; sa bouche bouge pendant qu'il « parle » (texte tapé lettre à
+// lettre, voix du navigateur si on l'active). Chaque étape peut éclairer un élément de la page et
+// déplacer la caméra de la scène. Vu une fois → plus jamais automatique ; « ? » le rappelle.
+let GUIDE = null;
+
+function guideSteps() {
+  const s = DATA.champion && DATA.champion.score && DATA.champion.score.composite;
+  const night = DATA.live ? { say: G("night_live"), anim: "Jump", target: "#livebox", shot: "night" }
+    : !$("next").hidden && !$("next").classList.contains("waiting") ? { say: G("night"), target: "#next", shot: "night" }
+    : { say: G("night_plain"), shot: "night" };
+  return [
+    { say: G("hello"), anim: "Wave", shot: "overview" },
+    { say: G("base"), anim: "Yes", shot: "base" },
+    { say: G("skills"), shot: "domains" },
+    night,
+    { say: G("exam"), anim: "Yes", shot: "exam" },
+    s != null ? { say: G("score", pct(s)), anim: "ThumbsUp", target: ".hero-num", shot: "overview" } : null,
+    Array.isArray(DATA.specialties) && DATA.specialties.length ? { say: G("spec"), shot: "domains" } : null,
+    { say: G("bye"), anim: "Dance", shot: "far", end: true },
+  ].filter(Boolean);
+}
+
+async function guideBot(host) {
+  const THREE = await import("three");
+  const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  host.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+  camera.position.set(0, 2.9, 12.5); camera.lookAt(0, 2.3, 0);
+  scene.add(new THREE.HemisphereLight(0xcfe9ff, 0x0a1426, 2.2));
+  const key = new THREE.DirectionalLight(0xffffff, 2.4); key.position.set(3, 6, 6); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x5fe3ff, 3); rim.position.set(-4, 3, -5); scene.add(rim);
+  const gltf = await new GLTFLoader().loadAsync("assets/models/matthew_guide.glb");
+  const bot = gltf.scene;
+  // Aux couleurs de Matthew : corps cyan, membres acier (l'original est orange et gris).
+  bot.traverse((m) => {
+    if (!m.isMesh) return;
+    const name = m.material.name;
+    m.material = m.material.clone();
+    if (name === "Main") { m.material.color.set(0x23b5e3); m.material.emissive = new THREE.Color(0x0b4a63); }
+    if (name === "Grey") m.material.color.set(0xb9c8d4);
+  });
+  scene.add(bot);
+  const head = [];
+  bot.traverse((m) => { if (m.morphTargetDictionary && "Surprised" in m.morphTargetDictionary) head.push(m); });
+  const mixer = new THREE.AnimationMixer(bot);
+  const clips = Object.fromEntries(gltf.animations.map((c) => [c.name, c]));
+  const LOOPS = new Set(["Idle", "Dance", "Walking"]);
+  let current = mixer.clipAction(clips.Idle);
+  current.play();
+  mixer.addEventListener("finished", () => play("Idle"));
+  function play(name) {
+    const clip = clips[name];
+    if (!clip) return;
+    const next = mixer.clipAction(clip);
+    if (next === current) return;
+    next.reset();
+    if (!LOOPS.has(name)) { next.setLoop(THREE.LoopOnce, 1); next.clampWhenFinished = true; }
+    next.play();
+    current.crossFadeTo(next, 0.3, false);
+    current = next;
+  }
+  let talking = false, running = false, raf = 0;
+  const clock = new THREE.Clock();
+  function size() {
+    const w = host.clientWidth || 1, h = host.clientHeight || 1;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    // Il se tourne vers sa bulle : à gauche sur ordinateur, à droite sur téléphone.
+    const bubble = document.querySelector(".g-bubble").getBoundingClientRect(), me = host.getBoundingClientRect();
+    bot.rotation.y = bubble.left + bubble.width / 2 < me.left + me.width / 2 ? -0.45 : 0.45;
+  }
+  function frame() {
+    const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+    if (!REDUCED) mixer.update(dt);
+    const mouth = talking && !REDUCED ? 0.25 + 0.25 * Math.sin(t * 22) * Math.sin(t * 7.3) : 0;
+    for (const m of head) m.morphTargetInfluences[m.morphTargetDictionary.Surprised] = Math.max(0, mouth);
+    renderer.render(scene, camera);
+    if (running) raf = requestAnimationFrame(frame);
+  }
+  return {
+    play, size,
+    talk: (on) => (talking = on),
+    start: () => { size(); clock.getDelta(); if (!running) { running = true; frame(); } },
+    stop: () => { running = false; cancelAnimationFrame(raf); },
+  };
+}
+
+function guideVoice() {
+  const ok = "speechSynthesis" in window;
+  let on = ok && store.get("matthew-voice") === "1";
+  const btn = $("g-voice");
+  btn.hidden = !ok;
+  const paint = () => { btn.textContent = on ? "🔊" : "🔇"; btn.setAttribute("aria-pressed", String(on)); };
+  paint();
+  let pick = null;
+  const choose = () => {
+    const vs = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(LANG));
+    pick = vs.find((v) => /neural|natural|online/i.test(v.name)) || vs[0] || null;
+  };
+  if (ok) { choose(); speechSynthesis.onvoiceschanged = choose; }
+  return {
+    toggle: (text) => { on = !on; store.set("matthew-voice", on ? "1" : "0"); paint(); if (on) say(text); else speechSynthesis.cancel(); },
+    say,
+    stop: () => ok && speechSynthesis.cancel(),
+  };
+  function say(text) {
+    if (!on) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text.replace(/[«»"]/g, ""));
+    u.lang = LANG === "fr" ? "fr-FR" : "en-GB"; if (pick) u.voice = pick;
+    u.rate = 1.05; u.pitch = 1.15;
+    speechSynthesis.speak(u);
+  }
+}
+
+async function startGuide(scene) {
+  if (!DATA) return;
+  const box = $("guide"), text = $("g-text"), next = $("g-next"), spotEl = $("g-spot");
+  if (!GUIDE) {
+    GUIDE = { voice: guideVoice(), bot: null };
+    guideBot($("g-bot")).then((b) => { GUIDE.bot = b; if (!box.hidden) { b.start(); b.play(GUIDE.anim || "Wave"); } })
+      .catch(() => $("g-bot").classList.add("flat"));     // pas de WebGL : un noyau lumineux le remplace
+  }
+  const steps = guideSteps();
+  let i = -1, typing = null, full = "";
+  scrollTo({ top: 0, behavior: "instant" });
+  box.hidden = false;
+  document.body.classList.add("touring");
+  if (GUIDE.bot) GUIDE.bot.start();
+
+  function spot(sel) {
+    const el = sel && document.querySelector(sel);
+    if (!el || el.hidden || !el.getClientRects().length) {
+      spotEl.className = "g-spot none";
+      Object.assign(spotEl.style, { left: "50%", top: "50%", width: "0px", height: "0px" });
+      return;
+    }
+    const r = el.getBoundingClientRect(), pad = 10;
+    spotEl.className = "g-spot on";
+    Object.assign(spotEl.style, { left: r.left - pad + "px", top: r.top - pad + "px", width: r.width + 2 * pad + "px", height: r.height + 2 * pad + "px" });
+  }
+  const respot = () => i >= 0 && i < steps.length && spot(steps[i].target);
+  addEventListener("resize", respot);
+  addEventListener("scroll", respot, { passive: true });
+
+  function type(str) {
+    clearInterval(typing);
+    full = str;
+    if (GUIDE.bot) GUIDE.bot.talk(true);
+    if (REDUCED) { text.textContent = str; if (GUIDE.bot) GUIDE.bot.talk(false); return; }
+    let n = 0;
+    text.innerHTML = '<span></span><i class="caret"></i>';
+    const span = text.firstChild;
+    typing = setInterval(() => {
+      n += str[n] === " " ? 2 : 1;
+      span.textContent = str.slice(0, n);
+      if (n >= str.length) finishTyping();
+    }, 26);
+  }
+  function finishTyping() {
+    clearInterval(typing); typing = null;
+    text.textContent = full;
+    if (GUIDE.bot) GUIDE.bot.talk(false);
+  }
+  function go(k) {
+    i = k;
+    if (i >= steps.length) return close();
+    const st = steps[i];
+    $("g-step").textContent = `${i + 1}/${steps.length}`;
+    next.textContent = st.end ? T("g_end") : T("g_next");
+    GUIDE.anim = st.anim || "Idle";
+    if (GUIDE.bot) GUIDE.bot.play(GUIDE.anim);
+    if (scene && st.shot) scene.goShot(st.shot);
+    spot(st.target);
+    type(st.say);
+    GUIDE.voice.say(st.say);
+  }
+  function close() {
+    clearInterval(typing);
+    box.hidden = true;
+    document.body.classList.remove("touring");
+    GUIDE.voice.stop();
+    if (GUIDE.bot) GUIDE.bot.stop();
+    store.set("matthew-tour", "1");
+    removeEventListener("resize", respot);
+    removeEventListener("scroll", respot);
+    removeEventListener("keydown", keys, true);
+    if (scene) scene.goShot("overview");
+    $("tour-btn").focus({ preventScroll: true });
+  }
+  function advance() { if (typing) finishTyping(); else go(i + 1); }
+  function keys(e) {
+    if (box.hidden) return;
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if ((e.key === "Enter" || e.key === "ArrowRight") && !e.target.closest(".g-actions button:not(#g-next)")) { e.preventDefault(); advance(); }
+  }
+  next.onclick = advance;
+  $("g-skip").onclick = close;
+  $("g-voice").onclick = () => GUIDE.voice.toggle(full);
+  addEventListener("keydown", keys, true);
+  go(0);
+  next.focus({ preventScroll: true });
 }
 
 main();

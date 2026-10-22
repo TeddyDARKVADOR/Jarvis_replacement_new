@@ -139,14 +139,34 @@ def cognition_order(order: list[str], keys: dict | None = None) -> list[str]:
     keys = keys or {}
     if keys.get("cognition_provider_order") or "matthew" in order:
         return list(order)
-    if not config(keys).get("use_in_cognition", True) or not ready():
+    if not config(keys).get("use_in_cognition", True):
         return list(order)
-    # Les appels d'outils ne disent rien des tâches de la cognition : il faut aussi le banc
-    # de cognition (matthew/cogbench.py, juge de mémoire + planificateur) au-dessus du plancher.
+    # En tête dès qu'au moins une tâche lui revient ; allowed(tâche) l'écarte ensuite, appel
+    # par appel, des tâches qu'il n'a pas gagnées (Direction 3, matthew/specialist.py).
+    if _legacy_ok() or any(allowed(t) for t in ("juge", "planif", "intention", "extraction")):
+        return ["matthew"] + list(order)
+    return list(order)
+
+
+def _legacy_ok() -> bool:
+    """Avant les spécialités : un champion prêt, ET le banc de cognition (matthew/cogbench.py,
+    juge de mémoire + planificateur) au-dessus du plancher — les appels d'outils ne disent
+    rien des tâches de la cognition."""
+    if not ready():
+        return False
     from matthew.cogbench import COG_FLOOR
-    if ((champion() or {}).get("cognition") or {}).get("score", 0) < COG_FLOOR:
-        return list(order)
-    return ["matthew"] + list(order)
+    return ((champion() or {}).get("cognition") or {}).get("score", 0) >= COG_FLOOR
+
+
+def allowed(task: str | None) -> bool:
+    """Matthew peut-il répondre à cette tâche ? Hook de cognition/providers.py (complete).
+    Une tâche nommée (« juge », « planif »…) exige sa spécialité gagnée — score au seuil et
+    au niveau de la référence, mesurés par matthew/specialist.py ; une tâche sans nom garde
+    la règle d'avant (champion + banc de cognition)."""
+    if task is None:
+        return _legacy_ok()
+    from matthew.specialist import delegated
+    return delegated(task)
 
 
 def paused() -> bool:

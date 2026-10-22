@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>J.A.R.V.I.S — HUD</title>
+<title>MATTHEW — HUD</title>
 <!--
   The HUD page. Everything it shows comes from the snapshot Python pushes
   (`HUD.tick`), and everything it does is a request sent back over the
@@ -34,7 +34,7 @@
       <circle cx="20" cy="20" r="4" class="l3"/>
     </svg>
     <div>
-      <div class="name" data-decipher>J.A.R.V.I.S</div>
+      <div class="name" data-decipher>MATTHEW</div>
       <div class="sub"><span>MARK LIII</span> · <span id="hostname">TERMINAL</span></div>
     </div>
   </div>
@@ -54,7 +54,7 @@
     <nav class="tools">
       <button id="btn-sound" class="ico" title="Sons de l'interface"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="on" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/><path class="off" d="M16 9l5 6M21 9l-5 6"/></svg></button>
       <button id="btn-palette" class="ico" title="Couleur du HUD"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
-      <button id="btn-studio" class="ico" title="Jarvis Code Studio : son atelier de développement"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/></svg></button>
+      <button id="btn-studio" class="ico" title="Matthew Code Studio : son atelier de développement"><svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/></svg></button>
       <button id="btn-mind" class="ico" title="Esprit : état interne, objectifs, souvenirs, modèle de soi"><svg viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 3 3h1V4z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-3 3h-1V4z"/><path d="M10 9H8M14 9h2M10 15H8M14 15h2"/></svg></button>
       <button id="btn-help" class="ico" title="Aide et raccourcis (F1)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5V14M12 17.5v.01"/></svg></button>
       <button id="btn-settings" class="ico" title="Paramètres : connexion, jeton, audio… (Ctrl+,)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
@@ -62,7 +62,7 @@
       <button id="btn-mini" class="ico" title="Mode orbe (Ctrl+M)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="16" cy="14" r="2.5"/></svg></button>
       <button id="btn-min" class="ico win" title="Réduire"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
       <button id="btn-max" class="ico win" title="Agrandir / restaurer"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14"/></svg></button>
-      <button id="btn-close" class="ico win close" title="Masquer dans la barre des tâches (JARVIS reste actif)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <button id="btn-close" class="ico win close" title="Masquer dans la barre des tâches (Matthew reste actif)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </nav>
   </div>
 </header>
@@ -117,7 +117,7 @@
       <div id="state-word"><span id="state-label">INITIALISATION</span><span id="state-hint"></span></div>
     </div>
     <div id="caption" class="assemble">
-      <div class="who" id="caption-who">JARVIS</div>
+      <div class="who" id="caption-who">MATTHEW</div>
       <div id="caption-text"></div>
     </div>
     <canvas id="scope"></canvas>
@@ -146,11 +146,11 @@
       <button id="attach" class="ico" title="Joindre un fichier à analyser (ou glissez-le sur le HUD)"><svg viewBox="0 0 24 24"><path d="M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"/></svg></button>
       <span id="file-chip" hidden><span id="file-name"></span><button id="file-clear" title="Retirer">×</button></span>
       <span class="prompt">›</span>
-      <input id="cmd" autocomplete="off" spellcheck="false" placeholder="Parlez, ou tapez une commande pour JARVIS…">
+      <input id="cmd" autocomplete="off" spellcheck="false" placeholder="Parlez, ou tapez une commande pour Matthew…">
       <kbd>Entrée</kbd>
     </div>
     <button id="send" class="act" title="Envoyer (Entrée)">ENVOYER</button>
-    <button id="stop" class="act danger" title="Interrompre JARVIS (Échap)" hidden>■ INTERROMPRE</button>
+    <button id="stop" class="act danger" title="Interrompre Matthew (Échap)" hidden>■ INTERROMPRE</button>
   </div>
 </footer>
 
@@ -169,7 +169,7 @@
       <div>
         <div class="cf-title" id="cf-title"></div>
         <div class="cf-detail" id="cf-detail"></div>
-        <div class="cf-note">JARVIS attend votre décision. Rien ne sera exécuté sans votre accord.</div>
+        <div class="cf-note">Matthew attend votre décision. Rien ne sera exécuté sans votre accord.</div>
       </div>
     </div>
     <div class="cf-actions">
@@ -182,7 +182,7 @@
 <!-- help -->
 <div id="help" class="overlay" hidden>
   <div class="modal">
-    <h3>COMMENT PARLER À JARVIS</h3>
+    <h3>COMMENT PARLER À Matthew</h3>
     <div class="help-grid">
       <div class="how">
         <p><b>À la voix</b> — dites <q>Hey Jarvis</q>, puis parlez. Le micro se referme seul après un silence.</p>
@@ -230,13 +230,13 @@
     <div class="set-body">
       <!-- 01 connexion -->
       <section class="set-tab" data-tab="connexion">
-        <h3>JARVIS EN LIGNE</h3>
+        <h3>MATTHEW EN LIGNE</h3>
         <div id="set-local" class="set-note accent" hidden>
-          <b>Mode local</b> — JARVIS tourne en ce moment sur ce PC, avec la clé Gemini de <code>config/api_keys.json</code>.
+          <b>Mode local</b> — Matthew tourne en ce moment sur ce PC, avec la clé Gemini de <code>config/api_keys.json</code>.
           Les réglages ci-dessous servent quand vous relancez <code>python main.py</code> avec le serveur Oracle.
         </div>
         <div id="set-welcome" class="set-note accent" hidden>
-          Bienvenue. Ce PC n'est pas encore relié à JARVIS. Saisissez l'adresse de votre serveur Oracle et le jeton d'accès, puis <b>Tester</b> et <b>Enregistrer</b>.
+          Bienvenue. Ce PC n'est pas encore relié à Matthew. Saisissez l'adresse de votre serveur Oracle et le jeton d'accès, puis <b>Tester</b> et <b>Enregistrer</b>.
         </div>
         <label class="field"><span>Adresse du serveur</span>
           <input id="s-host" placeholder="jarvis-vps.tailnet-xxxx.ts.net" spellcheck="false">
@@ -251,7 +251,7 @@
             <button class="mini-btn" id="s-token-paste" title="Coller depuis le presse-papiers">COLLER</button></div>
           <small>Généré sur Oracle avec : <code id="s-pair-cmd">python -m server.run_headless --pairing</code> <button class="mini-btn" id="s-pair-copy">COPIER</button></small></label>
         <label class="field"><span>Nom de cet appareil</span><input id="s-device" spellcheck="false">
-          <small>Ce que JARVIS voit quand il choisit où exécuter une action (« sur le PC du bureau »).</small></label>
+          <small>Ce que Matthew voit quand il choisit où exécuter une action (« sur le PC du bureau »).</small></label>
         <div class="test-row">
           <button class="act" id="s-test">TESTER LA CONNEXION</button>
           <div id="s-test-result" class="test-result"></div>
@@ -272,7 +272,7 @@
 
       <!-- mémoire -->
       <section class="set-tab" data-tab="memoire" hidden>
-        <h3>CE QUE JARVIS SAIT DE VOUS</h3>
+        <h3>CE QUE MATTHEW SAIT DE VOUS</h3>
         <div class="mem-tools"><input id="m-search" placeholder="Rechercher…" spellcheck="false">
           <button class="mini-btn" id="m-refresh">ACTUALISER</button><span id="m-count"></span></div>
         <div id="m-list" class="mem-list"></div>
@@ -281,7 +281,7 @@
       <!-- plugins -->
       <section class="set-tab" data-tab="plugins" hidden>
         <h3>PLUGINS</h3>
-        <div class="set-note">Un plugin est un fichier dans <code>plugins/</code>. L'activer ou le désactiver prend effet au prochain démarrage de JARVIS.</div>
+        <div class="set-note">Un plugin est un fichier dans <code>plugins/</code>. L'activer ou le désactiver prend effet au prochain démarrage de Matthew.</div>
         <div id="p-list"></div>
         <div id="p-forms"></div>
       </section>
@@ -290,7 +290,7 @@
       <section class="set-tab" data-tab="audio" hidden>
         <h3>AUDIO</h3>
         <label class="field"><span>Microphone</span><select id="s-input"></select></label>
-        <label class="field"><span>Haut-parleurs (voix de JARVIS)</span><select id="s-output"></select></label>
+        <label class="field"><span>Haut-parleurs (voix de Matthew)</span><select id="s-output"></select></label>
         <label class="toggle"><input id="s-wake" type="checkbox"><i></i><span>Mot d'éveil « Hey Jarvis »<small id="s-wake-note">Détection locale : rien ne quitte ce PC avant le mot d'éveil.</small></span></label>
         <div id="s-wake-install" class="set-note" hidden>Le moteur de mot d'éveil n'est pas installé.
           <button class="mini-btn" id="s-wake-install-btn">INSTALLER</button></div>
@@ -306,10 +306,10 @@
       <!-- 03 démarrage -->
       <section class="set-tab" data-tab="demarrage" hidden>
         <h3>DÉMARRAGE</h3>
-        <label class="toggle"><input id="s-autostart" type="checkbox"><i></i><span>Lancer JARVIS à l'ouverture de session<small>Ouvre ce HUD lorsque vous vous connectez à votre session.</small></span></label>
+        <label class="toggle"><input id="s-autostart" type="checkbox"><i></i><span>Lancer Matthew à l'ouverture de session<small>Ouvre ce HUD lorsque vous vous connectez à votre session.</small></span></label>
         <label class="toggle"><input id="s-collapsed" type="checkbox"><i></i><span>Démarrer en mode orbe<small>Petit orbe dans le coin de l'écran ; double-clic pour ouvrir le HUD.</small></span></label>
         <label class="toggle"><input id="s-maximized" type="checkbox"><i></i><span>Ouvrir en plein écran</span></label>
-        <label class="toggle"><input id="s-notif" type="checkbox"><i></i><span>Notifications du bureau<small>Réponses de JARVIS quand le HUD est caché, confirmations, erreurs.</small></span></label>
+        <label class="toggle"><input id="s-notif" type="checkbox"><i></i><span>Notifications du bureau<small>Réponses de Matthew quand le HUD est caché, confirmations, erreurs.</small></span></label>
       </section>
 
       <!-- 04 interface -->
@@ -332,7 +332,7 @@
           l'adresse et le jeton dans l'application Android.
         </div>
         <div id="t-local" hidden>
-          <div class="set-note">Scannez ce code avec le téléphone (même réseau ou Tailscale) pour piloter JARVIS depuis son navigateur.</div>
+          <div class="set-note">Scannez ce code avec le téléphone (même réseau ou Tailscale) pour piloter Matthew depuis son navigateur.</div>
           <div class="test-row"><button class="act" id="t-pair">GÉNÉRER UN CODE</button><div id="t-status" class="test-result"></div></div>
           <div id="t-qr" class="qr"></div>
         </div>
@@ -394,7 +394,7 @@
         <div id="mind-causes" class="mind-log"></div>
       </section>
       <section data-pane="goals" hidden>
-        <div class="set-note">JARVIS <b>propose</b>, vous <b>disposez</b> : un objectif ne devient actif, atteint ou annulé que par vous.</div>
+        <div class="set-note">Matthew <b>propose</b>, vous <b>disposez</b> : un objectif ne devient actif, atteint ou annulé que par vous.</div>
         <div class="mind-auto-bar">
           <div class="mab-text"><b>AUTONOMIE</b> <span id="mind-auto-state">—</span>
             <small id="mind-auto-limits"></small></div>
@@ -454,7 +454,7 @@
         <div id="night-changes" class="mind-log"></div>
         <h4>RUFF <small>seulement les vrais bugs probables (pyproject.toml)</small></h4>
         <div id="night-lint" class="mind-log"></div>
-        <h4>INDICATEURS <small>les tests disent « rien n'est cassé » ; ceci dit si JARVIS s'améliore</small></h4>
+        <h4>INDICATEURS <small>les tests disent « rien n'est cassé » ; ceci dit si Matthew s'améliore</small></h4>
         <div id="night-metrics" class="mind-log"></div>
         <h4>MODÈLE LOCAL <small>les avis du PC réveillé la nuit (phase 5) : des hypothèses, jamais des faits</small></h4>
         <div id="night-local" class="mind-log"></div>
@@ -485,9 +485,9 @@
   </div>
 </div>
 
-<!-- Jarvis Code Studio — see js/studio.js and core/code_workspace/ -->
+<!-- Matthew Code Studio — see js/studio.js and core/code_workspace/ -->
 <!-- Panneau GRAPHE — voir js/graph.js et capabilities/. Pas de bouton : il s'ouvre
-     quand on demande à JARVIS de montrer son graphe (outil capabilities, action show). -->
+     quand on demande à Matthew de montrer son graphe (outil capabilities, action show). -->
 <div id="graph" class="overlay" hidden>
   <div class="modal graph">
     <header class="st-head">
@@ -515,8 +515,8 @@
 <div id="studio" class="overlay" hidden>
   <div class="modal studio">
     <div id="st-unavailable" class="st-unavailable" hidden>
-      <h3>JARVIS CODE STUDIO</h3>
-      <div class="set-note accent">L'atelier de développement fonctionne quand JARVIS tourne sur ce PC :
+      <h3>MATTHEW CODE STUDIO</h3>
+      <div class="set-note accent">L'atelier de développement fonctionne quand Matthew tourne sur ce PC :
         lancez <code>python main.py --local</code>. Son espace de travail est un dossier de ce PC, jamais le serveur.</div>
       <div class="cf-actions"><button class="act" id="st-unavailable-close">FERMER</button></div>
     </div>
@@ -524,8 +524,8 @@
     <div id="st-main">
       <header class="st-head">
         <div class="st-brand">
-          <div class="st-kicker">JARVIS CODE STUDIO</div>
-          <div class="st-title" id="st-title">JARVIS CODE STUDIO</div>
+          <div class="st-kicker">MATTHEW CODE STUDIO</div>
+          <div class="st-title" id="st-title">MATTHEW CODE STUDIO</div>
           <div class="st-request" id="st-request"></div>
         </div>
         <label class="st-picker"><span>PROJET</span><select id="st-project"></select></label>
@@ -574,13 +574,13 @@
             <div class="st-rootline">Racine : <code id="st-root">—</code></div>
             <div class="st-rootline">Modèle de code : <code id="st-coder">—</code></div>
             <div id="st-root-error" class="test-result err" hidden></div>
-            <div id="st-admin" class="test-result err" hidden>JARVIS tourne en administrateur : le Studio refuse d'exécuter des commandes.</div>
+            <div id="st-admin" class="test-result err" hidden>Matthew tourne en administrateur : le Studio refuse d'exécuter des commandes.</div>
             <label class="field"><span>Dossier racine</span><input id="st-root-input" spellcheck="false" placeholder="C:\Jarvis_Workspace"></label>
             <div class="row2">
               <label class="field"><span>Corrections max.</span><input id="st-attempts" type="number" min="1" max="10"></label>
               <label class="field"><span>Durée max. commande (s)</span><input id="st-timeout" type="number" min="10" max="900"></label>
             </div>
-            <label class="toggle"><input id="st-confirm-plan" type="checkbox"><i></i><span>Valider le plan avant d'écrire<small>Sinon JARVIS travaille seul et ne demande votre accord que pour les actions à risque (installation, réseau, exécutable inconnu).</small></span></label>
+            <label class="toggle"><input id="st-confirm-plan" type="checkbox"><i></i><span>Valider le plan avant d'écrire<small>Sinon Matthew travaille seul et ne demande votre accord que pour les actions à risque (installation, réseau, exécutable inconnu).</small></span></label>
             <label class="toggle"><input id="st-auto-preview" type="checkbox"><i></i><span>Ouvrir l'aperçu web à la fin<small>Une page qui passe ses contrôles s'ouvre dans la fenêtre d'aperçu isolée (profil privé, Internet bloqué).</small></span></label>
             <label class="toggle"><input id="st-auto-run" type="checkbox"><i></i><span>Lancer les scripts à la fin<small>Exécute le programme une fois (30 s max) pour montrer sa sortie dans le bilan. C'est une vraie exécution sur ce PC. Les applications graphiques ne se lancent jamais seules.</small></span></label>
             <button class="mini-btn" id="st-save">ENREGISTRER</button>
@@ -625,7 +625,7 @@
 <div id="toasts"></div>
 
 <!-- a file dragged over the HUD -->
-<div id="dropzone" hidden><div>DÉPOSEZ LE FICHIER<small>JARVIS pourra l'analyser : « résume ce fichier »</small></div></div>
+<div id="dropzone" hidden><div>DÉPOSEZ LE FICHIER<small>Matthew pourra l'analyser : « résume ce fichier »</small></div></div>
 
 <!-- something was copied -->
 <div id="clip" hidden>
@@ -639,7 +639,7 @@
   </div>
 </div>
 
-<!-- what JARVIS's camera sees -->
+<!-- what Matthew's camera sees -->
 <div id="camera" hidden><img id="camera-img" alt="caméra"><span>CAMÉRA</span></div>
 
 <script type="module" src="js/main.js"></script>

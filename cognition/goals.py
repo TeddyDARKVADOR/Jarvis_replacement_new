@@ -2,7 +2,7 @@
 cognition/goals.py — objectifs persistants (phase 5).
 
 LA RÈGLE, APPLIQUÉE ICI ET TESTÉE
-    JARVIS PROPOSE, l'utilisateur DISPOSE.
+    MATTHEW PROPOSE, l'utilisateur DISPOSE.
 
     - Tout objectif créé par le modèle naît `proposed`. Il ne devient `active`
       que par approve(), et le seul chemin vers approve() est le bouton
@@ -19,7 +19,7 @@ LES LIMITES (contre les boucles et la consommation de ressources)
     - la même note de progrès répétée REPEAT_LIMIT fois -> `blocked` (boucle) ;
     - échéance passée -> `expired` ;
     - au plus MAX_OPEN objectifs ouverts, au plus MAX_PROPOSALS_PER_DAY
-      propositions de JARVIS par jour.
+      propositions de Matthew par jour.
 
     Un objectif n'est jamais effacé : son historique (goal_events) reste.
 """
@@ -185,7 +185,7 @@ class Goals:
         g = self.get(gid)
         if not g or g["status"] != "proposed":
             raise GoalError("Seule une proposition pas encore approuvée peut être retirée.")
-        return self._set(gid, "withdrawn", "retirée par JARVIS", by="model")
+        return self._set(gid, "withdrawn", "retirée par Matthew", by="model")
 
     # ── Ce qui exige le bouton CONFIRMER ─────────────────────────────────────
     # Appelé UNIQUEMENT depuis la fonction que core/confirm.py exécute quand

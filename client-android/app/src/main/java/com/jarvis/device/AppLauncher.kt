@@ -21,7 +21,7 @@ import java.text.Normalizer
  * ## without it
  *
  * Since Android 10 an app cannot start an activity while it is in the
- * background. JARVIS is a foreground *service* — a notification, not a window —
+ * background. Matthew is a foreground *service* — a notification, not a window —
  * so every launch from a voice command is a background launch, and the platform
  * drops it. It does not throw: `startActivity` returns normally, the logcat
  * shows one line from ActivityTaskManager, and nothing happens on screen. An
@@ -129,7 +129,7 @@ object AppLauncher {
             // command, and the honest answer then is that it did not happen.
             return "Impossible d'ouvrir une application : l'autorisation " +
                 "« Affichage par-dessus les autres applications » n'est pas " +
-                "accordee a JARVIS."
+                "accordee a Matthew."
         }
 
         val entries = launchable(context)

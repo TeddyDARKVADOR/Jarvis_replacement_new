@@ -65,7 +65,7 @@ object NotificationMapper {
         val priority = json.optString("priority").trim().uppercase().ifEmpty { "USEFUL" }
         if (priority == "TRIVIAL") return null      // ANODIN : jamais de notification
 
-        val title = json.optString("title").trim().ifEmpty { "JARVIS" }
+        val title = json.optString("title").trim().ifEmpty { "MATTHEW" }
         // Server seconds (float) → millis. A server that sends nothing leaves 0,
         // and the caller then treats the notification as undateable rather than
         // as having arrived in 1970.
@@ -115,7 +115,7 @@ object NotificationMapper {
      * updated, not two identical ones.
      *
      * Offset well clear of the foreground service's own id (5301) so this can
-     * never replace the ongoing "JARVIS connected" notification and stop the
+     * never replace the ongoing "Matthew connected" notification and stop the
      * service looking alive.
      */
     fun androidIdFor(serverId: String): Int {

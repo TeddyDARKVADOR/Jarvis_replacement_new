@@ -1,7 +1,7 @@
 package com.jarvis.wakeword
 
 /**
- * "Is someone talking to JARVIS?" — behind one interface, so the engine can be
+ * "Is someone talking to Matthew?" — behind one interface, so the engine can be
  * replaced without touching the microphone, the sockets or the service.
  *
  * **The contract, and the one rule that matters.** [feed] is called from the

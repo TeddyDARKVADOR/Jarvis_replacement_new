@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit
  * and the bearer is not.
  *
  * **No Gemini key is ever on this phone.** The device token is authority over
- * JARVIS, not over the API key; the key stays in `config/api_keys.json` on the
+ * Matthew, not over the API key; the key stays in `config/api_keys.json` on the
  * server and is never sent anywhere.
  *
  * **Storage.** SharedPreferences in the app's private directory: unreadable by
