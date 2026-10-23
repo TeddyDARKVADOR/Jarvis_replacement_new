@@ -21,7 +21,7 @@ WHY THE PRECEDENCE IS WHAT IT IS
 WHY THE REASONS ARE RETURNED
     A policy that can only say "I stayed quiet" is not debuggable and not
     trustworthy. Each rule that fires appends the fact that made it fire, so
-    JARVIS can answer "pourquoi tu n'as pas parle ?" with "DND actif, ta
+    Matthew can answer "pourquoi tu n'as pas parle ?" with "DND actif, ta
     derniere interaction remonte a 40 minutes" — and so a wrong call can be
     traced to the signal that caused it rather than guessed at.
 """
@@ -105,7 +105,7 @@ def _looks_like_car(names: list[str], patterns: list[str]) -> str:
 
     A substring match took "Oscar's AirPods" for a car ("car" in "oscar"),
     and "Bose SyncBuds" too — and DRIVING outranks sleep and meetings, so the
-    headset made JARVIS speak at 3 a.m. and in meetings (REG-0002). Words are
+    headset made Matthew speak at 3 a.m. and in meetings (REG-0002). Words are
     delimited by anything that is not a letter or a digit, so "Peugeot CarKit",
     "Ford SYNC", "Android Auto" and "My Car" still match.
     """

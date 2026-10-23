@@ -62,7 +62,7 @@ export function createSim(HUD) {
         inputs: ['Microphone (Realtek)', 'Casque USB'], outputs: ['Haut-parleurs (Realtek)', 'Casque USB'],
         wake_word_enabled: true, wake_word_threshold: .5, wake_available: false, wake_installed: false,
         gate_seconds: 25, mic_open_at_start: false, start_collapsed: false, notifications: true,
-        autostart: false, paired: true, settings_path: '%LOCALAPPDATA%\\JarvisDesktop\\settings.json',
+        autostart: false, paired: true, settings_path: '%LOCALAPPDATA%\\MatthewAssistantDesktop\\settings.json',
       }), 120);
     },
     saveSettings() { setTimeout(() => HUD.settingsSaved({ ok: true, changed: [], detail: 'Paramètres enregistrés (simulation).' }), 200); },

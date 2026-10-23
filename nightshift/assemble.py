@@ -7,7 +7,7 @@ nightshift/assemble.py — un seul rapport pour toute la nuit.
 Job « assemblage » : aucun secret, lecture seule. Il réunit ce que chaque job a
 laissé — la veille (report.json, task.json), la proposition (proposal.json), la
 validation (validation.json), la publication (publish.json) — en un rapport
-jarvis.nightly/1 complet : la tâche, son issue, la PR ou la raison de son
+matthew_assistant.nightly/1 complet : la tâche, son issue, la PR ou la raison de son
 absence, la consommation comparée aux budgets. Le job « rapport », qui écrit sur
 nightshift-data, n'a plus qu'à pousser le fichier : il n'exécute aucun code.
 
@@ -22,7 +22,7 @@ persistants, le backlog du graphe et, le dimanche, le résumé de la semaine.
 
 PASSES — la nuit en compte jusqu'à trois (passes.py). Le rapport porte le
 numéro de sa passe et « tonight » : toutes les passes de la nuit lues dans la
-mémoire, pour que le rapport de la dernière — celui que JARVIS lit le matin —
+mémoire, pour que le rapport de la dernière — celui que Matthew lit le matin —
 dise ce que la nuit entière a fait.
 
 PHASE 5 — il écrit aussi queue.json, la file du PC réveillé la nuit
@@ -117,8 +117,9 @@ def _load_list(path: Path) -> list:
         return []
 
 
-QUEUE_SCHEMA = "jarvis.nightshift-queue/1"
-LOCAL_SCHEMA = "jarvis.nightshift-local/1"
+QUEUE_SCHEMA = "matthew_assistant.nightshift-queue/1"
+LOCAL_SCHEMA = "matthew_assistant.nightshift-local/1"
+LOCAL_SCHEMAS = (LOCAL_SCHEMA, "jarvis.nightshift-local/1")   # ancien nom, encore lu
 
 
 def queue_for(report: dict) -> dict:
@@ -141,7 +142,7 @@ def queue_for(report: dict) -> dict:
 
 def local_section(batch: dict | None) -> dict:
     """Les derniers avis du PC, ou « indisponible » — jamais « en attente »."""
-    if not isinstance(batch, dict) or batch.get("schema_version") != LOCAL_SCHEMA:
+    if not isinstance(batch, dict) or batch.get("schema_version") not in LOCAL_SCHEMAS:
         return {"available": False,
                 "reason": "aucun avis local : PC éteint, ou worker non installé (phase 5, facultative)"}
     return {"available": True, "status": batch.get("status"), "host": batch.get("host"),
@@ -151,15 +152,16 @@ def local_section(batch: dict | None) -> dict:
                       for t in (batch.get("tasks") or [])[:6] if isinstance(t, dict)]}
 
 
-INCIDENTS_SCHEMA = "jarvis.incidents/1"
+INCIDENTS_SCHEMA = "matthew_assistant.incidents/1"
+INCIDENTS_SCHEMAS = (INCIDENTS_SCHEMA, "jarvis.incidents/1")
 INCIDENTS_STALE_DAYS = 3
 
 
 def incidents_section(digest: dict | None, today=None) -> dict:
-    """Les erreurs réelles partagées par JARVIS (paquet incidents/), les plus fréquentes d'abord. Affichées,
+    """Les erreurs réelles partagées par Matthew (paquet incidents/), les plus fréquentes d'abord. Affichées,
     jamais confiées au modèle : aucun contrôle ne prouverait le correctif (principe n°3). Pur."""
-    if not isinstance(digest, dict) or digest.get("schema") != INCIDENTS_SCHEMA:
-        return {"available": False, "reason": "pas de résumé partagé (incidents_share désactivé, ou JARVIS pas lancé)"}
+    if not isinstance(digest, dict) or digest.get("schema") not in INCIDENTS_SCHEMAS:
+        return {"available": False, "reason": "pas de résumé partagé (incidents_share désactivé, ou Matthew pas lancé)"}
     rows = [r for r in digest.get("incidents") or [] if isinstance(r, dict)]
     rows.sort(key=lambda r: (int(r.get("count") or 0), int(r.get("days") or 0)), reverse=True)
     out = {"available": True, "since": digest.get("since"), "until": digest.get("until"), "total": len(rows),
@@ -170,7 +172,7 @@ def incidents_section(digest: dict | None, today=None) -> dict:
     except (TypeError, ValueError):
         age = None
     if age is not None and age > INCIDENTS_STALE_DAYS:
-        out["stale"] = f"résumé vieux de {age} jours (JARVIS n'a pas tourné, ou le partage échoue)"
+        out["stale"] = f"résumé vieux de {age} jours (Matthew n'a pas tourné, ou le partage échoue)"
     return out
 
 

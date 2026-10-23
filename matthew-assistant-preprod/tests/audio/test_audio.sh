@@ -8,7 +8,7 @@
 #     résultat de l'auto-test numérique que le client exécute lui-même au
 #     démarrage du service.
 #
-#     Ce qu'on ne peut pas vérifier, c'est que JARVIS entend et parle. Aucune
+#     Ce qu'on ne peut pas vérifier, c'est que Matthew entend et parle. Aucune
 #     ligne de ce fichier ne prétend le contraire : ces points sortent en
 #     PHYSICAL_ONLY et le rapport les affiche dans leur propre bloc.
 #

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  JARVIS PORTABLE (Linux) -- se lance depuis la cle, n'ecrit rien sur l'hote.
+#  Matthew PORTABLE (Linux) -- se lance depuis la cle, n'ecrit rien sur l'hote.
 #  Equivalent de Lancer-JARVIS.bat : meme principe de redirection des dossiers
 #  "maison" (HOME, XDG_*, caches) vers la cle, meme Python portable (astral
 #  python-build-standalone), meme mode --local.
@@ -17,8 +17,8 @@ RUNTIME="$ROOT/runtime"
 PYDIR="$RUNTIME/python-linux"
 PY="$PYDIR/bin/python3"
 
-echo "[JARVIS portable] Cle         : $ROOT"
-echo "[JARVIS portable] Application : $APP"
+echo "[Matthew portable] Cle         : $ROOT"
+echo "[Matthew portable] Application : $APP"
 [ -f "$APP/main.py" ] || { echo "ERREUR : $APP/main.py introuvable. Lance d'abord sync_to_key.ps1."; exit 1; }
 
 # --- Dossiers de donnees sur la cle -----------------------------------------
@@ -26,8 +26,8 @@ mkdir -p "$DATA/home" "$DATA/home/.config" "$DATA/home/.cache" "$DATA/home/.loca
          "$DATA/tmp" "$DATA/hf" "$DATA/logs" "$DATA/ollama-models"
 
 # --- Redirection : tout ce que le code ecrit "chez l'utilisateur" va sur la cle
-export JARVIS_PORTABLE=1
-export JARVIS_DATA_DIR="$DATA"
+export MATTHEW_ASSISTANT_PORTABLE=1
+export MATTHEW_ASSISTANT_DATA_DIR="$DATA"
 export HOME="$DATA/home"
 export XDG_CONFIG_HOME="$DATA/home/.config"
 export XDG_CACHE_HOME="$DATA/home/.cache"
@@ -44,7 +44,7 @@ export PYTHONUTF8=1
 
 # --- 1. Python portable Linux ? sinon bootstrap -----------------------------
 if [ ! -x "$PY" ]; then
-  echo "[JARVIS portable] Python portable absent -- telechargement initial..."
+  echo "[Matthew portable] Python portable absent -- telechargement initial..."
   TAG="20250106"; VER="3.12.8"
   FILE="cpython-${VER}+${TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz"
   URL="https://github.com/astral-sh/python-build-standalone/releases/download/${TAG}/${FILE}"
@@ -57,11 +57,11 @@ if [ ! -x "$PY" ]; then
   rm -rf "$ARC" "$DATA/tmp/pyx"
   [ -x "$PY" ] || { echo "FATAL : Python portable introuvable apres extraction."; exit 1; }
 fi
-echo "[JARVIS portable] Python      : $PY"
+echo "[Matthew portable] Python      : $PY"
 
 # --- 2. Dependances ---------------------------------------------------------
 if [ ! -f "$PYDIR/.deps-ok" ]; then
-  echo "[JARVIS portable] Installation des dependances (internet requis)..."
+  echo "[Matthew portable] Installation des dependances (internet requis)..."
   "$PY" -m pip install --upgrade pip wheel setuptools
   "$PY" -m pip install -r "$APP/requirements.txt"
   touch "$PYDIR/.deps-ok"
@@ -76,9 +76,9 @@ fi
 "$PY" "$APP/portable/vault.py" unlock --dir "$APP/config" || { echo "Coffre non deverrouille."; exit 1; }
 
 # --- 5. Lancement sous gardien d'ejection -----------------------------------
-echo "[JARVIS portable] Demarrage de JARVIS..."
+echo "[Matthew portable] Demarrage de Matthew..."
 "$PY" "$APP/portable/eject_guard.py" --anchor "${BASH_SOURCE[0]}" -- "$PY" "$APP/main.py" --local || true
 
 # --- 6. Fin de session ------------------------------------------------------
 "$PY" "$APP/portable/vault.py" relock --dir "$APP/config" || true
-echo "[JARVIS portable] JARVIS s'est arrete."
+echo "[Matthew portable] Matthew s'est arrete."

@@ -35,7 +35,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nightshift import SCHEMA
+from nightshift import SCHEMA, SCHEMAS
 from nightshift import metrics as M
 from nightshift import report as R
 from nightshift.suites import Suite, by_name, platform_name
@@ -397,7 +397,7 @@ def load_previous(path: str | None) -> dict | None:
         if not p.is_file() or p.stat().st_size == 0 or p.stat().st_size > 2_000_000:
             return None
         data = json.loads(p.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) and data.get("schema_version") == SCHEMA else None
+        return data if isinstance(data, dict) and data.get("schema_version") in SCHEMAS else None
     except Exception:
         return None
 
@@ -463,7 +463,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     previous = load_previous(args.previous)
-    print(f"JARVIS Night Shift — {len(selected)} suite(s) sur {platform_name()}"
+    print(f"Matthew Night Shift — {len(selected)} suite(s) sur {platform_name()}"
           + ("" if previous else " — pas de rapport précédent"))
     try:
         report = night(selected, previous, ruff=not args.no_ruff,

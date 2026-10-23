@@ -1,5 +1,5 @@
 """
-capabilities — le graphe de ce que JARVIS sait faire, consulté et montré par lui.
+capabilities — le graphe de ce que Matthew sait faire, consulté et montré par lui.
 
 Plugin ordinaire (graphe `contrat`, cas 1). Les graphes vivent dans
 capabilities/graphs/ ; ce fichier n'en contient aucune ligne.

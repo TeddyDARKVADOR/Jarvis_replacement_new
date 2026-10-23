@@ -29,7 +29,7 @@ MAX_TRANSCRIPT = 2_000_000
 MAX_PILOT_BODY = 8_000_000          # une capture JPEG en base64 et le texte de l'écran
 
 
-def attach(dashboard, get_jarvis: Callable[[], object], log=print) -> None:
+def attach(dashboard, get_matthew_assistant: Callable[[], object], log=print) -> None:
     from fastapi import Request
     from fastapi.responses import JSONResponse
 
@@ -72,8 +72,8 @@ def attach(dashboard, get_jarvis: Callable[[], object], log=print) -> None:
                 cfg = {}
             names = meeting.user_names(cfg)
             result = summarize(transcript, Brain(cfg), started, duration, names)
-            jarvis = get_jarvis()
-            delivered = meeting.deliver(jarvis, result, where, names) if jarvis is not None else {}
+            matthew_assistant = get_matthew_assistant()
+            delivered = meeting.deliver(matthew_assistant, result, where, names) if matthew_assistant is not None else {}
             return {"result": result, "delivered": delivered}
 
         try:
@@ -166,11 +166,11 @@ def attach(dashboard, get_jarvis: Callable[[], object], log=print) -> None:
         title = str(body.get("title") or "")[:400]
         if not title:
             return JSONResponse({"error": "title manquant"}, status_code=400)
-        jarvis = get_jarvis()
+        matthew_assistant = get_matthew_assistant()
 
         def say(text: str) -> None:
-            if jarvis is not None and getattr(jarvis, "session", None):
-                jarvis.plugin_say(text)
+            if matthew_assistant is not None and getattr(matthew_assistant, "session", None):
+                matthew_assistant.plugin_say(text)
 
         def work() -> bool:
             import pilot
@@ -186,12 +186,12 @@ def attach(dashboard, get_jarvis: Callable[[], object], log=print) -> None:
             return err
         import pilot
         outcome, message = str(body.get("outcome") or "done")[:20], str(body.get("message") or "")[:1500]
-        jarvis = get_jarvis()
-        if jarvis is not None:
+        matthew_assistant = get_matthew_assistant()
+        if matthew_assistant is not None:
             try:
-                jarvis.ui.write_log(f"SYS: Pilote (PC) — {outcome} : {message[:200]}")
-                if getattr(jarvis, "session", None):
-                    jarvis.plugin_say(pilot.spoken(outcome, message))
+                matthew_assistant.ui.write_log(f"SYS: Pilote (PC) — {outcome} : {message[:200]}")
+                if getattr(matthew_assistant, "session", None):
+                    matthew_assistant.plugin_say(pilot.spoken(outcome, message))
             except Exception:
                 pass
         return JSONResponse({"ok": True})

@@ -6,7 +6,7 @@ Windows démarre
       ↓
    réseau
       ↓
-JARVIS Desktop démarre
+Matthew Desktop démarre
       ↓
 connexion Oracle
       ↓
@@ -45,8 +45,11 @@ import os
 from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-VALUE_NAME = "JarvisDesktop"
-LINUX_AUTOSTART = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "autostart" / "jarvis-desktop.desktop"
+VALUE_NAME = "MatthewAssistantDesktop"
+LINUX_AUTOSTART = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "autostart" / "matthew-assistant-desktop.desktop"
+# Before the rename (2026-10-23) the entry was "JarvisDesktop": still seen, replaced on enable.
+LEGACY_VALUE_NAME = "JarvisDesktop"
+LEGACY_LINUX_AUTOSTART = LINUX_AUTOSTART.with_name("jarvis-desktop.desktop")
 
 
 def launcher_path() -> Path:
@@ -66,7 +69,7 @@ def pythonw() -> Path:
 
 def command() -> str:
     if sys.platform.startswith("linux"):
-        if os.environ.get("JARVIS_LOCAL_MODE") == "1":
+        if os.environ.get("MATTHEW_ASSISTANT_LOCAL_MODE") == "1":
             script = Path(__file__).resolve().parent.parent / "main.py"
             return f'"{sys.executable}" "{script}" --local'
         return f'"{sys.executable}" -m client_desktop'
@@ -81,31 +84,46 @@ def _windows_registry():
 def _linux_entry() -> str:
     repo = Path(__file__).resolve().parent.parent
     return "\n".join((
-        "[Desktop Entry]", "Type=Application", "Name=Jarvis Desktop",
-        "Comment=HUD JARVIS", f"Exec={command()}",
+        "[Desktop Entry]", "Type=Application", "Name=Matthew Desktop",
+        "Comment=HUD Matthew", f"Exec={command()}",
         f"Path={repo}", "Terminal=false", "X-GNOME-Autostart-enabled=true", "",
     ))
 
 
 def is_enabled() -> bool:
     if sys.platform.startswith("linux"):
-        return LINUX_AUTOSTART.is_file()
+        return LINUX_AUTOSTART.is_file() or LEGACY_LINUX_AUTOSTART.is_file()
     try:
         winreg = _windows_registry()
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-            value, _ = winreg.QueryValueEx(key, VALUE_NAME)
-            return bool(value)
-    except FileNotFoundError:
-        return False
+            for name in (VALUE_NAME, LEGACY_VALUE_NAME):
+                try:
+                    if winreg.QueryValueEx(key, name)[0]:
+                        return True
+                except FileNotFoundError:
+                    pass
+            return False
     except OSError:
         return False
+
+
+def _drop_legacy() -> None:
+    if sys.platform.startswith("linux"):
+        LEGACY_LINUX_AUTOSTART.unlink(missing_ok=True)
+        return
+    winreg = _windows_registry()
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+        try:
+            winreg.DeleteValue(key, LEGACY_VALUE_NAME)
+        except FileNotFoundError:
+            pass
 
 
 def matches_current_install() -> bool:
     """True if the registered command still points at *this* checkout.
 
     Worth checking separately from `is_enabled`: moving the repository leaves a
-    Run entry that fails silently at every login, and the symptom is "JARVIS
+    Run entry that fails silently at every login, and the symptom is "Matthew
     stopped starting" with nothing anywhere to explain it.
     """
     if sys.platform.startswith("linux"):
@@ -127,6 +145,7 @@ def enable() -> tuple[bool, str]:
         try:
             LINUX_AUTOSTART.parent.mkdir(parents=True, exist_ok=True)
             LINUX_AUTOSTART.write_text(_linux_entry(), encoding="utf-8")
+            _drop_legacy()
             return True, str(LINUX_AUTOSTART)
         except OSError as exc:
             return False, str(exc)
@@ -136,6 +155,7 @@ def enable() -> tuple[bool, str]:
             winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE
         ) as key:
             winreg.SetValueEx(key, VALUE_NAME, 0, winreg.REG_SZ, command())
+        _drop_legacy()
         return True, command()
     except OSError as exc:
         return False, str(exc)
@@ -145,10 +165,12 @@ def disable() -> tuple[bool, str]:
     if sys.platform.startswith("linux"):
         try:
             LINUX_AUTOSTART.unlink(missing_ok=True)
+            _drop_legacy()
             return True, "removed"
         except OSError as exc:
             return False, str(exc)
     try:
+        _drop_legacy()
         winreg = _windows_registry()
         with winreg.OpenKey(
             winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE

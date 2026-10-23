@@ -1,5 +1,5 @@
 """
-capabilities/verify.py — vérifier ce que JARVIS sait faire, et l'écrire dans son graphe.
+capabilities/verify.py — vérifier ce que Matthew sait faire, et l'écrire dans son graphe.
 
     python -m capabilities.verify              sondes des outils + selftests, rapport
     python -m capabilities.verify --quick      sondes seulement (quelques secondes)
@@ -23,7 +23,7 @@ outil et celui d'un nœud qui porte un `test` viennent d'une exécution :
 Chaque nœud vérifié reçoit `verified` : la date, le moyen et le résultat. Le
 rapport complet est écrit dans capabilities/verification.json.
 
-Rien ici ne s'exécute au démarrage de JARVIS : c'est un outil de développement.
+Rien ici ne s'exécute au démarrage de Matthew : c'est un outil de développement.
 """
 from __future__ import annotations
 
@@ -268,8 +268,8 @@ def _portable(tmp: Path) -> str:
     import os
     p = importlib.import_module("plugins.portable")
     # Hors mode portable : l'outil le dit sans se tromper.
-    saved = {k: os.environ.get(k) for k in ("JARVIS_PORTABLE", "JARVIS_DATA_DIR", "USERPROFILE")}
-    for k in ("JARVIS_PORTABLE", "JARVIS_DATA_DIR"):
+    saved = {k: os.environ.get(k) for k in ("MATTHEW_ASSISTANT_PORTABLE", "MATTHEW_ASSISTANT_DATA_DIR", "USERPROFILE")}
+    for k in ("MATTHEW_ASSISTANT_PORTABLE", "MATTHEW_ASSISTANT_DATA_DIR"):
         os.environ.pop(k, None)
     try:
         off = p.run({"action": "status"})
@@ -277,8 +277,8 @@ def _portable(tmp: Path) -> str:
         # Mode portable simulé : les données doivent pointer sur la clé (ici tmp).
         data = tmp / "data"
         data.mkdir(parents=True, exist_ok=True)
-        os.environ["JARVIS_PORTABLE"] = "1"
-        os.environ["JARVIS_DATA_DIR"] = str(data)
+        os.environ["MATTHEW_ASSISTANT_PORTABLE"] = "1"
+        os.environ["MATTHEW_ASSISTANT_DATA_DIR"] = str(data)
         os.environ["USERPROFILE"] = str(data / "home")
         on = p.run({"action": "status"})
         assert str(data) in on and "portable" in on.lower(), on
@@ -378,7 +378,7 @@ PROBES = {
     "flight_finder": ("vide", _dry("actions.flight_finder")),
     "save_memory": ("vide", _dry("memory.memory_manager")),
     "close_camera": ("vide", _dry("actions.screen_processor", "cv2")),
-    "shutdown_jarvis": ("vide", _dry("core.confirm")),
+    "shutdown_matthew_assistant": ("vide", _dry("core.confirm")),
 }
 
 #: Les suites, et les outils dont elles sont la preuve.
@@ -400,7 +400,7 @@ SUITES = {
 
 def run_probes() -> dict[str, dict]:
     results = {}
-    with tempfile.TemporaryDirectory(prefix="jarvis-verify-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="matthew-assistant-verify-") as tmp:
         for tool, (kind, fn) in PROBES.items():
             t0 = time.perf_counter()
             work = Path(tmp) / tool

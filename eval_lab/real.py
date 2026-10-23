@@ -12,7 +12,7 @@ THE GUARD
     when a person rewrites it here. There is no command that promotes one.
 
 VERDICTS
-    Those of jarvis-preprod, on purpose: PASS, FAIL, SKIP, PHYSICAL_ONLY is
+    Those of matthew-assistant-preprod, on purpose: PASS, FAIL, SKIP, PHYSICAL_ONLY is
     not needed here (everything here is physical). A run is a dated file under
     runs/real-<date>/, never an edit of the corpus.
 """
@@ -46,13 +46,13 @@ def seed_suite() -> list[dict]:
         R("policy", "bluetooth_headset_name",
           "Candidat « nom de casque = voiture ». Telephone Android reel, Ne pas deranger actif, "
           "casque Bluetooth dont le nom contient « sync », « car » ou « auto ». Declencher une alerte "
-          "IMPORTANT. Attendu : notification muette, JARVIS ne parle pas dans le casque.",
+          "IMPORTANT. Attendu : notification muette, Matthew ne parle pas dans le casque.",
           world={"phone": {"age_s": 0, "screen_on": True, "dnd": True, "headset": True,
                            "bluetooth_devices": ["Bose SyncBuds"]}},
           stimulus={"priority": "IMPORTANT"}, expected={"speaks": False}),
         R("router", "phone_routing_live",
           "Gemini Live reel, a la voix, depuis le telephone : « ouvre YouTube sur mon PC » avec le PC "
-          "eteint. Attendu : JARVIS dit que le PC n'est pas connecte, rien ne s'ouvre sur le telephone. "
+          "eteint. Attendu : Matthew dit que le PC n'est pas connecte, rien ne s'ouvre sur le telephone. "
           "Noter la phrase exacte (majuscule de « PC »).",
           world={"devices": [{"id": "desktop-01", "type": "pc", "caps": ["open_app"], "online": False},
                              {"id": "phone-01", "type": "android", "caps": ["open_app"]}],

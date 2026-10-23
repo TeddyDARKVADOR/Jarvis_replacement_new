@@ -1,21 +1,21 @@
 {
-  "schema": "jarvis.graph/1",
+  "schema": "matthew_assistant.graph/1",
   "id": "general",
   "title": "Matthew (anciennement JARVIS) — toutes les fonctionnalités",
-  "updated": "2026-10-22",
-  "summary": "Ce que JARVIS sait faire, domaine par domaine. Chaque domaine ouvre un sous-graphe quand il en a un. Les outils sont ceux que Gemini peut appeler : le selftest vérifie qu'il n'en manque aucun.",
+  "updated": "2026-10-23",
+  "summary": "Ce que Matthew sait faire, domaine par domaine. Chaque domaine ouvre un sous-graphe quand il en a un. Les outils sont ceux que Gemini peut appeler : le selftest vérifie qu'il n'en manque aucun.",
   "replaces": [],
   "nodes": [
     {
-      "id": "jarvis",
+      "id": "matthew_assistant",
       "label": "Matthew (anciennement JARVIS)",
       "kind": "racine",
       "summary": "Assistant vocal temps réel sur Gemini Live : il entend, voit, se souvient, agit sur le PC et tourne 24 h/24 sur Oracle avec un HUD sur PC et un client Android.",
       "details": [
-        "Un seul cerveau (main.py, JarvisLive) dans deux modes : sur ce PC (python main.py --local) ou sur le serveur Oracle (server.run_headless), avec le même HUD.",
+        "Un seul cerveau (main.py, MatthewAssistantLive) dans deux modes : sur ce PC (python main.py --local) ou sur le serveur Oracle (server.run_headless), avec le même HUD.",
         "Python 3.11+ (asyncio.TaskGroup). Client Android en Kotlin. HUD en page web dans Qt WebEngine.",
         "Règle d'or (contrat V2) : toute fonctionnalité ajoutée après V1 se retire sans casser V1.",
-        "NOM (2026-10-22) : l'assistant devient Matthew, comme son modèle ouvert (droits d'auteur : JARVIS est un personnage de Marvel). Fait : ce qu'il dit de lui (nom par défaut, core/prompt.txt sans « Jarvis d'Iron Man », constitution 0.2.0, prompts de la cognition), HUD de bureau, notifications, tableau de bord, application Android (nom, onglet, textes). Reste, pas à pas : le mot d'éveil « Hey Jarvis » (modèle openWakeWord pré-entraîné ; « Hey Matthew » demande d'en entraîner un), les identifiants (JarvisLive, com.jarvis, JARVIS_DATA_DIR, jarvis-preprod, jarvis.toml, shutdown_jarvis), les scripts portables, l'étiquette de journal Android JARVIS (filtrée par la pré-production). Les lectures des échanges acceptent « Matthew » et « Jarvis » pendant la transition.",
+        "NOM (2026-10-22) : l'assistant devient Matthew, comme son modèle ouvert (droits d'auteur : JARVIS est un personnage de Marvel). Fait le 22 : ce qu'il dit de lui (nom par défaut, core/prompt.txt sans « Jarvis d'Iron Man », constitution 0.2.0, prompts de la cognition), HUD, notifications, tableau de bord, textes de l'application Android. Fait le 2026-10-23 : le code entier — Matthew dans les textes, matthew_assistant dans les identifiants (MatthewAssistantLive, MATTHEW_ASSISTANT_*, matthew_assistant.toml, matthew-assistant-preprod, outil shutdown_matthew_assistant, formats matthew_assistant.graph/1, .nightly/1, .scenario/1…). L'ancien nom reste LU : variables JARVIS_* que l'utilisateur pose (clés Gemini, dépôt nightshift, GPU du HUD, coffre, scripts de déploiement), formats jarvis.*/1 déjà écrits, dossiers déjà créés (%LOCALAPPDATA%\\JarvisDesktop, ~/.jarvis, ~/.jarvis_profiles, OneDrive\\JarvisMemory, Jarvis_Workspace, Documents/JARVIS, certificats jarvis.key/.crt), entrée de démarrage JarvisDesktop (remplacée à l'activation), jeton d'appareil du navigateur, appel shutdown_jarvis d'un modèle déjà entraîné. Gardé tel quel, à renommer hors du code plus tard : le mot d'éveil « Hey Jarvis » (modèle openWakeWord pré-entraîné ; « Hey Matthew » demande d'en entraîner un), l'application Android (paquet com.jarvis, classes Jarvis*, fichiers ; pas de JDK 17 ici pour la recompiler), le protocole avec le téléphone (jarvis_state, speaker jarvis), le VPS (service jarvis, /opt/jarvis, utilisateur jarvis, hôte jarvis-vps), la clé USB (E:\\JARVIS, Lancer-JARVIS.bat), les tâches planifiées JARVIS_GameUpdater et JARVISReminder_*, les branches automation/jarvis-nightly-*, l'étiquette v1.0-jarvis-24-7, le dépôt GitHub Jarvis_replacement_new, l'AVD jarvis_lab.",
         "LINUX (2026-10-22) : tout tourne sous Windows comme sous Linux. Déjà portable avant : Pilot (AT-SPI), réunions (pactl, /proc), voix hors-ligne (espeak-ng), réglages, démarrage auto, rappels, tableau de bord. Porté ce jour : planification de Matthew (sched.py, systemd / cron), instance unique du HUD (socket abstrait), bac à sable et plafonds du Code Studio, Tailscale, chemins d'entraînement, navigateurs de la vitrine ; setup.py liste et installe (--system) les paquets Linux. Audit du 2026-10-22 : aucun import, appel ou chemin Windows sans garde ; un premier passage des suites dans un conteneur Debian n'a montré aucun échec propre à Linux (dépendances incomplètes, connexion lente) ; passage complet et vrai bureau Linux à faire."
       ],
       "files": [
@@ -25,7 +25,7 @@
         "requirements.txt",
         "deployment/matthew-train-linux.sh"
       ],
-      "updated": "2026-10-22"
+      "updated": "2026-10-23"
     },
     {
       "id": "dom.voix",
@@ -82,8 +82,8 @@
         "Live : models/gemini-2.5-flash-native-audio-preview-12-2025 en secours, seulement sur quota ou perte d'accès, jamais sur clé refusée ou réseau.",
         "Vérifié en réel : un modèle inexistant bascule en 0,61 s sur gemini-2.5-flash-lite ; le modèle Live de secours se connecte et répond.",
         "Repris de core/gemini.py de Mark LV (FatihMakes, CC BY-NC 4.0) ; le tour Live jetable de Mark LV n'est pas repris.",
-        "2026-10-16 : un 429 nomme son quota. « PerDay » (quota du jour, 20 requêtes pour gemini-3.5-flash et les autres Flash 3.x, 500 pour les Flash-Lite, lus dans les erreurs de Google) → repos jusqu'à minuit heure du Pacifique, au lieu de 5 min (JARVIS y revenait pour rien toute la journée) ; « PerMinute » → 1 min. Vérifié avec le vrai SDK : gemini-3.5-flash épuisé → 19,9 h de repos. Quotas comptés par projet et par modèle, pas par clé.",
-        "2026-10-17 : plusieurs clés Gemini. gemini_api_keys (liste) dans la config, gemini_api_key (clé unique, historique) et JARVIS_GEMINI_KEYS dans l'env (clés de l'hôte, séparées par des virgules — en portable, la clé du PC s'ajoute à celles de la clé USB) forment un pool. Quand une clé épuise son quota du jour (429 PerDay), elle se repose jusqu'à minuit (Pacifique) et JARVIS bascule sur la suivante ; les repos de modèles sont alors effacés (ils valaient pour l'ancienne clé). Trois comptes ≈ trois fois le quota gratuit. Une seule clé : comportement inchangé. main._get_api_key confie le pool à resilience (set_gemini_keys / current_gemini_key / gemini_keys_status) ; prouvé par resilience.selftest n°14.",
+        "2026-10-16 : un 429 nomme son quota. « PerDay » (quota du jour, 20 requêtes pour gemini-3.5-flash et les autres Flash 3.x, 500 pour les Flash-Lite, lus dans les erreurs de Google) → repos jusqu'à minuit heure du Pacifique, au lieu de 5 min (Matthew y revenait pour rien toute la journée) ; « PerMinute » → 1 min. Vérifié avec le vrai SDK : gemini-3.5-flash épuisé → 19,9 h de repos. Quotas comptés par projet et par modèle, pas par clé.",
+        "2026-10-17 : plusieurs clés Gemini. gemini_api_keys (liste) dans la config, gemini_api_key (clé unique, historique) et MATTHEW_ASSISTANT_GEMINI_KEYS dans l'env (clés de l'hôte, séparées par des virgules — en portable, la clé du PC s'ajoute à celles de la clé USB) forment un pool. Quand une clé épuise son quota du jour (429 PerDay), elle se repose jusqu'à minuit (Pacifique) et Matthew bascule sur la suivante ; les repos de modèles sont alors effacés (ils valaient pour l'ancienne clé). Trois comptes ≈ trois fois le quota gratuit. Une seule clé : comportement inchangé. main._get_api_key confie le pool à resilience (set_gemini_keys / current_gemini_key / gemini_keys_status) ; prouvé par resilience.selftest n°14.",
         "2026-10-17 : le multi-clés ne sert plus que la voix Live mais TOUS les appels — memory/config_manager.load_api_keys() confie le pool à resilience et renvoie la clé active, donc réunion/briefing/daily/offline/pilot basculent aussi (prouvé par meeting.selftest et un test direct)."
       ],
       "files": [
@@ -121,11 +121,11 @@
       "label": "Incidents réels",
       "kind": "fonction",
       "status": "a_tester",
-      "summary": "Les erreurs de la vraie vie, comptées : exceptions non rattrapées (tous les fils) et lignes d'erreur du journal de JARVIS, regroupées par signature (genre, type, fichier:fonction du dépôt, message rendu générique), 30 jours dans memory/incidents.json. Partage avec Night Shift désactivé par défaut.",
+      "summary": "Les erreurs de la vraie vie, comptées : exceptions non rattrapées (tous les fils) et lignes d'erreur du journal de Matthew, regroupées par signature (genre, type, fichier:fonction du dépôt, message rendu générique), 30 jours dans memory/incidents.json. Partage avec Night Shift désactivé par défaut.",
       "details": [
         "Pourquoi : le 2026-10-16, deux vrais problèmes (faster-whisper qui plantait le HUD, les quotas fermés) n'étaient couverts par aucun test.",
         "Partage (incidents_share, à la voix) : chaque nuit vers 0 h 45, un résumé de 7 jours poussé sur nightshift-data — BRANCHE PUBLIQUE : signatures et compteurs seulement, jamais d'échantillon ; clés, jetons, e-mails, adresses, chemins et fichiers personnels, citations et nombres effacés (vérifié sur des messages piégés).",
-        "Vérifié : incidents.selftest 6/6 (dont un vrai envoi git vers un dépôt local). Non vérifié : dans JARVIS lancé, et le partage depuis Oracle (il faut des identifiants git sur la machine qui pousse)."
+        "Vérifié : incidents.selftest 6/6 (dont un vrai envoi git vers un dépôt local). Non vérifié : dans Matthew lancé, et le partage depuis Oracle (il faut des identifiants git sur la machine qui pousse)."
       ],
       "files": [
         "incidents/__init__.py",
@@ -164,10 +164,10 @@
       "label": "Relais hors-ligne",
       "kind": "fonction",
       "status": "a_tester",
-      "summary": "Gemini (mode local) ou Oracle (HUD relié) injoignable depuis 20 s : JARVIS continue à la voix sur ce PC — faster-whisper, Ollama avec outils, voix du système — et se tait dès le retour de la connexion.",
+      "summary": "Gemini (mode local) ou Oracle (HUD relié) injoignable depuis 20 s : Matthew continue à la voix sur ce PC — faster-whisper, Ollama avec outils, voix du système — et se tait dès le retour de la connexion.",
       "details": [
         "Répond aux phrases qui contiennent son nom (à une lettre près : « Jarvie »), puis à la suite pendant 25 s ; sinon il répondrait à la télévision.",
-        "Whisper small, nom en initial_prompt : 3/3 phrases avec « Jarvis » contre 0/3 sans ; GPU si cuBLAS est installé, sinon CPU (1,6 s par phrase sur ce PC, où cublas64_12.dll manque). Les hallucinations sur le silence (« Amara.org ») sont écartées.",
+        "Whisper small, nom en initial_prompt : 3/3 phrases avec « Matthew » contre 0/3 sans ; GPU si cuBLAS est installé, sinon CPU (1,6 s par phrase sur ce PC, où cublas64_12.dll manque). Les hallucinations sur le silence (« Amara.org ») sont écartées.",
         "Cerveau : premier modèle Ollama capable d'outils et de moins de 10 Go (gemma4:12b ici, 1,2 à 1,8 s ; qwen3.6, 23 Go, mettait 41,6 s), préchargé dès la bascule ; réglage offline_model dans api_keys.json.",
         "Outils hors-ligne : current_time, open_app, computer_settings, file_controller, desktop_control, reminder ; leurs confirmations restent celles de core/confirm.",
         "Voix : SAPI sous Windows (Hortense), espeak-ng sous Linux, say sous macOS ; pyttsx3 abandonné (bloquait à la 2e phrase). Une seule voix et un seul Whisper par processus : un second chargement GPU bloquait.",
@@ -210,7 +210,7 @@
       "label": "Accusé de réception immédiat",
       "kind": "fonction",
       "status": "ok",
-      "summary": "Pour une tâche longue (fichier, recherche, code), JARVIS dit tout de suite une phrase courte dans votre langue.",
+      "summary": "Pour une tâche longue (fichier, recherche, code), Matthew dit tout de suite une phrase courte dans votre langue.",
       "files": [
         "main.py"
       ]
@@ -297,10 +297,10 @@
       ]
     },
     {
-      "id": "tool.shutdown_jarvis",
-      "label": "shutdown_jarvis",
+      "id": "tool.shutdown_matthew_assistant",
+      "label": "shutdown_matthew_assistant",
       "kind": "outil",
-      "tool": "shutdown_jarvis",
+      "tool": "shutdown_matthew_assistant",
       "status": "a_tester",
       "summary": "Arrête complètement l'assistant quand l'utilisateur dit au revoir, dans n'importe quelle langue.",
       "files": [
@@ -312,7 +312,7 @@
       "id": "dom.pc",
       "label": "Contrôle du PC",
       "kind": "domaine",
-      "summary": "Ce que JARVIS fait sur l'ordinateur : applications, réglages, fichiers, souris et clavier, navigateur, messages, jeux, rappels.",
+      "summary": "Ce que Matthew fait sur l'ordinateur : applications, réglages, fichiers, souris et clavier, navigateur, messages, jeux, rappels.",
       "details": [
         "Sur Oracle (Linux sans écran), les actions qui ont besoin de pyautogui ou d'un affichage sont rejetées au chargement : c'est voulu.",
         "Une action qu'aucun appareil ne déclare s'exécute sur la machine du cerveau (voir le routage)."
@@ -366,7 +366,7 @@
       "label": "Pilote universel",
       "kind": "fonction",
       "status": "partiel",
-      "summary": "JARVIS prend la main sur l'ordinateur pour n'importe quelle application ou site : il regarde l'écran (arbre d'accessibilité numéroté + capture), choisit une action avec Gemini, la fait, vérifie, recommence. Rien n'est écrit en dur pour une application : il lit les applications installées, les schémas d'URL enregistrés (liens profonds), les sites déjà visités, et les recettes qui ont marché sur cette machine.",
+      "summary": "Matthew prend la main sur l'ordinateur pour n'importe quelle application ou site : il regarde l'écran (arbre d'accessibilité numéroté + capture), choisit une action avec Gemini, la fait, vérifie, recommence. Rien n'est écrit en dur pour une application : il lit les applications installées, les schémas d'URL enregistrés (liens profonds), les sites déjà visités, et les recettes qui ont marché sur cette machine.",
       "details": [
         "Accessibilité : UI Automation sous Windows (lecture mise en cache, FindAllBuildCache ; motifs Invoke, Value, Toggle, SelectionItem, ExpandCollapse), AT-SPI sous Linux (Action, EditableText), AX sous macOS (non vérifié). Clavier et souris en dernier recours : pyautogui (Windows, macOS, X11) ; Wayland : wdotool ou ydotool + wtype.",
         "La garde est dans le code : clic sur un élément qui ressemble à envoyer/supprimer/payer/publier/valider, saisie avec submit, ou Entrée après un champ de rédaction (pas une recherche) → confirmation core/confirm.py avec le texte exact ; un refus vaut pour toute la tâche. Jamais de texte dans un mot de passe ; jamais de remplacement d'un document déjà rempli (on écrit au curseur, Ctrl+Fin).",
@@ -490,9 +490,9 @@
       "kind": "outil",
       "tool": "reminder",
       "status": "partiel",
-      "summary": "Rappel à une date et une heure : tâche planifiée du système (filet quand JARVIS est fermé) et, quand il tourne, livraison par JARVIS lui-même (HUD, téléphone, voix).",
+      "summary": "Rappel à une date et une heure : tâche planifiée du système (filet quand Matthew est fermé) et, quand il tourne, livraison par Matthew lui-même (HUD, téléphone, voix).",
       "details": [
-        "La tâche planifiée attend 20 s et se tait si JARVIS a déjà livré : pas de doublon.",
+        "La tâche planifiée attend 20 s et se tait si Matthew a déjà livré : pas de doublon.",
         "Programmer la tâche système n'est pas testé automatiquement (effet réel sur le PC)."
       ],
       "files": [
@@ -503,12 +503,12 @@
     },
     {
       "id": "f.rappels",
-      "label": "Rappels livrés par JARVIS",
+      "label": "Rappels livrés par Matthew",
       "kind": "fonction",
-      "summary": "Toutes les 5 s, JARVIS livre les rappels échus : carte RAPPEL dans le HUD, notification sur le téléphone appairé, et la voix si la politique de contexte permet de parler.",
+      "summary": "Toutes les 5 s, Matthew livre les rappels échus : carte RAPPEL dans le HUD, notification sur le téléphone appairé, et la voix si la politique de contexte permet de parler.",
       "details": [
         "memory/reminders.json (ignoré par Git) garde chaque rappel et sa livraison.",
-        "Un rappel manqué de plus de 6 h (PC éteint) n'est plus livré par JARVIS.",
+        "Un rappel manqué de plus de 6 h (PC éteint) n'est plus livré par Matthew.",
         "En local, le hub de notifications n'était lié par personne : c'est reminders.attach qui le lie, depuis la boucle de main.py."
       ],
       "files": [
@@ -524,17 +524,17 @@
       "label": "Copilote de réunion",
       "kind": "fonction",
       "status": "partiel",
-      "summary": "Une visio commence (n'importe quelle application prend le micro ou la caméra) : JARVIS capte le son du PC (« Participants ») et le micro (« Moi »), transcrit sur ce PC au fil de la réunion, puis écrit un compte rendu (résumé, décisions, actions, questions) dans Documents/JARVIS/Réunions. Les actions datées deviennent des rappels, les autres des objectifs proposés. Le son n'est jamais enregistré.",
+      "summary": "Une visio commence (n'importe quelle application prend le micro ou la caméra) : Matthew capte le son du PC (« Participants ») et le micro (« Moi »), transcrit sur ce PC au fil de la réunion, puis écrit un compte rendu (résumé, décisions, actions, questions) dans Documents/JARVIS/Réunions. Les actions datées deviennent des rappels, les autres des objectifs proposés. Le son n'est jamais enregistré.",
       "details": [
-        "Détection sans liste d'applications : Windows — sessions de capture WASAPI (micro, PID en temps réel) et IMFSensorActivityMonitor de Media Foundation (caméra), le registre CapabilityAccessManager en repli (plus tenu à jour sur Windows 11 Insider 26300, mesuré) ; Linux — flux PulseAudio/PipeWire (pactl) hors moniteurs, /proc/<pid>/fd vers /dev/video* ; macOS — CoreAudio et CoreMediaIO par ctypes (non vérifié). JARVIS lui-même est exclu.",
+        "Détection sans liste d'applications : Windows — sessions de capture WASAPI (micro, PID en temps réel) et IMFSensorActivityMonitor de Media Foundation (caméra), le registre CapabilityAccessManager en repli (plus tenu à jour sur Windows 11 Insider 26300, mesuré) ; Linux — flux PulseAudio/PipeWire (pactl) hors moniteurs, /proc/<pid>/fd vers /dev/video* ; macOS — CoreAudio et CoreMediaIO par ctypes (non vérifié). Matthew lui-même est exclu.",
         "Début après 15 s d'usage (une dictée ne compte pas), fin après 45 s sans micro ni caméra, 10 min sans parole ou 4 h. Modes auto (défaut), ask, off. « Je suis en réunion » : réunion manuelle (présentiel).",
         "Capture : soundcard — WASAPI loopback sous Windows (suit le volume : coupé = silence, d'où la normalisation), moniteur PulseAudio/PipeWire sous Linux (« <sink>.monitor »), micro seul sous macOS. Morceaux de 9 à 30 s coupés au calme ; un casque branché en cours de route est suivi.",
         "Transcription : faster-whisper avec Silero ; gain du micro plafonné (le bruit de la pièce montait en « voix » et Whisper inventait des phrases), segments peu sûrs écartés (avg_logprob, taux de compression), écho du haut-parleur dans le micro retiré.",
         "Compte rendu : meeting/brain.py (Gemini 3.5 flash-lite, Groq, Ollama), JSON strict ; l'heure, un calendrier des 8 jours et le nom de l'utilisateur sont donnés (« avant vendredi 10 h » dit un vendredi à 11 h → vendredi suivant, vérifié). PC relié à Oracle : le PC capte et transcrit, Oracle résume et livre (POST /api/meeting/summary) ; Oracle injoignable → Ollama sur le PC.",
-        "Vérifié le 2026-10-16 : bout en bout réel sous Windows (fausse visio = un autre processus sur le micro, réunion jouée par les haut-parleurs, Whisper base, Gemini) — détection 5 s, fin détectée, compte rendu juste ; Linux réel (Debian 12, PulseAudio) : capture du son du poste et transcription, détection de parecord, capture du copilote sur ses deux flux. Non vérifié : JARVIS lancé avec le hook, le mode PC relié en vrai, macOS. Limite : sans casque, le micro du portable reprend le haut-parleur et le bruit de la pièce.",
+        "Vérifié le 2026-10-16 : bout en bout réel sous Windows (fausse visio = un autre processus sur le micro, réunion jouée par les haut-parleurs, Whisper base, Gemini) — détection 5 s, fin détectée, compte rendu juste ; Linux réel (Debian 12, PulseAudio) : capture du son du poste et transcription, détection de parecord, capture du copilote sur ses deux flux. Non vérifié : Matthew lancé avec le hook, le mode PC relié en vrai, macOS. Limite : sans casque, le micro du portable reprend le haut-parleur et le bruit de la pièce.",
         "Aide en direct (2026-10-16) : une question d'un participant qui te vise (règle immédiate : « ? » ou mot interrogatif, et ton prénom, « tu » ou « vous ») est jugée par un modèle rapide (Groq, Ollama Cloud, Gemini) avec les 3 dernières minutes ; la suggestion (25 mots) s'affiche en petit en bas à droite — jamais de focus, clics traversants, effacée après 25 s, exclue des captures et du partage d'écran sous Windows (WDA_EXCLUDEFROMCAPTURE : 0 pixel dans la capture, mesuré). Ctrl+Alt+J : « que dire ? » d'après la dernière minute.",
         "Latence mesurée en vrai (Windows, i7-1255U sans GPU, Whisper base) : 5,8 s après la fin de la question. Elle était de 21 s : un seul Whisper non interruptible, de longs morceaux du micro, et le repli en température (18,4 s pour 12 s d'audio douteux). Corrigé : les deux flux découpés à la phrase (micro ≤ 6 s, seuil de souffle), file à priorité pour les participants, temperature=0, modèle chargé dès le début.",
-        "Bug du JARVIS existant trouvé en chemin : faster-whisper (ctranslate2) chargé après PyQt6 fait planter le processus (segfault, PyQt6 embarque d'anciens msvcp140.dll) — le relais hors-ligne aurait planté le HUD. client_desktop/__init__.py précharge ctranslate2 : vérifié par le chemin d'import réel des deux points d'entrée."
+        "Bug du Matthew existant trouvé en chemin : faster-whisper (ctranslate2) chargé après PyQt6 fait planter le processus (segfault, PyQt6 embarque d'anciens msvcp140.dll) — le relais hors-ligne aurait planté le HUD. client_desktop/__init__.py précharge ctranslate2 : vérifié par le chemin d'import réel des deux points d'entrée."
       ],
       "files": [
         "meeting/__init__.py",
@@ -762,7 +762,7 @@
       "id": "dom.code",
       "label": "Code et développement",
       "kind": "domaine",
-      "summary": "Jarvis Code Studio, son atelier : il planifie, écrit, lance les vrais tests, corrige et présente un bilan mérité.",
+      "summary": "Matthew Code Studio, son atelier : il planifie, écrit, lance les vrais tests, corrige et présente un bilan mérité.",
       "graph": "studio",
       "files": [
         "core/code_workspace/__init__.py"
@@ -906,7 +906,7 @@
       "kind": "outil",
       "tool": "goals",
       "status": "ok",
-      "summary": "Objectifs persistants : JARVIS propose, l'utilisateur approuve sur le HUD. Il peut noter un progrès ou retirer sa proposition, rien de plus.",
+      "summary": "Objectifs persistants : Matthew propose, l'utilisateur approuve sur le HUD. Il peut noter un progrès ou retirer sa proposition, rien de plus.",
       "files": [
         "plugins/cognition_goals.py",
         "cognition/goals.py"
@@ -918,7 +918,7 @@
       "id": "dom.connaissance",
       "label": "Connaissance de soi (ce graphe)",
       "kind": "domaine",
-      "summary": "JARVIS possède ce graphe : il le consulte pour savoir ce qu'il sait faire et l'affiche dans le HUD quand on le lui demande.",
+      "summary": "Matthew possède ce graphe : il le consulte pour savoir ce qu'il sait faire et l'affiche dans le HUD quand on le lui demande.",
       "details": [
         "Les graphes remplacent les README : un graphe général et un sous-graphe par dossier, chacun daté.",
         "Le selftest échoue si un outil du code manque au graphe, si un fichier cité n'existe pas ou si un README remplacé revient."
@@ -948,7 +948,7 @@
       "label": "Panneau GRAPHE du HUD",
       "kind": "fonction",
       "status": "a_tester",
-      "summary": "Affiche le graphe général ou un sous-graphe, avec recherche, détails du nœud et date de mise à jour. Aucun bouton : il s'ouvre quand JARVIS l'affiche.",
+      "summary": "Affiche le graphe général ou un sous-graphe, avec recherche, détails du nœud et date de mise à jour. Aucun bouton : il s'ouvre quand Matthew l'affiche.",
       "files": [
         "client_desktop/hud/web/js/graph.js",
         "client_desktop/hud/window.py"
@@ -977,7 +977,7 @@
       "id": "d.graphes",
       "label": "Graphes JSON",
       "kind": "donnee",
-      "summary": "capabilities/graphs/*.json, format jarvis.graph/1 : nœuds, arêtes, date, et les README qu'ils remplacent.",
+      "summary": "capabilities/graphs/*.json, format matthew_assistant.graph/1 : nœuds, arêtes, date, et les README qu'ils remplacent.",
       "files": [
         "capabilities/graphs/general.json"
       ]
@@ -1009,7 +1009,7 @@
       "label": "Check-ins proactifs",
       "kind": "fonction",
       "status": "ok",
-      "summary": "Après 15 min de silence (20 min entre deux), JARVIS peut relancer la conversation selon l'heure, vos projets et le sujet récent ; la politique de contexte peut le différer.",
+      "summary": "Après 15 min de silence (20 min entre deux), Matthew peut relancer la conversation selon l'heure, vos projets et le sujet récent ; la politique de contexte peut le différer.",
       "files": [
         "actions/proactive.py",
         "main.py"
@@ -1120,9 +1120,9 @@
       "summary": "Installer (chemin local ou https://), examiner, mettre à jour, désactiver, restaurer et retirer des plugins dans user_plugins/ (hors dépôt). Manifeste facultatif PLUGIN_MANIFEST : version, permissions, dépendances épinglées, et pour chaque action « read » ou « act ».",
       "details": [
         "Ce qui protège vraiment : la provenance (SHA-256 montrée, épinglée si donnée, installation après CONFIRMER) ; la transparence (analyse statique sans exécution : réseau, commandes, écriture de fichiers, code dynamique, clavier, écran, micro — et l'écart avec ce que le plugin déclare) ; lire ou agir appliqué par le code (chaque action « act » passe par core/confirm.py, une action non listée compte comme « act »).",
-        "Ce qui ne protège pas, et n'est pas prétendu : une liste de permissions n'empêche rien à un code qui tourne dans le processus de JARVIS.",
+        "Ce qui ne protège pas, et n'est pas prétendu : une liste de permissions n'empêche rien à un code qui tourne dans le processus de Matthew.",
         "MCP : les annotations des serveurs restent ignorées ; l'utilisateur décide (mcp_allow / mcp_confirm → auto_approve de config/mcp.json). Un outil installé est déclaré à Gemini à la reconnexion suivante (Gemini rouvre la session toutes les 2 à 3 min).",
-        "Vérifié : extensions.selftest manager 1-4 (dont la garde avec le vrai core/confirm). Non vérifié : dans JARVIS lancé.",
+        "Vérifié : extensions.selftest manager 1-4 (dont la garde avec le vrai core/confirm). Non vérifié : dans Matthew lancé.",
         "Dépendances (2026-10-21) : sans le paquet packaging, les paquets absents sont quand même signalés (seule la comparaison de versions en a besoin) ; avant, la liste restait vide — échec n°manager 1 relevé chaque nuit sur le runner Linux."
       ],
       "files": [
@@ -1174,7 +1174,7 @@
       "status": "a_tester",
       "summary": "Des instructions pas à pas en dossiers SKILL.md (format ouvert d'Anthropic et d'OpenAI), lues seulement quand une tâche en a besoin : seuls les noms et descriptions partent à Gemini.",
       "details": [
-        "Dossiers : skills/ du dépôt, puis ~/.jarvis/skills (le vôtre gagne).",
+        "Dossiers : skills/ du dépôt, puis ~/.matthew_assistant/skills (le vôtre gagne).",
         "Livrés : preparer-un-voyage, fin-de-journee. Un SKILL.md est une donnée, pas de la documentation.",
         "Les scripts d'un skill ne sont jamais exécutés ; read_file reste dans le dossier du skill.",
         "Non vérifié : Gemini qui appelle use au bon moment."
@@ -1201,7 +1201,7 @@
       "id": "dom.interfaces",
       "label": "Interfaces",
       "kind": "domaine",
-      "summary": "Par où on parle à JARVIS : le HUD plein écran sur PC, le client Android, le tableau de bord web local.",
+      "summary": "Par où on parle à Matthew : le HUD plein écran sur PC, le client Android, le tableau de bord web local.",
       "files": [
         "client_desktop/hud/window.py"
       ]
@@ -1270,7 +1270,7 @@
       "id": "dom.serveur",
       "label": "Serveur 24/7 (Oracle)",
       "kind": "domaine",
-      "summary": "Le même JarvisLive sur une VM sans écran ni carte son, joignable par Tailscale, avec routage des commandes vers le bon appareil.",
+      "summary": "Le même MatthewAssistantLive sur une VM sans écran ni carte son, joignable par Tailscale, avec routage des commandes vers le bon appareil.",
       "graph": "server",
       "files": [
         "server/run_headless.py"
@@ -1308,7 +1308,7 @@
       "id": "dom.tests",
       "label": "Tests et évaluation",
       "kind": "domaine",
-      "summary": "Selftests par paquet sans clé ni réseau, veilleur de nuit (GitHub Actions), laboratoire de scénarios (eval_lab), banc Android sur émulateur (jarvis-preprod), évaluation cognitive.",
+      "summary": "Selftests par paquet sans clé ni réseau, veilleur de nuit (GitHub Actions), laboratoire de scénarios (eval_lab), banc Android sur émulateur (matthew-assistant-preprod), évaluation cognitive.",
       "files": [
         "eval_lab/runner.py"
       ]
@@ -1334,7 +1334,7 @@
       "summary": "Campagnes sur émulateur uniquement : démarrage, notifications, réseau, interface, appareils, audio.",
       "graph": "preprod",
       "files": [
-        "jarvis-preprod/preprod"
+        "matthew-assistant-preprod/preprod"
       ]
     },
     {
@@ -1342,7 +1342,7 @@
       "label": "Veilleur de nuit (Night Shift)",
       "kind": "fonction",
       "status": "partiel",
-      "summary": "Trois passes par nuit (01 h 17, 03 h 17, 05 h 17) : GitHub Actions lance les suites testables sous Linux et ruff, compare avec la passe précédente, choisit à chaque passe une tâche différente dans la zone autorisée, en demande le correctif à un modèle gratuit et le prouve par les suites ; hors dry run, une PR, jamais de fusion. Le matin : une phrase au briefing, le détail dans l'onglet NUIT. Elle mesure aussi si JARVIS s'améliore (eval_lab, cognition, coût en contexte) et peut réveiller le PC pour des avis d'un modèle local.",
+      "summary": "Trois passes par nuit (01 h 17, 03 h 17, 05 h 17) : GitHub Actions lance les suites testables sous Linux et ruff, compare avec la passe précédente, choisit à chaque passe une tâche différente dans la zone autorisée, en demande le correctif à un modèle gratuit et le prouve par les suites ; hors dry run, une PR, jamais de fusion. Le matin : une phrase au briefing, le détail dans l'onglet NUIT. Elle mesure aussi si Matthew s'améliore (eval_lab, cognition, coût en contexte) et peut réveiller le PC pour des avis d'un modèle local.",
       "graph": "nightshift",
       "files": [
         "nightshift/__init__.py",
@@ -1389,11 +1389,11 @@
     },
     {
       "id": "tool.portable",
-      "label": "portable — JARVIS sur clé USB",
+      "label": "portable — Matthew sur clé USB",
       "kind": "outil",
       "tool": "portable",
       "status": "a_tester",
-      "summary": "Mode portable (JARVIS sur clé USB). Actions : status, eject, doctor (bilan : Python, deps, Ollama, coffre, modèle conseillé, vitesse clé, connexion, batterie), pair (appairage téléphone), resume (récap de reprise conscient de la machine), note (fil en cours repris ailleurs), audit (preuve zéro-trace), check (auto-vérif deps + intégrité clé), history (où/quand il a tourné). Lecture seule : ne déploie ni n'efface rien.",
+      "summary": "Mode portable (Matthew sur clé USB). Actions : status, eject, doctor (bilan : Python, deps, Ollama, coffre, modèle conseillé, vitesse clé, connexion, batterie), pair (appairage téléphone), resume (récap de reprise conscient de la machine), note (fil en cours repris ailleurs), audit (preuve zéro-trace), check (auto-vérif deps + intégrité clé), history (où/quand il a tourné). Lecture seule : ne déploie ni n'efface rien.",
       "files": [
         "plugins/portable.py"
       ],
@@ -1431,72 +1431,72 @@
   ],
   "edges": [
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.voix",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.pc",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.info",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.code",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.memoire",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.cognition",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.connaissance",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.proactif",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.securite",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.extension",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.interfaces",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.serveur",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.deploiement",
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.tests",
       "contient"
     ],
@@ -1567,7 +1567,7 @@
     ],
     [
       "dom.voix",
-      "tool.shutdown_jarvis",
+      "tool.shutdown_matthew_assistant",
       "contient"
     ],
     [
@@ -2161,7 +2161,7 @@
       "contient"
     ],
     [
-      "jarvis",
+      "matthew_assistant",
       "dom.matthew",
       "contient"
     ],

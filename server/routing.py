@@ -10,7 +10,7 @@ HOW THIS REACHES `main.py` WITHOUT TOUCHING IT
 
     `server/run_headless.py` already substitutes `sys.modules["ui"]` and
     `sys.modules["sounddevice"]` for exactly this reason. This is the same move
-    one level down: after `build()` and before `run()`, `jarvis._action_registry`
+    one level down: after `build()` and before `run()`, `matthew_assistant._action_registry`
     is swapped for a wrapper that delegates everything and interposes on `run`.
 
     Nothing in `main.py`, `core/` or `actions/` changes. `ActionRouter` is a
@@ -207,19 +207,19 @@ def device_bound() -> set[str]:
     return (names | _DEVICE_ONLY) - _SERVER_OK
 
 
-def install(jarvis, hub: DeviceHub, log=print) -> ActionRouter:
-    """Swap `jarvis._action_registry` for a router around it.
+def install(matthew_assistant, hub: DeviceHub, log=print) -> ActionRouter:
+    """Swap `matthew_assistant._action_registry` for a router around it.
 
     Call after `build()` and before `run()`: the declarations are read when the
     Live session is configured, which happens inside `run()`.
     """
-    inner = getattr(jarvis, "_action_registry", None)
+    inner = getattr(matthew_assistant, "_action_registry", None)
     if inner is None:
         raise RuntimeError(
-            "This JarvisLive has no _action_registry — main.py changed shape "
+            "This MatthewAssistantLive has no _action_registry — main.py changed shape "
             "and the router has nothing to wrap."
         )
     router = ActionRouter(inner, hub, log=log, server_guard=True)
-    jarvis._action_registry = router
+    matthew_assistant._action_registry = router
     log("[Route] action registry wrapped — device routing active")
     return router

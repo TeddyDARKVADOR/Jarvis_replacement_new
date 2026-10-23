@@ -6,11 +6,11 @@ Un skill est un dossier qui contient SKILL.md : un en-tête YAML (`name`,
 C'est le format ouvert d'Agent Skills (Anthropic, OpenAI) : un skill écrit
 pour Claude ou Codex fonctionne ici tel quel.
 
-Dossiers lus : `skills/` du dépôt, puis ~/.jarvis/skills (le vôtre gagne en
+Dossiers lus : `skills/` du dépôt, puis ~/.matthew_assistant/skills (le vôtre gagne en
 cas de nom identique). Seuls les noms et les descriptions partent à Gemini, dans
 la description de l'outil `skills` ; les instructions entières ne sont lues que
 par `use`. Les scripts d'un skill ne sont jamais exécutés : un skill est du
-texte, et les actions passent par les outils de JARVIS, avec leurs garde-fous.
+texte, et les actions passent par les outils de Matthew, avec leurs garde-fous.
 """
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parent.parent
-SKILL_DIRS = [REPO / "skills", Path.home() / ".jarvis" / "skills"]
+SKILL_DIRS = [REPO / "skills", Path.home() / ".jarvis" / "skills",   # ancien nom, encore lu
+              Path.home() / ".matthew_assistant" / "skills"]
 MAX_SKILL_CHARS = 20_000
 MAX_INDEX_DESC = 200
 _FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?(.*)\Z", re.DOTALL)

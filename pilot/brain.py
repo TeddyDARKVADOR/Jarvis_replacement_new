@@ -252,7 +252,7 @@ def to_openai(body: dict) -> dict:
 def call_groq(body: dict, key: str, timeout: float = 60.0, transport=None) -> dict:
     """Le secours sans vision, rendu au format Gemini pour que parse() le lise."""
     status, raw = (transport or _post)(GROQ_URL, {"Content-Type": "application/json", "Authorization": f"Bearer {key}",
-                                                  "User-Agent": "jarvis-pilot/1"},  # urllib par défaut : 403 (Cloudflare)
+                                                  "User-Agent": "matthew-assistant-pilot/1"},  # urllib par défaut : 403 (Cloudflare)
                                        json.dumps(to_openai(body)).encode("utf-8"), timeout)
     if status != 200:
         raise BrainError(f"groq : HTTP {status}")

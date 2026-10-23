@@ -12,7 +12,7 @@ touchés. Le tour Live « jetable » de Mark LV n'est pas repris : la cognition 
 déjà sa propre chaîne hors Gemini (cognition/providers.py).
 
 Paquet racine au sens du contrat : main.py l'attache par un hook (`attach`).
-Supprimer le dossier rend JARVIS identique à avant : pas de délai, pas de
+Supprimer le dossier rend Matthew identique à avant : pas de délai, pas de
 repli, un seul modèle Live.
 
 CE QUE FAIT L'ENVELOPPE
@@ -414,13 +414,13 @@ def status() -> list[dict]:
         return [{"model": m, "rest_s": round(t - now)} for m, t in _cooldown.items() if t > now]
 
 
-def attach(jarvis) -> None:
-    """Hook de main.py : enveloppe le SDK et donne à JarvisLive le choix du
+def attach(matthew_assistant) -> None:
+    """Hook de main.py : enveloppe le SDK et donne à MatthewAssistantLive le choix du
     modèle Live. Ne lève jamais."""
     global _log
-    ui = getattr(jarvis, "ui", None)
+    ui = getattr(matthew_assistant, "ui", None)
     if ui is not None and hasattr(ui, "write_log"):
         _log = ui.write_log
     install()
-    jarvis._live_model = live_model
-    jarvis._note_live_failure = note_live_failure
+    matthew_assistant._live_model = live_model
+    matthew_assistant._note_live_failure = note_live_failure

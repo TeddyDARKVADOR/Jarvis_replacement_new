@@ -35,7 +35,8 @@ import tomllib
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-SCHEMA = "jarvis.nightshift-state/1"
+SCHEMA = "matthew_assistant.nightshift-state/1"
+SCHEMAS = (SCHEMA, "jarvis.nightshift-state/1")   # ancien nom, encore lu
 PRIORITIES = Path(__file__).resolve().parent / "priorities.toml"
 MAX_NIGHTS = 60
 MAX_PASSES = MAX_NIGHTS * 3
@@ -52,8 +53,9 @@ def load(path: Path | str | None) -> dict:
         data = json.loads(Path(path).read_text(encoding="utf-8")) if path else None
     except Exception:
         data = None
-    if not isinstance(data, dict) or data.get("schema") != SCHEMA:
+    if not isinstance(data, dict) or data.get("schema") not in SCHEMAS:
         return empty()
+    data["schema"] = SCHEMA
     data.setdefault("ideas", {})
     data.setdefault("nights", [])
     return data
@@ -200,7 +202,7 @@ def diagnostics(state: dict) -> list[dict]:
 
 def tonight(state: dict, day: str) -> list[dict]:
     """Les passes de la nuit `day` (AAAA-MM-JJ), dans l'ordre : ce que le
-    rapport de la dernière passe — celui que JARVIS lit le matin — résume."""
+    rapport de la dernière passe — celui que Matthew lit le matin — résume."""
     return [{k: n.get(k) for k in ("pass", "run_id", "status", "task", "outcome", "ref", "tokens", "pr")}
             for n in state.get("nights") or [] if str(n.get("date") or "") == day]
 

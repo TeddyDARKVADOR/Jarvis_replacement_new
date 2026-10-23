@@ -3,7 +3,7 @@
 # Depuis le 2026-10-21, le veilleur de nuit fusionne seul sur main ce qu'il a
 # entièrement prouvé (NIGHTLY_AUTO_MERGE). Sa preuve est faite sous Linux,
 # Python 3.12, avec les seules dépendances du serveur. Cette CI la refait :
-#   - windows : la vraie machine de JARVIS — Windows, Python 3.13, toutes les
+#   - windows : la vraie machine de Matthew — Windows, Python 3.13, toutes les
 #     dépendances du PC (requirements.txt) ;
 #   - linux-py311 : la plus vieille version visée (pyproject : py311) ;
 #   - controles : compilation de chaque fichier en 3.11, fichiers de données,

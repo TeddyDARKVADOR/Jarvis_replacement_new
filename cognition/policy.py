@@ -44,7 +44,7 @@ STATUSES = ("proposed", "active", "validated", "contested", "superseded",
 EVIDENCE_SOURCES = ("user_stated", "tool_observed")
 
 # Statuts qu'un rappel peut renvoyer. superseded/retracted restent en base pour
-# l'historique, mais ne sont plus « ce que JARVIS sait ».
+# l'historique, mais ne sont plus « ce que Matthew sait ».
 RECALLABLE = ("proposed", "active", "validated", "contested")
 
 _DEFAULTS = {

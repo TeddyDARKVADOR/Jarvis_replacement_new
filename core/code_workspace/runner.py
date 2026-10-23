@@ -15,7 +15,7 @@ WHAT A COMMAND GETS
     • a Windows Job Object: memory cap, process-count cap, and the whole tree
       killed on stop or timeout (no orphaned grandchildren)
     • below-normal priority, no console window
-    • nothing at all if JARVIS itself runs as administrator
+    • nothing at all if Matthew itself runs as administrator
 
 WHAT NEEDS YOUR CONFIRMATION (on the HUD, via core/confirm.py)
     installing packages (pip / npm install — always into the project's _deps/
@@ -215,7 +215,7 @@ def clean_env(project_dir: Path, tmp_dir: Path) -> dict:
     tmp_dir.mkdir(parents=True, exist_ok=True)
     env.update({"TEMP": str(tmp_dir), "TMP": str(tmp_dir), "PYTHONDONTWRITEBYTECODE": "1",
                 "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1",
-                "JARVIS_STUDIO": "1"})
+                "MATTHEW_ASSISTANT_STUDIO": "1"})
     deps = project_dir / "_deps"
     env["PYTHONPATH"] = str(deps) if deps.is_dir() else ""
     return env
@@ -385,7 +385,7 @@ class Runner:
             timeout: int = DEFAULT_TIMEOUT, stop_event: threading.Event | None = None,
             label: str = "") -> RunResult:
         if is_admin():
-            raise CommandRefused("JARVIS tourne avec les droits administrateur : le Studio refuse "
+            raise CommandRefused("Matthew tourne avec les droits administrateur : le Studio refuse "
                                  "d'exécuter des commandes dans ce mode.")
         timeout = max(1, min(int(timeout or DEFAULT_TIMEOUT), MAX_TIMEOUT))
         shown = label or " ".join(Path(argv[0]).stem if i == 0 else a for i, a in enumerate(argv))
@@ -453,7 +453,7 @@ class Runner:
     def start_background(self, key: str, argv: list[str], cwd: Path, env: dict,
                          journal=None, label: str = "", url: str = "") -> dict:
         if is_admin():
-            raise CommandRefused("JARVIS tourne en administrateur : lancement refusé.")
+            raise CommandRefused("Matthew tourne en administrateur : lancement refusé.")
         self.stop_background(key)
         proc, job = _popen(argv, cwd, env)
 

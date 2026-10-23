@@ -1,9 +1,9 @@
 """
-Preuve du zéro-trace — JARVIS démontre qu'il n'a rien écrit sur le PC hôte.
+Preuve du zéro-trace — Matthew démontre qu'il n'a rien écrit sur le PC hôte.
 
 Tout l'intérêt du mode portable est de ne rien laisser. Ici on le PROUVE : au
 démarrage le lanceur mémorise les VRAIS dossiers « maison » de l'hôte (avant la
-redirection vers la clé) dans JARVIS_HOST_USERPROFILE / _LOCALAPPDATA / _APPDATA
+redirection vers la clé) dans MATTHEW_ASSISTANT_HOST_USERPROFILE / _LOCALAPPDATA / _APPDATA
 / _TEMP, puis snapshot() releve leur contenu. À l'arrêt, verify() compare : tout
 fichier apparu hors de la clé est signalé. En principe : zéro, puisque tout a été
 redirigé — mais une bibliothèque qui écrirait par chemin absolu serait attrapée.
@@ -23,15 +23,15 @@ from pathlib import Path
 
 MAX_TEMP_FILES = 20000          # borne de sécurité pour ne pas ramer
 HOST_VARS = {
-    "USERPROFILE": "JARVIS_HOST_USERPROFILE",
-    "LOCALAPPDATA": "JARVIS_HOST_LOCALAPPDATA",
-    "APPDATA": "JARVIS_HOST_APPDATA",
-    "TEMP": "JARVIS_HOST_TEMP",
+    "USERPROFILE": "MATTHEW_ASSISTANT_HOST_USERPROFILE",
+    "LOCALAPPDATA": "MATTHEW_ASSISTANT_HOST_LOCALAPPDATA",
+    "APPDATA": "MATTHEW_ASSISTANT_HOST_APPDATA",
+    "TEMP": "MATTHEW_ASSISTANT_HOST_TEMP",
 }
 
 
 def _data_dir() -> Path:
-    d = os.environ.get("JARVIS_DATA_DIR", "").strip()
+    d = os.environ.get("MATTHEW_ASSISTANT_DATA_DIR", "").strip()
     return Path(d) if d else (Path(__file__).resolve().parents[1] / "data")
 
 

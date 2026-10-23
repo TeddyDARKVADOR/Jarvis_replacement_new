@@ -5,7 +5,7 @@ plugins/extensions_manager.py — l'outil vocal du gestionnaire d'extensions (ex
 PLUGIN = {
     "name": "extensions",
     "description": (
-        "Manage JARVIS extensions (plugins) safely: inspect (what a plugin file declares AND what its code really "
+        "Manage Matthew extensions (plugins) safely: inspect (what a plugin file declares AND what its code really "
         "does — network, shell, file writes… — without running it, plus its SHA-256), install (from a local path "
         "or an https:// URL, optional sha256 pin; asks CONFIRM on the HUD; keeps the previous version), list, "
         "disable / enable, restore (previous version), remove; mcp_allow / mcp_confirm with value « server/tool » "
@@ -22,11 +22,11 @@ PLUGIN = {
     },
 }
 
-_JARVIS = None          # posé par extensions.manager.attach via le hook de main.py
+_MATTHEW_ASSISTANT = None          # posé par extensions.manager.attach via le hook de main.py
 
 
-def _jarvis():
-    return _JARVIS
+def _matthew_assistant():
+    return _MATTHEW_ASSISTANT
 
 
 def run(parameters: dict, player=None, session_memory=None) -> str:
@@ -36,22 +36,22 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
         return "Le gestionnaire d'extensions n'est pas installé."
     action = str(parameters.get("action") or "list").strip().lower()
     value = str(parameters.get("value") or "").strip()
-    jarvis = _jarvis()
+    matthew_assistant = _matthew_assistant()
     try:
         if action == "inspect":
-            return M.inspect(value, taken=M._taken(jarvis) if jarvis else None).render()
+            return M.inspect(value, taken=M._taken(matthew_assistant) if matthew_assistant else None).render()
         if action == "install":
-            if jarvis is None:
-                return "Installation possible seulement dans JARVIS lancé (le registre des outils est nécessaire)."
-            return M.install(jarvis, value, str(parameters.get("sha256") or "").strip())
+            if matthew_assistant is None:
+                return "Installation possible seulement dans Matthew lancé (le registre des outils est nécessaire)."
+            return M.install(matthew_assistant, value, str(parameters.get("sha256") or "").strip())
         if action in ("disable", "enable"):
             from memory.config_manager import save_plugin_enabled
             save_plugin_enabled(value, action == "enable")
             return f"{value} : {'activée' if action == 'enable' else 'désactivée'}."
         if action == "restore":
-            return M.restore(jarvis, value)
+            return M.restore(matthew_assistant, value)
         if action == "remove":
-            return M.remove(jarvis, value)
+            return M.remove(matthew_assistant, value)
         if action in ("mcp_allow", "mcp_confirm"):
             return _mcp(value, allow=action == "mcp_allow")
         rows = M.installed()

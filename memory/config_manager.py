@@ -50,7 +50,7 @@ def _apply_key_pool(cfg: dict) -> dict:
     """Plusieurs comptes Gemini → une clé active qui tourne sur quota.
 
     Construit le pool depuis `gemini_api_keys` (liste), `gemini_api_key` (clé
-    unique) et l'env `JARVIS_GEMINI_KEYS` (clés de l'hôte, séparées par des
+    unique) et l'env `MATTHEW_ASSISTANT_GEMINI_KEYS` (clés de l'hôte, séparées par des
     virgules), le confie à resilience/, et pose `gemini_api_key` = la clé active.
     Ainsi TOUS les appels qui lisent load_api_keys() (réunion, briefing, daily,
     offline, pilot…) tournent eux aussi. Avec une seule clé : rien ne change.
@@ -64,7 +64,7 @@ def _apply_key_pool(cfg: dict) -> dict:
         single = str(cfg.get("gemini_api_key") or "").strip()
         if single:
             pool.append(single)
-        for k in _os.environ.get("JARVIS_GEMINI_KEYS", "").split(","):
+        for k in (_os.environ.get("MATTHEW_ASSISTANT_GEMINI_KEYS") or _os.environ.get("JARVIS_GEMINI_KEYS", "")).split(","):
             if k.strip():
                 pool.append(k.strip())
         if len(dict.fromkeys(pool)) <= 1:

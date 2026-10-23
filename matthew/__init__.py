@@ -1,7 +1,7 @@
 """
 matthew/ — le futur cerveau à nous : un modèle ouvert, entraîné sur nos échanges.
 
-Aujourd'hui JARVIS pense avec Gemini. Matthew est la transition : un modèle aux
+Aujourd'hui l'assistant pense avec Gemini. Matthew est la transition : un modèle aux
 poids ouverts (Qwen3.5, Apache-2.0), spécialisé sur ce que l'utilisateur
 demande vraiment, servi par Ollama sur la machine, avec ses propres tokens.
 Gemini reste en place ; Matthew apprend à côté, puis prend des tâches une à
@@ -25,9 +25,9 @@ RÈGLE DE LICENCE (non négociable, vérifiée par le selftest)
 
 Paquet racine (contrat V2) : bibliothèque standard + requests. Le retirer, avec
 plugins/matthew.py et les trois hooks d'une ligne (cognition/runtime.py,
-cognition/providers.py, offline/llm.py), rend JARVIS identique à avant.
+cognition/providers.py, offline/llm.py), rend l'assistant identique à avant.
 Les données vivent dans memory/matthew/ (ignoré par Git), ou sous
-JARVIS_DATA_DIR en mode portable.
+MATTHEW_ASSISTANT_DATA_DIR en mode portable.
 """
 from __future__ import annotations
 
@@ -96,12 +96,12 @@ DEFAULTS: dict = {
 
 
 def data_dir() -> Path:
-    """memory/matthew, ou <JARVIS_DATA_DIR>/matthew (clé USB), ou MATTHEW_HOME."""
+    """memory/matthew, ou <MATTHEW_ASSISTANT_DATA_DIR>/matthew (clé USB), ou MATTHEW_HOME."""
     env = os.environ.get("MATTHEW_HOME", "").strip()
     if env:
         d = Path(env)
     else:
-        portable = os.environ.get("JARVIS_DATA_DIR", "").strip()
+        portable = os.environ.get("MATTHEW_ASSISTANT_DATA_DIR", "").strip()
         d = Path(portable) / "matthew" if portable else REPO / "memory" / "matthew"
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -185,17 +185,17 @@ def paused() -> bool:
     return (data_dir() / "PAUSED").exists()
 
 
-def attach(jarvis):
+def attach(matthew_assistant):
     """Hook d'une ligne au début de cognition.attach (appelé par chaque
-    JarvisLive, quel que soit le mode) : branche le journal. Ne lève jamais."""
-    # Un faux JarvisLive (selftests de la cognition) n'a pas de _execute_tool : rien à capter.
-    if not hasattr(jarvis, "_execute_tool") or not hasattr(getattr(jarvis, "ui", None), "write_log"):
+    MatthewAssistantLive, quel que soit le mode) : branche le journal. Ne lève jamais."""
+    # Un faux MatthewAssistantLive (selftests de la cognition) n'a pas de _execute_tool : rien à capter.
+    if not hasattr(matthew_assistant, "_execute_tool") or not hasattr(getattr(matthew_assistant, "ui", None), "write_log"):
         return None
     if not config().get("collect", True):
         return None
     try:
         from matthew.journal import Tap
-        return Tap.install(jarvis)
+        return Tap.install(matthew_assistant)
     except Exception as e:
         print(f"[Matthew] journal désactivé : {type(e).__name__}: {e}")
         return None

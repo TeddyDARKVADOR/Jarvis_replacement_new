@@ -246,8 +246,8 @@ def _build_dashboard():
     # the routes in its constructor. When that has happened the app is already
     # wired, and attaching again would register shadowed routes — so reuse what
     # is there instead.
-    if getattr(dash.app.state, "jarvis_attached", False):
-        return dash, dash.app.state.jarvis_state, dash.app.state.jarvis_hub, token
+    if getattr(dash.app.state, "matthew_assistant_attached", False):
+        return dash, dash.app.state.matthew_assistant_state, dash.app.state.matthew_assistant_hub, token
 
     state = RuntimeState()
     hub = AudioHub()
@@ -374,7 +374,7 @@ def _can_boot() -> str:
     return ""
 
 
-@check("run_headless.build() constructs the real JarvisLive")
+@check("run_headless.build() constructs the real MatthewAssistantLive")
 def _boot():
     missing = _can_boot()
     if missing:
@@ -382,27 +382,27 @@ def _boot():
 
     from server import run_headless
 
-    jarvis, ui, state, hub = run_headless.build(echo=False)
+    matthew_assistant, ui, state, hub = run_headless.build(echo=False)
 
     import main
-    assert isinstance(jarvis, main.JarvisLive)
-    assert jarvis.ui is ui, "JarvisLive is not holding the headless UI"
+    assert isinstance(matthew_assistant, main.MatthewAssistantLive)
+    assert matthew_assistant.ui is ui, "MatthewAssistantLive is not holding the headless UI"
     assert main.sd.__headless__ is True, (
         "main.py bound the real sounddevice — the stand-in went in too late")
 
     # The tool surface Gemini will be given, built by MARK LIII's own loaders.
-    actions = len(jarvis._action_registry.names())
-    plugins = len(jarvis._plugin_registry.get_tool_declarations())
+    actions = len(matthew_assistant._action_registry.names())
+    plugins = len(matthew_assistant._plugin_registry.get_tool_declarations())
     assert actions > 0, "no actions were discovered at all"
 
     # And the probe reports the truth before any session exists.
-    assert jarvis.session is None
+    assert matthew_assistant.session is None
     assert state.snapshot()["session_live"] is False
     return (f"{actions} actions, {plugins} plugins, "
             f"{len(main.TOOL_DECLARATIONS)} inline tools")
 
 
-@check("JARVIS's voice reaches a phone listener end to end")
+@check("Matthew's voice reaches a phone listener end to end")
 def _end_to_end():
     missing = _can_boot()
     if missing:
@@ -412,7 +412,7 @@ def _end_to_end():
     import dashboard.server as dserver
     from server import run_headless
 
-    jarvis, ui, state, hub = run_headless.build(echo=False)
+    matthew_assistant, ui, state, hub = run_headless.build(echo=False)
 
     # Constructing the dashboard is what run() does; the patched subclass fires
     # the hook that seeds pairing, grafts the routes and binds the UI.
@@ -438,14 +438,14 @@ def _end_to_end():
             spk.start()
             voice = bytes(range(256)) * 4
             spk.write(voice)
-            assert ws.receive_bytes() == voice, "JARVIS's voice did not arrive"
+            assert ws.receive_bytes() == voice, "Matthew's voice did not arrive"
             spk.stop(); spk.close()
 
         r = client.get("/status", headers={"Authorization": f"Bearer {bearer}"})
         snap = r.json()
         assert snap["audio_out"]["frames"] >= 1
         assert "tools" in snap and "wake" in snap, (
-            "/status is not reading JarvisLive's own registries")
+            "/status is not reading MatthewAssistantLive's own registries")
     return (f"{main.RECEIVE_SAMPLE_RATE} Hz PCM: _play_audio → "
             f"/ws/phone-out → client")
 
@@ -489,18 +489,18 @@ def _status_contract():
 
     # phone_mic_streaming comes from run_headless._extras, not RuntimeState, so
     # it is checked against that function directly.
-    class _FakeJarvis:
+    class _FakeMatthewAssistant:
         session = object()
         _phone_active = True
         _wake_enabled = False
         _awake = True
         _resume_handle = None
-    extras = run_headless._extras(_FakeJarvis())
+    extras = run_headless._extras(_FakeMatthewAssistant())
     assert extras.get("phone_mic_streaming") is True, (
         "_extras no longer reports phone_mic_streaming")
 
     # Nothing in here may be a credential. The resumption handle is a key to the
-    # conversation, the device token is full control of JARVIS.
+    # conversation, the device token is full control of Matthew.
     for secret in ("gemini_api_key", "device_token", "_resume_handle"):
         assert secret not in raw, f"/status mentions {secret!r}"
     assert body.get("session_resumable") in (True, False, None), (
@@ -928,8 +928,8 @@ def _alert_split():
     # An unexpected shape keeps all of its content rather than truncating.
     odd_title, odd_text = split_monitor_alert("something else entirely")
     assert odd_text == "something else entirely", odd_text
-    assert odd_title == "JARVIS", odd_title
-    assert split_monitor_alert("") == ("JARVIS", "")
+    assert odd_title == "Matthew", odd_title
+    assert split_monitor_alert("") == ("Matthew", "")
     return "titre = sujet, corps verbatim, format inconnu preserve"
 
 
@@ -967,7 +967,7 @@ def _alert_asleep():
     out = route_monitor_alerts(["[MONITOR_ALERT] tesla\nHeadline: Nothing urgent"],
                                _FakeDash())
 
-    assert out == [], f"JARVIS would have spoken while asleep: {out}"
+    assert out == [], f"Matthew would have spoken while asleep: {out}"
     # The policy answers DEFER here, not NOTIFY — an IMPORTANT notification
     # would still make a sound on its channel. Held, never dropped.
     assert N.get_hub().stats()["created"] == 0, "a sound was made while asleep"
@@ -1015,7 +1015,7 @@ def _alert_meeting():
     out = route_monitor_alerts(["[MONITOR_ALERT] tesla\nHeadline: A headline"],
                                _FakeDash())
 
-    assert out == [], "JARVIS would have spoken in a meeting"
+    assert out == [], "Matthew would have spoken in a meeting"
     # MEETING + IMPORTANT is NOTIFY_SILENT: it reaches the shade without a sound.
     assert N.get_hub().stats()["created"] == 1, N.get_hub().stats()
     pending = N.get_hub().pending()

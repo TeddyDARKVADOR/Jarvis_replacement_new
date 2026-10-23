@@ -1,12 +1,12 @@
 """
-The HUD — JARVIS on a workstation, as a full holographic interface.
+The HUD — Matthew on a workstation, as a full holographic interface.
 
 ```
-python main.py            the HUD, JARVIS on Oracle
-python main.py --local    the HUD, JARVIS on this PC
+python main.py            the HUD, Matthew on Oracle
+python main.py --local    the HUD, Matthew on this PC
 ```
 
-The HUD is the only desktop interface. The controller (`app.JarvisDesktop`),
+The HUD is the only desktop interface. The controller (`app.MatthewAssistantDesktop`),
 the network worker, the store, the wake word, the tray and the debug window
 feed it; `HudWindow` renders their snapshot.
 

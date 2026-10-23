@@ -1,13 +1,13 @@
-# JARVIS — consignes de travail
+# Matthew — consignes de travail
 
 ## La documentation, ce sont les graphes
 
-Les fonctionnalités de JARVIS ne se décrivent plus dans des README : elles sont
-dans `capabilities/graphs/*.json` (format `jarvis.graph/1`, voir
-`capabilities/__init__.py`). `general.json` couvre tout JARVIS ; chaque
+Les fonctionnalités de Matthew ne se décrivent plus dans des README : elles sont
+dans `capabilities/graphs/*.json` (format `matthew_assistant.graph/1`, voir
+`capabilities/__init__.py`). `general.json` couvre tout Matthew ; chaque
 sous-graphe détaille une partie (`server`, `hud`, `client_desktop`, `android`,
 `cognition`, `context`, `studio`, `deployment`, `eval_lab`, `preprod`,
-`contrat`, `nightshift`). JARVIS lit ces graphes lui-même (outil `capabilities`) et les
+`contrat`, `nightshift`). Matthew lit ces graphes lui-même (outil `capabilities`) et les
 affiche dans le HUD quand on le lui demande.
 
 - **Ne pas créer de README ni de nouveau `.md` de documentation.** Une
@@ -18,7 +18,7 @@ affiche dans le HUD quand on le lui demande.
   `docs/cognition/RECHERCHE.md` (bibliographie), les rapports datés de
   `docs/cognition/evaluations/` et `cognition/constitution/CHANGELOG.md`.
   Les `skills/*/SKILL.md` ne sont pas de la documentation : ce sont des
-  instructions que JARVIS lit (outil `skills`, format Agent Skills).
+  instructions que Matthew lit (outil `skills`, format Agent Skills).
 
 ## À chaque fin de session : mettre le graphe à jour
 

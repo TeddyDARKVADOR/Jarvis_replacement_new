@@ -41,7 +41,7 @@ MEMORY_MB = 4096
 ENABLE_HINT = ("Aucun bac à sable n'est installé sur ce PC. Le plus simple : "
                "« sudo apt install bubblewrap » (Debian, Ubuntu) ou « sudo dnf install bubblewrap » (Fedora). "
                "Podman ou Docker conviennent aussi, pour les scripts sans fenêtre.")
-_PIDFILE = Path(tempfile.gettempdir()) / "jarvis-linuxsandbox.pid"
+_PIDFILE = Path(tempfile.gettempdir()) / "matthew-assistant-linuxsandbox.pid"
 
 
 def engine(which=shutil.which) -> str:

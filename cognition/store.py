@@ -119,7 +119,7 @@ CREATE TABLE goals (
   id                TEXT PRIMARY KEY,
   title             TEXT NOT NULL,
   kind              TEXT NOT NULL,      -- user|reliability|learning|mastery|continuity
-  origin            TEXT NOT NULL,      -- jarvis|user
+  origin            TEXT NOT NULL,      -- matthew_assistant|user
   justification     TEXT NOT NULL,
   priority          INTEGER NOT NULL CHECK (priority BETWEEN 1 AND 5),
   status            TEXT NOT NULL,      -- proposed|active|blocked|done|cancelled|expired|withdrawn
@@ -176,7 +176,7 @@ CREATE TABLE autonomy_runs (
   status      TEXT NOT NULL,         -- running|done|stopped|refused|needs_user|killed|error
   stop_reason TEXT,
   steps       INTEGER NOT NULL DEFAULT 0,
-  question    TEXT                   -- ce que JARVIS demande à l'utilisateur
+  question    TEXT                   -- ce que Matthew demande à l'utilisateur
 );
 CREATE TABLE autonomy_steps (
   id        INTEGER PRIMARY KEY,

@@ -170,7 +170,7 @@ def main() -> int:
     async def lab_phone_out_tone(req: Request) -> JSONResponse:
         """POST /lab/phone-out-tone — deux secondes de son sur /ws/phone-out.
 
-        Ce que la voix de JARVIS emprunte, au meme format (PCM s16le 24 kHz
+        Ce que la voix de Matthew emprunte, au meme format (PCM s16le 24 kHz
         mono), par le meme AudioHub. Sans Gemini il n'y a pas de voix ; avec
         ce son, le telephone joue quelque chose, AudioPlayer en mesure le
         niveau (PcmLevel), et ce niveau doit atteindre la bouche du visage.

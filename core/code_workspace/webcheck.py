@@ -18,7 +18,7 @@ request that is not for that local server is BLOCKED and counted — a page that
 needs a CDN is told so instead of silently reaching the Internet.
 
 The browser side runs in a separate process so a hung page, a crashed
-browser or Playwright's own event loop never touch JARVIS; it is killed at the
+browser or Playwright's own event loop never touch Matthew; it is killed at the
 deadline. No Playwright, no Chromium: the check says "unavailable", it never
 pretends to pass.
 """

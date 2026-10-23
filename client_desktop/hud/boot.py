@@ -23,10 +23,10 @@ def gpu_flags() -> None:
     blocklist entries are old driver bugs that do not affect three.js, which is
     why Electron apps routinely pass the same flag.
 
-    `JARVIS_HUD_SAFE_GPU=1` turns this off, for the rare driver that really
+    `MATTHEW_ASSISTANT_HUD_SAFE_GPU=1` turns this off, for the rare driver that really
     misbehaves. Flags the user already set are kept.
     """
-    if os.environ.get("JARVIS_HUD_SAFE_GPU", "").strip() not in ("", "0", "false"):
+    if (os.environ.get("MATTHEW_ASSISTANT_HUD_SAFE_GPU") or os.environ.get("JARVIS_HUD_SAFE_GPU", "")).strip() not in ("", "0", "false"):
         return
     current = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
     wanted = ["--ignore-gpu-blocklist", "--enable-gpu-rasterization"]
@@ -46,7 +46,7 @@ def prepare() -> bool:
 
     from . import scheme
 
-    if not scheme.register():         # jarvis-hud:// — the HUD page
+    if not scheme.register():         # matthew-assistant-hud:// — the HUD page
         return False
     gpu_flags()
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)

@@ -254,7 +254,7 @@ class Bootstrap:
     def run(self, per_tool: int = 6, chitchat: int = 30) -> dict:
         decls = self.journal.tools()
         if not decls:
-            return {"ok": 0, "rejected": 0, "reason": "aucune déclaration d'outils (tools.json) : lancer JARVIS une fois"}
+            return {"ok": 0, "rejected": 0, "reason": "aucune déclaration d'outils (tools.json) : lancer Matthew une fois"}
         # Fait = au moins un exemple vérifié, ou 3 échecs (un aléa ne condamne pas un outil).
         ok_t, fails, oks = set(), {}, {}
         for r in self.records():

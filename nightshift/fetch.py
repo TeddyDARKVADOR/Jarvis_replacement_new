@@ -14,7 +14,7 @@ une réponse 304 vide, et hors-ligne c'est la copie qui répond. Délai court
 Le rapport est une DONNÉE, pas une consigne : il est validé (schéma, types,
 taille) et le briefing n'en reprend que des champs structurés et filtrés.
 
-Le dépôt lu : JARVIS_NIGHTSHIFT_REPO (« propriétaire/nom ») s'il est défini,
+Le dépôt lu : MATTHEW_ASSISTANT_NIGHTSHIFT_REPO (« propriétaire/nom ») s'il est défini,
 sinon le remote origin de ce clone (lu dans .git/config, sans lancer git),
 sinon le dépôt d'origine du projet.
 """
@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from nightshift import DATA_BRANCH, DEFAULT_REPO, SCHEMA
+from nightshift import DATA_BRANCH, DEFAULT_REPO, SCHEMAS
 from nightshift import state
 
 REPO_DIR = Path(__file__).resolve().parent.parent
@@ -39,7 +39,7 @@ _STATUSES = ("success", "partial_success", "failed")
 
 
 def repo_slug(repo_dir: Path = REPO_DIR) -> str:
-    env = os.environ.get("JARVIS_NIGHTSHIFT_REPO", "").strip()
+    env = (os.environ.get("MATTHEW_ASSISTANT_NIGHTSHIFT_REPO") or os.environ.get("JARVIS_NIGHTSHIFT_REPO", "")).strip()
     if _SLUG.match(env):
         return env
     try:
@@ -62,8 +62,8 @@ def url_for(slug: str) -> str:
 
 
 def valid(report) -> bool:
-    """Un rapport jarvis.nightly/1 dont les champs lus par JARVIS ont le bon type."""
-    if not isinstance(report, dict) or report.get("schema_version") != SCHEMA:
+    """Un rapport matthew_assistant.nightly/1 dont les champs lus par Matthew ont le bon type."""
+    if not isinstance(report, dict) or report.get("schema_version") not in SCHEMAS:
         return False
     if report.get("status") not in _STATUSES:
         return False
@@ -75,7 +75,7 @@ def valid(report) -> bool:
 
 
 def _get(url: str, etag: str, timeout: float, opener) -> tuple[int, bytes, str]:
-    headers = {"User-Agent": "jarvis-nightshift/1", "Accept": "application/json"}
+    headers = {"User-Agent": "matthew-assistant-nightshift/1", "Accept": "application/json"}
     if etag:
         headers["If-None-Match"] = etag
     req = urllib.request.Request(url, headers=headers)

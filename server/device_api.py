@@ -216,10 +216,10 @@ def attach(dashboard, hub: DeviceHub, *, log=print) -> None:
             "server.device_api.attach() needs fastapi, which is not installed."
         )
     app = dashboard.app
-    if getattr(app.state, "jarvis_devices_attached", False):
+    if getattr(app.state, "matthew_assistant_devices_attached", False):
         raise RuntimeError("server.device_api.attach() was already called")
-    app.state.jarvis_devices_attached = True
-    app.state.jarvis_device_hub = hub
+    app.state.matthew_assistant_devices_attached = True
+    app.state.matthew_assistant_device_hub = hub
 
     def _token(req_or_value: object) -> str:
         if isinstance(req_or_value, str):

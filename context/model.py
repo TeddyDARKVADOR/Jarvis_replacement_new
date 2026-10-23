@@ -1,11 +1,11 @@
 """
-context/model.py — the vocabulary. No logic, no I/O, no imports from JARVIS.
+context/model.py — the vocabulary. No logic, no I/O, no imports from Matthew.
 
 WHY THE MODEL IS ITS OWN FILE
     Three things need to agree on what "the user is driving" means: the phone
     that observes it, the rule that derives it, and the policy that acts on it.
     If each carried its own strings they would drift, and the drift would only
-    show up as JARVIS talking out loud in a meeting. One vocabulary, imported
+    show up as Matthew talking out loud in a meeting. One vocabulary, imported
     by all three.
 
 WHY RAW FACTS AND DERIVED SITUATION ARE SEPARATE TYPES
@@ -13,7 +13,7 @@ WHY RAW FACTS AND DERIVED SITUATION ARE SEPARATE TYPES
     Bluetooth name, a screen that is on or off. `Situation` is an opinion about
     what those add up to. Keeping them apart means the inference can be wrong,
     be corrected, and be tested, without touching what the phone reports — and
-    it means JARVIS can always fall back to stating the fact ("your headset is
+    it means Matthew can always fall back to stating the fact ("your headset is
     connected") when the opinion is unavailable.
 """
 from __future__ import annotations
@@ -165,7 +165,7 @@ class Snapshot:
     situation: Situation   = Situation.UNKNOWN
     route:     Route       = Route.NONE
     # Human-readable justification for `situation`, in order of weight. This is
-    # what lets JARVIS answer "pourquoi tu n'as pas parlé ?" with a reason
+    # what lets Matthew answer "pourquoi tu n'as pas parlé ?" with a reason
     # instead of a shrug.
     reasons:   list[str]   = field(default_factory=list)
     taken_at:  float       = 0.0

@@ -1,5 +1,5 @@
 """
-nightshift/metrics.py — JARVIS s'améliore-t-il ? Trois indicateurs (phase 4).
+nightshift/metrics.py — Matthew s'améliore-t-il ? Trois indicateurs (phase 4).
 
     measure(repo) -> dict             les trois mesures, chacune dans son propre processus
     compare(now, before) -> list      ce qui a baissé, augmenté ou changé
@@ -22,11 +22,11 @@ valeur de cognition qui change (son sens dépend de la ligne : « questions
 justes » doit monter, « faux souvenirs » rester bas) — est marqué « à relire de
 près », même si les suites sont vertes.
 
-COMMENT, SANS IMPORTER JARVIS (contrat V2)
+COMMENT, SANS IMPORTER Matthew (contrat V2)
 Chaque mesure tourne dans un processus à part, comme une suite : eval_lab par sa
 propre commande ; cognition et contexte par une sonde (python -m nightshift.metrics
 --probe …) qui charge le code du dépôt à l'exécution, comme server.run_headless.
-Le paquet nightshift, lui, n'importe rien de JARVIS. Ne lève jamais : une mesure
+Le paquet nightshift, lui, n'importe rien de Matthew. Ne lève jamais : une mesure
 impossible est « indisponible », avec la raison.
 """
 from __future__ import annotations
@@ -137,14 +137,14 @@ def _probe_context() -> dict:
     """Dans le processus de la sonde : les déclarations d'outils telles que main.py les envoie.
 
     Le même démarrage que server.run_headless : le remplaçant de carte son d'abord,
-    puis main, puis JarvisLive sur l'interface sans écran. Rien n'est envoyé à Gemini."""
+    puis main, puis MatthewAssistantLive sur l'interface sans écran. Rien n'est envoyé à Gemini."""
     audio = importlib.import_module("server.audio_bridge")
     headless = importlib.import_module("server.headless_ui")
     sys.modules["sounddevice"] = audio.build_module(audio.AudioHub(), log=lambda m: None)
     main = importlib.import_module("main")
-    jarvis = main.JarvisLive(headless.HeadlessUI(echo=False))
-    decls = (main.TOOL_DECLARATIONS + jarvis._action_registry.get_tool_declarations()
-             + jarvis._plugin_registry.get_tool_declarations())
+    matthew_assistant = main.MatthewAssistantLive(headless.HeadlessUI(echo=False))
+    decls = (main.TOOL_DECLARATIONS + matthew_assistant._action_registry.get_tool_declarations()
+             + matthew_assistant._plugin_registry.get_tool_declarations())
     out = {"available": True}
     for mode, local in (("server", False), ("local", True)):
         compact = main._compact_tool_declarations(decls, local_mode=local)

@@ -152,20 +152,20 @@ class Tap:
         self._lock = threading.Lock()
 
     @classmethod
-    def install(cls, jarvis) -> "Tap":
-        """Se greffe sur une instance de JarvisLive, dans TOUS les modes (local,
+    def install(cls, matthew_assistant) -> "Tap":
+        """Se greffe sur une instance de MatthewAssistantLive, dans TOUS les modes (local,
         serveur Oracle, sans écran) : main.py écrit « You: … » puis « <nom>: … »
         dans l'interface à chaque fin de tour, et chaque outil passe par
         _execute_tool. Rien n'est modifié dans main.py ; ce qui est affiché et
         renvoyé à Gemini reste identique."""
         session = datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
         tap = cls(Journal(), session_of=lambda: session)
-        ui = jarvis.ui
-        orig_log, orig_exec = ui.write_log, jarvis._execute_tool
+        ui = matthew_assistant.ui
+        orig_log, orig_exec = ui.write_log, matthew_assistant._execute_tool
 
         def write_log(text, *a, **kw):
             try:
-                tap.on_log_line(str(text), getattr(jarvis, "_asst_name", "JARVIS"))
+                tap.on_log_line(str(text), getattr(matthew_assistant, "_asst_name", "Matthew"))
             except Exception:
                 pass
             return orig_log(text, *a, **kw)
@@ -179,10 +179,10 @@ class Tap:
                 pass
             return fr
 
-        ui.write_log, jarvis._execute_tool = write_log, execute_tool
-        jarvis._matthew = tap
+        ui.write_log, matthew_assistant._execute_tool = write_log, execute_tool
+        matthew_assistant._matthew = tap
         try:
-            tap.journal.save_tools(collect_declarations(jarvis))
+            tap.journal.save_tools(collect_declarations(matthew_assistant))
         except Exception:
             pass
         return tap
@@ -213,14 +213,14 @@ class Tap:
             self.journal.episode(session=self._session_of(), user=user, tools=tools, reply=text)
 
 
-def collect_declarations(jarvis) -> list[dict]:
+def collect_declarations(matthew_assistant) -> list[dict]:
     """Toutes les déclarations d'outils que Gemini reçoit : main.TOOL_DECLARATIONS
     + actions + plugins. Lu sur l'instance, sans importer main."""
     import sys
-    out = list(getattr(sys.modules.get(type(jarvis).__module__), "TOOL_DECLARATIONS", []) or [])
+    out = list(getattr(sys.modules.get(type(matthew_assistant).__module__), "TOOL_DECLARATIONS", []) or [])
     for reg in ("_action_registry", "_plugin_registry"):
         try:
-            out += list(getattr(jarvis, reg).get_tool_declarations())
+            out += list(getattr(matthew_assistant, reg).get_tool_declarations())
         except Exception:
             pass
     seen, uniq = set(), []

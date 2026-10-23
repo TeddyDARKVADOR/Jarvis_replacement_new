@@ -1,7 +1,7 @@
 """
 eval_lab/vocab.py — the code's own vocabularies, read from the code.
 
-scenario.py mirrors the enums so it can validate without importing JARVIS.
+scenario.py mirrors the enums so it can validate without importing Matthew.
 This is the other half: the place that DOES import them, used by the selftest
 to prove the mirror has not drifted.
 """

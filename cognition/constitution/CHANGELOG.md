@@ -1,9 +1,12 @@
-# Constitution de JARVIS — historique
+# Constitution de Matthew — historique
 
-Chaque version modifie `version` dans `jarvis.toml` et ajoute une entrée ici, avec
+Chaque version modifie `version` dans `matthew_assistant.toml` et ajoute une entrée ici, avec
 la raison. Le hash SHA-256 du fichier est enregistré dans `memory/cognition.db`
 (table `constitution_versions`) au premier chargement de chaque version : une
 modification sans changement de version est détectée et signalée.
+
+2026-10-23 : le fichier `jarvis.toml` devient `matthew_assistant.toml`, contenu
+inchangé (même version, même hash).
 
 ## 0.2.0 — 2026-10-22
 

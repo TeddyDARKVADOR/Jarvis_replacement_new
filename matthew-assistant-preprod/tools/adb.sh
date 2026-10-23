@@ -79,7 +79,7 @@ if ! printf '%s\n' "$online" | grep -qx "$LAB_SERIAL"; then
         else
             echo "         (aucun appareil connecte)"
         fi
-        echo "         Demarre-le : jarvis-preprod/emulator/start.sh"
+        echo "         Demarre-le : matthew-assistant-preprod/emulator/start.sh"
     } >&2
     exit 2
 fi

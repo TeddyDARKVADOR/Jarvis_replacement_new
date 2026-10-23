@@ -2,7 +2,7 @@
  * night.js — l'onglet NUIT du panneau ESPRIT : le rapport du veilleur de nuit.
  *
  * Tout vient de nightshift/hud.py par `rpc('nightshift.latest')` : le dernier
- * rapport jarvis.nightly/1, lu sans jeton sur la branche nightshift-data du
+ * rapport matthew_assistant.nightly/1, lu sans jeton sur la branche nightshift-data du
  * dépôt (gardé 30 min en cache). Lecture seule : les boutons relisent le
  * rapport ou ouvrent GitHub, rien d'autre. Paquet nightshift absent → l'onglet
  * le dit, le reste du panneau n'en sait rien.

@@ -16,7 +16,7 @@ ONE IMPLEMENTATION, TWO TRANSPORTS
 WHAT IT TOUCHES, AND WHAT IT DOES NOT
     Only what the original desktop window already let a user change, through the
     functions that window used (`memory.memory_manager`, `memory.config_manager`)
-    and the callbacks `main.JarvisLive` puts on its UI object (`on_voice_change`,
+    and the callbacks `main.MatthewAssistantLive` puts on its UI object (`on_voice_change`,
     `get_plugins`, `get_plugin_settings`). No new capability, no second way of
     writing the config.
 
@@ -45,7 +45,7 @@ class AssistantControl:
     """`call(op, data) -> dict`. Never raises: errors come back as {"error": …}."""
 
     def __init__(self, ui_getter: Callable[[], Any]) -> None:
-        #: The UI object main.JarvisLive was built with (LocalUI or HeadlessUI).
+        #: The UI object main.MatthewAssistantLive was built with (LocalUI or HeadlessUI).
         #: A getter, because on the server the assistant exists only once its
         #: session starts.
         self._ui = ui_getter

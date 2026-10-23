@@ -131,7 +131,7 @@ class NotificationHub:
             self._counts["refused"] += 1
             return None
 
-        clean_title = str(title or "JARVIS").strip()[:_MAX_TITLE] or "JARVIS"
+        clean_title = str(title or "Matthew").strip()[:_MAX_TITLE] or "Matthew"
         clean_text = str(text or "").strip()[:_MAX_TEXT]
         if not clean_text:
             # A notification with no body is a buzz with no information.

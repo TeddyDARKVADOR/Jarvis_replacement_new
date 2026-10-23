@@ -291,7 +291,7 @@ _RULES = """Constraints of the workspace (enforced by code, plan accordingly):
   and no missing local file: the browser blocks the Internet, so ship every asset locally.
 """
 
-PLAN_PROMPT = """You are the senior engineer of "Jarvis Code Studio". Plan a NEW project.
+PLAN_PROMPT = """You are the senior engineer of "Matthew Code Studio". Plan a NEW project.
 
 User request (may be in French):
 {request}
@@ -322,7 +322,7 @@ Return ONLY a JSON object:
 Every file in "files" must appear in exactly one task. Order tasks so a file's
 dependencies are written before it. "web_checks" is [] unless kind is "web"."""
 
-CHANGE_PROMPT = """You are the senior engineer of "Jarvis Code Studio". Plan a CHANGE to an
+CHANGE_PROMPT = """You are the senior engineer of "Matthew Code Studio". Plan a CHANGE to an
 existing project.
 
 Project map:
@@ -361,7 +361,7 @@ Purpose: {purpose}
 
 Return ONLY the raw file content. No markdown fences, no explanation."""
 
-FIX_PROMPT = """You are fixing the project "{title}" in Jarvis Code Studio.
+FIX_PROMPT = """You are fixing the project "{title}" in Matthew Code Studio.
 
 The check `{check}` failed. Error type: {kind}.
 Output:

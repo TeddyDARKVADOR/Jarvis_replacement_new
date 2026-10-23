@@ -1,9 +1,9 @@
 """
-Continuité d'identité — JARVIS reste « lui-même » d'une machine à l'autre.
+Continuité d'identité — Matthew reste « lui-même » d'une machine à l'autre.
 
 Un journal de sessions vit sur la clé (data/continuity.json). À chaque démarrage
 on y inscrit : quand, sur quelle machine, quel modèle, en ligne ou non. Au boot
-suivant — y compris sur un PC jamais vu — JARVIS compose un récap de reprise :
+suivant — y compris sur un PC jamais vu — Matthew compose un récap de reprise :
     « Rebonjour, Sir. La dernière fois, il y a 3 h, sur DESKTOP-BUREAU. Ici c'est
       une nouvelle machine, sans GPU : je passe sur Ollama. »
 
@@ -27,7 +27,7 @@ MAX_SESSIONS = 40
 
 
 def _data_dir() -> Path:
-    d = os.environ.get("JARVIS_DATA_DIR", "").strip()
+    d = os.environ.get("MATTHEW_ASSISTANT_DATA_DIR", "").strip()
     return Path(d) if d else (Path(__file__).resolve().parents[1] / "data")
 
 

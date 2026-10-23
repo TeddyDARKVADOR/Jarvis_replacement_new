@@ -2,7 +2,7 @@
 server/alerts.py — a finished alert, run past the context policy.
 
 THE ONE SENTENCE
-    A system alert must no longer speak to the user without respecting JARVIS's
+    A system alert must no longer speak to the user without respecting Matthew's
     context.
 
 WHAT THIS IS NOT
@@ -66,7 +66,7 @@ def split_monitor_alert(alert: str) -> tuple[str, str]:
     """
     raw = (alert or "").strip()
     if not raw:
-        return "JARVIS", ""
+        return "Matthew", ""
 
     lines = raw.splitlines()
     first = lines[0].strip()
@@ -77,7 +77,7 @@ def split_monitor_alert(alert: str) -> tuple[str, str]:
             return topic, body
         if topic:
             return topic, topic
-    return "JARVIS", raw
+    return "Matthew", raw
 
 
 def note_spoken() -> None:
@@ -177,7 +177,7 @@ def route_monitor_alerts(alerts: list[str], dashboard=None) -> list[str]:
             payload = held.payload
             notify(held.priority.value if hasattr(held.priority, "value")
                    else str(held.priority),
-                   payload.get("title", "JARVIS"), payload.get("text", ""))
+                   payload.get("title", "Matthew"), payload.get("text", ""))
 
         speak: list[str] = []
         for alert in alerts:

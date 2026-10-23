@@ -49,7 +49,7 @@ def apply_and_commit(diff: str, repo: Path, message: str, files: list[str] | Non
             return False, f"git apply : {run.redact(p.stderr.decode('utf-8', 'replace').strip())[:300]}"
         subprocess.run(["git", "add", "-A", "--", *(files or ["."])], cwd=str(repo), capture_output=True,
                        timeout=60, check=True)
-        p = subprocess.run(["git", "-c", "user.name=jarvis-nightshift", "-c", "user.email=nightshift@localhost",
+        p = subprocess.run(["git", "-c", "user.name=matthew-assistant-nightshift", "-c", "user.email=nightshift@localhost",
                             "commit", "-q", "--no-verify", "-m", message], cwd=str(repo),
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
         if p.returncode != 0:

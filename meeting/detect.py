@@ -5,7 +5,7 @@ meeting/detect.py — qui utilise le micro ou la caméra, en ce moment, sur ce p
 
 Aucune liste d'applications de visio : c'est l'usage du matériel qui compte,
 quelle que soit l'application (Teams, Zoom, Meet dans un navigateur, Discord…).
-JARVIS lui-même est exclu : il écoute le micro pour son mot d'éveil, et capte la
+Matthew lui-même est exclu : il écoute le micro pour son mot d'éveil, et capte la
 réunion une fois qu'elle a commencé.
 
 WINDOWS  micro : les sessions de capture WASAPI de chaque micro actif
@@ -67,7 +67,7 @@ _CONSENT = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\C
 
 
 def _own_executables() -> set[str]:
-    """python.exe et pythonw.exe de ce processus : JARVIS, à ne pas compter."""
+    """python.exe et pythonw.exe de ce processus : Matthew, à ne pas compter."""
     exe = Path(sys.executable)
     names = {exe.name.lower(), "python.exe", "pythonw.exe"}
     return {str(exe.with_name(n)).lower() for n in names}

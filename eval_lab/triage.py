@@ -11,17 +11,17 @@ SIGNATURE
     cluster keeps every member so that presumption can be checked.
 
 CLASSIFICATION — whose problem is it
-    jarvis-crash        JARVIS raised.
-    jarvis-candidate    a HARD property or relation, stated by the project
+    matthew-assistant-crash        Matthew raised.
+    matthew-assistant-candidate    a HARD property or relation, stated by the project
                         itself, is broken. The strongest signal the lab has.
     oracle-disputed     only a lab-written expectation disagrees (adversarial,
-                        boundary). JARVIS or the lab's oracle is wrong; a human
+                        boundary). Matthew or the lab's oracle is wrong; a human
                         decides which.
     legacy-regression   a legacy scenario (an existing test) fails: either a
                         real regression, or the code changed on purpose.
     superseded-legacy   a legacy scenario whose oracle a dated decision of the
                         project owner has overruled (corpus/decisions.json):
-                        expected to fail until JARVIS and the old test change.
+                        expected to fail until Matthew and the old test change.
     inconclusive        only an explicitly undecided property is involved.
     lab                 INFRA — the simulator, a surface.
     generator           INVALID — a scenario that should not exist.
@@ -109,7 +109,7 @@ def classify(rec: dict, s: dict | None, known: set[str]) -> str:
         return "known"
     v = rec["verdict"]
     if v == "CRASH":
-        return "jarvis-crash"
+        return "matthew-assistant-crash"
     if v == "INFRA":
         return "lab"
     if v == "INVALID":
@@ -121,7 +121,7 @@ def classify(rec: dict, s: dict | None, known: set[str]) -> str:
         return "superseded-legacy"
     kinds = {p["kind"] for p in rec.get("problems") or []}
     if kinds & {"property", "relation"}:
-        return "jarvis-candidate"
+        return "matthew-assistant-candidate"
     if (s or {}).get("source") == "legacy":
         return "legacy-regression"
     return "oracle-disputed"
@@ -151,7 +151,7 @@ def cluster(results, scenarios: dict[str, dict], known: set[str]) -> list[dict]:
             "example": (p or {}).get("got") if p else rep.get("error"),
             "families": sorted({r.get("family") or "" for r in members}),
         })
-    out.sort(key=lambda c: (c["class"] != "jarvis-crash", c["class"] != "jarvis-candidate", -c["size"]))
+    out.sort(key=lambda c: (c["class"] != "matthew-assistant-crash", c["class"] != "matthew-assistant-candidate", -c["size"]))
     for i, c in enumerate(out, 1):
         c["cluster"] = f"C{i:03d}"
     return out

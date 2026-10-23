@@ -1,7 +1,7 @@
 """
 pilot/a11y_macos.py — l'arbre de la fenêtre active, par l'API d'accessibilité de macOS (AX).
 
-PyObjC (pyobjc-framework-ApplicationServices, pyobjc-framework-Cocoa). JARVIS
+PyObjC (pyobjc-framework-ApplicationServices, pyobjc-framework-Cocoa). Matthew
 doit être autorisé dans Réglages → Confidentialité et sécurité →
 Accessibilité ; sans cela l'arbre est vide, et la capture et les clics
 prennent le relais.

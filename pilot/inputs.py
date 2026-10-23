@@ -31,7 +31,7 @@ def _wayland_tool() -> str:
     for tool in ("wdotool", "ydotool"):
         if shutil.which(tool):
             return tool
-    raise InputUnavailable("Wayland : installez wdotool (ou ydotool) pour que JARVIS clique et tape")
+    raise InputUnavailable("Wayland : installez wdotool (ou ydotool) pour que Matthew clique et tape")
 
 
 def _pg():

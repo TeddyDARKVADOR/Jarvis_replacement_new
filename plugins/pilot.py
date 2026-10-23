@@ -39,7 +39,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
     p = pilot.get()
     if p is None:
         return ("Le pilote agit sur le PC, avec son écran : il n'est pas actif ici. "
-                "Ouvre JARVIS sur le PC (HUD) pour qu'il puisse prendre la main.")
+                "Ouvre Matthew sur le PC (HUD) pour qu'il puisse prendre la main.")
     action = str(parameters.get("action") or "status").strip().lower()
     try:
         if action == "do":

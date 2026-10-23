@@ -11,7 +11,7 @@ trois phrases dites par la voix française de Windows :
     base           « J'arvie, ouvre… », « J'arvie, mais le volume… »   1/3
     base + nom     le nom disparaît ou devient « J'arvis »             1/3
     small          « Jarvie, … » à chaque fois                         0/3
-    small + nom    « Jarvis, … » à chaque fois                         3/3
+    small + nom    « Matthew, … » à chaque fois                         3/3
 `hotwords` faisait pire : le nom sautait de la transcription. Le modèle se télécharge une fois
 (~500 Mo pour small) dans le cache Hugging Face, puis plus rien ne sort.
 """
@@ -33,7 +33,7 @@ _gpu_broken = False
 class Whisper:
     def __init__(self, language: str | None = None, log=print, hotwords: list[str] | None = None):
         self.language = language or None
-        # Le nom de l'assistant en amorce : sans lui, « Jarvis » devient « Jarvie ».
+        # Le nom de l'assistant en amorce : sans lui, « Matthew » devient « Jarvie ».
         self.prompt = ", ".join(dict.fromkeys(h.capitalize() for h in (hotwords or []) if h)) or None
         self._log = log
         self._model = None

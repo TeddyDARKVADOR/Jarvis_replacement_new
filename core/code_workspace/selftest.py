@@ -1,5 +1,5 @@
 """
-core/code_workspace/selftest.py — proves the Code Studio before JARVIS uses it.
+core/code_workspace/selftest.py — proves the Code Studio before Matthew uses it.
 
     python -m core.code_workspace.selftest
 
@@ -9,7 +9,7 @@ temporary folder. Same shape as context/selftest.py.
 What it checks:
   1-4   the sandbox refuses every way out (absolute, drive, UNC, ADS, '..',
         reserved names, trailing dots, .studio, junctions, hard links) and
-        the root refuses the JARVIS repo, a drive root, the profile, Windows
+        the root refuses the Matthew repo, a drive root, the profile, Windows
   5-7   the terminal's policy (no shell, allow / confirm / deny, pip into
         _deps), secrets stripped from the environment, the Job Object
   8-10  real execution: exit codes, output streamed to the journal, timeout
@@ -21,7 +21,7 @@ What it checks:
         early; stop is honoured; an escaping plan writes nothing outside
   17-19 the tool: manual write is undoable; the action is discovered by the
         real loader and refuses on the Oracle server; the HUD cannot set the
-        root inside the JARVIS repo
+        root inside the Matthew repo
   20-21 the coders: Gemini quota, Groq model choice
   22-25 the verdict is earned: criteria matched to real test names, no test →
         "non vérifié", a criterion without proof → "partiel", a script still
@@ -88,7 +88,7 @@ os.environ["LOCALAPPDATA"] = "Z:\\__nowhere_local"
 os.environ["APPDATA"] = "Z:\\__nowhere_roaming"
 os.environ["GEMINI_API_KEY"] = "secret-should-not-leak"
 
-TMP = Path(tempfile.mkdtemp(prefix="jarvis-studio-test-")).resolve()
+TMP = Path(tempfile.mkdtemp(prefix="matthew-assistant-studio-test-")).resolve()
 ROOT = TMP / "ws"
 OUTSIDE = TMP / "outside"
 OUTSIDE.mkdir()
@@ -160,7 +160,7 @@ def _():
     return "lecture refusée, écriture détache le lien"
 
 
-@check("4 la racine refuse le dépôt JARVIS, un lecteur, le profil, Windows")
+@check("4 la racine refuse le dépôt Matthew, un lecteur, le profil, Windows")
 def _():
     os.environ["LOCALAPPDATA"] = _saved_env["LOCALAPPDATA"] or "C:\\Users\\x\\AppData\\Local"
     try:
@@ -449,11 +449,11 @@ def _():
     class HeadlessUI:
         local_mode = False
     out = mod.code_studio({"action": "status"}, player=HeadlessUI())
-    assert "only works when JARVIS runs on this PC" in out, out
+    assert "only works when Matthew runs on this PC" in out, out
     return f"{len(reg.names())} actions chargées, refus côté serveur"
 
 
-@check("19 le HUD ne peut pas placer la racine dans le dépôt JARVIS")
+@check("19 le HUD ne peut pas placer la racine dans le dépôt Matthew")
 def _():
     st = _studio(FakeLLM())
     r = st.hud("studio.set_root", {"path": str(BASE_DIR / "workspace")})
@@ -838,7 +838,7 @@ def _():
     ok = ["http://127.0.0.1:51234/index.html", "http://127.0.0.1:51234/js/app.js?x=1", "data:image/png;base64,AA",
           "blob:http://127.0.0.1:51234/abc", "about:blank", "ws://127.0.0.1:51234/live"]
     no = ["https://cdn.jsdelivr.net/x.js", "http://127.0.0.1:8000/", "http://localhost:51234/",
-          "http://127.0.0.2:51234/", "file:///C:/Windows/win.ini", "jarvis-hud://hud/index.html",
+          "http://127.0.0.2:51234/", "file:///C:/Windows/win.ini", "matthew-assistant-hud://hud/index.html",
           "https://example.com/?u=http://127.0.0.1:51234/"]
     bad = [u for u in ok if not allowed(QUrl(u), port)] + [u for u in no if allowed(QUrl(u), port)]
     assert not bad, bad
@@ -886,11 +886,11 @@ def _linux_sandbox():
             raise AssertionError(f"accepté : {bad}")
         except CommandRefused:
             pass
-    argv = L.bwrap_argv(Path("/home/u/Jarvis_Workspace/demo"), ["python3", "main.py"])
+    argv = L.bwrap_argv(Path("/home/u/Matthew_Workspace/demo"), ["python3", "main.py"])
     core = argv[argv.index("bwrap"):]
     assert core[:4] == ["bwrap", "--ro-bind", "/", "/"], "le système est en lecture seule"
     assert "--unshare-all" in core and "--die-with-parent" in core, "pas de réseau, meurt avec son parent"
-    i = core.index("/home/u/Jarvis_Workspace/demo")
+    i = core.index("/home/u/Matthew_Workspace/demo")
     assert core[i - 1] == "--ro-bind" and core[i + 1] == L.SOURCE, "le projet n'est monté qu'en lecture"
     assert core[core.index(L.WORKDIR) - 1] == "--tmpfs", "le projet tourne dans une copie en mémoire"
     assert core[-2:] == ["python3", "main.py"]

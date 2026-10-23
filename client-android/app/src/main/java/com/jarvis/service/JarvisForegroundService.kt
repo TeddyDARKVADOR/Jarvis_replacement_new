@@ -53,7 +53,7 @@ import org.json.JSONObject
  * open, and the person carrying it is entitled to see that and to stop it in
  * one tap.
  *
- * **How this differs from the old Jarvis's service, deliberately.** That one
+ * **How this differs from the old Matthew's service, deliberately.** That one
  * was `specialUse` and existed to stop Android killing the app for the CPU its
  * local llama-server child was burning; it did not protect the microphone, and
  * that app explicitly closed the microphone when it went to the background.
@@ -449,7 +449,7 @@ class JarvisForegroundService : Service() {
 
         override fun onEvent(json: JSONObject) {
             when (json.optString("type")) {
-                Protocol.EV_JARVIS_STATE -> {
+                Protocol.EV_MATTHEW_ASSISTANT_STATE -> {
                     val state = when (json.optString("state").uppercase()) {
                         "LISTENING" -> AssistantState.LISTENING
                         "THINKING" -> AssistantState.THINKING

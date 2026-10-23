@@ -1,9 +1,9 @@
 """
-cognition/ — architecture cognitive persistante de JARVIS (phases 1–2).
+cognition/ — architecture cognitive persistante de Matthew (phases 1–2).
 
 Paquet racine au sens du contrat V2 (capabilities/graphs/contrat.json) : il n'importe rien de main.py,
 dashboard/, actions/, server/ ou plugins/ ; main.py l'appelle par des hooks
-d'une ligne, gardés. Supprimer ce dossier rend JARVIS identique à avant.
+d'une ligne, gardés. Supprimer ce dossier rend Matthew identique à avant.
 
     python -m cognition.selftest      # sans clé, sans réseau, sans micro
     python -m cognition.providers     # sonde réelle des générateurs configurés

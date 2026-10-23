@@ -216,7 +216,7 @@ def _imports():
                 mods = [node.module]
             bad += [f"{f.name}: {m}" for m in mods if m.split(".")[0] in forbidden]
     assert not bad, f"imports interdits : {bad}"
-    return "rien de JARVIS n'est importé"
+    return "rien de Matthew n'est importé"
 
 
 # ── 8. recherche et outil ────────────────────────────────────────────────────

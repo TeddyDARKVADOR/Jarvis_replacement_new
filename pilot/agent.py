@@ -12,7 +12,7 @@ LA GARDE — dans le code, pas seulement dans la consigne du modèle :
   - cliquer sur un élément dont le nom ressemble à envoyer, publier, supprimer,
     payer, valider, accepter… ; taper avec submit ; ou Entrée juste après avoir
     écrit dans un champ de rédaction (message, courriel, commentaire — pas une
-    recherche) : JARVIS demande d'abord à l'utilisateur, avec le texte exact.
+    recherche) : Matthew demande d'abord à l'utilisateur, avec le texte exact.
     Une confirmation déjà donnée par l'outil confirm couvre l'action suivante.
   - jamais de texte dans un champ de mot de passe ;
   - jamais de remplacement du contenu d'un document ou d'un champ déjà rempli
@@ -110,7 +110,7 @@ class Agent:
 
     def _observe(self) -> Observation:
         obs = self.observe()
-        # Le HUD de JARVIS au premier plan (l'utilisateur vient de lui parler) : la fenêtre de travail est dessous.
+        # Le HUD de Matthew au premier plan (l'utilisateur vient de lui parler) : la fenêtre de travail est dessous.
         if obs.window.pid == os.getpid() and obs.windows:
             if self.focus_window(obs.windows[0]):
                 self.sleep(0.4)

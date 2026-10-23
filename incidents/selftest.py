@@ -22,7 +22,7 @@ if __package__ in (None, ""):
 import incidents as I
 
 ROOT = Path(__file__).resolve().parent
-TMP = Path(tempfile.mkdtemp(prefix="jarvis-incidents-"))
+TMP = Path(tempfile.mkdtemp(prefix="matthew-assistant-incidents-"))
 I.STATE = TMP / "incidents.json"          # « python -m » importe le paquet avant ce fichier : affectation directe
 _results: list[tuple[str, bool, str]] = []
 
@@ -43,7 +43,7 @@ def check(name: str):
     return deco
 
 
-@check("1 contrat V2 : incidents/ n'importe rien de JARVIS au chargement")
+@check("1 contrat V2 : incidents/ n'importe rien de Matthew au chargement")
 def _contract():
     banned = ("main", "core", "actions", "plugins", "cognition", "server", "dashboard", "client_desktop", "memory",
               "nightshift")

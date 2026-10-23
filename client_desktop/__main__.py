@@ -72,7 +72,7 @@ def _run_app(open_debug: bool, mini: bool) -> int:
 
     from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
 
-    from .app import JarvisDesktop
+    from .app import MatthewAssistantDesktop
     from .config import load
 
     app = QApplication(sys.argv[:1])
@@ -85,7 +85,7 @@ def _run_app(open_debug: bool, mini: bool) -> int:
     if not QSystemTrayIcon.isSystemTrayAvailable():
         print("Warning: no system tray on this session — notifications will be lost.")
 
-    desktop = JarvisDesktop(load())
+    desktop = MatthewAssistantDesktop(load())
     desktop.start_mini = mini        # this launch only — never written to settings
     guard.listen(desktop.tray.show_hud.emit)
     desktop.start()

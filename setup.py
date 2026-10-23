@@ -1,5 +1,5 @@
 """
-JARVIS — one-time setup of a desktop.
+Matthew — one-time setup of a desktop.
 
 Installs the Python dependencies for THIS operating system only: the OS-specific
 packages in requirements.txt carry `sys_platform` markers, so a macOS or Linux
@@ -49,7 +49,7 @@ def _run(label: str, args: list[str]) -> None:
 
 
 def main() -> None:
-    print(f"⚙  JARVIS setup — detected OS: {OS or 'unknown'}")
+    print(f"⚙  Matthew setup — detected OS: {OS or 'unknown'}")
 
     # requirements.txt filters OS-specific extras by itself via pip markers.
     _run("Installing Python dependencies (OS-specific extras auto-filtered)…",
@@ -90,10 +90,10 @@ def main() -> None:
         )
 
     print("\n✅ Setup complete!")
-    print("   JARVIS on Oracle :  python main.py")
+    print("   Matthew on Oracle :  python main.py")
     print("       → the HUD opens on Paramètres: server address + access token")
     print("         (token: `python -m server.run_headless --pairing` on Oracle)")
-    print("   JARVIS on this PC:  python main.py --local")
+    print("   Matthew on this PC:  python main.py --local")
     print("       → put your Gemini key in config/api_keys.json (\"gemini_api_key\")")
     print("   (Optional) 'Hey Jarvis': HUD → Paramètres → Audio.")
 

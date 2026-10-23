@@ -27,7 +27,10 @@ def _get_os() -> str:
 
 
 def _scripts_dir() -> Path:
-    d = Path.home() / ".jarvis" / "reminders"
+    d = Path.home() / ".matthew_assistant" / "reminders"
+    old = Path.home() / ".jarvis" / "reminders"   # before the rename: still used while it is the only one
+    if old.is_dir() and not d.exists():
+        return old
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -129,7 +132,7 @@ if not notified:
         pass
 """
 
-    # If JARVIS is running he delivers the reminder himself (reminders/: HUD,
+    # If Matthew is running he delivers the reminder himself (reminders/: HUD,
     # phone, voice) and marks it in memory/reminders.json. The system task then
     # waits a little, sees the mark and stays silent instead of doubling it.
     ledger = json.dumps(str(_base_dir() / "memory" / "reminders.json"))
@@ -344,7 +347,7 @@ def reminder(
     if not job_id:
         return "I couldn't register the reminder with the system scheduler."
 
-    try:  # optional: JARVIS delivers it himself while running (HUD, phone, voice)
+    try:  # optional: Matthew delivers it himself while running (HUD, phone, voice)
         import reminders
         reminders.add(task_name, target_dt, safe_msg)
     except Exception:

@@ -10,7 +10,7 @@
   That is not a detail — it is the ONLY thing protecting the audio. MARK LIII's
   AES-256-CBC layer (dashboard/server.py) covers *text commands* and nothing
   else: /ws/phone-audio and /ws/phone-out carry raw PCM with no application-
-  level encryption. Speaking to JARVIS over plain HTTP on an untrusted network
+  level encryption. Speaking to Matthew over plain HTTP on an untrusted network
   means speaking in the clear.
 
   So cleartext is opened for exactly one place: Tailscale MagicDNS names, which

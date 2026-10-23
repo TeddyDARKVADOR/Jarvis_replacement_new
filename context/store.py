@@ -15,7 +15,7 @@ WHY IT ACCEPTS ANYTHING AND VALIDATES EVERYTHING
     six fields instead of ten is a normal Tuesday, not an error — and a phone
     sending nonsense must not be able to raise inside a WebSocket handler.
 
-WHY IT NEVER TALKS TO JARVIS
+WHY IT NEVER TALKS TO Matthew
     Nothing here imports main.py or the dashboard. The store is written
     to by whoever receives phone messages and read by whoever needs context;
     neither is named in this file. That is what makes the package deletable.

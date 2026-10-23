@@ -26,7 +26,7 @@ class _Usage:
 def run() -> int:
     old_path = token_usage._PATH
     try:
-        with tempfile.TemporaryDirectory(prefix="jarvis-token-usage-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="matthew-assistant-token-usage-") as tmp:
             token_usage._PATH = Path(tmp) / "usage.jsonl"
             assert token_usage.start_session("offline-test") == "offline-test"
             totals = token_usage.record_usage(

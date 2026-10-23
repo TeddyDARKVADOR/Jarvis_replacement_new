@@ -1,5 +1,5 @@
 {
-  "schema": "jarvis.graph/1",
+  "schema": "matthew_assistant.graph/1",
   "id": "matthew",
   "title": "Matthew — notre propre modèle",
   "updated": "2026-10-23",
@@ -12,8 +12,8 @@
       "kind": "racine",
       "summary": "Un modèle à poids ouverts (Qwen3.5-4B, Apache-2.0) entraîné sur ce que l'utilisateur demande vraiment, servi par Ollama sur la machine, avec ses propres tokens. Gemini reste en service ; Matthew apprend à côté et prend des tâches une à une quand l'évaluation le prouve.",
       "details": [
-        "Paquet racine (contrat V2) : retirer matthew/, plugins/matthew.py et les hooks d'une ligne (cognition/runtime.py, cognition/providers.py, offline/llm.py) rend JARVIS identique à avant.",
-        "Données personnelles dans memory/matthew/ (ignoré par Git), ou <JARVIS_DATA_DIR>/matthew sur la clé portable.",
+        "Paquet racine (contrat V2) : retirer matthew/, plugins/matthew.py et les hooks d'une ligne (cognition/runtime.py, cognition/providers.py, offline/llm.py) rend Matthew identique à avant.",
+        "Données personnelles dans memory/matthew/ (ignoré par Git), ou <MATTHEW_ASSISTANT_DATA_DIR>/matthew sur la clé portable.",
         "Premier cycle réel de la boucle (2026-10-20) : champion promu le 2026-10-20 à 20 h 52 — 116 exemples amorcés (23 outils) + augmentations, 3 époques sur la RTX 3060 (meilleure : la 2e, perte d'éval 0,125), GGUF Q5_K_M 3,2 Go ; éval sur 18 exemples : composite 0,85, bon outil 100 %, arguments 79 %, JSON 100 %, refus quand aucun outil ne convient 50 %, 1,1 s ; servi par Ollama, choisi par le mode hors-ligne et placé en tête de la cognition.",
         "Deuxième cycle réel (2026-10-21, 00 h 52 → 01 h 39) : nouveau champion — 193 exemples d'entraînement / 56 d'éval (dont conversation et refus), 3 époques en 38 min (meilleure : la 2e, perte d'éval 0,366) ; composite 0,90 (avant 0,85), bon outil 97 %, arguments 79 %, réponses sans outil 94 % (avant 50 %), refus justes 91 % (avant 50 %), 1,0 s. Point faible : file_processor (transcription audio : répond au lieu d'appeler l'outil). Les exemples « surveille les actualités » → manage_monitor sont justes : l'outil suit des sujets d'actualité (add/remove/list), il ne gère pas les écrans (vérifié le 2026-10-21).",
         "Tokens : python -m matthew.gateway (clés par appareil, budgets, limites) ; comptés sur la vitrine."
@@ -48,9 +48,9 @@
       "id": "h.cognition",
       "label": "Hook : collecte dans tous les modes",
       "kind": "regle",
-      "summary": "Une ligne au début de cognition.attach (appelé par chaque JarvisLive) : Matthew se greffe sur ui.write_log (« You: … » puis « <nom>: … » à chaque fin de tour) et sur _execute_tool. Local, serveur Oracle, sans écran : tout est collecté, sans changer main.py ni ce que Gemini reçoit.",
+      "summary": "Une ligne au début de cognition.attach (appelé par chaque MatthewAssistantLive) : Matthew se greffe sur ui.write_log (« You: … » puis « <nom>: … » à chaque fin de tour) et sur _execute_tool. Local, serveur Oracle, sans écran : tout est collecté, sans changer main.py ni ce que Gemini reçoit.",
       "details": [
-        "Sonde réelle 2026-10-20 : un vrai JarvisLive sans écran (server.headless_ui), le vrai outil quotas passé par le vrai _execute_tool — épisode complet écrit, 43 déclarations d'outils captées, réponse à Gemini identique.",
+        "Sonde réelle 2026-10-20 : un vrai MatthewAssistantLive sans écran (server.headless_ui), le vrai outil quotas passé par le vrai _execute_tool — épisode complet écrit, 43 déclarations d'outils captées, réponse à Gemini identique.",
         "Pas encore observé pendant une vraie session vocale (micro + Gemini Live)."
       ],
       "files": [
@@ -58,7 +58,7 @@
         "matthew/journal.py"
       ],
       "status": "ok",
-      "verified": "2026-10-20 — sonde JarvisLive réel (sans écran)"
+      "verified": "2026-10-20 — sonde MatthewAssistantLive réel (sans écran)"
     },
     {
       "id": "m.journal",
@@ -364,7 +364,7 @@
         "DÉCOR (trouvé en ligne, 2026-10-20) : Space Kit de Kenney (27 modèles glTF, CC0, 408 Ko) et ciel « Qwantani Night Pure Sky » de Poly Haven (HDR 1k, CC0) ; luminance médiane mesurée 0,48 ramenée à ~0,02 pour une vraie nuit ; modèles recentrés (origine en coin chez Kenney). Crédités en pied de page.",
         "DRAPEAU : tout ce qui améliore lève memory/matthew/vitrine/FLAG — commit et fusion (crochets Git post-commit / post-merge, `python -m matthew.vitrine hooks`), cycle de la boucle de nuit, correctif de Night Shift une fois fusionné. `run` publie si le drapeau est levé (au plus toutes les 5 min, verrou), le baisse après un push réussi ; la tâche Windows « Matthew vitrine » rattrape toutes les 30 min.",
         "POURQUOI PAS NIGHT SHIFT : il tourne sur GitHub Actions, sans accès aux données locales de Matthew ; ses correctifs arrivent par fusion, que le crochet post-merge voit déjà.",
-        "SANS MARQUE : BRAND (jarvis, Mark LIII) refusé partout par check_public ; identifiants d'outils publics (shutdown_jarvis → shutdown) ; titres de commits réécrits ou écartés (clean_title).",
+        "SANS MARQUE : BRAND (jarvis, Mark LIII) refusé partout par check_public ; identifiants d'outils publics (shutdown_matthew_assistant → shutdown) ; titres de commits réécrits ou écartés (clean_title).",
         "VIE PRIVÉE : liste blanche champ par champ ; aucun texte du journal réel ; secrets cherchés sur le texte d'origine (bug trouvé par le selftest : retirer « @ » d'abord laissait passer une adresse).",
         "HONNÊTETÉ : examen tiré du hold-out en priorité, « jamais vu / vu à l'entraînement » affiché.",
         "Vérifiée en local (Edge sans interface, 1440 px et 390 px) et publiée une première fois par l'utilisateur (`python -m matthew.vitrine setup`).",

@@ -1,5 +1,5 @@
 """
-journal.py — what JARVIS actually did, written by the tools that did it.
+journal.py — what Matthew actually did, written by the tools that did it.
 
 The HUD never shows text the model wrote about its progress. Every line in
 the Studio panel is an event appended HERE by the code that performed the

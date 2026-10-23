@@ -1,5 +1,5 @@
 ﻿<#
-  update_key.ps1 -- met a jour JARVIS sur la cle depuis ce PC de dev.
+  update_key.ps1 -- met a jour Matthew sur la cle depuis ce PC de dev.
 
       powershell -ExecutionPolicy Bypass -File update_key.ps1                 # resync vers E:\JARVIS
       powershell ... -File update_key.ps1 -KeyRoot "F:\JARVIS" -Pull          # git pull d'abord

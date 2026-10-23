@@ -8,8 +8,8 @@ les rappels identiques à avant : la tâche planifiée du système, seule.
 
 POURQUOI
     Un rappel était une tâche planifiée Windows qui affichait une notification
-    de bureau. Rien n'arrivait sur le téléphone, et JARVIS lui-même n'en savait
-    rien. Tant que JARVIS tourne, c'est lui qui livre maintenant le rappel :
+    de bureau. Rien n'arrivait sur le téléphone, et Matthew lui-même n'en savait
+    rien. Tant que Matthew tourne, c'est lui qui livre maintenant le rappel :
 
       1. une carte RAPPEL dans le HUD ;
       2. une notification sur le téléphone appairé (server/notify, le même
@@ -17,7 +17,7 @@ POURQUOI
       3. la voix, si la politique de contexte permet de parler maintenant
          (réunion, sommeil… → non) ; sans context/, il parle.
 
-    La tâche planifiée reste le filet : quand JARVIS est fermé, elle seule
+    La tâche planifiée reste le filet : quand Matthew est fermé, elle seule
     prévient. Quand il tourne, elle attend 20 s, voit le rappel marqué livré
     dans memory/reminders.json et se tait : pas de doublon.
 """
@@ -30,7 +30,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 PATH = Path(__file__).resolve().parent.parent / "memory" / "reminders.json"
-#: Un rappel manqué de plus que ça (PC éteint) n'est plus livré par JARVIS.
+#: Un rappel manqué de plus que ça (PC éteint) n'est plus livré par Matthew.
 STALE = timedelta(hours=6)
 CHECK_EVERY_S = 5.0
 _LOCK = threading.Lock()
@@ -105,8 +105,8 @@ def _may_speak() -> bool:
         return True
 
 
-def _to_phone(jarvis, message: str) -> bool:
-    dash = getattr(jarvis, "_dashboard", None)
+def _to_phone(matthew_assistant, message: str) -> bool:
+    dash = getattr(matthew_assistant, "_dashboard", None)
     if dash is None:
         return False
     try:
@@ -122,39 +122,39 @@ def _to_phone(jarvis, message: str) -> bool:
         return False
 
 
-def deliver(jarvis, rid: str, r: dict) -> str:
+def deliver(matthew_assistant, rid: str, r: dict) -> str:
     """Livrer un rappel par tous les chemins disponibles. Rend ce qui a marché."""
     message = r.get("message") or "Rappel"
     done = []
     try:
-        jarvis.ui.show_content("RAPPEL", message)
+        matthew_assistant.ui.show_content("RAPPEL", message)
         done.append("hud")
     except Exception:
         pass
-    if _to_phone(jarvis, message):
+    if _to_phone(matthew_assistant, message):
         done.append("téléphone")
-    if _may_speak() and getattr(jarvis, "session", None):
+    if _may_speak() and getattr(matthew_assistant, "session", None):
         try:
-            jarvis.plugin_say(
+            matthew_assistant.plugin_say(
                 f"[REMINDER] The reminder the user set for now is due: \"{message}\". "
                 "Tell them in one short sentence, in their language. Do not call any tool.")
             done.append("voix")
         except Exception:
             pass
     try:
-        jarvis.ui.write_log(f"SYS: Rappel livré ({', '.join(done) or 'rien'}) : {message[:60]}")
+        matthew_assistant.ui.write_log(f"SYS: Rappel livré ({', '.join(done) or 'rien'}) : {message[:60]}")
     except Exception:
         pass
     return ", ".join(done) or "rien"
 
 
-def attach(jarvis, interval: float = CHECK_EVERY_S) -> None:
+def attach(matthew_assistant, interval: float = CHECK_EVERY_S) -> None:
     """Le hook de main.py : une boucle de fond, une seule par processus."""
     global _thread
     # Le hub des notifications retient la boucle asyncio qui l'a lié : il faut
     # donc le lier ici, depuis main.run(), et pas depuis le fil de fond. Sur
     # Oracle, run_headless l'a déjà lié ; en local, personne ne le faisait.
-    dash = getattr(jarvis, "_dashboard", None)
+    dash = getattr(matthew_assistant, "_dashboard", None)
     if dash is not None:
         try:
             from server.notify import get_hub
@@ -170,7 +170,7 @@ def attach(jarvis, interval: float = CHECK_EVERY_S) -> None:
         while True:
             try:
                 for rid, r in due():
-                    mark_delivered(rid, deliver(jarvis, rid, r))
+                    mark_delivered(rid, deliver(matthew_assistant, rid, r))
             except Exception as exc:  # une boucle de fond ne meurt pas
                 print(f"[Reminders] {exc}")
             time.sleep(interval)

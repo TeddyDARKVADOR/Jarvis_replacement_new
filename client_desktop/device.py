@@ -229,7 +229,7 @@ class CapabilityProbe:
                     pass
 
         self._thread = threading.Thread(
-            target=work, name="JarvisCapabilities", daemon=True
+            target=work, name="MatthewAssistantCapabilities", daemon=True
         )
         self._thread.start()
 

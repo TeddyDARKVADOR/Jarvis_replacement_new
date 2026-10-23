@@ -8,7 +8,7 @@ from actions.repository_review import _ranked_sources
 
 
 def run() -> int:
-    with tempfile.TemporaryDirectory(prefix="jarvis-repo-review-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="matthew-assistant-repo-review-") as tmp:
         root = Path(tmp)
         (root / "README.md").write_text("Example app and architecture overview.", encoding="utf-8")
         (root / "login.py").write_text("def login(user):\n    return user\n", encoding="utf-8")

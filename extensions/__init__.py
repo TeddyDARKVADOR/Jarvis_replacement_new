@@ -3,7 +3,7 @@ extensions/ — des capacités qu'on n'écrit pas : serveurs MCP et Agent Skills
 
 Paquet racine au sens du contrat V2 : rien ici n'importe main.py. Les plugins
 `plugins/mcp_bridge.py` et `plugins/skills.py` l'exposent à Gemini ; les
-supprimer rend JARVIS identique à avant.
+supprimer rend Matthew identique à avant.
 
   mcp.py     client MCP (stdio et HTTP « streamable ») : chaque serveur
              configuré dans config/mcp.json devient utilisable par UN seul outil

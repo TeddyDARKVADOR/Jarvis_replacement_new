@@ -10,9 +10,9 @@ WHAT THE MODEL MAY DO
 WHAT IT MAY NOT DO
     Decide what is true. Anything it claims about the correct behaviour is
     stored as an explicit oracle *authored by the LLM* (`lineage.oracle_author`
-    = "llm"). When JARVIS contradicts such a claim, triage files it under
+    = "llm"). When Matthew contradicts such a claim, triage files it under
     "oracle-disputed" — a person decides. Only a HARD property of the project
-    can turn a model-written scenario into a JARVIS candidate bug.
+    can turn a model-written scenario into a Matthew candidate bug.
 
 WHY THE WORLD COMES BACK AS A STRING
     A JSON schema strict enough for structured outputs cannot describe the
@@ -35,7 +35,7 @@ REPRODUCIBILITY
     scenarios, offline, for free — an LLM has no seed, a cassette is its seed.
 
 OPTIONAL
-    `anthropic` is imported lazily and only here. JARVIS never needs it; the
+    `anthropic` is imported lazily and only here. Matthew never needs it; the
     lab runs without it (replay, fake provider). See requirements-llm.txt.
 """
 from __future__ import annotations
@@ -149,7 +149,7 @@ class AnthropicProvider:
         with self.client.messages.stream(
             model=self.model,
             max_tokens=32000,
-            # The large static part (JARVIS description, vocabulary, examples)
+            # The large static part (Matthew description, vocabulary, examples)
             # is identical on every call: cached once, read at $0.20/M
             # afterwards. Nothing volatile precedes it.
             system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
@@ -282,12 +282,12 @@ class Cassette:
 
 # ── prompts ──────────────────────────────────────────────────────────────────
 
-def _jarvis_description() -> str:
-    """What the model is told about JARVIS: the rules as the code states them."""
+def _matthew_assistant_description() -> str:
+    """What the model is told about Matthew: the rules as the code states them."""
     from .space import thresholds
     th = thresholds()
     return f"""\
-JARVIS est un assistant vocal 24/7. Tu travailles sur trois couches deterministes.
+Matthew est un assistant vocal 24/7. Tu travailles sur trois couches deterministes.
 
 1. context/situation.py — faits du telephone -> une situation, dans cet ordre :
    DRIVING (activite IN_VEHICLE avec confiance >= {th['vehicle_confidence']:.0f}, ou un nom Bluetooth
@@ -328,7 +328,7 @@ JARVIS est un assistant vocal 24/7. Tu travailles sur trois couches deterministe
 def _format_rules() -> str:
     return f"""\
 FORMAT DE SORTIE. Chaque scenario : surface (policy | situation | routing | sequence | router), family (courte),
-hypothesis (pourquoi JARVIS pourrait se tromper ici tout en paraissant raisonnable), et quatre CHAINES JSON :
+hypothesis (pourquoi Matthew pourrait se tromper ici tout en paraissant raisonnable), et quatre CHAINES JSON :
 
 world_json    policy/situation/sequence : {{"time": {{"local": "2026-09-23T14:00:00"}},
               "phone": {{"age_s": 0, "screen_on": true, "idle_seconds": 5, "dnd": false, "headset": true,
@@ -363,7 +363,7 @@ Ta revendication n'est PAS la verite : elle sera confrontee au code et une perso
 
 
 def build_system() -> str:
-    return _jarvis_description() + "\n" + _format_rules()
+    return _matthew_assistant_description() + "\n" + _format_rules()
 
 
 def build_user(mode: str, n: int, examples: list[dict], feedback: dict) -> str:
@@ -371,7 +371,7 @@ def build_user(mode: str, n: int, examples: list[dict], feedback: dict) -> str:
                    for s in examples)
     fb = json.dumps(feedback, ensure_ascii=False)
     if mode == "adversary":
-        task = (f"Trouve {n} situations ou JARVIS pourrait prendre une MAUVAISE decision tout en semblant "
+        task = (f"Trouve {n} situations ou Matthew pourrait prendre une MAUVAISE decision tout en semblant "
                 "raisonnable. Priorite aux INTERACTIONS entre politique, routage, delivrance et sequences "
                 "d'evenements : frontieres de seuils, transitions de situation, reconnexions (telephone qui "
                 "revient, appareil perime qui reapparait), files differees relues au mauvais moment, appareils "

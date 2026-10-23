@@ -2,7 +2,7 @@
 server/headless_ui.py — the HUD, with no screen behind it.
 
 WHY THIS WORKS
-    JarvisLive never asks what kind of object its `ui` is. It assigns callbacks
+    MatthewAssistantLive never asks what kind of object its `ui` is. It assigns callbacks
     onto it, reads two properties, and calls twenty-odd methods. So any class
     with this surface is accepted as-is: this one on Oracle, and its subclass
     `local_hud.LocalUI` on a desktop, which forwards everything to the HUD.
@@ -80,7 +80,7 @@ class _RootShim:
 
 
 class HeadlessUI:
-    """What JarvisLive draws on, without a screen. No Qt, no window, no display."""
+    """What MatthewAssistantLive draws on, without a screen. No Qt, no window, no display."""
 
     def __init__(self, state: RuntimeState | None = None, echo: bool = True):
         self.state = state or RuntimeState()
@@ -92,8 +92,8 @@ class HeadlessUI:
         self._dashboard = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
-        # ── Callbacks JarvisLive assigns onto the UI ─────────────────────────
-        # Declared here so they exist before __init__ of JarvisLive runs and so
+        # ── Callbacks MatthewAssistantLive assigns onto the UI ─────────────────────────
+        # Declared here so they exist before __init__ of MatthewAssistantLive runs and so
         # a stale call can never raise AttributeError mid-session.
         self.on_text_command        = None
         self.on_remote_clicked      = None
@@ -119,7 +119,7 @@ class HeadlessUI:
         except RuntimeError:
             self._loop = None
 
-    # ── properties JarvisLive reads ──────────────────────────────────────────
+    # ── properties MatthewAssistantLive reads ──────────────────────────────────────────
 
     @property
     def muted(self) -> bool:

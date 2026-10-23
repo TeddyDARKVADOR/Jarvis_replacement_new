@@ -8,7 +8,7 @@
 #
 # Ces fichiers sont donc déposés en LF quelle que soit la plateforme.
 *.sh            text eol=lf
-jarvis-preprod/preprod  text eol=lf
+matthew-assistant-preprod/preprod  text eol=lf
 client-android/gradlew  text eol=lf
 
 # Les corpus du labo sont comparés OCTET POUR OCTET à un import frais (LF) :

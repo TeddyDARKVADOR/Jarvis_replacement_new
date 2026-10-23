@@ -1,5 +1,5 @@
 """
-nightshift/report.py — le rapport jarvis.nightly/1 : JSON, Markdown, résumé du run.
+nightshift/report.py — le rapport matthew_assistant.nightly/1 : JSON, Markdown, résumé du run.
 
     build(...)          le rapport complet d'une nuit (appelle compare.py)
     failed(...)         le rapport d'une nuit qui n'a rien pu mesurer
@@ -7,7 +7,7 @@ nightshift/report.py — le rapport jarvis.nightly/1 : JSON, Markdown, résumé 
     write(r, md, d)     report.json + report.md dans d (écriture atomique)
     step_summary(md)    ajoute le Markdown au résumé du run, dans GitHub Actions
 
-LE SCHÉMA — jarvis.nightly/1
+LE SCHÉMA — matthew_assistant.nightly/1
   1.0  celui du plan Night Shift (section 7) : run_id, run_url, commit,
        started_at, finished_at, status, summary, suites, regressions, task,
        pull_request_url, usage, budgets, limitations.
@@ -30,7 +30,7 @@ LE SCHÉMA — jarvis.nightly/1
   1.6  phase 5 : local (les derniers avis du PC réveillé la nuit, ou
        « indisponible » avec la raison — jamais « en attente »).
   Un champ ajouté fait monter la version mineure (notée dans le graphe
-  nightshift) ; un changement incompatible passera à jarvis.nightly/2.
+  nightshift) ; un changement incompatible passera à matthew_assistant.nightly/2.
 
 status : success (tout est vert, échecs connus compris), partial_success (le
 run a tourné et quelque chose est rouge), failed (le run n'a rien pu mesurer).
@@ -265,7 +265,7 @@ def to_markdown(r: dict) -> str:
     day = str(r.get("started_at") or "")[:10]
     env = r.get("environment") or {}
     ps = r.get("pass") if isinstance(r.get("pass"), dict) else {}
-    title = f"## JARVIS Night Shift — {day}" + (f" · passe {ps.get('n')}/{ps.get('of')}" if ps.get("n") else "")
+    title = f"## Matthew Night Shift — {day}" + (f" · passe {ps.get('n')}/{ps.get('of')}" if ps.get("n") else "")
     lines = [title, "", f"**{_cell(r.get('summary'))}**", ""]
     meta = [f"commit `{r.get('commit') or '?'}`"]
     if r.get("ref"):
@@ -362,7 +362,7 @@ def to_markdown(r: dict) -> str:
             rows.append(f"- Cognition : {len(cog.get('values') or {})} valeurs mesurées (architecture complète)")
         rows += [f"- **{_cell(x['metric'])}** : {_cell(x['before'])} → {_cell(x['now'])} ({x['verdict']})"
                  + (f" — {_cell(x['detail'])}" if x.get("detail") else "") for x in r.get("metrics_changes") or []]
-        section("Indicateurs — JARVIS s'améliore-t-il ?", rows)
+        section("Indicateurs — Matthew s'améliore-t-il ?", rows)
 
     loc = r.get("local")
     if isinstance(loc, dict):

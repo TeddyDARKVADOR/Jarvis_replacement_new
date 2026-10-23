@@ -1,8 +1,8 @@
 """
-plugins/matthew.py — parler à JARVIS de Matthew, le modèle à nous qui apprend à côté.
+plugins/matthew.py — parler à Matthew de Matthew, le modèle à nous qui apprend à côté.
 
 Le paquet matthew/ fait le travail ; ce plugin n'est que la porte vocale.
-Le retirer (avec matthew/) rend JARVIS identique à avant.
+Le retirer (avec matthew/) rend Matthew identique à avant.
 """
 
 PLUGIN = {

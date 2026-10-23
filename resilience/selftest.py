@@ -26,7 +26,7 @@ try:
     import tempfile
 
     import quota as _Q
-    _QTMP = tempfile.mkdtemp(prefix="jarvis-quota-")
+    _QTMP = tempfile.mkdtemp(prefix="matthew-assistant-quota-")
     _Q.reset_for_tests(Path(_QTMP) / "quota.json")
 except Exception:
     _Q = None

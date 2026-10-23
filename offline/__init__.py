@@ -10,7 +10,7 @@ Idée reprise de bertrandmbanwi/Jarvis (OFFLINE_MODE, MIT) et des modules
 stt/tts du Mark XL de FatihMakes ; le code est écrit pour ce dépôt.
 
 DEUX POINTS D'ENTRÉE (paquet racine, contrat V2)
-  - main.py (mode local) : `attach(jarvis)`. La boucle de connexion signale
+  - main.py (mode local) : `attach(matthew_assistant)`. La boucle de connexion signale
     chaque échec (`on_live_down`) et chaque connexion (`on_live_up`).
   - client_desktop (HUD relié à Oracle) : `Supervisor` créé par app.py, nourri
     par l'état du lien. Le client reste sans Gemini : ce second cerveau est
@@ -21,7 +21,7 @@ DEUX POINTS D'ENTRÉE (paquet racine, contrat V2)
 QUAND IL PARLE
   La panne doit durer DOWN_AFTER_S (20 s) : une reconnexion ordinaire ne doit
   pas le réveiller. Il annonce le mode hors-ligne une fois. Sans mot d'éveil
-  local, il ne répond qu'aux phrases qui contiennent son nom (« Jarvis, quelle
+  local, il ne répond qu'aux phrases qui contiennent son nom (« Matthew, quelle
   heure est-il ? »), puis à la suite pendant FOLLOW_UP_S — sinon il répondrait
   à la télévision. Dès que Gemini revient, il se tait.
 """
@@ -46,7 +46,7 @@ def _fold(text: str) -> str:
 
 def addressed(text: str, names: list[str]) -> bool:
     """Le nom est dans la phrase, à une lettre près pour un nom de 5 lettres ou
-    plus : prononcé à la française, « Jarvis » est transcrit « Jarvie » (mesuré)."""
+    plus : prononcé à la française, « Matthew » est transcrit « Jarvie » (mesuré)."""
     words = set(re.findall(r"[a-z0-9]+", _fold(text)))
     for name in (_fold(n) for n in names if n):
         if name in words:
@@ -236,9 +236,9 @@ class Supervisor:
         return self.voice is not None and self.voice.running
 
 
-def attach(jarvis) -> None:
+def attach(matthew_assistant) -> None:
     """Hook de main.py, mode local seulement (le serveur n'a ni micro ni haut-parleur)."""
-    ui = getattr(jarvis, "ui", None)
+    ui = getattr(matthew_assistant, "ui", None)
     if not getattr(ui, "local_mode", False):
         return
     log = getattr(ui, "write_log", print)
@@ -258,4 +258,4 @@ def attach(jarvis) -> None:
         on_live_up = staticmethod(sup.on_up)
         supervisor = sup
 
-    jarvis._offline = _Hooks()
+    matthew_assistant._offline = _Hooks()

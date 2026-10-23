@@ -1,5 +1,5 @@
 """
-cognition/selftest.py — prouve la couche cognitive avant que JARVIS s'en serve.
+cognition/selftest.py — prouve la couche cognitive avant que Matthew s'en serve.
 
     python -m cognition.selftest
 
@@ -50,7 +50,7 @@ from cognition.runtime import PROMPT_BUDGET, Cognition, attach                # 
 from cognition.store import Store                                             # noqa: E402
 
 _results: list[tuple[str, bool, str]] = []
-TMP = Path(tempfile.mkdtemp(prefix="jarvis-cognition-test-"))
+TMP = Path(tempfile.mkdtemp(prefix="matthew-assistant-cognition-test-"))
 
 
 def check(name: str):
@@ -163,7 +163,7 @@ def _removal():
     finally:
         sys.modules.pop("cognition", None)
         sys.modules.update(saved)
-    return "JARVIS démarre sans le paquet ; les 4 plugins répondent « indisponible »"
+    return "Matthew démarre sans le paquet ; les 4 plugins répondent « indisponible »"
 
 
 # ── 4–5. Schéma et persistance ───────────────────────────────────────────────
@@ -398,7 +398,7 @@ def _drift():
     c = load()
     s = Store(TMP / "drift.db")
     register(s, c)
-    copy = TMP / "jarvis.toml"
+    copy = TMP / "matthew_assistant.toml"
     shutil.copy(c.path, copy)
     copy.write_text(copy.read_text(encoding="utf-8") + "\n# ajout discret\n", encoding="utf-8")
     try:

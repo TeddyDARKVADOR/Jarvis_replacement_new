@@ -3,7 +3,7 @@ eval_lab/report.py — what a person reads after a run.
 
 Written from triage.json (+ coverage.json when the run has one) into
 runs/<run>/report.md. The order is the order of what to do next: bugs of
-JARVIS first, then disagreements to settle, then the lab's own problems.
+Matthew first, then disagreements to settle, then the lab's own problems.
 """
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ import re
 from collections import Counter
 
 CLASS_TITLE = {
-    "jarvis-crash": "JARVIS a leve une exception",
-    "jarvis-candidate": "Candidats bugs JARVIS (propriete ou relation du projet violee)",
+    "matthew-assistant-crash": "Matthew a leve une exception",
+    "matthew-assistant-candidate": "Candidats bugs Matthew (propriete ou relation du projet violee)",
     "legacy-regression": "Tests existants qui echouent",
     "superseded-legacy": "Tests existants remplaces par une decision (corpus/decisions.json)",
     "inconclusive": "INCONCLUSIVE — aucun oracle explicite, aucun comportement impose",
@@ -54,7 +54,7 @@ def render(run: str, tri: dict, coverage: dict | None, results: list[dict],
           f"| CRASH | {v['CRASH']} |",
           f"| INFRA (labo) | {v['INFRA']} |",
           f"| clusters | {len(cl)} |",
-          f"| dont nouveaux candidats JARVIS | {by_class['jarvis-candidate'] + by_class['jarvis-crash']} |",
+          f"| dont nouveaux candidats Matthew | {by_class['matthew-assistant-candidate'] + by_class['matthew-assistant-crash']} |",
           f"| dont connus | {by_class['known']} |",
           f"| reproducteurs minimaux | {sum(1 for c in cl if c.get('minimal'))} |", ""]
     if coverage:
@@ -96,7 +96,7 @@ def render(run: str, tri: dict, coverage: dict | None, results: list[dict],
     lab = [c for c in cl if c["class"] in ("lab", "generator")]
     if lab:
         L += ["## Problemes du labo et du generateur", "",
-              "Jamais comptes comme des bugs de JARVIS.", ""]
+              "Jamais comptes comme des bugs de Matthew.", ""]
         L += [f"- {c['cluster']} [{c['class']}] x{c['size']} : {str(c.get('example'))[:160]}" for c in lab]
     return "\n".join(L) + "\n"
 

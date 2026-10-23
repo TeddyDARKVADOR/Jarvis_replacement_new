@@ -20,7 +20,7 @@ if __package__ in (None, ""):
 import quota as Q
 
 ROOT = Path(__file__).resolve().parent
-TMP = Path(tempfile.mkdtemp(prefix="jarvis-quota-"))
+TMP = Path(tempfile.mkdtemp(prefix="matthew-assistant-quota-"))
 _results: list[tuple[str, bool, str]] = []
 
 DAY_429 = ("429 RESOURCE_EXHAUSTED. {'error': {'details': [{'violations': [{'quotaId': "
@@ -42,7 +42,7 @@ def check(name: str):
     return deco
 
 
-@check("1 contrat V2 : bibliothèque standard seulement, rien de JARVIS")
+@check("1 contrat V2 : bibliothèque standard seulement, rien de Matthew")
 def _contract():
     banned = ("main", "core", "actions", "plugins", "cognition", "server", "dashboard", "client_desktop", "memory",
               "resilience", "pilot", "meeting")
@@ -51,7 +51,7 @@ def _contract():
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else \
                 [node.module or ""] if isinstance(node, ast.ImportFrom) else []
             assert not [n for n in names if n.split(".")[0] in banned], (f.name, names)
-    return "aucun import de JARVIS"
+    return "aucun import de Matthew"
 
 
 @check("2 lecture d'un 429 : quota du jour ou de la minute, limite, délai")

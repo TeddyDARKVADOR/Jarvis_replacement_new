@@ -1,5 +1,5 @@
 """
-incidents/ — les erreurs réelles de JARVIS, comptées, pour que la nuit voie ce que les tests ne voient pas.
+incidents/ — les erreurs réelles de Matthew, comptées, pour que la nuit voie ce que les tests ne voient pas.
 
 Les tests de Night Shift ne couvrent que ce qu'on a pensé à tester. Le
 2026-10-16, deux vrais problèmes leur avaient échappé : faster-whisper qui
@@ -8,9 +8,9 @@ erreurs de la vraie vie sont comptées, regroupées par signature :
 
     signature = genre + type d'exception + fichier:fonction du dépôt + message rendu générique
 
-CE QUI EST CAPTÉ (incidents.attach(jarvis), un hook de main.py)
+CE QUI EST CAPTÉ (incidents.attach(matthew_assistant), un hook de main.py)
   - les exceptions non rattrapées (sys.excepthook, threading.excepthook) ;
-  - les lignes d'erreur du journal de JARVIS (« ERR: », « … failed », « échec »).
+  - les lignes d'erreur du journal de Matthew (« ERR: », « … failed », « échec »).
 Rien d'autre : ni la conversation, ni les fichiers, ni l'écran.
 
 LOCAL D'ABORD — memory/incidents.json (ignoré par Git), 30 jours, 300
@@ -38,8 +38,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-STATE = Path(os.environ.get("JARVIS_INCIDENTS_FILE") or REPO / "memory" / "incidents.json")
-SCHEMA = "jarvis.incidents/1"
+STATE = Path(os.environ.get("MATTHEW_ASSISTANT_INCIDENTS_FILE") or REPO / "memory" / "incidents.json")
+SCHEMA = "matthew_assistant.incidents/1"
+SCHEMAS = (SCHEMA, "jarvis.incidents/1")   # ancien nom, encore lu
 KEEP_DAYS = 30
 DIGEST_DAYS = 7
 MAX_SIGNATURES = 300
@@ -98,8 +99,8 @@ def signature(kind: str, exc: str, place: str, message: str) -> str:
 def _load() -> dict:
     try:
         data = json.loads(STATE.read_text(encoding="utf-8"))
-        if isinstance(data, dict) and data.get("schema") == SCHEMA:
-            return data
+        if isinstance(data, dict) and data.get("schema") in SCHEMAS:
+            return {**data, "schema": SCHEMA}
     except Exception:
         pass
     return {"schema": SCHEMA, "items": {}}
@@ -146,7 +147,7 @@ def record_exception(exc_type, exc, tb, kind: str = "exception") -> str:
 
 
 def record_log(line: str) -> str | None:
-    """Une ligne du journal de JARVIS qui ressemble à une erreur : comptée. Les autres : rien."""
+    """Une ligne du journal de Matthew qui ressemble à une erreur : comptée. Les autres : rien."""
     text = str(line or "")
     if not ERROR_LINE.search(text):
         return None
@@ -187,7 +188,7 @@ def push(repo_dir: Path = REPO, now: datetime | None = None) -> str | None:
                             text=True, encoding="utf-8", errors="replace").stdout.strip()
     if not origin:
         return "pas de remote origin"
-    tmp = Path(tempfile.mkdtemp(prefix="jarvis-incidents-"))
+    tmp = Path(tempfile.mkdtemp(prefix="matthew-assistant-incidents-"))
     try:
         def git(*args):
             return subprocess.run(["git", *args], cwd=str(tmp), capture_output=True, text=True, encoding="utf-8",
@@ -201,7 +202,7 @@ def push(repo_dir: Path = REPO, now: datetime | None = None) -> str | None:
         git("add", "incidents")
         if git("diff", "--cached", "--quiet").returncode == 0:
             return None                                   # rien de neuf
-        git("-c", "user.name=jarvis-incidents", "-c", "user.email=incidents@localhost", "commit", "-q", "-m",
+        git("-c", "user.name=matthew-assistant-incidents", "-c", "user.email=incidents@localhost", "commit", "-q", "-m",
             f"incidents : résumé du {d['until']} ({len(d['incidents'])} signature(s))")
         p = git("push", "-q", "origin", f"HEAD:{DATA_BRANCH}")
         return None if p.returncode == 0 else f"push refusé : {generic(p.stderr)[:160]}"
@@ -235,10 +236,10 @@ def install_hooks() -> None:
     sys.excepthook, threading.excepthook = on_sys, on_thread
 
 
-def attach(jarvis) -> None:
-    """Hook de main.py : les exceptions, et les lignes d'erreur du journal de JARVIS. Le partage, la nuit, s'il est activé."""
+def attach(matthew_assistant) -> None:
+    """Hook de main.py : les exceptions, et les lignes d'erreur du journal de Matthew. Le partage, la nuit, s'il est activé."""
     install_hooks()
-    ui = getattr(jarvis, "ui", None)
+    ui = getattr(matthew_assistant, "ui", None)
     original = getattr(ui, "write_log", None)
     if original is not None and not getattr(original, "__incidents__", False):
         def write_log(text, *a, **k):

@@ -67,10 +67,10 @@ def _short_long():
 @check("3 nom : n'importe où dans la phrase, accents et casse ignorés")
 def _addressed():
     names = ["jarvis", "Édith"]
-    assert O.addressed("Dis-moi Jarvis, quelle heure ?", names)
+    assert O.addressed("Dis-moi Matthew, quelle heure ?", names)
     assert O.addressed("edith ouvre spotify", names)
     assert not O.addressed("le journal de vingt heures", names)
-    assert not O.addressed("jarvisien", names)
+    assert not O.addressed("de Matthew", names)
     assert O.addressed("Jarvie, ouvre le bloc note.", names), "prononciation française"
     assert not O.addressed("jardin", names) and not O.addressed("service", names)
     assert O._STAMP.sub(" ", "Il est 22h59. [mardi 13/10/2026 22:59]").strip() == "Il est 22h59."
@@ -181,7 +181,7 @@ def _hooks():
 @check("R1 voix système : une phrase synthétisée", real=True)
 def _tts():
     from offline import tts
-    pcm, rate = tts.shared("fr").synthesize("Jarvis, ouvre le bloc-notes.")
+    pcm, rate = tts.shared("fr").synthesize("Matthew, ouvre le bloc-notes.")
     assert len(pcm) > rate, len(pcm)
     _SHARED["tts"] = (pcm, rate)
     return f"{len(pcm) / 2 / rate:.1f} s à {rate} Hz"
@@ -208,9 +208,9 @@ def _ollama():
     assert picked, "Ollama absent ou sans modèle capable d'outils"
     called = []
     t = time.monotonic()
-    b = llm.Brain(*picked, O.SYSTEM.format(name="JARVIS"),
+    b = llm.Brain(*picked, O.SYSTEM.format(name="Matthew"),
                   {"current_time": tools.build(lambda *_: None)["current_time"]})
-    reply = b.ask("Jarvis, quelle heure est-il ?", on_tool=lambda n, a: called.append(n))
+    reply = b.ask("Matthew, quelle heure est-il ?", on_tool=lambda n, a: called.append(n))
     assert reply and "current_time" in called, (reply, called)
     first = time.monotonic() - t
     t = time.monotonic()
@@ -219,12 +219,12 @@ def _ollama():
     return f"{picked[0]} : « {reply} » ({first:.1f} s à froid, {time.monotonic() - t:.1f} s ensuite)"
 
 
-@check("R4 bout en bout : OfflineVoice entend « Jarvis, quelle heure est-il ? » et répond à voix haute", real=True)
+@check("R4 bout en bout : OfflineVoice entend « Matthew, quelle heure est-il ? » et répond à voix haute", real=True)
 def _end_to_end():
     import threading as th
 
     from offline import tts
-    pcm, rate = tts.shared("fr").synthesize("Jarvis, quelle heure est-il ?")
+    pcm, rate = tts.shared("fr").synthesize("Matthew, quelle heure est-il ?")
     a = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
     idx = np.linspace(0, len(a) - 1, int(len(a) * 16000 / rate))
     utterance = np.interp(idx, np.arange(len(a)), a).astype(np.int16).tobytes()
@@ -254,7 +254,7 @@ def _end_to_end():
     real_mic, real_play = audio.Microphone, audio.play
     audio.Microphone = FakeMic
     audio.play = lambda pcm, rate, device=None, mic=None: played.append(len(pcm))
-    v = O.OfflineVoice(lambda line: (log.append(line), line.startswith("JARVIS") and len(played) >= 1
+    v = O.OfflineVoice(lambda line: (log.append(line), line.startswith("Matthew") and len(played) >= 1
                                      and any(l.startswith("VOUS") for l in log) and done.set()),
                        language="fr", names=["jarvis"])
     try:
@@ -264,7 +264,7 @@ def _end_to_end():
         v.stop()
         audio.Microphone, audio.play = real_mic, real_play
     heard = next(l for l in log if l.startswith("VOUS"))
-    answer = [l for l in log if l.startswith("JARVIS")][-1]
+    answer = [l for l in log if l.startswith("Matthew")][-1]
     import re
     from datetime import datetime
     m = re.search(r"(\d{1,2})\s*(?:h|heures?|:)\s*(\d{2})?", answer)

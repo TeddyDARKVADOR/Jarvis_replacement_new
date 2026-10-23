@@ -1,14 +1,14 @@
 ﻿<#
   autostart_watcher.ps1 -- veilleur discret dans la barre des taches. Quand une
-  cle JARVIS est branchee, il DEMANDE l'autorisation (Oui / Non) de lancer JARVIS
+  cle Matthew est branchee, il DEMANDE l'autorisation (Oui / Non) de lancer Matthew
   sur ce PC. Rien ne demarre sans un « Oui ».
 
   A lancer UNE FOIS sur un PC (aucune installation, aucune trace laissee) :
       powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File <cle>\JARVIS\app\portable\autostart_watcher.ps1
 
-  Une icone apparait pres de l'horloge. Clic droit : « Lancer JARVIS maintenant »,
+  Une icone apparait pres de l'horloge. Clic droit : « Lancer Matthew maintenant »,
   « Quitter ». Au branchement d'une cle portant <lettre>\JARVIS\Lancer-JARVIS.bat,
-  une fenetre « Lancer JARVIS sur ce PC ? [Oui] [Non] » s'affiche ; Oui -> demarrage,
+  une fenetre « Lancer Matthew sur ce PC ? [Oui] [Non] » s'affiche ; Oui -> demarrage,
   Non -> on ne redemande pas pour cette cle tant qu'elle reste branchee.
 
   Windows a desactive l'autorun des cles USB depuis 2011 : ce veilleur (sans trace,
@@ -23,14 +23,14 @@ param(
 $ErrorActionPreference = 'Continue'
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing | Out-Null
 
-# Icone : celle de JARVIS si on la trouve a cote, sinon une icone systeme.
-$icoPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\jarvis.ico'
+# Icone : celle de Matthew si on la trouve a cote, sinon une icone systeme.
+$icoPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config\matthew_assistant.ico'
 try { $icon = if (Test-Path $icoPath) { New-Object System.Drawing.Icon $icoPath } else { [System.Drawing.SystemIcons]::Application } }
 catch { $icon = [System.Drawing.SystemIcons]::Application }
 
 $notify = New-Object System.Windows.Forms.NotifyIcon
 $notify.Icon = $icon
-$notify.Text = "JARVIS portable - veille le branchement de la cle"
+$notify.Text = "Matthew portable - veille le branchement de la cle"
 $notify.Visible = $true
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
@@ -44,7 +44,7 @@ function Launch-Key($drv) {
     $bat = Join-Path $drv 'JARVIS\Lancer-JARVIS.bat'
     Start-Process -FilePath $bat -WorkingDirectory (Split-Path $bat)
     $script:seen[$drv] = 'launched'
-    $notify.ShowBalloonTip(3000, "JARVIS portable", "Demarrage depuis $drv", [System.Windows.Forms.ToolTipIcon]::Info)
+    $notify.ShowBalloonTip(3000, "Matthew portable", "Demarrage depuis $drv", [System.Windows.Forms.ToolTipIcon]::Info)
 }
 $askScript = Join-Path $PSScriptRoot 'ask_launch.ps1'
 function Ask-On-Insert {
@@ -60,8 +60,8 @@ function Ask-On-Insert {
                 $yes = ($p.ExitCode -eq 0)
             } else {
                 $ans = [System.Windows.Forms.MessageBox]::Show(
-                    "Une cle JARVIS a ete branchee ($drv $($d.VolumeName)).`n`nLancer JARVIS sur ce PC ?",
-                    "JARVIS portable", [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                    "Une cle Matthew a ete branchee ($drv $($d.VolumeName)).`n`nLancer Matthew sur ce PC ?",
+                    "Matthew portable", [System.Windows.Forms.MessageBoxButtons]::YesNo,
                     [System.Windows.Forms.MessageBoxIcon]::Question)
                 $yes = ($ans -eq [System.Windows.Forms.DialogResult]::Yes)
             }
@@ -73,9 +73,9 @@ function Ask-On-Insert {
     }
 }
 
-$miLaunch = $menu.Items.Add("Lancer JARVIS maintenant")
+$miLaunch = $menu.Items.Add("Lancer Matthew maintenant")
 $miLaunch.add_Click({ $k = Find-Keys | Select-Object -First 1; if ($k) { Launch-Key $k.DeviceID } else {
-    $notify.ShowBalloonTip(3000,"JARVIS portable","Aucune cle JARVIS branchee.",[System.Windows.Forms.ToolTipIcon]::Warning) } })
+    $notify.ShowBalloonTip(3000,"Matthew portable","Aucune cle Matthew branchee.",[System.Windows.Forms.ToolTipIcon]::Warning) } })
 $ejectScript = Join-Path $PSScriptRoot 'eject.ps1'
 $miEject = $menu.Items.Add("Ejecter la cle en securite")
 $miEject.add_Click({
@@ -83,7 +83,7 @@ $miEject.add_Click({
     if ($k -and (Test-Path $ejectScript)) {
         Start-Process powershell -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$ejectScript`"",'-Drive',$k.DeviceID)
     } else {
-        $notify.ShowBalloonTip(3000,"JARVIS portable","Aucune cle JARVIS a ejecter.",[System.Windows.Forms.ToolTipIcon]::Warning)
+        $notify.ShowBalloonTip(3000,"Matthew portable","Aucune cle Matthew a ejecter.",[System.Windows.Forms.ToolTipIcon]::Warning)
     }
 })
 $miQuit = $menu.Items.Add("Quitter")
@@ -103,6 +103,6 @@ if ($ValidateOnly) {
 
 $timer.Start()
 Ask-On-Insert
-$notify.ShowBalloonTip(3000, "JARVIS portable", "Je veille le branchement de ta cle. Clic droit pour le menu.", [System.Windows.Forms.ToolTipIcon]::Info)
+$notify.ShowBalloonTip(3000, "Matthew portable", "Je veille le branchement de ta cle. Clic droit pour le menu.", [System.Windows.Forms.ToolTipIcon]::Info)
 [System.Windows.Forms.Application]::Run()
 $notify.Dispose()

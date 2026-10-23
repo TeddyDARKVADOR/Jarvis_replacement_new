@@ -45,7 +45,7 @@ class RemoteBackend:
 
         session = self._session()
         if session is None:
-            return {"error": "JARVIS n'est pas connecté — réessayez une fois la liaison établie."}
+            return {"error": "Matthew n'est pas connecté — réessayez une fois la liaison établie."}
         base, bearer = session
         try:
             r = requests.post(f"{base}/api/assistant", json={"op": op, "data": data or {}},
@@ -60,13 +60,13 @@ class RemoteBackend:
             return {"error": f"réponse illisible (HTTP {r.status_code})"}
 
     def attach_file(self, path: str) -> dict:
-        """Upload to Oracle; the server's newest upload is the file JARVIS reads
+        """Upload to Oracle; the server's newest upload is the file Matthew reads
         when asked to analyse "this file" (server/headless_ui.current_file)."""
         import requests
 
         session = self._session()
         if session is None:
-            return {"error": "JARVIS n'est pas connecté."}
+            return {"error": "Matthew n'est pas connecté."}
         p = Path(path)
         if not p.is_file():
             return {"error": "fichier introuvable"}

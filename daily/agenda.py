@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
-USER_AGENT = "jarvis-daily/1"
+USER_AGENT = "matthew-assistant-daily/1"
 
 
 @dataclass

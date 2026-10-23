@@ -87,7 +87,7 @@ from memory.memory_manager import (
 # imported or declared here — they self-describe via a TOOL dict in their own
 # actions/*.py file and are auto-discovered by core.action_loader at startup.
 # Only tools that are tied to live-session state stay inline in this file
-# (screen_process, close_camera, save_memory, manage_monitor, shutdown_jarvis,
+# (screen_process, close_camera, save_memory, manage_monitor, shutdown_matthew_assistant,
 # system_status).
 from actions.screen_processor  import _capture_camera, _capture_screen
 from actions.system_monitor    import SystemMonitor, get_system_status
@@ -155,7 +155,7 @@ def _get_api_key() -> str:
 
     Plusieurs comptes → plusieurs clés : `gemini_api_keys` (liste) dans la config,
     `gemini_api_key` (clé unique, historique), et des clés injectées par le PC hôte
-    via l'env `JARVIS_GEMINI_KEYS` (séparées par des virgules — utile en portable :
+    via l'env `MATTHEW_ASSISTANT_GEMINI_KEYS` (séparées par des virgules — utile en portable :
     la clé de la machine s'ajoute à celles de la clé USB). Le pool est confié à
     resilience/, qui bascule de clé quand l'une épuise son quota du jour. Avec une
     seule clé, comportement identique à avant.
@@ -170,7 +170,7 @@ def _get_api_key() -> str:
     single = str(cfg.get("gemini_api_key") or "").strip()
     if single:
         pool.append(single)
-    for k in os.environ.get("JARVIS_GEMINI_KEYS", "").split(","):
+    for k in (os.environ.get("MATTHEW_ASSISTANT_GEMINI_KEYS") or os.environ.get("JARVIS_GEMINI_KEYS", "")).split(","):
         if k.strip():
             pool.append(k.strip())
     try:
@@ -208,7 +208,7 @@ TOOL_DECLARATIONS = [
     # handling is woven into live-session state — vision capture/injection,
     # camera stream, memory writes, the monitor engine, and shutdown. All other
     # tools live in their own action file and are auto-discovered by
-    # core.action_loader (see JarvisLive.__init__).
+    # core.action_loader (see MatthewAssistantLive.__init__).
     {
         "name": "system_status",
         "description": (
@@ -279,11 +279,11 @@ TOOL_DECLARATIONS = [
         },
     },
     {
-        "name": "shutdown_jarvis",
+        "name": "shutdown_matthew_assistant",
         "description": (
             "Shuts down the assistant completely. "
             "Call this when the user expresses intent to end the conversation, "
-            "close the assistant, say goodbye, or stop Jarvis. "
+            "close the assistant, say goodbye, or stop Matthew. "
             "The user can say this in ANY language."
         ),
         "parameters": {
@@ -382,7 +382,7 @@ _COMPACT_TOOL_DESCRIPTIONS = {
         "monitoring X'). Never crypto, financial or trading topics."
     ),
     "system_status": "Real-time CPU, RAM, GPU, temperature, uptime and process count of this machine.",
-    "shutdown_jarvis": "Shut the assistant down when the user says goodbye or asks to stop it, in any language.",
+    "shutdown_matthew_assistant": "Shut the assistant down when the user says goodbye or asks to stop it, in any language.",
     "repository_review": (
         "Inspect a local code repository: mode=overview first, then mode=inspect with a focused "
         "question. Bounded excerpts, secrets excluded, findings cited by path:line."
@@ -403,14 +403,14 @@ _COMPACT_TOOL_DESCRIPTIONS = {
         "tabs, zoom, screenshots, and power. Shutdown, restart, and Wi-Fi changes require HUD confirmation."
     ),
     "computer_control": "Control keyboard and mouse, click or find screen elements, capture screenshots, and read or paste clipboard text.",
-    "save_memory": "Save a durable fact, preference, project detail, relationship, or personal context the user asked Jarvis to remember.",
+    "save_memory": "Save a durable fact, preference, project detail, relationship, or personal context the user asked Matthew to remember.",
     "screen_process": "Capture and analyze the screen or webcam when asked what is visible. Use one capture; choose primary, secondary, or all displays as requested. Camera live view stays open until close_camera is called.",
     "game_updater": "Manage Steam or Epic games: list, install, update, check status, or schedule updates. Use only for Steam/Epic; never use browser or web search for these actions.",
     "code_helper": "Explain, edit, fix, run, or optimize one existing code file; write edits to the requested path. Use code_studio for creating or building a project.",
     "file_controller": "Manage files and folders: list, find, read, create, write, move, copy, rename, or delete.",
     "web_search": "Search current facts, news, research, prices, or comparisons. Use the matching mode and keep findings concise with source links.",
     "recall_memory": "Search stored personal facts not present in the prompt. Use before guessing personal context; leave query empty to list all.",
-    "undo": "Reverse Jarvis's latest reversible file or setting change, or list available changes when asked.",
+    "undo": "Reverse Matthew's latest reversible file or setting change, or list available changes when asked.",
 }
 
 
@@ -567,7 +567,7 @@ def _keep_context_of(exc: BaseException) -> bool:
     return True
 
 
-class JarvisLive:
+class MatthewAssistantLive:
     def __init__(self, ui):
         # `ui` is whatever draws this assistant: `local_hud.LocalUI` on a
         # desktop, `server.headless_ui.HeadlessUI` on Oracle. Both have the
@@ -701,7 +701,7 @@ class JarvisLive:
             from extensions import manager as _ext
             _ext.attach(self, log=self.ui.write_log)
             import plugins.extensions_manager as _ext_tool
-            _ext_tool._JARVIS = self
+            _ext_tool._MATTHEW_ASSISTANT = self
         except Exception:
             pass
 
@@ -1064,6 +1064,8 @@ class JarvisLive:
 
     async def _execute_tool(self, fc) -> types.FunctionResponse:
         name = fc.name
+        if name == "shutdown_jarvis":   # nom d'avant le renommage : un modèle Matthew déjà entraîné l'emploie encore
+            name = "shutdown_matthew_assistant"
         args = dict(fc.args or {})
 
         print(f"[Matthew] 🔧 {name}  {args}")
@@ -1160,7 +1162,7 @@ class JarvisLive:
                 else:
                     result = "Specify action (add/remove/list) and a topic."
 
-            elif name == "shutdown_jarvis":
+            elif name == "shutdown_matthew_assistant":
                 self.ui.write_log("SYS: Shutdown requested.")
                 async def _do_shutdown():
                     await self._save_session_summary()
@@ -1256,8 +1258,8 @@ class JarvisLive:
                     det.feed(indata)
                 return
             with self._speaking_lock:
-                jarvis_speaking = self._is_speaking
-            if not jarvis_speaking and not self.ui.muted and not self._phone_active:
+                matthew_assistant_speaking = self._is_speaking
+            if not matthew_assistant_speaking and not self.ui.muted and not self._phone_active:
                 data = indata.tobytes()
                 loop.call_soon_threadsafe(
                     self.out_queue.put_nowait,

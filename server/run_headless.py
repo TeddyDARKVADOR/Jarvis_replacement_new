@@ -22,13 +22,13 @@ WHAT IT DOES, IN ORDER, AND WHY THE ORDER MATTERS
        see deployment/. Pass --firewall to restore the original behaviour.
 
     3. Subclass DashboardServer so the moment one is constructed (inside
-       JarvisLive.run()) we can seed the persistent device credential, graft
+       MatthewAssistantLive.run()) we can seed the persistent device credential, graft
        /health, /status and /ws/phone-out onto its app, and hand the UI its
        broadcast channel. main.py's `from dashboard.server import
        DashboardServer` then picks up the subclass — the import happens inside
        run(), after this patch.
 
-    4. Build the same JarvisLive, with the same tools, memory and reconnect
+    4. Build the same MatthewAssistantLive, with the same tools, memory and reconnect
        loop, and run it.
 
 NOT DONE HERE, DELIBERATELY
@@ -97,12 +97,12 @@ _BUILT: tuple | None = None
 
 
 def build(echo: bool = True, allow_firewall: bool = False):
-    """Wire everything and return (jarvis, ui, state, hub) without running.
+    """Wire everything and return (matthew_assistant, ui, state, hub) without running.
 
     Split out from main() so selftest can exercise the wiring without a Gemini
     key and without opening a socket.
 
-    Idempotent: a process has exactly one JarvisLive, one audio hub and one set
+    Idempotent: a process has exactly one MatthewAssistantLive, one audio hub and one set
     of sys.modules stand-ins, so a second call hands back the first result
     rather than building a second assistant on top of the first."""
     global _BUILT
@@ -171,7 +171,7 @@ def build(echo: bool = True, allow_firewall: bool = False):
         except Exception as exc:
             print(f"[Assistant] route non montee : {exc}", flush=True)
         # What a paired device asks of the brain it has no key for: meeting
-        # minutes today (server/assist.py). JarvisLive does not exist yet at
+        # minutes today (server/assist.py). MatthewAssistantLive does not exist yet at
         # this point, hence the getter.
         try:
             from server import assist
@@ -182,7 +182,7 @@ def build(echo: bool = True, allow_firewall: bool = False):
         # The two client→server capabilities the headless host adds. Both bind a
         # remote button to a function that already existed — no second command
         # path, no second authority. `main.py` is untouched: it has already put
-        # `interrupt` on the UI object (JarvisLive.__init__) and already bound
+        # `interrupt` on the UI object (MatthewAssistantLive.__init__) and already bound
         # core/confirm.py to that UI, so both ends of each wire are in place and
         # this only joins them.
         dash.set_interrupt_callback(_remote_interrupt)
@@ -197,7 +197,7 @@ def build(echo: bool = True, allow_firewall: bool = False):
     _patch_dashboard(_on_dashboard, allow_firewall, log=print)
 
     ui.wait_for_api_key()
-    jarvis = main.JarvisLive(ui)
+    matthew_assistant = main.MatthewAssistantLive(ui)
 
     # Wrap the action registry so a tool call is addressed before it is run.
     #
@@ -206,19 +206,19 @@ def build(echo: bool = True, allow_firewall: bool = False):
     # `run()`. The wrapper delegates everything and only interposes on `run`;
     # with no device registered it forwards straight through, so a server with
     # no clients behaves exactly as it did before.
-    routing.install(jarvis, device_hub, log=lambda m: print(m, flush=True))
+    routing.install(matthew_assistant, device_hub, log=lambda m: print(m, flush=True))
 
     # The only honest answer to "is the Live session up?" is the object that
     # owns it. Everything /status reports about the link comes from here.
-    state.bind_session_probe(lambda: jarvis.session is not None)
-    state.bind_extra_probe(lambda: _extras(jarvis, device_hub))
+    state.bind_session_probe(lambda: matthew_assistant.session is not None)
+    state.bind_extra_probe(lambda: _extras(matthew_assistant, device_hub))
 
-    _BUILT = (jarvis, ui, state, hub)
+    _BUILT = (matthew_assistant, ui, state, hub)
     return _BUILT
 
 
-def _extras(jarvis, device_hub: DeviceHub | None = None) -> dict:
-    """Facts /status reports that only JarvisLive knows. Read-only, and every
+def _extras(matthew_assistant, device_hub: DeviceHub | None = None) -> dict:
+    """Facts /status reports that only MatthewAssistantLive knows. Read-only, and every
     lookup is defensive: /status must never be the thing that breaks."""
     out: dict = {}
     if device_hub is not None:
@@ -232,13 +232,13 @@ def _extras(jarvis, device_hub: DeviceHub | None = None) -> dict:
             pass
     try:
         out["tools"] = {
-            "actions": len(jarvis._action_registry.names()),
-            "plugins": len(jarvis._plugin_registry.get_tool_declarations()),
+            "actions": len(matthew_assistant._action_registry.names()),
+            "plugins": len(matthew_assistant._plugin_registry.get_tool_declarations()),
         }
     except Exception:
         pass
     try:
-        out["wake"] = {"enabled": jarvis._wake_enabled, "awake": jarvis._awake}
+        out["wake"] = {"enabled": matthew_assistant._wake_enabled, "awake": matthew_assistant._awake}
     except Exception:
         pass
     try:
@@ -247,12 +247,12 @@ def _extras(jarvis, device_hub: DeviceHub | None = None) -> dict:
         # False after one second of silence. Without it, /status can see the
         # phone's *downlink* socket but has no idea whether its microphone is
         # still streaming — which is exactly the question a screen-off test asks.
-        out["phone_mic_streaming"] = bool(jarvis._phone_active)
+        out["phone_mic_streaming"] = bool(matthew_assistant._phone_active)
     except Exception:
         pass
     try:
         # Not the handle itself — that is a credential for the conversation.
-        out["session_resumable"] = jarvis._resume_handle is not None
+        out["session_resumable"] = matthew_assistant._resume_handle is not None
     except Exception:
         pass
     try:
@@ -286,7 +286,7 @@ def main() -> int:
 
     import asyncio
 
-    jarvis, ui, state, _hub = build(echo=not args.quiet,
+    matthew_assistant, ui, state, _hub = build(echo=not args.quiet,
                                     allow_firewall=args.firewall)
 
     def _term(_sig, _frm):
@@ -304,24 +304,24 @@ def main() -> int:
     async def _watch_link():
         while True:
             try:
-                state.note_link(jarvis.session is not None)
+                state.note_link(matthew_assistant.session is not None)
             except Exception:
                 pass
             await asyncio.sleep(1.0)
 
-    _original_run = jarvis.run
+    _original_run = matthew_assistant.run
 
     async def _run_with_watch():
         asyncio.ensure_future(_watch_link())
         await _original_run()
 
-    jarvis.run = _run_with_watch
+    matthew_assistant.run = _run_with_watch
 
     state.set(State.CONNECTING)
     print("[Headless] MARK LIII starting — main.py, actions, plugins and "
           "memory unchanged.", flush=True)
     try:
-        asyncio.run(jarvis.run())
+        asyncio.run(matthew_assistant.run())
     except KeyboardInterrupt:
         print("\n[Headless] stopped.", flush=True)
     return 0

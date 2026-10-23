@@ -1,5 +1,5 @@
 """
-offline/tools.py — ce que JARVIS peut encore faire sans réseau.
+offline/tools.py — ce que Matthew peut encore faire sans réseau.
 
 Les actions de actions/ sont réutilisées telles quelles (core.action_loader),
 mais seulement celles qui marchent sans Gemini ni Internet : ouvrir une

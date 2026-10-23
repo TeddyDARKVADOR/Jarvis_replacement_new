@@ -1,12 +1,12 @@
 {
-  "schema": "jarvis.graph/1",
+  "schema": "matthew_assistant.graph/1",
   "id": "context",
   "title": "Contexte et proactivité — quand parler, et par où",
-  "updated": "2026-10-15",
-  "summary": "Ce que JARVIS sait de votre situation (téléphone, poste local) et ce qu'il a le droit d'en faire : parler, notifier, différer ou se taire. Plus les sources de messages proactifs : check-ins, veille de sujets, alertes.",
+  "updated": "2026-10-23",
+  "summary": "Ce que Matthew sait de votre situation (téléphone, poste local) et ce qu'il a le droit d'en faire : parler, notifier, différer ou se taire. Plus les sources de messages proactifs : check-ins, veille de sujets, alertes.",
   "replaces": ["context/README.md"],
   "nodes": [
-    {"id": "context", "label": "context/", "kind": "racine", "summary": "Paquet autonome : il n'importe rien de main.py, core/, dashboard/, actions/ ni server/. Le supprimer rend JARVIS identique à v1.0-jarvis-24-7.", "files": ["context/__init__.py"], "test": "python -m context.selftest", "status": "ok", "verified": "2026-10-13 — context.selftest : 33/33"},
+    {"id": "context", "label": "context/", "kind": "racine", "summary": "Paquet autonome : il n'importe rien de main.py, core/, dashboard/, actions/ ni server/. Le supprimer rend Matthew identique à v1.0-jarvis-24-7.", "files": ["context/__init__.py"], "test": "python -m context.selftest", "status": "ok", "verified": "2026-10-13 — context.selftest : 33/33"},
     {"id": "m.model", "label": "model.py", "kind": "module", "status": "ok", "summary": "Le vocabulaire : Priority, Channel, Route, Situation, DeviceState, Decision. Aucune logique.", "files": ["context/model.py"]},
     {"id": "m.situation", "label": "situation.py", "kind": "module", "status": "ok", "summary": "Des faits bruts à UNE situation, avec le raisonnement gardé. Pur et testable.", "files": ["context/situation.py"]},
     {"id": "m.store", "label": "store.py", "kind": "module", "status": "ok", "summary": "Ce que le téléphone a dit, thread-safe, avec péremption (300 s).", "files": ["context/store.py"]},
@@ -23,7 +23,7 @@
     {"id": "f.android_report", "label": "Rapport du téléphone", "kind": "fonction", "status": "ok", "summary": "DeviceStateReporter.kt rapporte toutes les 30 s et à chaque changement (écran, casque, sonnerie, DND) ; battement à 120 s, moitié du TTL serveur. Aucune permission nouvelle.", "files": ["client-android/app/src/main/java/com/jarvis/device/DeviceStateReporter.kt"]},
     {"id": "d.reglages", "label": "Réglages (namespace context)", "kind": "donnee", "summary": "quiet_start_hour/quiet_end_hour 23/7 · asleep_idle_s 1800 · active_idle_s 300 · device_ttl_s 300 · vehicle_confidence 70 · car_bluetooth_names (à compléter). context.reset() relit.", "files": ["context/__init__.py"]},
     {"id": "l.voiture", "label": "Détection de la voiture", "kind": "limite", "status": "partiel", "summary": "Sans ACTIVITY_RECOGNITION ni localisation (refusées par le manifeste), DRIVING ne se déclenche que par le nom Bluetooth de l'autoradio, déclaré côté serveur dans car_bluetooth_names.", "files": ["context/situation.py"]},
-    {"id": "p.retrait", "label": "Test de retrait", "kind": "procedure", "summary": "Déplacer context/ hors du dépôt et lancer python main.py : JARVIS doit se comporter comme V1 ; en cas de doute, se taire est le bon échec.", "files": ["context/__init__.py"]}
+    {"id": "p.retrait", "label": "Test de retrait", "kind": "procedure", "summary": "Déplacer context/ hors du dépôt et lancer python main.py : Matthew doit se comporter comme V1 ; en cas de doute, se taire est le bon échec.", "files": ["context/__init__.py"]}
   ],
   "edges": [
     ["context", "m.model", "contient"],

@@ -231,7 +231,7 @@ def cmd_scale(args) -> int:
         "verdicts": dict(counts), "duplicate_rate": cm["duplicate_rate"],
         "invalid_rate": cm["invalid_rate"], "mean_novelty": cm["mean_novelty"],
         "features": sum(cm["features"].values()), "clusters": len(tri["clusters"]),
-        "new_candidates": by_class["jarvis-candidate"] + by_class["jarvis-crash"],
+        "new_candidates": by_class["matthew-assistant-candidate"] + by_class["matthew-assistant-crash"],
         "known": by_class["known"], "disputed": by_class["oracle-disputed"],
         "triage_s": round(tri_s, 1), "llm_calls": 0, "llm_cost": 0.0,
     }

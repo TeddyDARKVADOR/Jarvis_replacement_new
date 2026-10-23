@@ -27,7 +27,7 @@ from .theme import INK, MUTED, OK, SKY, WARN
 from .theme import ERROR as ERROR_COLOUR
 
 _ICON_CANDIDATES = (
-    Path(__file__).resolve().parent.parent.parent / "config" / "jarvis.ico",
+    Path(__file__).resolve().parent.parent.parent / "config" / "matthew_assistant.ico",
 )
 
 _LINK_COLOURS = {
@@ -40,7 +40,7 @@ _LINK_COLOURS = {
 
 
 def _fallback_icon(colour) -> QIcon:  # noqa: ANN001
-    """A lit dot, drawn, for when `config/jarvis.ico` is not where we expect.
+    """A lit dot, drawn, for when `config/matthew_assistant.ico` is not where we expect.
 
     The client must still start from a checkout missing that file — an icon is
     not a reason to refuse to run.
@@ -58,7 +58,7 @@ def _fallback_icon(colour) -> QIcon:  # noqa: ANN001
     return QIcon(pixmap)
 
 
-class JarvisTray(QSystemTrayIcon):
+class MatthewAssistantTray(QSystemTrayIcon):
     """The menu, the icon, and every notification the client raises."""
 
     show_hud = pyqtSignal()

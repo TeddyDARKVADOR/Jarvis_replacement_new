@@ -1,4 +1,4 @@
-# JARVIS on a desktop — `python setup.py` installs this, for your OS only.
+# Matthew on a desktop — `python setup.py` installs this, for your OS only.
 # (The Oracle server installs deployment/requirements-server.txt instead.)
 
 # ── The HUD, audio, Gemini Live ──────────────────────────────────────────────
@@ -7,7 +7,7 @@ PyQt6-WebEngine          # the HUD is a web page in Qt
 sounddevice
 numpy
 google-genai>=2.8.0
-websockets               # the HUD's link to JARVIS on Oracle
+websockets               # the HUD's link to Matthew on Oracle
 
 # ── Web search & browser control ─────────────────────────────────────────────
 requests
@@ -36,7 +36,7 @@ python-pptx
 openpyxl
 pypdf                    # PDF text (file_processor), successor of PyPDF2
 
-# ── The dashboard JARVIS serves (phone, uploads, local mode's QR pairing) ────
+# ── The dashboard Matthew serves (phone, uploads, local mode's QR pairing) ────
 fastapi
 uvicorn[standard]
 cryptography
@@ -60,14 +60,14 @@ soundcard                # the computer's own sound (WASAPI loopback, PulseAudio
                          # PipeWire monitor) + the mic. Linux: needs PulseAudio or
                          # pipewire-pulse running. macOS: mic only (no loopback).
 
-# ── Pilot (pilot/): JARVIS operates any app ──────────────────────────────────
+# ── Pilot (pilot/): Matthew operates any app ──────────────────────────────────
 # Windows: nothing more (UI Automation via comtypes, pyautogui, mss, pillow above).
 # Linux: the accessibility tree comes from the system, not pip:
 #   sudo apt install python3-gi gir1.2-atspi-2.0 at-spi2-core
 #   (and on Wayland: wdotool, or ydotool + wtype, to click and type;
 #    grim / gnome-screenshot / spectacle for screenshots).
 # macOS: pip install pyobjc-framework-ApplicationServices pyobjc-framework-Cocoa,
-#   then allow JARVIS in Settings → Privacy & Security → Accessibility.
+#   then allow Matthew in Settings → Privacy & Security → Accessibility.
 
 # ── Windows-only (pip skips these automatically on macOS / Linux) ────────────
 comtypes;   sys_platform == "win32"

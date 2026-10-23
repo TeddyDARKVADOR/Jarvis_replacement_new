@@ -1,5 +1,5 @@
 """
-cognition_goals — objectifs persistants : JARVIS propose, l'utilisateur dispose.
+cognition_goals — objectifs persistants : Matthew propose, l'utilisateur dispose.
 
 Plugin ordinaire (graphe contrat, cas 1), et le SEUL pont entre
 cognition/ et core/confirm.py. Le modèle peut proposer, noter un progrès,
@@ -90,11 +90,11 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
             return f"Progress noted: {cog.goals.describe(after)}"
         if action == "request_completion":
             return _ask(cog, "goal_done", f"Objectif atteint ? {g['title'][:80]}",
-                        f"Preuve avancée par JARVIS : {note[:200] or '(aucune)'}",
+                        f"Preuve avancée par Matthew : {note[:200] or '(aucune)'}",
                         lambda: cog.goal_complete(gid, note))
         if action == "request_cancel":
             return _ask(cog, "goal_cancel", f"Annuler l'objectif : {g['title'][:80]}",
-                        note[:200] or "Demandé par JARVIS", lambda: cog.goal_cancel(gid, note))
+                        note[:200] or "Demandé par Matthew", lambda: cog.goal_cancel(gid, note))
         if action == "request_approval":
             if g["status"] not in ("proposed", "blocked"):
                 return f"This goal is {g['status']}; nothing to approve."

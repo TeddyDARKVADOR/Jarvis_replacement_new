@@ -1,4 +1,4 @@
-# ── JARVIS — what never belongs in the repository ──────────────────────────
+# ── Matthew — what never belongs in the repository ──────────────────────────
 # Everything listed here is created by the app on first run. A fresh clone with
 # none of it present boots straight to the setup screen, which is the intended
 # first experience — so nothing here needs to be committed, and some of it must
@@ -68,13 +68,13 @@ logs/
 downloads/
 screenshots/
 
-# ── jarvis-preprod : ce qu'une campagne produit ───────────────────────────────
+# ── matthew-assistant-preprod : ce qu'une campagne produit ───────────────────────────────
 #
 # reports/latest est effacé au début de chaque campagne (fresh_reports), et
 # server.pid désigne un processus qui n'existe plus sur une autre machine.
 # Le laboratoire est du source ; ses verdicts, ses captures et ses logcat sont
 # des observations datées, qui se rejouent au lieu de se versionner.
-jarvis-preprod/reports/
+matthew-assistant-preprod/reports/
 
 # ── eval_lab : ce qu'un run produit ─────────────────────────────────────────
 #

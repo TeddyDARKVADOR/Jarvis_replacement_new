@@ -1,11 +1,11 @@
 """
-plugins/incidents.py — les erreurs réelles de JARVIS (paquet incidents/), et leur partage avec Night Shift.
+plugins/incidents.py — les erreurs réelles de Matthew (paquet incidents/), et leur partage avec Night Shift.
 """
 
 PLUGIN = {
     "name": "incidents",
     "description": (
-        "JARVIS's own real errors over the last 7 days, grouped by kind and counted, most frequent first — what "
+        "Matthew's own real errors over the last 7 days, grouped by kind and counted, most frequent first — what "
         "the tests don't catch. Actions: status (« quelles erreurs tu as eues ? ») · share with value on|off "
         "(send an anonymised digest — signatures and counts only — to the PUBLIC Night Shift data branch each "
         "night, so the nightly report ranks them; ask the user to confirm they accept it is public) · push (send "

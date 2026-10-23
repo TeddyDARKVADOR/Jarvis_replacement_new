@@ -52,7 +52,7 @@ CAVEAT = ("Les suites déterministes mesurent les mécanismes de l'architecture,
 
 class _Tmp:
     def __init__(self):
-        self.dir = Path(tempfile.mkdtemp(prefix="jarvis-cognition-eval-"))
+        self.dir = Path(tempfile.mkdtemp(prefix="matthew-assistant-cognition-eval-"))
         self.n = 0
 
     def cog(self, name: str | None = None, **kw) -> Cognition:

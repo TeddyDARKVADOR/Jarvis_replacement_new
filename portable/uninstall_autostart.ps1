@@ -5,7 +5,7 @@
       powershell -ExecutionPolicy Bypass -File uninstall_autostart.ps1
 #>
 $ErrorActionPreference = 'Stop'
-$taskName = 'JARVIS portable (veilleur de cle)'
+$taskName = 'Matthew portable (veilleur de cle)'
 
 $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 if ($null -eq $task) {
@@ -13,4 +13,4 @@ if ($null -eq $task) {
     return
 }
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-Write-Host "Tache '$taskName' retiree. Ce PC ne garde plus aucune trace de JARVIS portable."
+Write-Host "Tache '$taskName' retiree. Ce PC ne garde plus aucune trace de Matthew portable."

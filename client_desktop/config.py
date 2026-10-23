@@ -1,10 +1,10 @@
 """
 Where this client keeps its settings, and why not in the repository.
 
-`%LOCALAPPDATA%\\JarvisDesktop\\settings.json`.
+`%LOCALAPPDATA%\\MatthewAssistantDesktop\\settings.json`.
 
 Not `config/` next to `api_keys.json`, for two reasons. The device token is a
-password — it is full control of JARVIS — and a secret inside a git working
+password — it is full control of Matthew — and a secret inside a git working
 tree is one `git add -A` away from being published, whatever `.gitignore` says
 today. And this file is *per-installation* state, not part of the program: a
 `git clean -xdf` should not log the workstation out.
@@ -25,7 +25,8 @@ from pathlib import Path
 
 from .protocol import ServerEndpoint
 
-APP_DIR_NAME = "JarvisDesktop"
+APP_DIR_NAME = "MatthewAssistantDesktop"
+LEGACY_APP_DIR_NAME = "JarvisDesktop"   # before the rename (2026-10-23): still used if it is the only one
 SETTINGS_FILE = "settings.json"
 
 
@@ -36,7 +37,8 @@ def settings_dir() -> Path:
         base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / "Library" / "Application Support")
     else:
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    return Path(base) / APP_DIR_NAME
+    new, old = Path(base) / APP_DIR_NAME, Path(base) / LEGACY_APP_DIR_NAME
+    return old if old.is_dir() and not new.exists() else new
 
 
 def settings_path() -> Path:
@@ -84,7 +86,7 @@ class Settings:
 
     # ── the HUD ──────────────────────────────────────────────────────────────
     #: The user's colour. Everything decorative is drawn in it; the colours that
-    #: say what JARVIS is doing (listening, thinking, error) stay fixed.
+    #: say what Matthew is doing (listening, thinking, error) stay fixed.
     accent: str = "#7DD3FC"
     sound: bool = True
     sound_volume: float = 0.35
@@ -151,7 +153,7 @@ def load() -> Settings:
         data = {}
 
     # The HUD's look used to live in a second file, hud.json. Folded in once:
-    # one machine, one settings file, whichever mode JARVIS runs in.
+    # one machine, one settings file, whichever mode Matthew runs in.
     legacy = path.with_name("hud.json")
     if legacy.is_file():
         try:

@@ -1,5 +1,5 @@
 """
-server/runtime_state.py — what JARVIS is doing, in one readable place.
+server/runtime_state.py — what Matthew is doing, in one readable place.
 
 WHY THIS EXISTS AT ALL
     main.py already knows its own state: it calls ui.set_state("LISTENING") /
@@ -13,9 +13,9 @@ WHY THIS EXISTS AT ALL
     snapshot() asks it directly through `bind_session_probe`.
 
 WHY THE PROBE INSTEAD OF PARSING LOG TEXT
-    The first sketch derived "connected" from log strings ("SYS: JARVIS
+    The first sketch derived "connected" from log strings ("SYS: Matthew
     online."). That works until somebody rephrases a log line, and then /status
-    lies without a single test failing. `jarvis.session is not None` is the same
+    lies without a single test failing. `matthew_assistant.session is not None` is the same
     fact read from the object that owns it, and it cannot drift.
 """
 from __future__ import annotations
@@ -91,7 +91,7 @@ class RuntimeState:
         self._link_since: float | None = None
         self._longest_session = 0.0
 
-        # () -> bool | None. Set by run_headless to `jarvis.session is not None`.
+        # () -> bool | None. Set by run_headless to `matthew_assistant.session is not None`.
         self._session_probe = None
         # () -> dict. Optional extra facts (wake word state, registry sizes).
         self._extra_probe = None
@@ -123,7 +123,7 @@ class RuntimeState:
             self._counts["sessions"] += 1
 
     def note_link(self, live: bool) -> None:
-        """Fed by a 1 s poll of `jarvis.session is not None` (run_headless).
+        """Fed by a 1 s poll of `matthew_assistant.session is not None` (run_headless).
 
         Counting Live sessions is what turns "it seems stable" into a number:
         a 24/7 run is judged on how many times the link came back, and on the

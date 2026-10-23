@@ -1,16 +1,16 @@
 ﻿<#
-  farewell.ps1 -- animation de retrait de JARVIS portable (extinction du reacteur).
+  farewell.ps1 -- animation de retrait de Matthew portable (extinction du reacteur).
 
   Sequence « power-down » : flash du coeur, onde de choc qui se propage, anneaux
   qui se dispersent et s'effacent, le coeur s'eteint, puis le message
-  « JARVIS se retire — rien laisse sur ce PC ». Fermeture auto (~3 s).
+  « Matthew se retire — rien laisse sur ce PC ». Fermeture auto (~3 s).
 
       powershell -STA -File farewell.ps1 [-Message "..."] [-Accent "#00E5FF"]
                  [-ReduceMotion] [-SettingsFile <portable.json>] [-ValidateOnly]
 #>
 [CmdletBinding()]
 param(
-    [string]$Message = "JARVIS se retire — rien laissé sur ce PC.",
+    [string]$Message = "Matthew se retire — rien laissé sur ce PC.",
     [string]$MessageFile,
     [string]$Accent = "#00E5FF",
     [switch]$ReduceMotion,

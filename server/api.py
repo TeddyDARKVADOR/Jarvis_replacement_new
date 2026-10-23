@@ -9,15 +9,15 @@ WHY GRAFTED AND NOT A SECOND SERVER
     a plain FastAPI instance, so the three missing pieces are added to it:
 
         GET  /health          liveness. No auth — see the note below.
-        GET  /status          what JARVIS is doing. Bearer token required.
-        WS   /ws/phone-out    JARVIS's voice, 24 kHz PCM, to the phone.
+        GET  /status          what Matthew is doing. Bearer token required.
+        WS   /ws/phone-out    Matthew's voice, 24 kHz PCM, to the phone.
 
     Nothing existing is replaced or wrapped. If this module is never called,
     dashboard/server.py behaves exactly as it does today.
 
 /ws/phone-out COMPLETES THE LOOP
     The uplink has been there all along (/ws/phone-audio → _relay_phone_audio →
-    Gemini). The downlink was the missing half: JARVIS's voice went to the
+    Gemini). The downlink was the missing half: Matthew's voice went to the
     desktop speakers and nowhere else. With audio_bridge standing in for the
     sound card, _play_audio's writes arrive here instead — unmodified, still
     batched at ~200 ms, still cut short by interrupt().
@@ -60,15 +60,15 @@ def attach(dashboard, *, state, hub, sample_rate: int = DEFAULT_SAMPLE_RATE,
     how this was found.
     """
     app = dashboard.app
-    if getattr(app.state, "jarvis_attached", False):
+    if getattr(app.state, "matthew_assistant_attached", False):
         raise RuntimeError(
             "server.api.attach() was already called on this dashboard. The "
             "routes are bound to the first state/hub and a second set would be "
-            "shadowed. Reuse app.state.jarvis_state / app.state.jarvis_hub."
+            "shadowed. Reuse app.state.matthew_assistant_state / app.state.matthew_assistant_hub."
         )
-    app.state.jarvis_attached = True
-    app.state.jarvis_state = state
-    app.state.jarvis_hub = hub
+    app.state.matthew_assistant_attached = True
+    app.state.matthew_assistant_state = state
+    app.state.matthew_assistant_hub = hub
 
     # The notification hub needs the dashboard to broadcast through, and this is
     # the one function that already holds it. Binding here rather than in
@@ -150,7 +150,7 @@ def attach(dashboard, *, state, hub, sample_rate: int = DEFAULT_SAMPLE_RATE,
 
         async def _watch_close() -> None:
             # Without this, a phone that goes away silently would not be
-            # noticed until the next time JARVIS happened to speak.
+            # noticed until the next time Matthew happened to speak.
             while True:
                 await websocket.receive()
 
@@ -197,7 +197,7 @@ def attach(dashboard, *, state, hub, sample_rate: int = DEFAULT_SAMPLE_RATE,
             body = {}
         note = _get_notify_hub().notify(
             priority = body.get("priority") or "USEFUL",
-            title    = body.get("title") or "JARVIS",
+            title    = body.get("title") or "Matthew",
             text     = body.get("text") or "",
         )
         if note is None:

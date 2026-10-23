@@ -5,7 +5,7 @@ The three sockets, and the thread they live on.
    POST /api/device-login          once per session, and again after a 4001
         │
         ├── WS /ws              ── JSON events, both ways      (always open)
-        ├── WS /ws/phone-out    ── JARVIS's voice, binary      (always open)
+        ├── WS /ws/phone-out    ── Matthew's voice, binary      (always open)
         └── WS /ws/phone-audio  ── this microphone, binary     (only while the
                                                                 gate is open)
 ```
@@ -46,7 +46,7 @@ from .config import Settings
 from .device import DEVICE_TYPE, PROTOCOL_VERSION, LocalExecutor
 from .protocol import AuthRejected, ServerEndpoint
 from .reconnect import ReconnectManager
-from .state import AssistantState, JarvisStore, LinkState, Message
+from .state import AssistantState, MatthewAssistantStore, LinkState, Message
 
 #: How many uplink frames may queue before the oldest are dropped. At 64 ms a
 #: frame this is ~3 s. The server's own inbound queue drops when full too, so a
@@ -66,13 +66,13 @@ def _close_code(exc: BaseException) -> int | None:
     return int(code) if isinstance(code, int) else None
 
 
-class JarvisClient:
+class MatthewAssistantClient:
     """One session with MARK LIII. Owns the sockets, owns nothing else."""
 
     def __init__(
         self,
         settings: Settings,
-        store: JarvisStore,
+        store: MatthewAssistantStore,
         speaker: Speaker,
         on_connected: Callable[[], None],
         on_disconnected: Callable[[str, bool], None],
@@ -180,7 +180,7 @@ class JarvisClient:
         self._sockets_open.add(name)
         # CONNECTED is declared only when both permanent sockets are genuinely
         # open. Declaring it on the first would show a connected core while
-        # JARVIS's voice had nowhere to arrive.
+        # Matthew's voice had nowhere to arrive.
         if not self._announced_connected and {"events", "downlink"} <= self._sockets_open:
             self._announced_connected = True
             self._on_connected()
@@ -238,7 +238,7 @@ class JarvisClient:
             return
         kind = event.get("type")
 
-        if kind == P.EV_JARVIS_STATE:
+        if kind == P.EV_MATTHEW_ASSISTANT_STATE:
             name = str(event.get("state", "")).upper()
             try:
                 self._store.set_assistant(AssistantState[name])
@@ -246,7 +246,7 @@ class JarvisClient:
                 self._store.set_assistant(AssistantState.UNKNOWN)
 
         elif kind == P.EV_STATUS:
-            # Coarser than jarvis_state and kept for servers that only send
+            # Coarser than matthew_assistant_state and kept for servers that only send
             # this one. Never allowed to overwrite a finer state with UNKNOWN.
             if str(event.get("state", "")) == "sleeping":
                 self._store.set_assistant(AssistantState.SLEEPING)
@@ -257,7 +257,7 @@ class JarvisClient:
             if text:
                 self._store.add_message(
                     Message(
-                        from_jarvis=speaker == "jarvis",
+                        from_matthew_assistant=speaker == "jarvis",
                         text=text,
                         at=_parse_iso(event.get("ts")),
                     )
@@ -268,7 +268,7 @@ class JarvisClient:
             if text:
                 self._store.add_message(
                     Message(
-                        from_jarvis=True,
+                        from_matthew_assistant=True,
                         text=text,
                         title=str(event.get("title", "")) or None,
                         at=time.time(),
@@ -309,7 +309,7 @@ class JarvisClient:
             self._store.request_graph(str(event.get("graph") or "general"),
                                       str(event.get("focus") or ""))
 
-    # ── /ws/phone-out — JARVIS's voice ───────────────────────────────────────
+    # ── /ws/phone-out — Matthew's voice ───────────────────────────────────────
 
     async def _downlink_loop(self, endpoint: ServerEndpoint) -> None:
         try:
@@ -618,7 +618,7 @@ class NetworkWorker:
     Every method below is safe to call from the Qt thread.
     """
 
-    def __init__(self, settings: Settings, store: JarvisStore) -> None:
+    def __init__(self, settings: Settings, store: MatthewAssistantStore) -> None:
         self._settings = settings
         self._store = store
 
@@ -634,7 +634,7 @@ class NetworkWorker:
         )
         self.microphone: Microphone | None = None
 
-        self._client = JarvisClient(
+        self._client = MatthewAssistantClient(
             settings=settings,
             store=store,
             speaker=self.speaker,
@@ -659,7 +659,7 @@ class NetworkWorker:
         if self._thread is not None:
             return
         self._thread = threading.Thread(
-            target=self._run, name="JarvisNetwork", daemon=True
+            target=self._run, name="MatthewAssistantNetwork", daemon=True
         )
         self._thread.start()
         self._ready.wait(timeout=5.0)

@@ -1,5 +1,5 @@
 """
-cognition/constitution — charge jarvis.toml, en garde la trace versionnée.
+cognition/constitution — charge matthew_assistant.toml, en garde la trace versionnée.
 
     load()                  -> Constitution (données + sha256)
     register(store, c)      -> enregistre la version dans cognition.db ;
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_PATH = HERE / "jarvis.toml"
+DEFAULT_PATH = HERE / "matthew_assistant.toml"
 
 
 class ConstitutionDrift(RuntimeError):
@@ -54,7 +54,7 @@ def register(store, c: Constitution, rationale: str = "") -> bool:
     if rows:
         if rows[0]["sha256"] != c.sha256:
             raise ConstitutionDrift(
-                f"jarvis.toml a changé sans nouveau numéro de version ({c.version}). "
+                f"matthew_assistant.toml a changé sans nouveau numéro de version ({c.version}). "
                 f"Incrémentez `version` et décrivez la raison dans CHANGELOG.md.")
         return False
     from ..store import now_iso

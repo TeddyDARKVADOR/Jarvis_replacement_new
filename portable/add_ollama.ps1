@@ -1,5 +1,5 @@
 ﻿<#
-  add_ollama.ps1 -- pose Ollama + un petit modele SUR LA CLE, pour un JARVIS qui
+  add_ollama.ps1 -- pose Ollama + un petit modele SUR LA CLE, pour un Matthew qui
   marche 100 % hors-ligne (sans Gemini, sans internet) une fois fait.
 
       powershell -ExecutionPolicy Bypass -File add_ollama.ps1
@@ -10,7 +10,7 @@
   (runtime\ollama\ollama.exe et data\ollama-models\). Le lanceur Lancer-JARVIS.bat
   demarre Ollama tout seul s'il trouve ce binaire.
 
-  Le modele doit savoir appeler des outils (JARVIS s'en sert) : qwen3:4b-instruct
+  Le modele doit savoir appeler des outils (Matthew s'en sert) : qwen3:4b-instruct
   par defaut (leger). Sur un PC a gros GPU tu peux viser plus gros plus tard.
 #>
 [CmdletBinding()]
@@ -24,7 +24,7 @@ $pyProf = Join-Path $rt 'python\python.exe'
 
 if (-not $Model) {
     if (Test-Path $pyProf) {
-        $env:JARVIS_DATA_DIR = Join-Path $KeyRoot 'data'
+        $env:MATTHEW_ASSISTANT_DATA_DIR = Join-Path $KeyRoot 'data'
         $Model = (& $pyProf (Join-Path $PSScriptRoot 'host_profile.py') --model).Trim()
     }
     if (-not $Model) { $Model = 'qwen3:4b-instruct' }
@@ -75,4 +75,4 @@ finally {
 $sz = (Get-ChildItem $models -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
 Write-Host ""
 Write-Host "[ollama] Termine. Modeles sur la cle : $([math]::Round($sz/1GB,2)) Go."
-Write-Host "[ollama] JARVIS demarrera ce modele hors-ligne au prochain Lancer-JARVIS.bat."
+Write-Host "[ollama] Matthew demarrera ce modele hors-ligne au prochain Lancer-JARVIS.bat."

@@ -368,7 +368,7 @@ def _remote_ok(s, t):
 def _requested(s) -> str | None:
     """The target the user or the model named for this turn, if any:
     pc / android / here / other. A turn older than 180 s names nothing
-    (server/device_api.py TURN_CONTEXT_TTL). Hint detection is JARVIS's own
+    (server/device_api.py TURN_CONTEXT_TTL). Hint detection is Matthew's own
     detect_hint, itself covered by the legacy routing scenarios 13-14."""
     from server.targeting import _parse_model_hint, detect_hint
     turn = s["world"].get("turn") or {}

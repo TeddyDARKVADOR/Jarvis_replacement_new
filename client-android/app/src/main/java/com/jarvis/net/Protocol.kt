@@ -107,7 +107,7 @@ object Protocol {
     const val EV_STATUS = "status"         // {"state":"active"|"sleeping"}
     const val EV_SYS = "sys"               // {"text"} — system line
     const val EV_FILE = "file_received"    // {"name","size","saved_to"}
-    const val EV_JARVIS_STATE = "jarvis_state"  // {"state":"LISTENING"|…}
+    const val EV_MATTHEW_ASSISTANT_STATE = "jarvis_state"  // {"state":"LISTENING"|…}
     const val EV_CONTENT = "content"       // {"title","text"}
     const val EV_CONFIRM = "confirm"       // {"id","title","detail","timeout_s"}
     const val EV_CONFIRM_HIDE = "confirm_hide"  // no payload — take the banner down

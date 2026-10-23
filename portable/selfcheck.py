@@ -1,5 +1,5 @@
 """
-Auto-vérification du JARVIS portable — « il refuse d'échouer au démarrage ».
+Auto-vérification du Matthew portable — « il refuse d'échouer au démarrage ».
 
 Deux garde-fous :
   check()      les modules critiques s'importent-ils ? (sinon : quoi manque)

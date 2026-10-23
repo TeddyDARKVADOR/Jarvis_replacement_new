@@ -35,7 +35,7 @@ Group=jarvis
 WorkingDirectory=/opt/jarvis
 
 # --quiet keeps the conversation out of the journal. Drop it to see every line
-# JARVIS would have shown on the desktop HUD — useful while bringing a server
+# Matthew would have shown on the desktop HUD — useful while bringing a server
 # up, and a transcript of everything the user says once it is running. That is
 # a privacy decision, so it is opt-in.
 ExecStart=/opt/jarvis/.venv/bin/python -m server.run_headless --quiet

@@ -4,7 +4,7 @@ Developer / Debug — deliberately a separate window.
 The brief asks for the technical surface to be somewhere other than the HUD,
 and that is the right instinct for a reason worth writing down: the HUD is
 furniture the user glances at while working, and every number added to it makes
-the one thing it exists to show — *is JARVIS there, and is it listening* —
+the one thing it exists to show — *is Matthew there, and is it listening* —
 slightly harder to read. Counters belong where someone has gone looking for
 them.
 
@@ -59,7 +59,7 @@ class DebugWindow(QWidget):
         self._settings = settings
         self._log_lines = 0
 
-        self.setWindowTitle("JARVIS — Developer / Debug")
+        self.setWindowTitle("Matthew — Developer / Debug")
         self.setStyleSheet(PANEL_STYLESHEET)
         self.resize(520, 680)
 
@@ -107,7 +107,7 @@ class DebugWindow(QWidget):
         self._tls.setChecked(self._settings.use_tls)
         form.addRow("", self._tls)
 
-        self._autostart = QCheckBox("Démarrer JARVIS avec Windows")
+        self._autostart = QCheckBox("Démarrer Matthew avec Windows")
         self._autostart.toggled.connect(self.autostart_toggled.emit)
         form.addRow("", self._autostart)
 
@@ -175,7 +175,7 @@ class DebugWindow(QWidget):
         layout.addLayout(form)
 
         self._mic_bar = self._meter("Micro")
-        self._speaker_bar = self._meter("JARVIS")
+        self._speaker_bar = self._meter("Matthew")
         layout.addLayout(self._mic_bar[0])
         layout.addLayout(self._speaker_bar[0])
 

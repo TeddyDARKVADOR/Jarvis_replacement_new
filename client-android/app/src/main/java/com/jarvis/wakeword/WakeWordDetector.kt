@@ -8,13 +8,13 @@ package com.jarvis.wakeword
  * audio thread, once per 64 ms frame. It must copy or queue and return. Running
  * inference there stalls the microphone, and a stalled microphone loses the
  * beginning of the sentence the user just started — the exact words that say
- * what they want. Both `core/wake_word.py` on the desktop and the old Jarvis
+ * what they want. Both `core/wake_word.py` on the desktop and the old Matthew
  * Android landed on the same shape for the same reason: cheap push on the audio
  * thread, model on its own thread.
  *
- * **Why the old Jarvis's wake word cannot be reused.** Its detector was a
+ * **Why the old Matthew's wake word cannot be reused.** Its detector was a
  * lexical filter over Android's speech transcript — fifteen spellings of
- * "Jarvis" matched against recognised words — because `SpeechRecognizer` never
+ * "Matthew" matched against recognised words — because `SpeechRecognizer` never
  * exposes the signal. This app reads raw PCM, so that approach has nothing to
  * match on. The trade is a good one: acoustic detection works with no
  * transcription running, which is what makes continuous local listening cheap
@@ -29,7 +29,7 @@ package com.jarvis.wakeword
  * because both need a file this repository cannot generate:
  *
  *   • Picovoice Porcupine — `ai.picovoice:porcupine-android`, plus an AccessKey
- *     from the Picovoice console and a `.ppn` keyword file. "Jarvis" is one of
+ *     from the Picovoice console and a `.ppn` keyword file. "Matthew" is one of
  *     its built-in keywords. Best accuracy, free tier, account required.
  *   • openWakeWord via TFLite — the same `hey_jarvis` ONNX/TFLite model
  *     `core/wake_word.py` already downloads on the desktop, run through

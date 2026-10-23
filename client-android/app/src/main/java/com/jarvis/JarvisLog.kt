@@ -7,7 +7,7 @@ import android.os.SystemClock
  * One tagged line per event worth seeing, and not one per audio frame.
  *
  * ```
- * adb logcat -s JARVIS
+ * adb logcat -s Matthew
  * ```
  *
  * **Why the rate limiting is the point.** The uplink produces ~15 frames a
@@ -26,7 +26,7 @@ import android.os.SystemClock
  */
 object JarvisLog {
 
-    private const val TAG = "JARVIS"
+    private const val TAG = "Matthew"
     private const val SUMMARY_INTERVAL_MS = 5_000L
 
     /** Also mirror lines into the on-screen log. Off for per-frame summaries. */

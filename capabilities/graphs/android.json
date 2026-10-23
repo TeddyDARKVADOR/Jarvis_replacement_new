@@ -1,8 +1,8 @@
 {
-  "schema": "jarvis.graph/1",
+  "schema": "matthew_assistant.graph/1",
   "id": "android",
   "title": "Android et protocole client",
-  "updated": "2026-10-13",
+  "updated": "2026-10-23",
   "summary": "Le téléphone est un micro, un haut-parleur et un écran ; l'assistant (Gemini, mémoire, actions, plugins) reste sur le serveur. Et le protocole que tout client parle à MARK LIII.",
   "replaces": ["client-android/README.md", "client-android/PROTOCOL.md", "docs/android-vs-pc.md"],
   "nodes": [
@@ -26,7 +26,7 @@
 
     {"id": "m.service", "label": "Service au premier plan", "kind": "module", "status": "ok",
      "summary": "JarvisForegroundService tient le micro et les sockets écran éteint ; la notification permanente dit qu'il écoute.",
-     "details": ["Pas de démarrage au boot, pas d'exemption batterie dans le manifeste : on allume JARVIS depuis un écran visible."],
+     "details": ["Pas de démarrage au boot, pas d'exemption batterie dans le manifeste : on allume Matthew depuis un écran visible."],
      "files": ["client-android/app/src/main/java/com/jarvis/service/JarvisForegroundService.kt"]},
     {"id": "m.net", "label": "JarvisClient + ReconnectManager", "kind": "module", "status": "ok",
      "summary": "Trois WebSockets, transport seulement ; ReconnectManager est le seul à décider quand réessayer.",
@@ -40,7 +40,7 @@
      "files": ["client-android/app/src/main/java/com/jarvis/wakeword/OpenWakeWordDetector.kt", "client-android/app/src/main/java/com/jarvis/wakeword/WakeWordSelfTest.kt"]},
     {"id": "f.ecrans", "label": "Écrans", "kind": "fonction", "status": "ok",
      "summary": "Accueil (noyau 2D animé, sous-titre, confirmation), historique, réglages, débogage.",
-     "details": ["Toucher le noyau interrompt JARVIS."],
+     "details": ["Toucher le noyau interrompt Matthew."],
      "files": ["client-android/app/src/main/java/com/jarvis/ui/HomeScreen.kt", "client-android/app/src/main/java/com/jarvis/ui/JarvisCore.kt", "client-android/app/src/main/java/com/jarvis/ui/HistoryScreen.kt", "client-android/app/src/main/java/com/jarvis/ui/DebugScreen.kt"]},
     {"id": "f.notifications", "label": "Notifications", "kind": "fonction", "status": "ok",
      "summary": "CRITICAL : bannière et son ; IMPORTANT : ordinaire ; USEFUL : silencieuse. Les 200 derniers ids sont gardés dans SharedPreferences pour jeter les doublons, même après redémarrage.",
@@ -62,7 +62,7 @@
      "files": ["dashboard/server.py", "server/auth.py"]},
     {"id": "pr.uplink", "label": "Protocole : voix montante", "kind": "regle", "status": "ok",
      "summary": "WS /ws/phone-audio : PCM 16 bits little-endian, 16 000 Hz, mono, sans en-tête ; trames de 2048 octets côté Android.",
-     "details": ["Se connecter veut dire « le micro est vivant » : le serveur coupe le micro du PC. Après 1 s sans trame, il le rend.", "File de 200 trames qui jette quand elle est pleine.", "Pendant que JARVIS parle, l'audio montant est jeté (pas d'interruption à la voix)."],
+     "details": ["Se connecter veut dire « le micro est vivant » : le serveur coupe le micro du PC. Après 1 s sans trame, il le rend.", "File de 200 trames qui jette quand elle est pleine.", "Pendant que Matthew parle, l'audio montant est jeté (pas d'interruption à la voix)."],
      "files": ["dashboard/server.py", "main.py"]},
     {"id": "pr.downlink", "label": "Protocole : voix descendante", "kind": "regle", "status": "ok",
      "summary": "WS /ws/phone-out : un premier message JSON audio_format (24 000 Hz annoncé), puis du PCM binaire par lots de ~200 ms.",
@@ -71,7 +71,7 @@
     {"id": "pr.events", "label": "Protocole : événements /ws", "kind": "regle", "status": "ok",
      "summary": "JSON dans les deux sens ; à la connexion, rejeu des 50 derniers messages. Un type inconnu est ignoré, le socket reste ouvert.",
      "details": [
-       "Serveur → client : log, status, sys, file_received, jarvis_state, content, confirm, confirm_hide, notification, show_graph.",
+       "Serveur → client : log, status, sys, file_received, matthew_assistant_state, content, confirm, confirm_hide, notification, show_graph.",
        "Client → serveur : command, interrupt, confirmation_response, device_state.",
        "device_state est fusionné champ par champ et expire après 300 s."
      ],
@@ -103,7 +103,7 @@
     {"id": "m.matrice", "label": "Ce qui arrive sur Android", "kind": "fonction", "status": "partiel",
      "summary": "Depuis le téléphone, tout ce qui n'est pas open_app s'exécute sur Oracle : parfait pour le réseau et la réflexion, inutile pour ce qui touche un écran.",
      "details": [
-       "Fonctionne via le serveur : conversation, saisie, historique, recherche web, vols, mémoire, confirmation, contexte, notifications, veille, proactif, YouTube (résumé, infos), arrêter JARVIS.",
+       "Fonctionne via le serveur : conversation, saisie, historique, recherche web, vols, mémoire, confirmation, contexte, notifications, veille, proactif, YouTube (résumé, infos), arrêter Matthew.",
        "Partiel : météo (la phrase seule), annulation (actions serveur seulement), fichiers (disque d'Oracle), file_processor (l'app ne sait pas envoyer), system_status (chiffres d'Oracle), code (écrit sur Oracle).",
        "Absent : rappels visibles sur le téléphone, lecture YouTube, navigateur, messages, capture d'écran, caméra, réglages, souris/clavier, bureau, jeux."
      ]},

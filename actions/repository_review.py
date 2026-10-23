@@ -216,7 +216,7 @@ TOOL = {
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "repo_path": {"type": "STRING", "description": "Repository folder. Defaults to JARVIS's own source tree."},
+            "repo_path": {"type": "STRING", "description": "Repository folder. Defaults to Matthew's own source tree."},
             "mode": {"type": "STRING", "enum": ["overview", "inspect"], "description": "overview for the initial compact map; inspect for a focused follow-up."},
             "question": {"type": "STRING", "description": "What to understand, trace, or review. Leave empty for a repository overview."},
         },

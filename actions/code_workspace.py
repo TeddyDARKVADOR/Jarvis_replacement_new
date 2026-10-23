@@ -1,5 +1,5 @@
 """
-code_studio — Jarvis Code Studio, his development workshop on this PC.
+code_studio — Matthew Code Studio, his development workshop on this PC.
 
 A thin door onto core/code_workspace: every operation is executed, checked and
 journaled there, so what the HUD's STUDIO panel shows is what the tools really
@@ -17,7 +17,7 @@ def _available(player) -> str | None:
     # On the Oracle server (HeadlessUI without local_mode) the "workspace" would
     # be on the server, not on this PC — which is not what the Studio promises.
     if type(player).__name__ == "HeadlessUI" and not getattr(player, "local_mode", False):
-        return ("The Code Studio only works when JARVIS runs on this PC "
+        return ("The Code Studio only works when Matthew runs on this PC "
                 "(python main.py --local). Tell the user so in one sentence.")
     return None
 
@@ -51,7 +51,7 @@ def code_studio(parameters: dict, player=None) -> str:
 TOOL = {
     "name": "code_studio",
     "description": (
-        "Jarvis Code Studio: your own isolated development workspace on this PC (a dedicated folder). "
+        "Matthew Code Studio: your own isolated development workspace on this PC (a dedicated folder). "
         "THE tool whenever the user asks you to create, build, code or develop an application, a "
         "program, a game, a web page, a script or a project — whatever words they use, workspace or "
         "not — or wants to SEE your progress, or to continue/modify/test/preview/restore one of your "

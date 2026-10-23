@@ -7,7 +7,7 @@ Deux couches, comme dans le document de recherche (§4.4) :
             résultat d'outil, chaque écriture et chaque suppression. Les tours
             bruts sont éphémères (purge à RAW_TURN_DAYS) : ce sont les données
             les plus sensibles et les moins utiles à long terme.
-  memories  ce que JARVIS « sait » : épisodes de session, faits, et plus tard
+  memories  ce que Matthew « sait » : épisodes de session, faits, et plus tard
             réflexions et procédures. Chaque ligne porte source, confiance,
             importance, statut, validité temporelle.
 

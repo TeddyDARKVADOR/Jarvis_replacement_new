@@ -1,4 +1,4 @@
-# JARVIS Night Shift — ce qui est fait, ce qu'il reste à faire
+# Matthew Night Shift — ce qui est fait, ce qu'il reste à faire
 
 > État au 2026-10-15. Le détail de chaque pièce vit dans le graphe
 > `capabilities/graphs/nightshift.json` ; les rapports de chaque nuit sur la
@@ -9,9 +9,9 @@
 
 Trois fois par nuit — 01 h 17, 03 h 17 et 05 h 17 (heure de Paris) —, GitHub
 Actions lance les 15 suites du dépôt sous Linux et ruff, compare avec la passe
-précédente, mesure si JARVIS s'améliore, choisit une tâche — à chaque passe un
+précédente, mesure si Matthew s'améliore, choisit une tâche — à chaque passe un
 problème différent —, en demande le correctif à un modèle gratuit (Groq), le
-prouve par les suites et — hors dry run — ouvre une PR. Rien n'est jamais fusionné par une machine. Le matin, JARVIS dit une phrase
+prouve par les suites et — hors dry run — ouvre une PR. Rien n'est jamais fusionné par une machine. Le matin, Matthew dit une phrase
 au briefing quand il y a du nouveau ; le détail est dans l'onglet NUIT du
 panneau ESPRIT. Coût : zéro (dépôt public, quotas gratuits).
 
@@ -23,7 +23,7 @@ panneau ESPRIT. Coût : zéro (dépôt public, quotas gratuits).
 | 1 — Le veilleur | ✅ validée (6 critères sur 6) | runs 38532442387 (premier vert), 38535049698 (régression simulée bien classée) |
 | 2 — Une tâche IA par nuit | ✅ 5 critères sur 6 | PR #1 ouverte par la nuit (run 38565066768), pas de doublon et clé absente des journaux (run 38566336246) |
 | 3 — Mémoire et backlog | ✅ réalisée | selftest n°23 à 26, commandes réelles |
-| 4 — Mesurer si JARVIS s'améliore | ✅ réalisée | indicateurs mesurés sur le vrai dépôt et dans chaque rapport |
+| 4 — Mesurer si Matthew s'améliore | ✅ réalisée | indicateurs mesurés sur le vrai dépôt et dans chaque rapport |
 | 5 — PC réveillé, modèles locaux | ✅ réalisée, facultative | selftest n°29 et 30, worker lancé pour de vrai (Ollama arrêté) |
 | 6 — Orchestration multi-modèles | ⏸ pas commencée | voir « Plus tard » |
 | Trois passes par nuit | ✅ réalisée le 2026-10-15 | selftest n°32 ; première nuit à trois passes à confirmer sur GitHub |
@@ -46,10 +46,10 @@ de toutes les passes.
 | Minutes Actions | 3,6 min | 110 min | ~11 min en pratique | illimitées (dépôt public) |
 
 **Phase 1 — le veilleur.** Le paquet `nightshift/` (racine, retirable : il
-n'importe rien de JARVIS) et le workflow `.github/workflows/nightly.yml`
+n'importe rien de Matthew) et le workflow `.github/workflows/nightly.yml`
 (`ubuntu-24.04` épinglé, actions épinglées par SHA). Le rapport
-`jarvis.nightly/1` va sur la branche orpheline `nightshift-data`, jamais sur
-main ; JARVIS le lit sans jeton. Une régression est classée avec son commit
+`matthew_assistant.nightly/1` va sur la branche orpheline `nightshift-data`, jamais sur
+main ; Matthew le lit sans jeton. Une régression est classée avec son commit
 suspect ; un échec connu ne l'est jamais ; une nuit ratée ne fait pas oublier
 la précédente. `pyproject.toml` réduit ruff aux vrais bugs probables (4
 remarques). Sous Linux, les 15 suites tournent : 14 vertes, code_workspace à
@@ -102,7 +102,7 @@ Ollama et `gemma4:12b`, un résultat structuré par tâche, poussé sur
    `queue.json` sont écrits depuis le 2026-10-15 ; restent la relecture de
    `state.json` (une tâche déjà tentée n'est pas refaite au même commit), le
    verdict « PR refusée » sur une première vraie PR fermée.
-3. **À voir dans le vrai JARVIS** : l'onglet NUIT dans le HUD (son rendu n'a
+3. **À voir dans le vrai Matthew** : l'onglet NUIT dans le HUD (son rendu n'a
    été testé que hors HUD) et la phrase du briefing dans une session vocale.
 4. **Facultatif** : planifier le worker local sur le PC à RTX 3060 —
    `python -m nightshift.local_worker --install-help` donne les étapes (le

@@ -27,7 +27,7 @@ MIN_INTERVAL_S = 12 * 3600  # au plus deux réflexions par jour
 MAX_SOURCES = 20
 MAX_INSIGHTS = 3
 
-PROMPT = """Below are memories of an AI assistant (JARVIS) about its user and their conversations, each with an id.
+PROMPT = """Below are memories of an AI assistant (Matthew) about its user and their conversations, each with an id.
 
 {memories}
 

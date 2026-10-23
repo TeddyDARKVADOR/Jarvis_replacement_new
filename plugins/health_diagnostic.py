@@ -1,11 +1,11 @@
-"""Read-only diagnostics for JARVIS running locally on the desktop."""
+"""Read-only diagnostics for Matthew running locally on the desktop."""
 from __future__ import annotations
 
 
 PLUGIN = {
     "name": "local_health_check",
     "description": (
-        "Read-only health check of local JARVIS: Gemini, chosen audio devices, actions, "
+        "Read-only health check of local Matthew: Gemini, chosen audio devices, actions, "
         "plugins, phone dashboard. Reports configuration, not whether a device "
         "physically works."
     ),
@@ -24,7 +24,7 @@ _LINK_LABELS = {
 
 def run(parameters: dict, player=None, session_memory=None) -> str:
     if not getattr(player, "local_mode", False):
-        return "Le diagnostic local est disponible lorsque JARVIS tourne sur le PC."
+        return "Le diagnostic local est disponible lorsque Matthew tourne sur le PC."
     reader = getattr(player, "health_snapshot", None)
     if not callable(reader):
         return "Le diagnostic local n'est pas disponible dans cette interface."

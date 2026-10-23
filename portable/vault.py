@@ -19,7 +19,7 @@ Flux, piloté par Lancer-JARVIS.bat :
     python portable/vault.py status   --root <app>
 
 Compatibilité : --dir <configdir> protège le seul api_keys.json de ce dossier.
-Phrase au clavier (getpass) ou, en script/test, via l'env JARVIS_VAULT_PASS.
+Phrase au clavier (getpass) ou, en script/test, via l'env MATTHEW_ASSISTANT_VAULT_PASS.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ import os
 import sys
 from pathlib import Path
 
-MAGIC = "jarvis.vault/1"
+MAGIC = "matthew_assistant.vault/1"
 DEFAULT_PROTECT = ["config/api_keys.json"]
 
 
@@ -46,10 +46,10 @@ def _fernet(passphrase: str, salt: bytes):
 
 
 def _ask(confirm: bool) -> str:
-    env = os.environ.get("JARVIS_VAULT_PASS")
+    env = os.environ.get("MATTHEW_ASSISTANT_VAULT_PASS") or os.environ.get("JARVIS_VAULT_PASS")
     if env:
         return env
-    p = getpass.getpass("Phrase de passe du coffre JARVIS : ")
+    p = getpass.getpass("Phrase de passe du coffre Matthew : ")
     if confirm:
         if p != getpass.getpass("Confirme la phrase : "):
             raise SystemExit("Les phrases ne correspondent pas — annulé.")
@@ -165,7 +165,7 @@ def _resolve_root(argv: list[str]) -> Path:
         return Path(argv[argv.index("--root") + 1])
     if "--dir" in argv:                       # compat : --dir <config> -> racine = parent
         return Path(argv[argv.index("--dir") + 1]).parent
-    env = os.environ.get("JARVIS_APP_DIR")
+    env = os.environ.get("MATTHEW_ASSISTANT_APP_DIR")
     if env:
         return Path(env)
     return Path(__file__).resolve().parents[1]

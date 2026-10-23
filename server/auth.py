@@ -116,7 +116,7 @@ def describe(creds: dict | None = None, host: str = "<server>",
         "         -H 'Content-Type: application/json' \\\n"
         f"         -d '{{\"device_token\":\"{creds['device_token']}\"}}'\n"
         "\n"
-        "  Treat it like a password: it is full control of JARVIS.\n"
+        "  Treat it like a password: it is full control of Matthew.\n"
         "  Revoke every paired device with POST /api/revoke-devices,\n"
         "  or delete the file above and restart the service.\n"
         "────────────────────────────────────────────────────────────────"

@@ -3,7 +3,7 @@ eval_lab/surfaces.py — a scenario in, the real code's answer out.
 
 Each surface builds the objects the scenario describes, calls the REAL code
 through `world.sut()`, and returns a trace: plain JSON, nothing the lab
-computed on JARVIS's behalf. No surface decides whether the answer is right —
+computed on Matthew's behalf. No surface decides whether the answer is right —
 that is oracle.py's job, and keeping the two apart is what stops a simulator
 from quietly agreeing with whatever it simulates.
 
@@ -277,7 +277,7 @@ def run_sequence(s: dict) -> dict:
             # Every step states what it lost, even when nothing can be lost
             # there. An absent field made an oracle about `lost` fail on a
             # path that did not exist (first Opus probe): a lab defect,
-            # reported as if JARVIS had failed. A bare `release` hands the
+            # reported as if Matthew had failed. A bare `release` hands the
             # items to its caller; only `alerts` can drop them.
             step.setdefault("lost", [])
             steps.append(step)

@@ -1,5 +1,5 @@
 ﻿<#
-  splash.ps1 -- animation de demarrage « boot portable de JARVIS » (version riche).
+  splash.ps1 -- animation de demarrage « boot portable de Matthew » (version riche).
 
   Reacteur ARC : grille HUD en fond, trois arcs concentriques qui tournent, des
   particules en orbite, un balayage « radar », un coeur a bloom qui pulse, un

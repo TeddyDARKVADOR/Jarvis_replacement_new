@@ -1,4 +1,4 @@
-# JARVIS — architecture cognitive persistante : audit, recherche, plan
+# Matthew — architecture cognitive persistante : audit, recherche, plan
 
 > État au 2026-10-13, commit `6bac0d6`. Aucun fichier existant n'a été modifié pour
 > produire ce document. Ce qui est **vérifié** (lu dans le code, mesuré, lu dans une
@@ -6,18 +6,18 @@
 
 Rappel permanent : tout ce qui suit décrit des **fonctions** (stocker, rappeler,
 évaluer, planifier, rapporter un état enregistré). Aucune de ces fonctions n'est, ni
-ne prouve, une expérience subjective. Une « émotion » de JARVIS sera un nombre
+ne prouve, une expérience subjective. Une « émotion » de Matthew sera un nombre
 calculé ; un « souvenir » une ligne en base ; un « objectif » un enregistrement avec
 des critères ; une « introspection » la lecture de ces données.
 
 ---
 
-## 0. Audit du JARVIS existant (vérifié dans le code)
+## 0. Audit du Matthew existant (vérifié dans le code)
 
 | Sujet | Constat |
 |---|---|
 | Langage | Python ≥ 3.11 (`asyncio.TaskGroup`), venv local en 3.14. Client Android en Kotlin. |
-| Architecture | `main.py` (`JarvisLive`) = boucle Gemini Live : audio entrant/sortant, dispatch d'outils, tâches de fond. Autour : `actions/` (outils auto-décrits `TOOL`), `plugins/` (`PLUGIN` + `run()`), `core/` (undo, confirmation, wake word, Studio de code), `context/` (situation → politique de prise de parole), `server/` (mode headless sur Oracle), `client_desktop/` (HUD), `eval_lab/`. |
+| Architecture | `main.py` (`MatthewAssistantLive`) = boucle Gemini Live : audio entrant/sortant, dispatch d'outils, tâches de fond. Autour : `actions/` (outils auto-décrits `TOOL`), `plugins/` (`PLUGIN` + `run()`), `core/` (undo, confirmation, wake word, Studio de code), `context/` (situation → politique de prise de parole), `server/` (mode headless sur Oracle), `client_desktop/` (HUD), `eval_lab/`. |
 | Règle de projet | le contrat V2 (graphe `contrat`) : toute fonctionnalité post-V1 doit pouvoir être **retirée sans casser V1** ; ordre de préférence plugin → paquet racine + hook d'une ligne → cœur en dernier recours. `context/`, `server/`, `eval_lab/` respectent déjà ce modèle (« rien ne m'importe », vérifié par selftest). |
 | Modèle | `models/gemini-3.1-flash-live-preview` (audio natif, Live API) pour la conversation ; `gemini-3.1-flash-lite` pour le résumé de session ; Studio de code : Groq (`openai/gpt-oss-120b`) sinon `gemini-flash-latest`. SDK `google-genai`. |
 | Prompt / contexte | `_build_config()` assemble **une fois par connexion** : date/heure + identité (nom, forme d'adresse) + bloc mémoire + [core/prompt.txt](../../core/prompt.txt). Compression par fenêtre glissante, reprise de session par handle (en RAM). Pas de cache de contexte sur le modèle Live. Les injections en cours de session passent par `send_client_content` (briefing, proactif, alertes). |
@@ -42,7 +42,7 @@ des critères ; une « introspection » la lecture de ces données.
 ### 0.2 Écarts entre l'existant et la cible
 
 1. **Une interprétation du modèle devient un fait.** `save_memory` écrit ce que le modèle décide, sans provenance ni statut. C'est exactement le risque que la cible veut éviter.
-2. **Il n'y a pas d'histoire.** Les résumés de session sont détruits après lecture : JARVIS n'a aucune mémoire épisodique ni autobiographique au-delà d'un jour.
+2. **Il n'y a pas d'histoire.** Les résumés de session sont détruits après lecture : Matthew n'a aucune mémoire épisodique ni autobiographique au-delà d'un jour.
 3. **Il n'y a pas d'affect décisionnel.** Rien ne relie un état interne à une décision, et rien n'est persisté.
 4. **Il n'y a ni objectifs ni modèle de soi.** Les capacités existent (registres d'actions et de plugins, confirmation, undo), mais rien ne les expose comme un état interrogeable.
 5. **Le contexte est figé à la connexion.** Tout état cognitif injecté dans le prompt système ne bouge qu'à la reconnexion. En cours de session, il faut des injections ponctuelles, ce qui a un coût en tokens.
@@ -63,14 +63,14 @@ des critères ; une « introspection » la lecture de ces données.
 - Code : `github.com/joonspk-research/generative_agents`.
 
 **Ce qui est venu depuis** (sources primaires, lecture partielle) :
-- **CoALA** (Sumers, Yao et al., TMLR 2024) : cadre de conception qui sépare mémoire de travail, épisodique, sémantique et procédurale, avec des actions internes (récupérer, raisonner, apprendre) et externes. C'est le vocabulaire le plus utile pour structurer JARVIS.
+- **CoALA** (Sumers, Yao et al., TMLR 2024) : cadre de conception qui sépare mémoire de travail, épisodique, sémantique et procédurale, avec des actions internes (récupérer, raisonner, apprendre) et externes. C'est le vocabulaire le plus utile pour structurer Matthew.
 - **MemGPT / Letta** (Packer et al., 2023) : contexte principal (instructions, *working context*, file FIFO) et contexte externe (*recall storage*, *archival storage*). Le modèle gère lui-même ce qui entre et sort par appels de fonction.
 - **Reflexion** (Shinn et al., NeurIPS 2023) : réflexion verbale stockée après un échec, réutilisée à l'essai suivant (91 % pass@1 sur HumanEval contre 80 % pour GPT-4). **Le signal d'échec vient de tests externes.** Sur MBPP, 16,3 % de faux positifs des tests rendent le gain trompeur. Mémoire limitée à une fenêtre glissante.
 - **Huang et al., ICLR 2024**, « LLMs Cannot Self-Correct Reasoning Yet » : **sans retour externe**, l'auto-correction n'améliore pas le raisonnement et le dégrade parfois. Les gains antérieurs venaient souvent d'oracles.
 - **Mémoire de production** : Mem0 (2025), A-Mem (notes liées de type Zettelkasten, « évolution » des souvenirs, 2025), Zep/Graphiti (graphe de connaissances **temporel** : validité des faits dans le temps, 2025). Les chiffres de benchmark sont **contestés entre éditeurs** : Mem0 et Zep se rétorquent sur LoCoMo avec des protocoles différents. Aucun chiffre n'est à reprendre tel quel.
 - **LongMemEval** (Wu et al., ICLR 2025) : 500 questions sur 5 capacités (extraction, raisonnement multi-sessions, raisonnement temporel, **mises à jour de connaissance**, **abstention**). Les assistants commerciaux perdent environ 30 % sur des historiques longs. C'est le meilleur gabarit pour nos tests de mémoire.
 
-**Conséquences pour JARVIS** :
+**Conséquences pour Matthew** :
 - La structure de récupération récence × importance × pertinence et les réflexions **citant leurs sources** sont réutilisables telles quelles.
 - La leçon la plus robuste de la littérature (Reflexion vs Huang) : **une réflexion n'améliore quelque chose que si un signal externe vérifiable la valide.** Le Studio de code applique déjà ce principe (verdict par les tests). Il faut le généraliser.
 - Le temps doit être une donnée de premier ordre : un fait a une période de validité, une mise à jour remplace sans effacer.
@@ -80,7 +80,7 @@ des critères ; une « introspection » la lecture de ces données.
 - **Constitutional AI** (Bai et al., Anthropic, déc. 2022, arXiv 2212.08073). Phase supervisée : le modèle critique puis révise ses réponses selon des principes, et on l'ajuste sur les révisions. Phase RL : un modèle compare des paires, un modèle de préférence est entraîné sur ces jugements (RLAIF) et sert de récompense. Les principes ont été choisis « de façon assez ad hoc ». Les modèles RL-CAI peuvent être sur-entraînés jusqu'au **Goodharting**.
 - **Constitution de Claude** (Anthropic, janvier 2026, CC0) : un ordre de priorité explicite (sûreté, éthique, lignes directrices, utilité), qui explique ses raisons plutôt que d'empiler des règles, avec quelques contraintes absolues. Anthropic indique qu'elle **sert à l'entraînement**.
 - **Model Spec d'OpenAI** (révision du 12 fév. 2025, CC0) : une *chaîne de commandement* (plateforme > développeur > utilisateur) qui résout les conflits d'instructions, avec des valeurs par défaut modifiables et des limites dures.
-- **Distinction essentielle** : chez Anthropic et OpenAI, ces textes agissent **par l'entraînement**. Une constitution placée dans le prompt de JARVIS n'est qu'une instruction. Elle peut être contournée, oubliée par la compression de contexte, ou mal appliquée. **Aucun prompt ne garantit la stabilité d'une identité.** Sans entraînement, la stabilité doit venir de trois choses : le **code** (règles dures appliquées hors du modèle, comme `confirm.py`), les **données** (constitution versionnée, réinjectée à chaque connexion) et les **tests** (sondes de cohérence rejouées à chaque version).
+- **Distinction essentielle** : chez Anthropic et OpenAI, ces textes agissent **par l'entraînement**. Une constitution placée dans le prompt de Matthew n'est qu'une instruction. Elle peut être contournée, oubliée par la compression de contexte, ou mal appliquée. **Aucun prompt ne garantit la stabilité d'une identité.** Sans entraînement, la stabilité doit venir de trois choses : le **code** (règles dures appliquées hors du modèle, comme `confirm.py`), les **données** (constitution versionnée, réinjectée à chaque connexion) et les **tests** (sondes de cohérence rejouées à chaque version).
 
 ### 1.3 Émotions : appraisal et modèles dimensionnels
 
@@ -91,7 +91,7 @@ des critères ; une « introspection » la lecture de ces données.
 - **EMA** (Marsella & Gratch, Cognitive Systems Research, 2009) : modèle d'appraisal calculatoire. Les événements sont évalués selon des dimensions (pertinence pour les buts, désirabilité, probabilité, contrôlabilité, responsabilité) qui produisent des émotions et des stratégies de *coping*. Critère de « validité de processus » : la dynamique temporelle doit être plausible.
 - **Modèle circomplexe** (Russell) : valence × activation. Limite connue : il ne sépare pas « confus » de « réfléchit ».
 
-**Conséquence** : pour être *mesurable*, l'appraisal de JARVIS doit être **déterministe et calculé à partir d'événements structurés** (échec d'outil, correction par l'utilisateur, objectif atteint, nouveauté), pas généré librement par le LLM. Le LLM peut proposer une appraisal pour les événements conversationnels, mais en tant qu'*entrée étiquetée*, jamais en écriture directe de l'état.
+**Conséquence** : pour être *mesurable*, l'appraisal de Matthew doit être **déterministe et calculé à partir d'événements structurés** (échec d'outil, correction par l'utilisateur, objectif atteint, nouveauté), pas généré librement par le LLM. Le LLM peut proposer une appraisal pour les événements conversationnels, mais en tant qu'*entrée étiquetée*, jamais en écriture directe de l'état.
 
 ### 1.4 Conscience artificielle : ce qui est testable
 
@@ -106,7 +106,7 @@ des critères ; une « introspection » la lecture de ces données.
   Les indicateurs augmentent une crédence, ce n'est pas une check-list. Conclusion : aucun système actuel n'est conscient, et il n'y a pas d'obstacle technique évident à en construire un qui satisfasse les indicateurs.
 - **Suite 2025** : Butlin, Long, Bayne, Bengio, Birch, Chalmers et al., « Identifying indicators of consciousness in AI systems », *Trends in Cognitive Sciences* (DOI 10.1016/j.tics.2025.10.011). Ils formalisent la méthode des indicateurs dérivés des théories. *Je n'ai lu que le résumé.*
 - **Goldstein & Kirk-Giannini 2024** (arXiv 2410.11407) soutiennent que, *si* la GWT est vraie, des agents langagiers pourraient facilement satisfaire ses conditions. C'est un argument **conditionnel et débattu**.
-- **Ce qu'on ne peut pas conclure** : satisfaire GWT-2/3 par un espace de travail logiciel montre seulement qu'une architecture a une propriété *fonctionnelle* décrite par une théorie, elle-même non validée. Les théories se contredisent entre elles. L'hypothèse fonctionnaliste est contestée. **Pour JARVIS**, la GWT est utilisée comme **patron d'ingénierie** (sélection sous contrainte de capacité, diffusion aux modules, journal des décisions). Ce n'est ni un objectif ni une preuve de conscience.
+- **Ce qu'on ne peut pas conclure** : satisfaire GWT-2/3 par un espace de travail logiciel montre seulement qu'une architecture a une propriété *fonctionnelle* décrite par une théorie, elle-même non validée. Les théories se contredisent entre elles. L'hypothèse fonctionnaliste est contestée. **Pour Matthew**, la GWT est utilisée comme **patron d'ingénierie** (sélection sous contrainte de capacité, diffusion aux modules, journal des décisions). Ce n'est ni un objectif ni une preuve de conscience.
 
 ### 1.5 Introspection
 
@@ -116,8 +116,8 @@ des critères ; une « introspection » la lecture de ces données.
   - contrôle partiel de ses représentations sur instruction ;
   - limites déclarées par les auteurs : capacité « très peu fiable et limitée », mécanismes inconnus, aucune conclusion sur l'expérience subjective.
 - **Travaux 2026** (préprints, non relus par les pairs) : « Can LLMs Introspect? A Reality Check » exige un accès privilégié et un calcul de second ordre ; un autre travail montre que 10 modèles ouverts (3B–70B) ne reconnaissent pas de façon fiable leurs sorties compromises par prefill.
-- **Ce qui est transposable à JARVIS** : rien du protocole mécanistique, car nous n'avons pas accès aux activations de Gemini. Ce qui se transpose, c'est **la logique expérimentale**. On *intervient* sur une variable enregistrée (on force la frustration à 0,8, on retire un outil, on supprime un souvenir), puis on mesure si les déclarations de JARVIS suivent l'intervention, avec des essais témoins sans intervention. Comme l'état lui est *donné* dans le contexte, ce test mesure la **fidélité du rapport**, pas une introspection. Il faut l'appeler ainsi.
-- **Calibration** : la littérature (p. ex. Kadavath et al. 2022) montre que les LLM sont partiellement calibrés sur leurs propres réponses. Chez JARVIS, on mesurera la calibration *empiriquement* (score de Brier, ECE) sur des tâches dont l'issue est vérifiable.
+- **Ce qui est transposable à Matthew** : rien du protocole mécanistique, car nous n'avons pas accès aux activations de Gemini. Ce qui se transpose, c'est **la logique expérimentale**. On *intervient* sur une variable enregistrée (on force la frustration à 0,8, on retire un outil, on supprime un souvenir), puis on mesure si les déclarations de Matthew suivent l'intervention, avec des essais témoins sans intervention. Comme l'état lui est *donné* dans le contexte, ce test mesure la **fidélité du rapport**, pas une introspection. Il faut l'appeler ainsi.
+- **Calibration** : la littérature (p. ex. Kadavath et al. 2022) montre que les LLM sont partiellement calibrés sur leurs propres réponses. Chez Matthew, on mesurera la calibration *empiriquement* (score de Brier, ECE) sur des tâches dont l'issue est vérifiable.
 
 ### 1.6 Entraînement : est-ce nécessaire ?
 
@@ -137,7 +137,7 @@ Les détails internes de l'entraînement de Gemini, Claude ou GPT ne sont pas pu
 
 ## 2. Bibliographie annotée (sources primaires)
 
-| Référence | Lien | Lu | Apport pour JARVIS |
+| Référence | Lien | Lu | Apport pour Matthew |
 |---|---|---|---|
 | Park et al. 2023, *Generative Agents* | https://arxiv.org/abs/2304.03442 | PDF complet (méthodes, résultats) | Score de récupération, réflexion citée, plan hiérarchique, ablation |
 | Sumers, Yao et al. 2024, *CoALA* | https://arxiv.org/abs/2309.02427 | partiel | Taxonomie des mémoires et des actions internes |
@@ -198,7 +198,7 @@ Un **nouveau paquet racine `cognition/`** :
 - il est relié par **quelques hooks d'une ligne** gardés par `try/except ImportError`, exactement comme `context/` l'est déjà dans `_run_proactive_mode` ;
 - il est exposé à Gemini par des **plugins** (le chemin « zéro risque » du contrat).
 
-Supprimer `cognition/` doit rendre JARVIS identique à aujourd'hui. Le selftest le vérifiera.
+Supprimer `cognition/` doit rendre Matthew identique à aujourd'hui. Le selftest le vérifiera.
 
 `memory/long_term.json` **reste la source de vérité de la V1** et n'est pas modifié. `cognition/` l'importe en lecture (statut `user_stated` ou `legacy`) et s'y ajoute.
 
@@ -230,7 +230,7 @@ Supprimer `cognition/` doit rendre JARVIS identique à aujourd'hui. Le selftest 
 
 ### 4.3 Flux de données
 
-1. **Percevoir** : chaque tour (utilisateur/JARVIS) et chaque résultat d'outil devient un `Event` (type, horodatage, session, contenu court, issue `ok/échec`, coût).
+1. **Percevoir** : chaque tour (utilisateur/Matthew) et chaque résultat d'outil devient un `Event` (type, horodatage, session, contenu court, issue `ok/échec`, coût).
 2. **Évaluer** : `appraisal` transforme l'événement en deltas d'affect selon des règles explicites ; `goals` met à jour la progression.
 3. **Mémoriser** : l'événement devient un épisode ; un fait n'est créé qu'avec une provenance.
 4. **Sélectionner (espace de travail)** : à chaque connexion et à des points précis (début de tâche, échec répété), on retient au plus N éléments saillants, selon la formule de Park (récence, importance, pertinence) plus un bonus pour les objectifs actifs et l'affect saillant. On journalise la sélection.
@@ -310,10 +310,10 @@ Invariants **codés, pas promptés** :
 
 ### 4.6 Objectifs et autonomie
 
-- Un objectif a toujours une origine, une justification, des critères de réussite, des conditions d'annulation et des **budgets** (actions, tokens, durée). JARVIS peut **proposer** un objectif (`status=proposed`). Seul l'utilisateur l'approuve, par l'UI, sur le modèle du jeton de `confirm.py`.
+- Un objectif a toujours une origine, une justification, des critères de réussite, des conditions d'annulation et des **budgets** (actions, tokens, durée). Matthew peut **proposer** un objectif (`status=proposed`). Seul l'utilisateur l'approuve, par l'UI, sur le modèle du jeton de `confirm.py`.
 - Les permissions sont déclaratives (`cognition/permissions.yaml`) : **lues** par le code, **jamais écrites** par un outil exposé au modèle.
 - Détection de boucle : même action avec les mêmes arguments N fois, ou aucune progression du critère après K actions, entraîne une suspension. C'est le principe que le Studio applique déjà (« il s'arrête s'il tourne en rond »).
-- Toute modification de code par JARVIS passe par le Studio existant : espace dédié, tests, points de restauration. Jamais dans le dépôt JARVIS, qui ne peut pas être la racine du Studio (déjà vérifié par le code).
+- Toute modification de code par Matthew passe par le Studio existant : espace dédié, tests, points de restauration. Jamais dans le dépôt Matthew, qui ne peut pas être la racine du Studio (déjà vérifié par le code).
 
 ### 4.7 Modèle de soi et « introspection fonctionnelle »
 
@@ -326,7 +326,7 @@ Invariants **codés, pas promptés** :
 - les taux de réussite par outil ;
 - les limites connues (constitution).
 
-Le plugin `self_state` le renvoie tel quel. Le test de fidélité compare ce que JARVIS *dit* de son état avec ce snapshot, et journalise le résultat dans `self_reports`.
+Le plugin `self_state` le renvoie tel quel. Le test de fidélité compare ce que Matthew *dit* de son état avec ce snapshot, et journalise le résultat dans `self_reports`.
 
 ### 4.8 Trois niveaux d'architecture
 
@@ -368,7 +368,7 @@ Règle : **on ne passe pas à la phase suivante si un test essentiel échoue.** 
 
 | Phase | Objectif | Fichiers | Tests / critères de réussite | Retour arrière |
 |---|---|---|---|---|
-| **1** | Constitution + squelette `cognition/` + journal d'événements | `cognition/{__init__,events,store,policy,selftest}.py`, `cognition/constitution/jarvis.yaml` + `CHANGELOG.md`, `docs/cognition/` | selftest : aucun import inverse (comme `context/`), schéma créé, constitution chargée, hash enregistré par version ; base §0.1 inchangée | supprimer `cognition/` |
+| **1** | Constitution + squelette `cognition/` + journal d'événements | `cognition/{__init__,events,store,policy,selftest}.py`, `cognition/constitution/matthew_assistant.yaml` + `CHANGELOG.md`, `docs/cognition/` | selftest : aucun import inverse (comme `context/`), schéma créé, constitution chargée, hash enregistré par version ; base §0.1 inchangée | supprimer `cognition/` |
 | **2** | Mémoire persistante avec provenance ; import en lecture de `long_term.json` ; hooks `observe_turn` / `observe_tool` ; plugin `recall_episodes` | `cognition/memory_store.py`, `plugins/cognition_memory.py`, 2–3 hooks `try/except ImportError` dans `main.py` | conservation après redémarrage 100 % ; rappel exact sur un jeu scripté ; un fait `model_inferred` n'est jamais `active` ; contradiction → `contested` ; suppression totale vérifiée (FTS inclus) | retirer plugin + hooks ; la DB est ignorée |
 | **3** | Autobiographie + réflexion citée | `cognition/autobio.py`, `reflection.py` | toute réflexion cite ≥ 1 souvenir existant ; aucune réflexion n'est promue sans validation ; les épisodes de session ne sont plus perdus (le flux V1 de `pop_last_session` reste intact) | désactiver le déclencheur |
 | **4** | Moteur émotionnel | `cognition/appraisal.py`, `affect.py` | réponse aux événements selon la table ; décroissance exacte ; persistance au redémarrage ; monotonie de sécurité (test : affect extrême ⇒ aucune permission en plus) ; effet mesurable (frustration ≥ 0,7 ⇒ changement de stratégie) | variables à la ligne de base, hooks retirés |
@@ -395,7 +395,7 @@ Réponses de Teddy, qui m'a délégué les choix restants :
 - **Confidentialité** : envoyer des données à Google est acceptable.
 - La **constitution** est un premier jet de ma part, à amender.
 
-**Fait (phases 1–2)** : paquet `cognition/`, 23/23 au selftest, intégration vérifiée sur le vrai `JarvisLive` en mode local. Voir le graphe `cognition` (capabilities/graphs/cognition.json).
+**Fait (phases 1–2)** : paquet `cognition/`, 23/23 au selftest, intégration vérifiée sur le vrai `MatthewAssistantLive` en mode local. Voir le graphe `cognition` (capabilities/graphs/cognition.json).
 
 **Fait ensuite (phases 3–4, même jour)** : 36/36 au selftest.
 - Réflexion citée (phase 3).
@@ -410,7 +410,7 @@ Le premier test réel de Teddy a révélé deux défauts, tous deux corrigés et
 Mesures réelles détaillées dans le graphe `cognition`.
 
 **Phase 5 (objectifs persistants)** : 42/42 au selftest.
-- JARVIS propose ; activer, clore, annuler ou relancer passe par le bouton CONFIRMER existant (`core/confirm.py`).
+- Matthew propose ; activer, clore, annuler ou relancer passe par le bouton CONFIRMER existant (`core/confirm.py`).
 - Budgets d'actions, détection de boucle, échéances.
 - Vérifié contre 11 actions hostiles. Une faille injectée exprès (une action `approve` directe dans le plugin) est détectée par deux tests indépendants.
 
@@ -459,6 +459,6 @@ Matériel du PC : 29 Go de RAM, 12 cœurs AMD Phoenix, GPU NVIDIA RTX A500 de 4 
 5. **Un seul utilisateur ?** (toi uniquement, ou plusieurs personnes à distinguer)
 6. **Constitution** : veux-tu la rédiger avec moi (valeurs, ton, priorités, limites) ou que je propose un premier jet versionné à amender ?
 7. **Résumés de session** : on garde le comportement V1 (consommé au briefing) **et** on archive en parallèle dans `cognition/`. D'accord ?
-8. **Proactivité** : JARVIS peut-il *proposer* oralement des objectifs ou des questions de suivi, ou seulement par le HUD ?
+8. **Proactivité** : Matthew peut-il *proposer* oralement des objectifs ou des questions de suivi, ou seulement par le HUD ?
 9. **Langue** de la constitution et des journaux : français ?
 10. Les échecs pré-existants (§0.1) : faut-il les corriger d'abord, ou les laisser documentés comme base ?

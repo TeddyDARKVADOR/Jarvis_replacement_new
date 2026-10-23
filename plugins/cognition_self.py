@@ -1,5 +1,5 @@
 """
-cognition_self — l'état de JARVIS tel qu'il est ENREGISTRÉ, pas tel qu'il l'imagine.
+cognition_self — l'état de Matthew tel qu'il est ENREGISTRÉ, pas tel qu'il l'imagine.
 
 Plugin ordinaire (graphe contrat, cas 1). Lit cognition.get_active() ;
 hors mode local, ou si cognition/ est absent, répond que c'est indisponible.

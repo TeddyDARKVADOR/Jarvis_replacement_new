@@ -46,7 +46,7 @@ class _UI:
         self.log.append(line)
 
 
-class _Jarvis:
+class _MatthewAssistant:
     def __init__(self):
         self.ui, self.said, self.session, self._dashboard = _UI(), [], object(), None
 
@@ -64,7 +64,7 @@ def _cycle():
         R.add("JARVISReminder_old", now - timedelta(days=1), "Trop vieux", path=path)
         due = R.due(now, path=path)
         assert [rid for rid, _ in due] == ["JARVISReminder_a"], due
-        j = _Jarvis()
+        j = _MatthewAssistant()
         saved = R._may_speak
         R._may_speak = lambda: True            # la politique permet de parler
         try:
@@ -79,7 +79,7 @@ def _cycle():
         return f"livré par : {how} ; le rappel de la veille n'est pas rejoué"
 
 
-@check("2 la tâche planifiée se tait quand JARVIS a déjà livré")
+@check("2 la tâche planifiée se tait quand Matthew a déjà livré")
 def _system_task_skips():
     import actions.reminder as AR
     with tempfile.TemporaryDirectory() as tmp:
@@ -107,7 +107,7 @@ def _system_task_skips():
 
 @check("3 quand la politique interdit de parler, le rappel s'affiche sans voix")
 def _quiet():
-    j = _Jarvis()
+    j = _MatthewAssistant()
     saved = R._may_speak
     R._may_speak = lambda: False           # réunion, sommeil…
     try:
@@ -133,7 +133,7 @@ def _phone():
 
     async def scenario():
         N.reset()
-        j = _Jarvis()
+        j = _MatthewAssistant()
         j._dashboard = _Dash()
         j.session = None                      # pas de session : pas de voix
         saved_attach_thread = R._thread

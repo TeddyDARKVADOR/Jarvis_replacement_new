@@ -1,9 +1,9 @@
 """
 Gardien d'ejection du mode portable.
 
-Lance JARVIS comme sous-processus et surveille la presence de la cle USB, ancree
+Lance Matthew comme sous-processus et surveille la presence de la cle USB, ancree
 sur un FICHIER precis de la cle (le lanceur, passe par --anchor). Si la cle
-disparait pendant que JARVIS tourne (ejection brutale), on arrete JARVIS tout de
+disparait pendant que Matthew tourne (ejection brutale), on arrete Matthew tout de
 suite : mieux vaut un arret net qu'une ecriture a moitie faite sur une cle absente.
 
 Usage (pose par Lancer-JARVIS.bat) :
@@ -77,7 +77,7 @@ def guard(anchor: Path, cmd: list[str]) -> int:
                 if missing_since is None:
                     missing_since = now
                 elif now - missing_since >= GRACE_SECONDS:
-                    # cle confirmee absente : on arrete JARVIS
+                    # cle confirmee absente : on arrete Matthew
                     _kill_tree(proc)
                     return 99
             time.sleep(POLL_SECONDS)

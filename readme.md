@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="J.A.R.V.I.S — MARK LIII" width="100%">
+  <img src="docs/banner.svg" alt="Matthew — MARK LIII" width="100%">
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@ flowchart TB
     android["📱 <b>Android</b><br/>micro · notifications"]
     web["🌐 <b>Tableau de bord</b><br/>appairage QR · fichiers"]
 
-    live{{"⚡ <b>JARVIS · MARK LIII</b><br/>Gemini 3.1 Flash Live<br/>Oracle 24/7 ou ce PC"}}
+    live{{"⚡ <b>Matthew · MARK LIII</b><br/>Gemini 3.1 Flash Live<br/>Oracle 24/7 ou ce PC"}}
     night["🌙 <b>Night Shift</b><br/>3 passes par nuit"]
 
     tools["🧰 <b>43 outils</b><br/>plugins · MCP · skills"]
@@ -59,7 +59,7 @@ flowchart TB
 ```mermaid
 %%{init: {"theme": "dark", "themeVariables": {"fontFamily": "Segoe UI, Helvetica, Arial", "fontSize": "14px"}}}%%
 mindmap
-  root((JARVIS))
+  root((Matthew))
     🎙️ Voix
       Gemini Live, 5 voix
       Mot d'éveil Hey Jarvis
@@ -113,7 +113,7 @@ mindmap
       Vitrine publique en direct
 ```
 
-> JARVIS connaît son propre graphe : demandez-lui **« montre-moi ton graphe »**, il l'ouvre dans le HUD.
+> Matthew connaît son propre graphe : demandez-lui **« montre-moi ton graphe »**, il l'ouvre dans le HUD.
 > Le détail de chaque fonctionnalité, avec son état vérifié, est dans [`capabilities/graphs/`](capabilities/graphs/).
 
 ## ⚡ Démarrer
@@ -126,19 +126,19 @@ python setup.py            # les dépendances de votre OS, rien de plus
 
 | Commande | Ce qui se lance |
 |---|---|
-| `python main.py` | le HUD, relié à JARVIS sur le serveur |
-| `python main.py --local` | JARVIS entièrement sur ce PC, même HUD |
+| `python main.py` | le HUD, relié à Matthew sur le serveur |
+| `python main.py --local` | Matthew entièrement sur ce PC, même HUD |
 | `python main.py --mini` | le HUD réduit en orbe dans un coin |
 
 **Premier lancement :** les Paramètres (⚙ ou `Ctrl+,`) s'ouvrent seuls. Entrez l'adresse du serveur et le jeton (`python -m server.run_headless --pairing` sur le serveur), ou, en `--local`, votre clé [Gemini](https://aistudio.google.com/apikey) gratuite.
 
 **Il faut :** Python 3.11 ou 3.12, un micro, des haut-parleurs. Le mot d'éveil, Ollama et le serveur sont facultatifs.
 
-## 🔌 Nomade — JARVIS sur clé USB
+## 🔌 Nomade — Matthew sur clé USB
 
-JARVIS tient sur une clé USB et tourne depuis **n'importe quel PC Windows** (ou
+Matthew tient sur une clé USB et tourne depuis **n'importe quel PC Windows** (ou
 Linux) **sans rien installer ni laisser sur l'hôte**. Branchez la clé, une fenêtre
-demande *« Lancer JARVIS sur ce PC ? »*, et un **réacteur ARC animé** s'affiche le
+demande *« Lancer Matthew sur ce PC ? »*, et un **réacteur ARC animé** s'affiche le
 temps du démarrage ; retirez la clé, rien ne reste.
 
 ```
@@ -153,12 +153,12 @@ temps du démarrage ; retirez la clé, rien ne reste.
   `APPDATA`/`TEMP`/`HF_HOME`/`OLLAMA_MODELS`… vers la clé avant de démarrer Python.
   Aucun fichier de `core/` n'est touché (contrat V2).
 - **Plusieurs clés Gemini** : listez-les (`gemini_api_keys`) ou laissez le PC hôte
-  injecter la sienne (`JARVIS_GEMINI_KEYS`) — JARVIS bascule quand l'une épuise son
+  injecter la sienne (`MATTHEW_ASSISTANT_GEMINI_KEYS`) — Matthew bascule quand l'une épuise son
   quota du jour. Plusieurs comptes ≈ plus de quota.
 - **Coffre** : `portable\secure_key.ps1 -Action lock` chiffre vos clés (et votre
   mémoire) avec une phrase ; clé perdue = données illisibles. Compatible Ventoy.
 - **100 % hors-ligne** : `portable\add_ollama.ps1` pose Ollama + un modèle outillé
-  sur la clé ; JARVIS marche alors sans internet ni Gemini.
+  sur la clé ; Matthew marche alors sans internet ni Gemini.
 - **Lancement au branchement** : `portable\autostart_watcher.ps1` (icône barre des
   tâches, sans trace) demande l'autorisation par une fenêtre élégante *Oui / Non* ;
   `install_autostart.ps1` l'automatise au logon sur vos PC de confiance.
@@ -174,7 +174,7 @@ temps du démarrage ; retirez la clé, rien ne reste.
 - **Continuité d'identité** : le même *moi* voyage avec la clé. Au branchement, récap
   de reprise conscient de la machine — *« la dernière fois, sur le PC du bureau, on
   finissait X ; ici nouvelle machine, sans GPU → Ollama »* (`resume`, `note`).
-- **Zéro-trace *prouvé*** : JARVIS mémorise les vrais dossiers de l'hôte avant de
+- **Zéro-trace *prouvé*** : Matthew mémorise les vrais dossiers de l'hôte avant de
   rediriger, puis **démontre à l'arrêt que 0 fichier a été écrit hors de la clé**
   (`audit`). Chiffrement clés **+ mémoire** par défaut.
 - **Increvable** : auto-vérification au boot (dépendance cassée → réinstallée
@@ -183,11 +183,11 @@ temps du démarrage ; retirez la clé, rien ne reste.
   `history` (où/quand il a tourné), **éjection en sécurité** depuis l'icône du veilleur.
 
 Tout le détail, avec l'état vérifié, est dans le graphe
-[`capabilities/graphs/deployment.json`](capabilities/graphs/deployment.json) (nœud *JARVIS portable*).
+[`capabilities/graphs/deployment.json`](capabilities/graphs/deployment.json) (nœud *Matthew portable*).
 
 ## 🌱 Matthew — un cerveau à lui
 
-JARVIS pense aujourd'hui avec Gemini. **Matthew** est la transition : un modèle aux poids
+Matthew pense aujourd'hui avec Gemini. **Matthew** est la transition : un modèle aux poids
 ouverts (Qwen3.5-4B, Apache-2.0) qui apprend chaque nuit sur **la carte graphique de la
 maison**, et qui prend des tâches une à une, seulement quand l'évaluation prouve qu'il fait
 aussi bien.
@@ -239,7 +239,7 @@ Le détail, la vision à 10 ans et l'état vérifié de chaque pièce sont dans 
 ## 🧪 Vérifier
 
 Chaque paquet se prouve seul, sans clé ni réseau : `python -m capabilities.selftest`, `python -m context.selftest`, `python -m server.selftest`, …
-La liste complète est dans [`CLAUDE.md`](CLAUDE.md). Trois fois par nuit, **Night Shift** relance les suites sous Linux, mesure si JARVIS s'améliore et s'attaque à chaque passe à un problème différent : un correctif proposé, à relire, jamais fusionné par une machine.
+La liste complète est dans [`CLAUDE.md`](CLAUDE.md). Trois fois par nuit, **Night Shift** relance les suites sous Linux, mesure si Matthew s'améliore et s'attaque à chaque passe à un problème différent : un correctif proposé, à relire, jamais fusionné par une machine.
 
 ## 📜 Licence
 

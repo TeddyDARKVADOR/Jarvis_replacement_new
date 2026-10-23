@@ -5,7 +5,7 @@ plugins/quotas.py — « où en sont mes quotas ? » : le registre commun (paque
 PLUGIN = {
     "name": "quotas",
     "description": (
-        "The free AI quotas JARVIS uses today: requests per Gemini model against its daily limit, which models "
+        "The free AI quotas Matthew uses today: requests per Gemini model against its daily limit, which models "
         "are exhausted and until when, and when everything resets. Use when the user asks about quotas, limits, "
         "why something is slower or failing, or « combien il me reste »."
     ),

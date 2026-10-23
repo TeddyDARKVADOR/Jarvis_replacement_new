@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parent
 # du test ne doivent jamais toucher memory/quota.json.
 try:
     import quota as _Q
-    _Q.reset_for_tests(Path(tempfile.mkdtemp(prefix="jarvis-quota-")) / "quota.json")
+    _Q.reset_for_tests(Path(tempfile.mkdtemp(prefix="matthew-assistant-quota-")) / "quota.json")
 except Exception:
     _Q = None
 _results: list[tuple[str, bool, str]] = []
@@ -49,7 +49,7 @@ def check(name: str):
     return deco
 
 
-@check("1 contrat V2 : meeting/ n'importe rien de JARVIS au chargement")
+@check("1 contrat V2 : meeting/ n'importe rien de Matthew au chargement")
 def _contract():
     banned = ("main", "core", "actions", "plugins", "cognition", "server", "dashboard", "client_desktop",
               "offline", "nightshift", "memory", "context")
@@ -84,7 +84,7 @@ def _detect_linux():
     outputs = [{"source": 1, "corked": False, "properties": {"application.name": "Zoom", "application.process.id": "500"}},
                {"source": 2, "corked": False, "properties": {"application.name": "OBS", "application.process.id": "501"}},
                {"source": 1, "corked": True, "properties": {"application.name": "Firefox", "application.process.id": "502"}},
-               {"source": 1, "corked": False, "properties": {"application.name": "JARVIS", "application.process.id": "7"}}]
+               {"source": 1, "corked": False, "properties": {"application.name": "Matthew", "application.process.id": "7"}}]
     assert detect.pulse_recorders(outputs, sources, own_pid=7) == ["Zoom"]
     text = ('Source Output #12\n\tDriver: protocol-native.c\n\tSource: 1\n\tCorked: no\n\tProperties:\n'
             '\t\tapplication.name = "Google Chrome"\n\t\tapplication.process.id = "900"\n'
@@ -93,7 +93,7 @@ def _detect_linux():
     assert detect.pulse_recorders(parsed, sources, own_pid=7) == ["Google Chrome"], parsed
     with tempfile.TemporaryDirectory() as tmp:
         proc = Path(tmp)
-        for pid, comm, target in (("300", "zoom", "/dev/video0"), ("301", "bash", "/dev/pts/1"), ("7", "jarvis", "/dev/video0")):
+        for pid, comm, target in (("300", "zoom", "/dev/video0"), ("301", "bash", "/dev/pts/1"), ("7", "matthew_assistant", "/dev/video0")):
             (proc / pid / "fd").mkdir(parents=True)
             (proc / pid / "comm").write_text(comm + "\n")
             try:
@@ -562,7 +562,7 @@ def _overlay():
     return f"repli par notification ; Ctrl+Alt+J {'enregistré puis libéré' if ok else 'déjà pris par une autre application'}"
 
 
-@check("21 JARVIS ne plante plus quand Whisper tourne dans le HUD : ctranslate2 chargé avant Qt")
+@check("21 Matthew ne plante plus quand Whisper tourne dans le HUD : ctranslate2 chargé avant Qt")
 def _preload():
     src = (ROOT.parent / "client_desktop" / "__init__.py").read_text(encoding="utf-8")
     assert "import ctranslate2" in src, "le préchargement a disparu"

@@ -1,5 +1,5 @@
 """
-Profil matériel par machine — JARVIS portable s'adapte au PC où on branche la clé.
+Profil matériel par machine — Matthew portable s'adapte au PC où on branche la clé.
 
 Détecte CPU / RAM / GPU, en déduit le modèle Ollama le mieux adapté (gros GPU
 NVIDIA → gros modèle ; sinon petit modèle qui tient sur CPU), et écrit un profil
@@ -64,7 +64,7 @@ def disk_write_mbps(target: Path) -> float:
     Sert à prévenir quand la clé est lente (USB 2.0) et à adapter les attentes."""
     import time
     data = os.urandom(8 * 1024 * 1024)
-    f = target / ".jarvis-speedtest.tmp"
+    f = target / ".matthew-assistant-speedtest.tmp"
     try:
         target.mkdir(parents=True, exist_ok=True)
         t0 = time.perf_counter()
@@ -149,7 +149,7 @@ def profile(measure_disk: bool = True) -> dict:
 
 
 def _data_dir() -> Path:
-    d = os.environ.get("JARVIS_DATA_DIR", "").strip()
+    d = os.environ.get("MATTHEW_ASSISTANT_DATA_DIR", "").strip()
     if d:
         return Path(d)
     # hors portable : à côté du dépôt, dossier jetable

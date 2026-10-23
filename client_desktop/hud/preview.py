@@ -4,7 +4,7 @@
 WHY NOT AN IFRAME IN THE HUD
     The HUD page carries the QWebChannel bridge (`hud.send`, `hud.rpc`…), and
     Qt exposes the channel transport to sub-frames too. A generated page in an
-    iframe could then talk to JARVIS. Here the page gets a view of its own,
+    iframe could then talk to Matthew. Here the page gets a view of its own,
     with no channel at all.
 
 WHAT THE PAGE GETS
@@ -101,7 +101,7 @@ class PreviewWindow(QWidget):
         super().__init__(parent, Qt.WindowType.Window)
         self.setObjectName("preview")
         self.setStyleSheet(_STYLE)
-        self.setWindowTitle("JARVIS — Aperçu du Studio")
+        self.setWindowTitle("Matthew — Aperçu du Studio")
         self.resize(1180, 820)
         self._on_stop = on_stop
         self.project = ""
@@ -131,7 +131,7 @@ class PreviewWindow(QWidget):
             row.addWidget(b)
         root.addWidget(bar)
         note = QLabel("Exécution réelle du projet dans un navigateur à part : profil privé, aucun lien avec "
-                      "JARVIS, Internet bloqué (seul le serveur local du projet répond).", self)
+                      "Matthew, Internet bloqué (seul le serveur local du projet répond).", self)
         note.setObjectName("note")
         note.setContentsMargins(14, 0, 14, 6)
         root.addWidget(note)
@@ -159,7 +159,7 @@ class PreviewWindow(QWidget):
         self._badge.setText(label)
         self._badge.setStyleSheet(f"color: {color}; border: 1px solid {color}; padding: 2px 8px;"
                                   if label else "")
-        self.setWindowTitle(f"JARVIS — Aperçu : {title or project}")
+        self.setWindowTitle(f"Matthew — Aperçu : {title or project}")
         self._view.setUrl(qurl)
         self.show()
         self.raise_()

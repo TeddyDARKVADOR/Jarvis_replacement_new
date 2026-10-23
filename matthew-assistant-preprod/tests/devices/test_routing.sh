@@ -12,7 +12,7 @@
 #     `open_app` n'est déclaré au serveur que si SYSTEM_ALERT_WINDOW est
 #     accordée, parce que sans elle un lancement depuis le service est avalé par
 #     Android sans erreur : startActivity revient normalement et rien ne
-#     s'ouvre. Une capacité déclarée dans ces conditions ferait dire à JARVIS
+#     s'ouvre. Une capacité déclarée dans ces conditions ferait dire à Matthew
 #     « c'est ouvert » alors que l'écran n'a pas bougé.
 #
 #     Les deux tests symétriques sont le cœur de la suite : permission refusée
@@ -171,7 +171,7 @@ DEVICE_ID="$(phone_id)"
 
 # ── 4. la commande routée ouvre vraiment l'application ───────────────────────
 #
-# JARVIS est renvoyé à l'arrière-plan d'abord : c'est le seul état où le test a
+# Matthew est renvoyé à l'arrière-plan d'abord : c'est le seul état où le test a
 # du sens. Une application au premier plan a le droit d'en lancer une autre sans
 # permission particulière, donc un lancement réussi depuis cet état-là ne
 # prouverait rien du chemin que la voix emprunte réellement.

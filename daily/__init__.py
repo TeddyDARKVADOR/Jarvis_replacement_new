@@ -40,7 +40,7 @@ from typing import Callable
 from daily import agenda as A
 from daily import news as N
 
-STATE = Path(os.environ.get("JARVIS_DAILY_FILE") or Path(__file__).resolve().parent.parent / "memory" / "daily.json")
+STATE = Path(os.environ.get("MATTHEW_ASSISTANT_DAILY_FILE") or Path(__file__).resolve().parent.parent / "memory" / "daily.json")
 REFRESH_S = 30 * 60
 SEEN_DAYS = 14
 SECTIONS = ("agenda", "reminders", "news", "meeting")
@@ -206,7 +206,7 @@ def _policy_channel() -> str:
         return "notify"
 
 
-def _phone(jarvis, title: str, text: str) -> bool:
+def _phone(matthew_assistant, title: str, text: str) -> bool:
     try:
         from server.notify import get_hub
         hub = get_hub()
@@ -216,8 +216,8 @@ def _phone(jarvis, title: str, text: str) -> bool:
 
 
 class Daily:
-    def __init__(self, jarvis, settings: Callable[[], dict], log: Callable[[str], None] = print):
-        self.jarvis, self.settings, self.log = jarvis, settings, log
+    def __init__(self, matthew_assistant, settings: Callable[[], dict], log: Callable[[str], None] = print):
+        self.matthew_assistant, self.settings, self.log = matthew_assistant, settings, log
         self.cached: Briefing | None = None
         self._lock = threading.Lock()
 
@@ -242,7 +242,7 @@ class Daily:
 
     def _show(self, b: Briefing) -> None:
         try:
-            self.jarvis.ui.show_content("BRIEFING", b.text())
+            self.matthew_assistant.ui.show_content("BRIEFING", b.text())
         except Exception:
             pass
 
@@ -253,12 +253,12 @@ class Daily:
         if channel == "defer":
             return "plus tard (la situation ne permet pas de te déranger)"
         self._show(b)
-        if channel == "voice" and getattr(self.jarvis, "session", None) and not b.empty():
-            self.jarvis.plugin_say(f"[BRIEFING] Give the user their day in three or four short sentences, in their "
+        if channel == "voice" and getattr(self.matthew_assistant, "session", None) and not b.empty():
+            self.matthew_assistant.plugin_say(f"[BRIEFING] Give the user their day in three or four short sentences, in their "
                                    f"language: {b.spoken()}. The details are on screen. Do not call any tool.")
             done = "voix et HUD"
         else:
-            done = "HUD" + (" et téléphone" if _phone(self.jarvis, "Briefing du jour", b.text()) else "")
+            done = "HUD" + (" et téléphone" if _phone(self.matthew_assistant, "Briefing du jour", b.text()) else "")
         mark_delivered(b)
         return done
 
@@ -284,7 +284,7 @@ def get() -> "Daily | None":
     return _attached
 
 
-def attach(jarvis) -> None:
+def attach(matthew_assistant) -> None:
     """Hook de main.py (local et Oracle) : prépare le briefing en fond et le livre à l'heure choisie."""
     global _attached
     if _attached is not None:
@@ -299,10 +299,10 @@ def attach(jarvis) -> None:
 
     def log(m: str) -> None:
         try:
-            jarvis.ui.write_log(m)
+            matthew_assistant.ui.write_log(m)
         except Exception:
             print(m)
 
-    _attached = Daily(jarvis, settings, log)
-    jarvis._daily_clause = _attached.clause
+    _attached = Daily(matthew_assistant, settings, log)
+    matthew_assistant._daily_clause = _attached.clause
     threading.Thread(target=_attached.loop, name="daily-briefing", daemon=True).start()

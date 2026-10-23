@@ -1,7 +1,7 @@
 """
 checkpoints.py — a copy of the project before each series of changes.
 
-Taken automatically before JARVIS creates files, before every round of fixes,
+Taken automatically before Matthew creates files, before every round of fixes,
 and before a restore (so a restore can itself be undone). Stored in
 <root>/.studio/<project>/checkpoints/<id>/ as plain files plus a manifest, so
 you can also open them by hand.
@@ -161,7 +161,7 @@ class Checkpoints:
             except SandboxError:
                 continue
             dst.parent.mkdir(parents=True, exist_ok=True)
-            tmp = dst.with_name(".jarvis-restore-" + dst.name)
+            tmp = dst.with_name(".matthew-assistant-restore-" + dst.name)
             shutil.copyfile(src, tmp, follow_symlinks=False)
             tmp.replace(dst)
             written += 1

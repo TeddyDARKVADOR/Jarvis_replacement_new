@@ -1,9 +1,9 @@
 """
-cognition_memory — l'archive de JARVIS : conversations passées et faits avec provenance.
+cognition_memory — l'archive de Matthew : conversations passées et faits avec provenance.
 
 Plugin ordinaire (graphe contrat, cas 1). Il ne fait que lire
 cognition.get_active() : hors mode local, ou si cognition/ est absent, il répond
-que l'archive est indisponible et JARVIS continue comme avant.
+que l'archive est indisponible et Matthew continue comme avant.
 """
 
 PLUGIN = {

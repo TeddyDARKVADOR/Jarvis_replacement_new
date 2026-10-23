@@ -1,5 +1,5 @@
 """
-eval_lab/scenario.py — one situation, in one shape, for every layer of JARVIS.
+eval_lab/scenario.py — one situation, in one shape, for every layer of Matthew.
 
 WHY ONE FORMAT FOR SEVERAL LAYERS
     The layers under test do not share a vocabulary: context/ speaks in
@@ -27,7 +27,7 @@ WHY `expected` IS A LIST OF PATHS AND NOT A GOLDEN TRACE
     about: `{"channel": "DEFER"}`, `{"steps.2.channel": "VOICE"}`. Everything
     it does not mention is free to change.
 
-Nothing here imports JARVIS. The vocabularies below are mirrored on purpose
+Nothing here imports Matthew. The vocabularies below are mirrored on purpose
 and a check in eval_lab/selftest.py fails the day they drift from the code.
 """
 from __future__ import annotations
@@ -38,7 +38,8 @@ import json
 import re
 from datetime import datetime
 
-SCHEMA = "jarvis.scenario/1"
+SCHEMA = "matthew_assistant.scenario/1"
+SCHEMAS = (SCHEMA, "jarvis.scenario/1")   # ancien nom, encore lu
 
 SURFACES = ("situation", "policy", "sequence", "routing", "router")
 # The tier a surface runs at. `router` needs a live loop and threads: FULL.
@@ -80,7 +81,7 @@ def _canonical_json(value) -> str:
 
 
 def semantic_key(s: dict) -> dict:
-    """The part of a scenario that decides what JARVIS is confronted with."""
+    """The part of a scenario that decides what Matthew is confronted with."""
     return {
         "surface": s.get("surface"),
         "world": s.get("world", {}),
@@ -141,7 +142,7 @@ def restamp(s: dict) -> dict:
 # ── validation ───────────────────────────────────────────────────────────────
 
 class Invalid(ValueError):
-    """A scenario the lab refuses to run. Never a verdict about JARVIS."""
+    """A scenario the lab refuses to run. Never a verdict about Matthew."""
 
 
 def _need(cond: bool, msg: str, errors: list) -> None:
@@ -224,13 +225,13 @@ def validate(s: dict) -> dict:
     Structural: the envelope is well-formed. Semantic: the situation it
     describes could exist — an origin that names a device that is not there,
     a phone that reported from the future.
-    A scenario that fails here is the lab's problem, never JARVIS's.
+    A scenario that fails here is the lab's problem, never Matthew's.
     """
     errors: list[str] = []
     if not isinstance(s, dict):
         raise Invalid(["le scenario n'est pas un objet"])
 
-    _need(s.get("schema") == SCHEMA, f"schema != {SCHEMA}", errors)
+    _need(s.get("schema") in SCHEMAS, f"schema != {SCHEMA}", errors)
     surface = s.get("surface")
     _need(surface in SURFACES, f"surface inconnue : {surface!r}", errors)
     _need(s.get("source") in SOURCES, f"source inconnue : {s.get('source')!r}", errors)

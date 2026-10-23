@@ -531,7 +531,7 @@ def _router_checks(report: "Report") -> None:  # noqa: C901
     report.check(
         "29 une commande correctement adressee n'est pas refusee d'emblee",
         not executor.execute(
-            "open_app", {"app": "__jarvis_selftest_nonexistent__"},
+            "open_app", {"app": "__matthew_assistant_selftest_nonexistent__"},
             target_device_id="desktop-01",
         ).startswith("Refusé"),
     )

@@ -3,7 +3,7 @@
 
    Tokens: --accent is the user's colour (palette popover). --sc is the colour
    of the CURRENT STATE and is set by main.js on <body>; everything that should
-   say "what is JARVIS doing" uses --sc, everything decorative uses --accent.
+   say "what is Matthew doing" uses --sc, everything decorative uses --accent.
    The state colours come from `client_desktop/ui/theme.py` (OK, WARN, ERROR,
    MUTED), the palette the Android app shares.
    ───────────────────────────────────────────────────────────────────────── */
@@ -600,7 +600,7 @@ body.alarm #vignette { animation: alarm 1.2s ease-in-out infinite; }
 #camera span::before { content: "● "; animation: pulse 1.2s infinite; }
 body.mini #camera, body.mini #clip { display: none !important; }
 
-/* ── Jarvis Code Studio (js/studio.js) ─────────────────────────────────── */
+/* ── Matthew Code Studio (js/studio.js) ─────────────────────────────────── */
 #studio { z-index: 190; }            /* under #confirm: an approval request always shows on top */
 #btn-studio.working { color: var(--c-think); border-color: var(--c-think); animation: stPulse 1.6s ease-in-out infinite; }
 @keyframes stPulse { 50% { box-shadow: 0 0 16px color-mix(in srgb, var(--c-think) 55%, transparent); } }

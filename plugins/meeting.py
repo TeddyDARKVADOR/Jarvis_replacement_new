@@ -40,7 +40,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
     cop = meeting.get()
     if cop is None:
         return ("Le copilote de réunion tourne sur le PC, avec son micro : il n'est pas actif ici. "
-                "Ouvre JARVIS sur le PC (HUD) pour qu'il écoute les visios.")
+                "Ouvre Matthew sur le PC (HUD) pour qu'il écoute les visios.")
     action = str(parameters.get("action") or "status").strip().lower()
     try:
         if action == "start":
@@ -53,7 +53,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
         if action == "last":
             last = cop.last
             if not last:
-                return "Aucun compte rendu depuis le démarrage de JARVIS."
+                return "Aucun compte rendu depuis le démarrage de Matthew."
             return (f"Dernière réunion ({last['started']}, {last['minutes']} min), fichier : {last['path']}\n\n"
                     + meeting.summary_text(last["result"]))
         if action == "help":

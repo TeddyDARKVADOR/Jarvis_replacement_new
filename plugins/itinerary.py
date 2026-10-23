@@ -69,7 +69,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
 
     if not getattr(player, "local_mode", False):
         return (
-            "L'ouverture d'itinéraire est disponible lorsque JARVIS tourne en mode "
+            "L'ouverture d'itinéraire est disponible lorsque Matthew tourne en mode "
             "local sur le PC."
         )
 

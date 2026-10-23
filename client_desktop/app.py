@@ -4,7 +4,7 @@ The controller — the one place that knows about all the others.
 ```
    audio thread        network thread            GUI thread
    ────────────        ──────────────            ──────────
-   Microphone  ──► gate? ──► NetworkWorker ──►  JarvisStore
+   Microphone  ──► gate? ──► NetworkWorker ──►  MatthewAssistantStore
        │                          │                  │
     WakeWord                  three sockets       snapshot
        │                          │                  │
@@ -38,12 +38,12 @@ from .audio import Microphone
 from .config import Settings, load, save  # noqa: F401  (save: _on_settings_changed)
 from .device import CapabilityProbe, LocalExecutor
 from .net import NetworkWorker
-from .state import JarvisStore, LinkState, Snapshot
+from .state import MatthewAssistantStore, LinkState, Snapshot
 from .hud.backends import RemoteBackend
 from .hud.settings import RECONNECT_KEYS
 from .hud.window import HudWindow
 from .ui.debug import DebugWindow
-from .ui.tray import JarvisTray
+from .ui.tray import MatthewAssistantTray
 from .wake import Gate, WakeWord, engine_available, install
 
 #: How often the UI pulls a snapshot. The core repaints faster than this off its
@@ -71,17 +71,17 @@ class _Bridge(QObject):
     event = pyqtSignal(str, object)
 
 
-class JarvisDesktop(QObject):
+class MatthewAssistantDesktop(QObject):
     """Everything wired together. One per process — see `single_instance`."""
 
     def __init__(self, settings: Settings | None = None) -> None:
         super().__init__()
         self.settings = settings or load()
-        self.store = JarvisStore()
+        self.store = MatthewAssistantStore()
         #: (text, sent_at) while a typed command is waiting for an answer.
         self._pending_command: tuple[str, float] | None = None
         #: `time.monotonic()` of the last thing Matthew said. See _check_unanswered.
-        self._last_jarvis_at = 0.0
+        self._last_matthew_assistant_at = 0.0
 
         # ── the pieces ───────────────────────────────────────────────────────
         self.worker = NetworkWorker(self.settings, self.store)
@@ -106,7 +106,7 @@ class JarvisDesktop(QObject):
         # Settings page "assistant" questions and attached files go to Oracle.
         self.hud.backend = RemoteBackend(self.worker.http_session)
         self.debug = DebugWindow(self.settings)
-        self.tray = JarvisTray()
+        self.tray = MatthewAssistantTray()
 
         # What this machine can honestly claim to do. Proven by import in a
         # background thread — see `device.CapabilityProbe`.
@@ -367,8 +367,8 @@ class JarvisDesktop(QObject):
         # Bookkeeping first, and outside the notifications setting: turning
         # notifications off must not also stop the client noticing that a
         # command went unanswered.
-        if kind == "message" and getattr(payload, "from_jarvis", False):
-            self._last_jarvis_at = time.monotonic()
+        if kind == "message" and getattr(payload, "from_matthew_assistant", False):
+            self._last_matthew_assistant_at = time.monotonic()
         if kind == "link" and self._offline is not None and self.settings.is_configured:
             if payload is LinkState.CONNECTED:
                 self._offline.on_up()
@@ -398,7 +398,7 @@ class JarvisDesktop(QObject):
 
         elif kind == "message":
             message = payload  # type: ignore[assignment]
-            if getattr(message, "from_jarvis", False) and not self._hud_readable():
+            if getattr(message, "from_matthew_assistant", False) and not self._hud_readable():
                 self.tray.notify("Matthew", getattr(message, "text", "")[:180])
 
         elif kind == "link":
@@ -416,11 +416,11 @@ class JarvisDesktop(QObject):
             return
         text, sent_at = self._pending_command
 
-        # `_last_jarvis_at` is stamped on arrival rather than read from the
+        # `_last_matthew_assistant_at` is stamped on arrival rather than read from the
         # message's own `at`: the server dates a line with its own wall clock,
         # and comparing that against this machine's monotonic clock would be
         # comparing two unrelated numbers.
-        if self._last_jarvis_at >= sent_at:
+        if self._last_matthew_assistant_at >= sent_at:
             self._pending_command = None
             return
 

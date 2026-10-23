@@ -1,7 +1,7 @@
 """
 cognition/runtime.py — ce que main.py voit de la cognition. Rien de plus.
 
-    attach(jarvis) -> Cognition | None
+    attach(matthew_assistant) -> Cognition | None
 
 Entrées (hooks d'une ligne dans main.py) :
     observe_turn, observe_tool, on_save_memory, archive_session
@@ -55,7 +55,7 @@ _active: "Cognition | None" = None
 
 
 def get_active() -> "Cognition | None":
-    """Pour les plugins : l'instance attachée au JARVIS local, ou None."""
+    """Pour les plugins : l'instance attachée au Matthew local, ou None."""
     return _active
 
 
@@ -589,7 +589,7 @@ class Cognition:
 
     @_safe(default="Self-state unavailable.")
     def self_report(self, about: str = "") -> str:
-        """Ce que JARVIS peut dire de lui-même, lu dans les données, pas imaginé.
+        """Ce que Matthew peut dire de lui-même, lu dans les données, pas imaginé.
         `about` : un outil dont on veut la fiabilité mesurée."""
         st = self.current_affect()
         causes = self.store.query(
@@ -719,7 +719,7 @@ class Cognition:
     def generate(self, prompt: str, *, system: str = "", quality: bool = False,
                  max_tokens: int = 400, with_state: bool = True, task: str | None = None) -> str:
         """Générateurs de secours, IA locale comprise. Le prompt système reçoit
-        la constitution et, par défaut, l'état affectif courant : le même JARVIS,
+        la constitution et, par défaut, l'état affectif courant : le même Matthew,
         quel que soit le modèle qui répond. `quality=True` écarte le petit
         modèle local (fiabilité mesurée insuffisante pour juger)."""
         if not self.chain:
@@ -742,16 +742,16 @@ class Cognition:
                 "affect": {k: round(v, 3) for k, v in self.current_affect().values.items()}}
 
 
-def attach(jarvis, db_path: Path | str | None = None,
+def attach(matthew_assistant, db_path: Path | str | None = None,
            legacy_path: Path | None = None, chain=None) -> Cognition | None:
-    """Appelé une fois par JarvisLive.__init__. Mode local uniquement (pour l'instant).
+    """Appelé une fois par MatthewAssistantLive.__init__. Mode local uniquement (pour l'instant).
     Les paramètres ne servent qu'au selftest, qui ne touche jamais la vraie base."""
     global _active
     try:    # matthew/ (optionnel, tous les modes) : journal d'entraînement de notre modèle
-        __import__("matthew").attach(jarvis)
+        __import__("matthew").attach(matthew_assistant)
     except ImportError:
         pass
-    ui = getattr(jarvis, "ui", None)
+    ui = getattr(matthew_assistant, "ui", None)
     if not getattr(ui, "local_mode", False):
         return None
 
@@ -774,7 +774,7 @@ def attach(jarvis, db_path: Path | str | None = None,
         names = []
         for reg in ("_action_registry", "_plugin_registry"):
             try:
-                names += [d["name"] for d in getattr(jarvis, reg).get_tool_declarations()]
+                names += [d["name"] for d in getattr(matthew_assistant, reg).get_tool_declarations()]
             except Exception:
                 pass
         return names
@@ -784,7 +784,7 @@ def attach(jarvis, db_path: Path | str | None = None,
     def _run_tool(name: str, args: dict) -> str:
         # Seul autonomy.SAFE_TOOLS arrive ici (vérifié avant l'appel) ; même
         # chemin que main._execute_tool pour une action, sans voix.
-        return jarvis._action_registry.run(name, dict(args), {
+        return matthew_assistant._action_registry.run(name, dict(args), {
             "player": ui, "speak": None, "response": None, "session_memory": None})
 
     _active.autonomy.tool_runner = _run_tool

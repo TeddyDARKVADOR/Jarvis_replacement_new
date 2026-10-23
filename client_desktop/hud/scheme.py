@@ -1,12 +1,12 @@
 """
-`jarvis-hud://hud/` — the HUD's own origin.
+`matthew-assistant-hud://hud/` — the HUD's own origin.
 
 A page loaded from `file://` gets an opaque origin and every ES module import
 fails silently. The HUD is ES modules, so it gets a scheme of its own.
 
 One root is served, and nothing else:
 
-    jarvis-hud://hud/<path>          client_desktop/hud/web/<path>
+    matthew-assistant-hud://hud/<path>          client_desktop/hud/web/<path>
 
 three.js is vendored in `web/vendor/`, so no network is needed.
 
@@ -30,7 +30,7 @@ except Exception:  # pragma: no cover - depends on the local install
     AVAILABLE = False
     QWebEngineUrlSchemeHandler = object  # type: ignore[assignment,misc]
 
-SCHEME = b"jarvis-hud"
+SCHEME = b"matthew-assistant-hud"
 HOST = "hud"
 WEB_ROOT = Path(__file__).resolve().parent / "web"
 

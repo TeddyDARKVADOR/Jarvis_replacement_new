@@ -1,5 +1,5 @@
 ﻿<#
-  setup_wizard.ps1 -- assistant de premiere configuration de JARVIS portable.
+  setup_wizard.ps1 -- assistant de premiere configuration de Matthew portable.
 
   Fenetre simple : coller une ou plusieurs cles Gemini (une par ligne), cocher
   eventuellement « chiffrer avec une phrase » (coffre), et enregistrer. Ecrit
@@ -21,7 +21,7 @@ if (-not $ConfigDir) { $ConfigDir = Join-Path (Split-Path -Parent $PSScriptRoot)
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="JARVIS portable — configuration" WindowStartupLocation="CenterScreen"
+        Title="Matthew portable — configuration" WindowStartupLocation="CenterScreen"
         Width="560" Height="520" ResizeMode="NoResize" Background="#0B1622">
   <Grid Margin="24">
     <Grid.RowDefinitions>
@@ -32,7 +32,7 @@ if (-not $ConfigDir) { $ConfigDir = Join-Path (Split-Path -Parent $PSScriptRoot)
                FontWeight="Bold" Foreground="#EAF7FF"/>
     <TextBlock Grid.Row="1" Margin="0,6,0,10" Foreground="#9FDCEE" FontFamily="Consolas" FontSize="12"
                TextWrapping="Wrap"
-               Text="Colle ta ou tes cle(s) Gemini, une par ligne. Plusieurs cles = plus de quota : JARVIS bascule quand l'une est epuisee."/>
+               Text="Colle ta ou tes cle(s) Gemini, une par ligne. Plusieurs cles = plus de quota : Matthew bascule quand l'une est epuisee."/>
     <TextBox Grid.Row="2" x:Name="keys" AcceptsReturn="True" TextWrapping="Wrap"
              VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="13"
              Background="#07101A" Foreground="#Dff4ff" BorderBrush="#2A4A5E" Padding="8"/>

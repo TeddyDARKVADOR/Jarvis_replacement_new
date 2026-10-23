@@ -2,17 +2,17 @@
 meeting/ — le copilote de réunion : il entend la visio, quelle que soit
 l'application, et rend un compte rendu, des rappels et des objectifs.
 
-Micro ou caméra pris par une autre application (detect.py) → JARVIS capte le
+Micro ou caméra pris par une autre application (detect.py) → Matthew capte le
 son du poste et le micro (capture.py), les transcrit sur ce poste au fil de la
 réunion (transcribe.py), puis, la réunion finie (watcher.py), demande un
 compte rendu à un modèle (summarize.py, brain.py). Le compte rendu et la
-transcription sont écrits dans Documents/JARVIS/Réunions ; le son n'est jamais
+transcription sont écrits dans Documents/Matthew/Réunions ; le son n'est jamais
 enregistré. Les actions datées de l'utilisateur deviennent des rappels (outil
 reminder), les autres des objectifs PROPOSÉS (outil goals : l'utilisateur
 approuve sur le HUD).
 
 DEUX POINTS D'ENTRÉE (paquet racine, contrat V2)
-  - main.py (mode local) : `attach(jarvis)`. Tout se passe dans ce processus.
+  - main.py (mode local) : `attach(matthew_assistant)`. Tout se passe dans ce processus.
   - client_desktop (HUD relié à Oracle) : `Copilot` créé par app.py. Le poste
     capte et transcrit ; Oracle résume et livre (server/meeting_api.py,
     POST /api/meeting/summary) — la clé ne quitte jamais le serveur.
@@ -20,7 +20,7 @@ DEUX POINTS D'ENTRÉE (paquet racine, contrat V2)
 
 RÉGLAGES (config/api_keys.json, ou settings.json du client)
   meeting_mode          auto (défaut) · ask · off
-  meeting_dir           dossier des comptes rendus (défaut Documents/JARVIS/Réunions)
+  meeting_dir           dossier des comptes rendus (défaut Documents/Matthew/Réunions)
   meeting_whisper_model small (défaut) · base · medium…
   meeting_language      fr, en… (défaut : détection automatique)
 
@@ -45,7 +45,9 @@ _copilot: "Copilot | None" = None
 
 
 def default_dir() -> Path:
-    return Path.home() / "Documents" / "JARVIS" / "Réunions"
+    docs = Path.home() / "Documents"
+    old = docs / "JARVIS" / "Réunions"   # avant le renommage : gardé tant qu'il est le seul
+    return old if old.is_dir() and not (docs / "Matthew").exists() else docs / "Matthew" / "Réunions"
 
 
 def _safe(name: str) -> str:
@@ -303,35 +305,35 @@ def summary_text(result: dict) -> str:
     return "\n".join(md).strip()
 
 
-def deliver(jarvis, result: dict, where: str = "", names: tuple[str, ...] = ("moi",)) -> dict:
+def deliver(matthew_assistant, result: dict, where: str = "", names: tuple[str, ...] = ("moi",)) -> dict:
     """Le compte rendu au HUD, les rappels, les objectifs proposés, une phrase à la voix. Rend ce qui a été fait."""
     done = {"reminders": [], "goals": [], "voice": False}
     title = result.get("title") or "Réunion"
     try:
-        jarvis.ui.show_content(f"RÉUNION — {title}"[:60], summary_text(result) + (f"\n\n{where}" if where else ""))
+        matthew_assistant.ui.show_content(f"RÉUNION — {title}"[:60], summary_text(result) + (f"\n\n{where}" if where else ""))
     except Exception:
         pass
-    ctx = {"player": getattr(jarvis, "ui", None), "speak": getattr(jarvis, "speak", None),
+    ctx = {"player": getattr(matthew_assistant, "ui", None), "speak": getattr(matthew_assistant, "speak", None),
            "response": None, "session_memory": None}
     for a in mine(result, names):
         try:
             if a["due"]:
                 date, _, hour = a["due"].partition(" ")
-                r = jarvis._action_registry.run("reminder", {"date": date, "time": hour or "09:00",
+                r = matthew_assistant._action_registry.run("reminder", {"date": date, "time": hour or "09:00",
                                                              "message": a["task"][:200]}, ctx)
                 done["reminders"].append(f"{a['task'][:60]} → {r}")
             elif len(done["goals"]) < 3:
-                r = jarvis._plugin_registry.run(
+                r = matthew_assistant._plugin_registry.run(
                     "goals", {"action": "propose", "title": a["task"][:80],
                               "justification": f"Engagement pris pendant la réunion « {title} ».",
-                              "success_criteria": a["task"][:200]}, player=getattr(jarvis, "ui", None))
+                              "success_criteria": a["task"][:200]}, player=getattr(matthew_assistant, "ui", None))
                 done["goals"].append(f"{a['task'][:60]} → {r}")
         except Exception as e:
             done.setdefault("errors", []).append(f"{a['task'][:40]} : {type(e).__name__}")
-    if getattr(jarvis, "session", None):
+    if getattr(matthew_assistant, "session", None):
         try:
             mine_n = len(mine(result, names))
-            jarvis.plugin_say(
+            matthew_assistant.plugin_say(
                 f"[MEETING] The meeting « {title} » just ended and its minutes are ready"
                 + (f" (saved to {where})" if where else "") + f". Summary: {result.get('summary', '')[:600]} "
                 f"The user has {mine_n} action(s); {len(done['reminders'])} became reminders and "
@@ -341,7 +343,7 @@ def deliver(jarvis, result: dict, where: str = "", names: tuple[str, ...] = ("mo
         except Exception:
             pass
     try:
-        jarvis.ui.write_log(f"SYS: Réunion « {title} » : {len(done['reminders'])} rappel(s), "
+        matthew_assistant.ui.write_log(f"SYS: Réunion « {title} » : {len(done['reminders'])} rappel(s), "
                             f"{len(done['goals'])} objectif(s) proposé(s).")
     except Exception:
         pass
@@ -353,10 +355,10 @@ def user_names(cfg: dict) -> tuple[str, ...]:
     return ("moi",) + ((name, name.split()[0]) if name else ())
 
 
-def attach(jarvis) -> None:
+def attach(matthew_assistant) -> None:
     """Le hook de main.py, mode local seulement (sur Oracle, c'est le PC relié qui écoute)."""
     global _copilot
-    if _copilot is not None or not getattr(getattr(jarvis, "ui", None), "local_mode", False):
+    if _copilot is not None or not getattr(getattr(matthew_assistant, "ui", None), "local_mode", False):
         return
 
     def settings() -> dict:
@@ -374,9 +376,9 @@ def attach(jarvis) -> None:
 
     def notify(kind: str, text: str) -> None:
         try:
-            jarvis.ui.write_log(f"SYS: {text}")
+            matthew_assistant.ui.write_log(f"SYS: {text}")
             if kind in ("start", "ask", "error"):
-                jarvis.ui.show_content("RÉUNION", text)
+                matthew_assistant.ui.show_content("RÉUNION", text)
         except Exception:
             pass
 
@@ -386,8 +388,8 @@ def attach(jarvis) -> None:
 
     from meeting.overlay import Overlay
     _copilot = Copilot(settings, summarize_local,
-                       lambda result, path, md: deliver(jarvis, result, str(path or ""), user_names(settings())),
-                       notify, log=lambda m: _log(jarvis, m), save_setting=save_setting,
+                       lambda result, path, md: deliver(matthew_assistant, result, str(path or ""), user_names(settings())),
+                       notify, log=lambda m: _log(matthew_assistant, m), save_setting=save_setting,
                        answer=lambda system, user: fast_answer(settings(), system, user), overlay=Overlay())
     _copilot.watch()
 
@@ -400,8 +402,8 @@ def fast_answer(cfg: dict, system: str, user: str) -> str:
     return Brain({**cfg, "meeting_brain_order": order}, timeout=15.0).complete(system, user, max_tokens=700)
 
 
-def _log(jarvis, message: str) -> None:
+def _log(matthew_assistant, message: str) -> None:
     try:
-        jarvis.ui.write_log(message)
+        matthew_assistant.ui.write_log(message)
     except Exception:
         print(message)

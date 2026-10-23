@@ -1,5 +1,5 @@
 """
-context/selftest.py — proves the context layer before JARVIS is involved.
+context/selftest.py — proves the context layer before Matthew is involved.
 
     python -m context.selftest
 
@@ -239,7 +239,7 @@ def _unknown_quiet_hours():
     return "2 h : IMPORTANT et USEFUL differes, CRITICAL interrompt ; midi inchange"
 
 
-@check("JARVIS never speaks in a meeting, at any priority")
+@check("Matthew never speaks in a meeting, at any priority")
 def _meeting_silent():
     policy = ProactivityPolicy()
     for priority in Priority:
@@ -479,7 +479,7 @@ def _local_presence():
     away = derive(DeviceState(), sys_state=SystemState(
         facts={"desktop_audio": True, "local_presence_s": 4000}), now=NOW)
     assert away.situation is Situation.IDLE, away.situation
-    assert not ProactivityPolicy().decide(Priority.IMPORTANT, away, now=NOW).speaks,         "JARVIS parle dans une piece vide"
+    assert not ProactivityPolicy().decide(Priority.IMPORTANT, away, now=NOW).speaks,         "Matthew parle dans une piece vide"
 
     # Un seul signal ne suffit jamais a conclure au sommeil : aucun ecran a voir.
     night = time_state(datetime(2026, 1, 5, 3, 0))

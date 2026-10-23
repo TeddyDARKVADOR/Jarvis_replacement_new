@@ -4,7 +4,7 @@ cognition/affect.py — le moteur émotionnel. Pur : pas d'I/O, pas de modèle.
 CE QUE C'EST, ET CE QUE CE N'EST PAS
     Six nombres, modifiés par des événements selon des règles écrites ici, qui
     retombent vers une ligne de base avec le temps, et qui ont des conséquences
-    sur ce que JARVIS fait. Ce sont des variables CALCULÉES. Rien ici n'est, ni
+    sur ce que Matthew fait. Ce sont des variables CALCULÉES. Rien ici n'est, ni
     ne prouve, un ressenti (docs/cognition/RECHERCHE.md, §1.3–1.5).
 
 POURQUOI DES RÈGLES ET PAS UN MODÈLE
@@ -21,7 +21,7 @@ L'INVARIANT DE SÉCURITÉ (codé, testé)
     Les conséquences d'un état passent par directives(), qui ne peut renvoyer
     que des éléments de ALLOWED_DIRECTIVES. Aucun d'eux n'élargit une
     permission, ne lève une confirmation ou n'autorise une action : un état
-    extrême peut seulement rendre JARVIS plus prudent, plus bref ou plus
+    extrême peut seulement rendre Matthew plus prudent, plus bref ou plus
     enclin à demander.
 """
 from __future__ import annotations

@@ -109,7 +109,7 @@ PY
 
 notify)
     shift
-    prio="${1:-USEFUL}"; title="${2:-JARVIS}"; text="${3:-}"
+    prio="${1:-USEFUL}"; title="${2:-Matthew}"; text="${3:-}"
     bearer="$("$HERE/server.sh" bearer)"
     curl -s -X POST "$BASE/api/notify" \
         -H "Authorization: Bearer $bearer" \

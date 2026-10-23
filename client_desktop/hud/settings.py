@@ -205,11 +205,11 @@ def _tailscale_app_running() -> bool:
 # ── starting with Windows ────────────────────────────────────────────────────
 #
 # One Run entry, `client_desktop/autostart.py`'s, whose launcher opens the HUD.
-# A previous build of the HUD registered a second value, "JarvisHUD"; it is
-# removed whenever start-up is changed, so Windows never launches JARVIS twice
+# A previous build of the HUD registered a second value, "MatthewAssistantHUD"; it is
+# removed whenever start-up is changed, so Windows never launches Matthew twice
 # and leaves the single-instance mutex to pick one at random.
 
-_LEGACY_VALUE = "JarvisHUD"
+_LEGACY_VALUE = "MatthewAssistantHUD"
 
 
 def _drop_legacy_entry() -> None:
@@ -233,4 +233,4 @@ def set_autostart(enabled: bool) -> tuple[bool, str]:
     from .. import autostart
     _drop_legacy_entry()
     ok, detail = autostart.enable() if enabled else autostart.disable()
-    return ok, ("JARVIS démarre avec Windows" if enabled else "démarrage automatique désactivé") if ok else detail
+    return ok, ("Matthew démarre avec Windows" if enabled else "démarrage automatique désactivé") if ok else detail

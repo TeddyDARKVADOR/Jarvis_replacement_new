@@ -46,8 +46,9 @@ if __package__ in (None, ""):
 from nightshift import DATA_BRANCH, fetch, state
 from nightshift.run import redact
 
-SCHEMA = "jarvis.nightshift-local/1"
-QUEUE_SCHEMA = "jarvis.nightshift-queue/1"
+SCHEMA = "matthew_assistant.nightshift-local/1"
+QUEUE_SCHEMA = "matthew_assistant.nightshift-queue/1"
+QUEUE_SCHEMAS = (QUEUE_SCHEMA, "jarvis.nightshift-queue/1")   # ancien nom, encore lu
 OLLAMA = os.environ.get("NIGHTSHIFT_OLLAMA_URL", "http://127.0.0.1:11434")
 MODEL = os.environ.get("NIGHTSHIFT_LOCAL_MODEL", "gemma4:12b")
 TASK_TIMEOUT_S = 600
@@ -144,7 +145,7 @@ def load_queue(path: str | None, opener=None) -> dict | None:
             data = _http_json(url, None, 10, opener)
     except Exception:
         return None
-    return data if isinstance(data, dict) and data.get("schema") == QUEUE_SCHEMA else None
+    return data if isinstance(data, dict) and data.get("schema") in QUEUE_SCHEMAS else None
 
 
 def write_atomic(path: Path, data: dict) -> None:
@@ -176,7 +177,7 @@ def push(batch: dict, repo_dir: Path) -> str | None:
         write_atomic(tmp / "local" / "latest.json", batch)
         write_atomic(tmp / "local" / "runs" / f"{day}-{platform.node() or 'pc'}.json", batch)
         git("add", "local")
-        git("-c", "user.name=jarvis-nightshift-local", "-c", "user.email=nightshift@localhost",
+        git("-c", "user.name=matthew-assistant-nightshift-local", "-c", "user.email=nightshift@localhost",
             "commit", "-q", "-m", f"nightshift : avis du modèle local, {day}")
         p = git("push", "-q", "origin", f"HEAD:{DATA_BRANCH}")
         return None if p.returncode == 0 else f"push refusé : {redact(p.stderr.strip())[:200]}"

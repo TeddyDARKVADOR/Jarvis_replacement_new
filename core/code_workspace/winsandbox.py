@@ -10,7 +10,7 @@ WHAT THE SANDBOX GETS (projet.wsb, written next to the project's journal)
     • the project folder, READ-ONLY, copied inside before it runs (so the
       program can write its own files — in the sandbox, never on this PC);
     • this PC's Python installation, READ-ONLY (the sandbox has none). The
-      Python packages of JARVIS's environment are NOT there: only the
+      Python packages of Matthew's environment are NOT there: only the
       standard library and the project's own _deps/;
     • NO network, NO clipboard, NO printer, NO microphone, NO camera, no GPU
       sharing, and no folder of this PC it can write to.
@@ -21,7 +21,7 @@ WHAT THE SANDBOX GETS (projet.wsb, written next to the project's journal)
 WHAT IT NEEDS
     Windows 10/11 Pro, Enterprise or Education, virtualisation on, and the
     optional feature "Windows Sandbox" (Bac à sable Windows) enabled — an
-    administrator step and a restart, done once by the user, never by JARVIS.
+    administrator step and a restart, done once by the user, never by Matthew.
     One sandbox at a time. Node.js is not available inside.
 """
 
@@ -105,14 +105,14 @@ def launch_line(kind: str, run_command: str, test_command: str, entry: str) -> s
     elif prog not in ("python", "python3", "py"):
         raise CommandRefused(f"« {argv[0]} » ne peut pas être lancé dans Windows Sandbox (Python uniquement).")
     args = " ".join(_q(a) for a in argv[1:])
-    title = "JARVIS - application" if kind == "gui" else "JARVIS - programme"
+    title = "Matthew - application" if kind == "gui" else "Matthew - programme"
     return f'start "{title}" cmd /k ""{PYTHON}\\python.exe" {args}"'
 
 
 def run_cmd(project: str, line: str) -> str:
     return "\r\n".join([
         "@echo off",
-        f"title JARVIS - {project} (Windows Sandbox)",
+        f"title Matthew - {project} (Windows Sandbox)",
         f'robocopy "{SOURCE}" "{WORKDIR}" /E /XD .studio node_modules __pycache__ /NFL /NDL /NJH /NJS /NP >nul',
         f'cd /d "{WORKDIR}"',
         f'set "PATH={PYTHON};{PYTHON}\\Scripts;%PATH%"',

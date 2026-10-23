@@ -40,7 +40,7 @@ PROMPT_BUDGET = 4000
 RESPONSE_BUDGET = 1800
 CHARS_PER_TOKEN = 3.2          # prudent pour du code ; mieux vaut sous-estimer la place
 
-SYSTEM = """You fix ONE problem in the JARVIS repository (Python 3.11+, comments in French).
+SYSTEM = """You fix ONE problem in the Matthew repository (Python 3.11+, comments in French).
 You get the failing check or the lint finding, the exact symptom and the relevant code.
 
 Rules:

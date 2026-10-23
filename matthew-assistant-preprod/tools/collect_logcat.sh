@@ -26,7 +26,7 @@ OUT="$HERE/../reports/latest/$NAME"
 mkdir -p "$OUT"
 
 # Les tags de l'application, tels qu'ils sont écrits dans le code Kotlin.
-TAGS=(JarvisService JarvisNotify JarvisClient JarvisLog Jarvis
+TAGS=(JarvisService JarvisNotify JarvisClient JarvisLog Matthew
       WakeWord AudioPlayer AudioRecorder DeviceState)
 
 PATTERN="$(IFS='|'; echo "${TAGS[*]}")"

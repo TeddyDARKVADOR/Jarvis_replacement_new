@@ -1,8 +1,8 @@
 """
-Drop-in JARVIS plugin template.
+Drop-in Matthew plugin template.
 
 Copy this file, rename it (no leading underscore), fill in PLUGIN and run().
-No other file needs to change — JARVIS discovers this automatically at startup.
+No other file needs to change — Matthew discovers this automatically at startup.
 """
 
 PLUGIN = {
@@ -25,8 +25,8 @@ PLUGIN = {
 def run(parameters: dict, player=None, session_memory=None) -> str:
     """
     parameters: dict of the args Gemini extracted, matching PLUGIN['parameters'].
-    player: the UI object JARVIS draws on (LocalUI / HeadlessUI) — use
-            player.write_log(f"JARVIS: ...") to log,
+    player: the UI object Matthew draws on (LocalUI / HeadlessUI) — use
+            player.write_log(f"Matthew: ...") to log,
             same as actions/*.py. May be None.
     session_memory: reserved, usually None today (core tools mostly pass None too).
     Return a short natural-language string — this is spoken back to the user.
@@ -40,7 +40,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
         return f"Sir, my_plugin failed: {e}"
     if player:
         try:
-            player.write_log(f"JARVIS: {result_text}")
+            player.write_log(f"Matthew: {result_text}")
         except Exception:
             pass
     return result_text

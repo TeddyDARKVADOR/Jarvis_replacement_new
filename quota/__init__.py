@@ -1,5 +1,5 @@
 """
-quota/ — un seul registre des quotas gratuits pour tout JARVIS.
+quota/ — un seul registre des quotas gratuits pour tout Matthew.
 
 Chaque module (resilience pour les appels du cœur, pilot, meeting) découvrait
 seul qu'un modèle était épuisé, en se faisant refuser. Ici, un registre commun :
@@ -40,7 +40,7 @@ KNOWN: dict[str, tuple[int, int]] = {
     "gemini-3.8-flash": (5, 20), "gemini-3-flash-preview": (5, 20),
     "gemini-3.5-flash-lite": (15, 500), "gemini-3.1-flash-lite": (15, 500),
 }
-PATH = Path(os.environ.get("JARVIS_QUOTA_FILE") or Path(__file__).resolve().parent.parent / "memory" / "quota.json")
+PATH = Path(os.environ.get("MATTHEW_ASSISTANT_QUOTA_FILE") or Path(__file__).resolve().parent.parent / "memory" / "quota.json")
 
 _lock = threading.RLock()
 _state: dict | None = None

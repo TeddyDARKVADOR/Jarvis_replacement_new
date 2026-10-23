@@ -55,7 +55,7 @@ SHOWCASE_SIZE = 16
 TOOLS = {
     "system_status": ("État du PC", "Système"), "manage_monitor": ("Écrans", "Système"),
     "computer_settings": ("Réglages du PC", "Système"), "local_health_check": ("Diagnostic", "Système"),
-    "shutdown_jarvis": ("S'éteindre", "Système"), "close_camera": ("Fermer la caméra", "Système"),
+    "shutdown_matthew_assistant": ("S'éteindre", "Système"), "close_camera": ("Fermer la caméra", "Système"),
     "screen_process": ("Lire l'écran", "Système"), "game_updater": ("Mises à jour de jeux", "Système"),
     "open_app": ("Ouvrir une appli", "Bureau"), "desktop_control": ("Bureau Windows", "Bureau"),
     "computer_control": ("Souris et clavier", "Bureau"), "browser_control": ("Navigateur", "Bureau"),
@@ -80,7 +80,7 @@ TOOLS = {
 DOMAINS = ["Système", "Bureau", "Infos", "Communication", "Mémoire", "Code", "Noyau", "Autres"]
 TOOLS_EN = {
     "system_status": "PC status", "manage_monitor": "Displays", "computer_settings": "PC settings",
-    "local_health_check": "Diagnostics", "shutdown_jarvis": "Shut down", "close_camera": "Close camera",
+    "local_health_check": "Diagnostics", "shutdown_matthew_assistant": "Shut down", "close_camera": "Close camera",
     "screen_process": "Read the screen", "game_updater": "Game updates", "open_app": "Open an app",
     "desktop_control": "Windows desktop", "computer_control": "Mouse and keyboard", "browser_control": "Browser",
     "file_controller": "Files", "file_processor": "Read a document", "undo": "Undo", "pilot": "PC pilot",
@@ -95,7 +95,7 @@ TOOLS_EN = {
 }
 NO_TOOL = ("__chat__", "__none__")
 #: Identifiants publics : aucun ne doit trahir l'assistant hôte.
-PUBLIC_IDS = {"shutdown_jarvis": "shutdown"}
+PUBLIC_IDS = {"shutdown_matthew_assistant": "shutdown"}
 
 
 def pub(name: str | None) -> str | None:
@@ -420,7 +420,7 @@ PHASES = {"prep", "entraînement", "export", "import", "exam", "duel"}
 
 
 #: La vitrine présente Matthew seul : l'assistant qui l'héberge n'est jamais nommé.
-BRAND = re.compile(r"jarvis|mark\s*l?iii", re.I)
+BRAND = re.compile(r"jarvis|mark\s*l?iii", re.I)   # l'ancien nom, encore dans l'historique Git
 _TITLE = re.compile(r"^[\w .:/+'’«»()\-%,—→&!?·=]{3,110}$")
 
 
@@ -818,7 +818,7 @@ def setup(repo: Path, name: str = "matthew-vitrine", runner=subprocess.run) -> d
     if not owner:
         return {"ok": False, "reason": "gh n'est pas connecté (gh auth login)"}
     steps = [["gh", "repo", "create", f"{owner}/{name}", "--public", "--source", str(repo), "--push",
-              "--description", "Matthew, l'IA personnelle de JARVIS, apprend chaque nuit — en public, en lecture seule."],
+              "--description", "Matthew, une IA personnelle qui apprend chaque nuit — en public, en lecture seule."],
              ["gh", "api", "-X", "POST", f"repos/{owner}/{name}/pages",
               "-f", "source[branch]=main", "-f", "source[path]=/"]]
     for cmd in steps:

@@ -1,9 +1,9 @@
 ﻿<#
-  eject.ps1 -- retire la cle JARVIS en securite (vide le cache, demonte le volume).
+  eject.ps1 -- retire la cle Matthew en securite (vide le cache, demonte le volume).
 
       powershell -ExecutionPolicy Bypass -File eject.ps1 [-Drive "E:"] [-ValidateOnly]
 
-  Sans -Drive, trouve la cle qui porte \JARVIS\Lancer-JARVIS.bat. Ferme JARVIS
+  Sans -Drive, trouve la cle qui porte \JARVIS\Lancer-JARVIS.bat. Ferme Matthew
   AVANT d'ejecter (sinon des ecritures en cours seraient perdues). N'efface rien.
 #>
 [CmdletBinding()]
@@ -27,7 +27,7 @@ if ($ValidateOnly) {
     return
 }
 
-if (-not $Drive) { Write-Warning "Aucune cle JARVIS detectee a ejecter."; exit 1 }
+if (-not $Drive) { Write-Warning "Aucune cle Matthew detectee a ejecter."; exit 1 }
 $letter = $Drive.TrimEnd(':').Substring(0,1) + ':'
 
 # Vider le cache d'ecriture du volume (best effort, sans admin ca peut etre refuse)
@@ -44,7 +44,7 @@ try {
         $item.InvokeVerb("Eject")
         Start-Sleep -Milliseconds 800
         if (Test-Path "$letter\") {
-            Write-Warning "Windows a refuse l'ejection (un fichier de la cle est encore ouvert ?). Ferme JARVIS puis reessaie."
+            Write-Warning "Windows a refuse l'ejection (un fichier de la cle est encore ouvert ?). Ferme Matthew puis reessaie."
             exit 2
         }
         Write-Output "Cle $letter ejectee en securite. Tu peux la retirer, Sir."

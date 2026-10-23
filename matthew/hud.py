@@ -23,8 +23,8 @@ import time
 OPS = ("matthew.status", "matthew.correct", "matthew.forget_last", "matthew.publish")
 
 
-def who_answers(jarvis=None) -> dict:
-    sup = getattr(getattr(jarvis, "_offline", None), "supervisor", None)
+def who_answers(matthew_assistant=None) -> dict:
+    sup = getattr(getattr(matthew_assistant, "_offline", None), "supervisor", None)
     if sup is not None and getattr(sup, "active", False):
         model = getattr(getattr(sup, "voice", None), "model", "") or "modèle local"
         is_matthew = str(model).startswith("matthew")
@@ -40,7 +40,7 @@ def _read(path, default):
         return default
 
 
-def status(jarvis=None) -> dict:
+def status(matthew_assistant=None) -> dict:
     import matthew
     from matthew.client import usage_summary
     from matthew.flywheel import Flywheel
@@ -57,7 +57,7 @@ def status(jarvis=None) -> dict:
     except Exception:
         cog_first = False
     return {
-        "who": who_answers(jarvis),
+        "who": who_answers(matthew_assistant),
         "cognition_by_matthew": cog_first,
         "champion": {"since": champ.get("since"), "base": champ.get("base"),
                      "score": (champ.get("score") or {}).get("composite"),
@@ -75,13 +75,13 @@ def status(jarvis=None) -> dict:
     }
 
 
-def call(op: str, data: dict | None = None, jarvis=None) -> dict:
+def call(op: str, data: dict | None = None, matthew_assistant=None) -> dict:
     data = data if isinstance(data, dict) else {}
     if op not in OPS:
         return {"error": f"opération inconnue : {op}"}
     try:
         if op == "matthew.status":
-            return status(jarvis)
+            return status(matthew_assistant)
         from matthew.journal import Journal
         if op == "matthew.correct":
             text = str(data.get("text") or "").strip()

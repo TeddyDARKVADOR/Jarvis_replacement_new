@@ -4,7 +4,7 @@ nightshift/llm.py — un client minimal pour les API gratuites compatibles OpenA
     chain = Chain.from_env(budget=Budget(max_calls=12, max_tokens=60000, deadline=…))
     reply = chain.complete(messages, max_tokens=1800, reasoning_effort="low")
 
-Pourquoi pas cognition/providers.py : nightshift n'importe rien de JARVIS
+Pourquoi pas cognition/providers.py : nightshift n'importe rien de Matthew
 (contrat V2), et cognition.selftest n°2 fige la liste de ceux qui importent
 cognition. Ce client fait moins, en bibliothèque standard :
 
@@ -191,7 +191,7 @@ class Chain:
         self.budget.check(estimate, self.clock())
         key = (self.env.get(model.key_env) or "").strip()
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json",
-                   "User-Agent": "jarvis-nightshift/2"}
+                   "User-Agent": "matthew-assistant-nightshift/2"}
         body = json.dumps(self._body(model, messages, max_tokens, effort)).encode("utf-8")
         self.budget.calls += 1
         t0 = self.clock()

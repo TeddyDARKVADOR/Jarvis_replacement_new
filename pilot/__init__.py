@@ -1,5 +1,5 @@
 """
-pilot/ — JARVIS prend la main sur l'ordinateur, pour n'importe quelle application.
+pilot/ — Matthew prend la main sur l'ordinateur, pour n'importe quelle application.
 
 « Ouvre Teams et envoie à Paul : je serai en retard », « fais-moi le diagramme de
 classes sur mon site UML », « dans VS Code, ouvre le fichier où est l'erreur » :
@@ -17,7 +17,7 @@ déjà marché sur cette machine (recettes).
     recipes.py   ce qui a marché, en indice pour la prochaine fois
 
 DEUX POINTS D'ENTRÉE (paquet racine, contrat V2)
-  - main.py (mode local) : `attach(jarvis)` — clé locale, confirmation sur le
+  - main.py (mode local) : `attach(matthew_assistant)` — clé locale, confirmation sur le
     HUD (core/confirm.py), compte rendu à la voix.
   - client_desktop (PC relié à Oracle) : `pilot.client.start(...)` — le PC
     regarde et agit ; Oracle choisit l'action, demande la confirmation et
@@ -128,7 +128,7 @@ def confirm_on_hud(title: str, timeout: float = 95.0, say: Callable[[str], None]
     if confirm.pending_title():
         return False                                   # une autre confirmation attend : on ne l'écrase pas
     accepted = threading.Event()
-    sentence = confirm.request("pilot", "JARVIS va : " + title[:120], title,
+    sentence = confirm.request("pilot", "Matthew va : " + title[:120], title,
                                lambda: (accepted.set(), "fait")[1])
     if not confirm.pending_id():
         return False                                   # pas d'interface : request() a refusé
@@ -147,10 +147,10 @@ def confirm_on_hud(title: str, timeout: float = 95.0, say: Callable[[str], None]
     return False
 
 
-def attach(jarvis) -> None:
+def attach(matthew_assistant) -> None:
     """Hook de main.py, mode local seulement (sur Oracle, c'est le PC relié qui pilote)."""
     global _pilot
-    if _pilot is not None or not getattr(getattr(jarvis, "ui", None), "local_mode", False):
+    if _pilot is not None or not getattr(getattr(matthew_assistant, "ui", None), "local_mode", False):
         return
 
     def settings() -> dict:
@@ -170,19 +170,19 @@ def attach(jarvis) -> None:
                           ollama_model=str(cfg.get("pilot_ollama_model", OLLAMA_VISION) or ""))
 
     def say(text: str) -> None:
-        if getattr(jarvis, "session", None):
-            jarvis.plugin_say(text)
+        if getattr(matthew_assistant, "session", None):
+            matthew_assistant.plugin_say(text)
 
     def report(outcome: str, message: str) -> None:
         try:
-            jarvis.ui.write_log(f"SYS: Pilote — {outcome} : {message[:200]}")
+            matthew_assistant.ui.write_log(f"SYS: Pilote — {outcome} : {message[:200]}")
         except Exception:
             pass
         say(spoken(outcome, message))
 
     def log(text: str) -> None:
         try:
-            jarvis.ui.write_log(text)
+            matthew_assistant.ui.write_log(text)
         except Exception:
             print(text)
 

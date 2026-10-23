@@ -31,7 +31,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
-#: Toutes les plateformes où le code de JARVIS tourne.
+#: Toutes les plateformes où le code de Matthew tourne.
 ALL = ("linux", "win32", "darwin")
 
 

@@ -1,9 +1,9 @@
 """
-core/code_workspace — Jarvis Code Studio, his development workshop.
+core/code_workspace — Matthew Code Studio, his development workshop.
 
-A dedicated folder on this PC (``C:\\Jarvis_Workspace`` by default) where
-JARVIS creates projects, writes code, runs tests and shows his progress live in
-the HUD — without touching the JARVIS repository, Android, or anything else.
+A dedicated folder on this PC (``C:\\Matthew_Workspace`` by default) where
+Matthew creates projects, writes code, runs tests and shows his progress live in
+the HUD — without touching the Matthew repository, Android, or anything else.
 
     sandbox.py      the root folder and the path checks every read/write goes through
     journal.py      the append-only event log: what was REALLY done, by the tools
@@ -20,13 +20,13 @@ is discovered like any other action; the HUD reaches the service through
 local_hud.LocalBackend. Removing this package removes the feature, nothing else.
 
 THE SECURITY MODEL, HONESTLY
-    Every file operation JARVIS's tools perform is checked by sandbox.py — that
+    Every file operation Matthew's tools perform is checked by sandbox.py — that
     part is enforced by code, not by asking the model nicely. Commands are run
     without a shell, from an allow-list, inside the project folder, with a
     sanitised environment, a timeout and a Windows Job Object (memory and
     process caps, killed as a whole on stop).
 
-    But a program JARVIS writes and then *runs* executes with your Windows
+    But a program Matthew writes and then *runs* executes with your Windows
     account's rights: it could, in principle, open files elsewhere. Path checks
     cannot prevent that. Real isolation of executed code needs an OS sandbox
     (Windows Sandbox, a VM, a dedicated low-privilege account). The HUD says so.

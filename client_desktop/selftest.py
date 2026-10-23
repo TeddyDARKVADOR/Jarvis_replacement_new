@@ -8,7 +8,7 @@ are a large part of why this file exists:
 
 * **14** fails if anything under `client_desktop/` imports `main` or a Gemini
   SDK. That is the "no second session" promise made mechanical: it cannot be
-  quietly undone by someone reaching for `JarvisLive` to save an afternoon.
+  quietly undone by someone reaching for `MatthewAssistantLive` to save an afternoon.
 
 * **15** fails if anything reaches into `core/` beyond the two modules this
   client is allowed to reuse, so a second brain cannot arrive by the back door.
@@ -83,7 +83,7 @@ class _Report:
 
 def run() -> bool:  # noqa: C901
     report = _Report()
-    print("JARVIS Desktop - selftest\n")
+    print("Matthew Desktop - selftest\n")
 
     # -- 1. every module imports ---------------------------------------------
     try:
@@ -110,7 +110,7 @@ def run() -> bool:  # noqa: C901
     from client_desktop import protocol as P
     from client_desktop.reconnect import BACKOFF_STEPS, backoff_seconds
     from client_desktop.state import (
-        AssistantState, JarvisStore, LinkState, Message, Snapshot,
+        AssistantState, MatthewAssistantStore, LinkState, Message, Snapshot,
     )
     from client_desktop.wake import Gate
 
@@ -185,9 +185,9 @@ def run() -> bool:  # noqa: C901
     )
 
     # -- 9. the store --------------------------------------------------------
-    store = JarvisStore()
-    store.add_message(Message(from_jarvis=False, text="bonjour"))
-    store.add_message(Message(from_jarvis=True, text="Je vous ecoute."))
+    store = MatthewAssistantStore()
+    store.add_message(Message(from_matthew_assistant=False, text="bonjour"))
+    store.add_message(Message(from_matthew_assistant=True, text="Je vous ecoute."))
     store.count_sent(2048)
     store.count_received(9600)
     store.set_confirmation("abc", "Supprimer", "3 fichiers", 90)
@@ -422,12 +422,12 @@ def run() -> bool:  # noqa: C901
     try:
         import json as _json
 
-        from client_desktop.net import JarvisClient
+        from client_desktop.net import MatthewAssistantClient
 
-        store = JarvisStore()
+        store = MatthewAssistantStore()
         opened: list[object] = []
         store.subscribe(lambda kind, payload: opened.append(payload) if kind == "graph" else None)
-        client = JarvisClient(
+        client = MatthewAssistantClient(
             config_mod.Settings(host="h.ts.net", device_token="tok"), store, speaker=None,
             on_connected=lambda: None, on_disconnected=lambda _r, _f: None,
         )
@@ -542,7 +542,7 @@ def _hud_checks(report: "_Report") -> None:  # noqa: C901
     launcher_src = launcher.read_text(encoding="utf-8")
     report.check("32 Windows start-up opens the HUD, through the one launcher",
                  "client_desktop.__main__" in launcher_src
-                 and "HudWindow" in app_src and "JarvisPanel" not in app_src)
+                 and "HudWindow" in app_src and "MatthewAssistantPanel" not in app_src)
 
     # -- 33. main.py's launcher block ----------------------------------------
     head = (_REPO_ROOT / "main.py").read_text(encoding="utf-8").split("import platform", 1)[0]

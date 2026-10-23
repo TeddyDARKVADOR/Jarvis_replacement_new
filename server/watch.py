@@ -23,7 +23,7 @@ WHAT EACH LINE MEANS
             what the reconnect policy actually cost.
     MIC     whether the phone is streaming audio right now (needs a server
             restart to appear — see phone_mic_streaming in run_headless).
-    AUDIO   JARVIS speaking, in seconds of PCM sent to the phone.
+    AUDIO   Matthew speaking, in seconds of PCM sent to the phone.
     LOGIN   a device-login. Each one is the Android client reconnecting.
     GEMINI  the Live session dropping or coming back.
     ERROR   anything MARK LIII logged as ERR:/NET:.
@@ -165,7 +165,7 @@ def main() -> int:
             if frames > prev["frames"]:
                 secs = (frames - prev["frames"]) / 2 / rate
                 if secs >= 0.25:
-                    say("AUDIO", f"JARVIS spoke {secs:.1f}s to the phone")
+                    say("AUDIO", f"Matthew spoke {secs:.1f}s to the phone")
             if errors != prev["errors"]:
                 say("ERROR", f"{s.get('last_error')}")
 

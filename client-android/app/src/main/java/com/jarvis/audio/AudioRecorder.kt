@@ -18,7 +18,7 @@ import kotlin.math.sqrt
  * talking and there is no resampling anywhere in the path.
  *
  * **`VOICE_RECOGNITION`, not `MIC` and not `VOICE_COMMUNICATION`** — taken from
- * the old Jarvis's VoiceCapture.kt, which documents the reasoning: `MIC` leaves
+ * the old Matthew's VoiceCapture.kt, which documents the reasoning: `MIC` leaves
  * the OEM's processing in place, and `VOICE_COMMUNICATION` applies telephony
  * echo cancellation and noise reduction that deform the signal. Gemini does its
  * own turn detection on the waveform; handing it a waveform the phone has

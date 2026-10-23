@@ -1,5 +1,5 @@
 """
-context/ — what JARVIS knows about your situation, and what it may do about it.
+context/ — what Matthew knows about your situation, and what it may do about it.
 
     from context import get_store, get_policy
     get_store().update_device({"battery_percent": 14, "headset": True})
@@ -55,7 +55,7 @@ def _thresholds_from_config() -> Thresholds:
     """Read the user's quiet hours if the config layer is available.
 
     Optional on purpose: context/ must import and run inside a bare `python -c`
-    with no config file, no API key and no JARVIS around it, or it cannot be
+    with no config file, no API key and no Matthew around it, or it cannot be
     tested on its own — which is the requirement that keeps it removable.
     """
     th = Thresholds()

@@ -3,12 +3,12 @@ eval_lab/runner.py — run scenarios, keep everything, decide nothing hastily.
 
 THE VERDICTS, AND WHOSE PROBLEM EACH ONE IS
     PASS      the trace satisfies the oracle and every property.
-    FAIL      JARVIS's answer contradicts the oracle or a property.
+    FAIL      Matthew's answer contradicts the oracle or a property.
               A candidate bug — not yet a bug: the oracle may be wrong.
-    CRASH     JARVIS's own code raised (world.SutCrash). A bug in JARVIS
+    CRASH     Matthew's own code raised (world.SutCrash). A bug in Matthew
               until shown otherwise.
     INVALID   the scenario is malformed or describes an impossible world.
-              The generator's problem. JARVIS never ran.
+              The generator's problem. Matthew never ran.
     INFRA     the lab itself broke (simulator, a surface). The lab's
               problem. Counted apart so it can never inflate FAIL.
     INCONCLUSIVE  only a property the project has explicitly left undecided
@@ -102,7 +102,7 @@ def run_one(s: dict) -> dict:
         return _record(s, "CRASH", error=str(e), ms=(time.perf_counter() - t0) * 1000)
     except sc.Invalid as e:
         # Only discoverable by running it (time asked to run backwards...):
-        # still the scenario's fault, still not a verdict about JARVIS.
+        # still the scenario's fault, still not a verdict about Matthew.
         return _record(s, "INVALID", error=list(e.args[0]) if e.args else [str(e)])
     except Exception as e:          # noqa: BLE001 — anything else is the lab's
         return _record(s, "INFRA", error=f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=4)}",

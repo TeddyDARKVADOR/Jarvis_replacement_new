@@ -154,7 +154,7 @@ def compile_errors(repo: Path = REPO) -> list[str]:
     # « hash non vérifié » masquait ensuite les modifications des sources (vu le 2026-10-21).
     import tempfile
     bad = []
-    out = Path(tempfile.mkdtemp(prefix="jarvis-ci-compile-")) / "x.pyc"
+    out = Path(tempfile.mkdtemp(prefix="matthew-assistant-ci-compile-")) / "x.pyc"
     for rel in tracked("*.py", repo=repo):
         try:
             py_compile.compile(str(repo / rel), cfile=str(out), doraise=True)

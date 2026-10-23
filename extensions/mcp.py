@@ -3,7 +3,7 @@ extensions/mcp.py — un client MCP minimal, synchrone, sans dépendance.
 
 CONFIGURATION
     config/mcp.json (ignoré par Git : il porte souvent des jetons), sinon
-    ~/.jarvis/mcp.json, au format de Claude Desktop et Cursor :
+    ~/.matthew_assistant/mcp.json, au format de Claude Desktop et Cursor :
 
     {
       "mcpServers": {
@@ -23,7 +23,7 @@ POURQUOI UN SEUL OUTIL
 
 SÉCURITÉ
     - Un outil distant n'est exécuté qu'après CONFIRMER sur le HUD (core/confirm),
-      sauf s'il figure dans `auto_approve` de son serveur : JARVIS ne peut pas
+      sauf s'il figure dans `auto_approve` de son serveur : Matthew ne peut pas
       savoir ce que fait un outil inconnu. Les annotations du serveur
       (readOnlyHint…) sont ignorées : elles viennent du serveur lui-même.
     - Descriptions et résultats sont du texte d'un tiers : ils sont étiquetés
@@ -49,7 +49,8 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parent.parent
-CONFIG_PATHS = (REPO / "config" / "mcp.json", Path.home() / ".jarvis" / "mcp.json")
+CONFIG_PATHS = (REPO / "config" / "mcp.json", Path.home() / ".matthew_assistant" / "mcp.json",
+                Path.home() / ".jarvis" / "mcp.json")   # ancien nom, encore lu
 PROTOCOL_VERSION = "2025-06-18"
 REQUEST_TIMEOUT_S = 60.0
 START_TIMEOUT_S = 45.0           # npx télécharge le serveur au premier lancement
@@ -283,7 +284,7 @@ class Server:
         self._t.start()
         self._t.request("initialize", {
             "protocolVersion": PROTOCOL_VERSION, "capabilities": {},
-            "clientInfo": {"name": "jarvis", "version": "1"}}, timeout=START_TIMEOUT_S)
+            "clientInfo": {"name": "matthew_assistant", "version": "1"}}, timeout=START_TIMEOUT_S)
         self._t.notify("notifications/initialized")
         self.refresh()
         self.started = True

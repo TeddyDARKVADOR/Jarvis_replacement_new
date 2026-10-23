@@ -21,7 +21,7 @@ WHAT IS REFUSED, AND WHY
                                        by the code it is journaling
 
     The root itself is validated when configured: never a drive root, never
-    your whole profile, never a system folder, never the JARVIS repository (or
+    your whole profile, never a system folder, never the Matthew repository (or
     a folder that contains it).
 """
 
@@ -47,7 +47,7 @@ _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 IGNORED_DIRS = {META_DIR, ".git", "__pycache__", "node_modules", ".venv", "venv",
                 "_deps", ".pytest_cache", ".mypy_cache", "dist", "build"}
 
-MAX_FILE_BYTES = 1_000_000          # one source file JARVIS reads or writes
+MAX_FILE_BYTES = 1_000_000          # one source file Matthew reads or writes
 MAX_PROJECT_FILES = 400             # what a listing / checkpoint will walk
 
 
@@ -130,12 +130,12 @@ def _norm(p: Path) -> Path:
 # ── the root ────────────────────────────────────────────────────────────────
 
 def default_root() -> Path:
-    if sys.platform == "win32":
-        return Path(os.environ.get("SystemDrive", "C:") + "\\") / "Jarvis_Workspace"
-    return Path.home() / "Jarvis_Workspace"
+    base = Path(os.environ.get("SystemDrive", "C:") + "\\") if sys.platform == "win32" else Path.home()
+    new, old = base / "Matthew_Workspace", base / "Jarvis_Workspace"   # before the rename: kept while it is the only one
+    return old if old.is_dir() and not new.exists() else new
 
 
-def jarvis_repo() -> Path:
+def matthew_assistant_repo() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
@@ -148,7 +148,7 @@ def validate_root(raw: str | os.PathLike) -> Path:
         raise SandboxError("Aucun dossier indiqué.")
     p = Path(os.path.expandvars(str(raw).strip())).expanduser()
     if not p.is_absolute():
-        raise SandboxError("Indiquez un chemin complet, par exemple C:\\Jarvis_Workspace.")
+        raise SandboxError("Indiquez un chemin complet, par exemple C:\\Matthew_Workspace.")
     if str(p).startswith("\\\\"):
         raise SandboxError("Les dossiers réseau (\\\\serveur\\…) ne sont pas acceptés.")
     if p.exists() and _is_link(p):
@@ -160,9 +160,9 @@ def validate_root(raw: str | os.PathLike) -> Path:
         raise SandboxError("Choisissez un sous-dossier dédié.")
 
     rn = _norm(resolved)
-    repo = _norm(jarvis_repo())
+    repo = _norm(matthew_assistant_repo())
     if _contains(repo, rn) or _contains(rn, repo):
-        raise SandboxError("L'espace de travail ne peut pas être dans le projet JARVIS, ni le contenir.")
+        raise SandboxError("L'espace de travail ne peut pas être dans le projet Matthew, ni le contenir.")
     home = _norm(Path.home().resolve())
     if rn == home or _contains(rn, home):
         raise SandboxError("Votre dossier utilisateur entier ne peut pas servir d'espace de travail.")
@@ -280,7 +280,7 @@ class Workspace:
         written through."""
         data = str(content).encode("utf-8")
         if len(data) > MAX_FILE_BYTES:
-            raise SandboxError("Fichier trop gros pour être écrit par JARVIS.")
+            raise SandboxError("Fichier trop gros pour être écrit par Matthew.")
         p = self.resolve(project, rel, for_write=True)
         if p.exists() and not p.is_file():
             raise SandboxError(f"« {rel} » est un dossier.")
@@ -293,7 +293,7 @@ class Workspace:
         p.parent.mkdir(parents=True, exist_ok=True)
         # re-check the parents now that they exist
         self.resolve(project, rel, for_write=True)
-        fd, tmp = tempfile.mkstemp(prefix=".jarvis-", dir=str(p.parent))
+        fd, tmp = tempfile.mkstemp(prefix=".matthew-assistant-", dir=str(p.parent))
         try:
             with os.fdopen(fd, "wb") as fh:
                 fh.write(data)
@@ -325,7 +325,7 @@ class Workspace:
                                  if n not in IGNORED_DIRS and not _is_link(d / n))
             for fn in sorted(filenames):
                 fp = d / fn
-                if fn.startswith(".jarvis-") or _is_link(fp):
+                if fn.startswith(".matthew-assistant-") or _is_link(fp):
                     continue
                 try:
                     size = fp.stat().st_size

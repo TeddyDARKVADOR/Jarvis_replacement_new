@@ -8,7 +8,7 @@ caméra, avec le PID et l'état « en streaming » de chaque processus. Mesuré 
 disparaît à la fermeture ; un service système reste listé sans streaming.
 
 Le moniteur vit dans son propre fil, en COM multithread (les rappels arrivent
-sur un fil de Media Foundation) : le fil principal de JARVIS, déjà en COM
+sur un fil de Media Foundation) : le fil principal de Matthew, déjà en COM
 monothread pour pycaw et pywinauto, n'est pas touché.
 
 Les interfaces sont celles de mfidl.h, déclarées pour comtypes.

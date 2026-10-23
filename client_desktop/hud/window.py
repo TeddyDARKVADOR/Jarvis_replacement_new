@@ -2,9 +2,9 @@
 `HudWindow` — Matthew on this PC: one window, whichever brain it shows.
 
 WHO DRIVES IT
-    Online, `app.JarvisDesktop` (the network worker's store, Oracle's events).
+    Online, `app.MatthewAssistantDesktop` (the network worker's store, Oracle's events).
     Local, `local_hud.py` (main.py's brain, through `LocalUI`). Both talk to it
-    the same way: a `JarvisStore` it pulls snapshots from, seven intent signals
+    the same way: a `MatthewAssistantStore` it pulls snapshots from, seven intent signals
     out, and a handful of methods in. Nothing in here knows which one it is.
 
 WHAT IT IS
@@ -340,7 +340,7 @@ class HudWindow(QWidget):
         self._view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         if not scheme.install(page.profile()):
-            raise RuntimeError("schema jarvis-hud:// non enregistre avant QApplication")
+            raise RuntimeError("schema matthew-assistant-hud:// non enregistre avant QApplication")
 
         self._channel = QWebChannel(page)
         self._bridge = HudBridge(self)
@@ -760,7 +760,7 @@ class HudWindow(QWidget):
             if s.messages is not self._last_messages:
                 self._last_messages = s.messages
                 data["messages"] = [
-                    {"j": m.from_jarvis, "t": m.text, "a": m.at, "ti": m.title}
+                    {"j": m.from_matthew_assistant, "t": m.text, "a": m.at, "ti": m.title}
                     for m in s.messages
                 ]
             if s.log is not self._last_log:

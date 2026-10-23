@@ -1,5 +1,5 @@
 ﻿<#
-  ask_launch.ps1 -- demande elegante « Lancer JARVIS sur ce PC ? ».
+  ask_launch.ps1 -- demande elegante « Lancer Matthew sur ce PC ? ».
 
   Fenetre WPF (carte sombre, coeur ARC pulse, deux boutons) qui remplace la
   MessageBox. Renvoie le choix par CODE DE SORTIE : 0 = Oui, 1 = Non.
@@ -48,7 +48,7 @@ $xaml = @"
         <TextBlock Text="J · A · R · V · I · S" FontFamily="Consolas" FontSize="22" FontWeight="Bold" Foreground="#EAF7FF" VerticalAlignment="Center">
           <TextBlock.Effect><DropShadowEffect Color="#$A" BlurRadius="18" ShadowDepth="0"/></TextBlock.Effect></TextBlock>
       </StackPanel>
-      <TextBlock Grid.Row="1" Margin="0,16,0,0" Text="Clé JARVIS détectée" FontFamily="Consolas" FontSize="15" Foreground="#CFEFF9" HorizontalAlignment="Center"/>
+      <TextBlock Grid.Row="1" Margin="0,16,0,0" Text="Clé Matthew détectée" FontFamily="Consolas" FontSize="15" Foreground="#CFEFF9" HorizontalAlignment="Center"/>
       <TextBlock Grid.Row="2" x:Name="info" Margin="0,8,0,0" FontFamily="Consolas" FontSize="12" Foreground="#8FC9DD" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
       <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
         <Button x:Name="yes" Width="150" Height="40" Margin="0,0,12,0" Foreground="#041018" FontFamily="Consolas" FontSize="13" FontWeight="Bold" BorderThickness="0" Cursor="Hand">
@@ -65,7 +65,7 @@ $xaml = @"
 [xml]$xdoc = $xaml
 $win = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xdoc))
 $info = $win.FindName("info")
-$info.Text = "Lancer JARVIS sur ce PC depuis $Drive $Volume ?`nRien ne sera installé sur l'ordinateur."
+$info.Text = "Lancer Matthew sur ce PC depuis $Drive $Volume ?`nRien ne sera installé sur l'ordinateur."
 $yes = $win.FindName("yes"); $no = $win.FindName("no")
 
 if ($ValidateOnly) {

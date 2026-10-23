@@ -45,7 +45,7 @@ DEFAULT_OPTIONS = {"max_fix_attempts": 4, "command_timeout": 120, "confirm_plan"
                    "auto_preview": True, "auto_run_scripts": True}
 _BOOL_OPTIONS = ("confirm_plan", "auto_preview", "auto_run_scripts")
 
-SAFETY_NOTE = ("Les outils de fichiers de JARVIS sont strictement limités à ce dossier. "
+SAFETY_NOTE = ("Les outils de fichiers de Matthew sont strictement limités à ce dossier. "
                "En revanche, un programme qu'il exécute tourne avec les droits de votre compte "
                "Windows : pour une isolation totale, utilisez Windows Sandbox ou une machine virtuelle.")
 
@@ -343,8 +343,8 @@ class Studio:
             if not request.strip():
                 raise SandboxError("Décrivez ce qu'il faut faire.")
             if is_admin():
-                raise SandboxError("JARVIS tourne en administrateur : le Studio refuse de travailler "
-                                   "dans ce mode. Relancez JARVIS sans les droits administrateur.")
+                raise SandboxError("Matthew tourne en administrateur : le Studio refuse de travailler "
+                                   "dans ce mode. Relancez Matthew sans les droits administrateur.")
             if mode == "create":
                 name = new_project_name(self, _slug(project or request), request)
                 self.workspace().project_dir(name, create=True)

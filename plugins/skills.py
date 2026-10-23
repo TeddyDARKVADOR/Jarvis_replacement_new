@@ -41,4 +41,4 @@ def run(parameters: dict, player=None) -> str:
         return _skills.use(name)
     if action == "read_file":
         return _skills.read_file(name, str(parameters.get("path", "")))
-    return _skills.index() or "Aucun skill installé (dossier skills/ ou ~/.jarvis/skills)."
+    return _skills.index() or "Aucun skill installé (dossier skills/ ou ~/.matthew_assistant/skills)."

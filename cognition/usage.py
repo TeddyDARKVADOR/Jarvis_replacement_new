@@ -1,5 +1,5 @@
 """
-cognition/usage.py — ce que JARVIS a coûté et réussi, semaine par semaine.
+cognition/usage.py — ce que Matthew a coûté et réussi, semaine par semaine.
 
 Lu par l'onglet USAGE du panneau ESPRIT (cognition.usage). Rien n'est mesuré
 ici : tout est relu dans ce qui est déjà enregistré.

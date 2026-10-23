@@ -2,7 +2,7 @@
 eval_lab/grader.py — an LLM grader, for the only things no assertion can judge.
 
 WHAT IT GRADES
-    Sentences JARVIS produces for the user where the words ARE the behaviour:
+    Sentences Matthew produces for the user where the words ARE the behaviour:
     the clarifying question and the refusal explanation of the router ("Sur le
     PC ou sur le téléphone ?", "Le pc n'est pas connecté."). Which device ran,
     which channel was chosen, whether something was lost — none of that is
@@ -35,7 +35,7 @@ GRADE_SCHEMA = {
 }
 
 SYSTEM = """\
-Tu evalues UNE phrase qu'un assistant vocal francais (JARVIS) dit a son utilisateur quand il ne peut
+Tu evalues UNE phrase qu'un assistant vocal francais (Matthew) dit a son utilisateur quand il ne peut
 pas executer une commande sur un appareil, ou quand il demande sur quel appareil l'executer.
 Criteres : francais correct et naturel a l'oral (majuscules, accents, noms d'appareil ecrits comme un
 humain les ecrirait) ; la phrase ne pretend pas que l'action a ete faite ; elle est coherente avec les

@@ -178,7 +178,7 @@ class Microphone:
 
 
 class Speaker:
-    """JARVIS's voice, played at whatever rate the server announced.
+    """Matthew's voice, played at whatever rate the server announced.
 
     **Built from the announced rate, never from 24000.** The value comes from
     `RECEIVE_SAMPLE_RATE` in `main.py` and arrives in the first text frame of
@@ -317,7 +317,7 @@ class Speaker:
 
         # The level is measured here, on the way out, rather than on arrival.
         # Audio arrives in bursts far ahead of the voice, so a level taken from
-        # the socket would spike before JARVIS spoke and flatline while it still
+        # the socket would spike before Matthew spoke and flatline while it still
         # was.
         try:
             self._on_level(pcm_level(bytes(chunk)))

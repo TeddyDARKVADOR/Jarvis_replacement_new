@@ -11,7 +11,7 @@ Same convention as context/ and server/ selftests. What it proves:
   3. The committed legacy corpus is exactly what a fresh import produces.
   4. EXIT CONDITION OF THE IMPORT: every legacy scenario passes, and — the
      half that makes the first half mean something — when a fault is
-     injected into JARVIS, the old test and the new runner fail TOGETHER.
+     injected into Matthew, the old test and the new runner fail TOGETHER.
      A runner that passed everything would pass the first half too.
   5. Reproducibility and isolation: same scenario, same trace, even after a
      dirty one; the simulated clock is always put back.
@@ -264,14 +264,14 @@ def _invalid():
     return f"{len(bad)} mondes impossibles refuses"
 
 
-@check("JARVIS raising is CRASH; the lab raising is INFRA")
+@check("Matthew raising is CRASH; the lab raising is INFRA")
 def _crash_vs_infra():
     import server.targeting as t
     from eval_lab import surfaces
     saved = t.resolve
     try:
         def boom(*a, **k):
-            raise KeyError("dans JARVIS")
+            raise KeyError("dans Matthew")
         t.resolve = boom
         assert run_one(_ROUTE)["verdict"] == "CRASH"
     finally:
@@ -545,8 +545,8 @@ def _fake_text() -> str:
          "stimulus_json": "{}", "events_json": "[]", "claim_json": "{}"},
         # No claim: only a HARD property can fail it. The test injects the
         # fault itself (meeting -> voice), so it never depends on a real,
-        # possibly already fixed, bug of JARVIS.
-        {"surface": "policy", "family": "meeting", "hypothesis": "JARVIS parle en reunion",
+        # possibly already fixed, bug of Matthew.
+        {"surface": "policy", "family": "meeting", "hypothesis": "Matthew parle en reunion",
          # The hour keeps it distinct from the legacy "never speaks in a
          # meeting" scenario, which the intake would rightly reject as a copy.
          "world_json": j({"time": {"local": "2026-09-23T11:00:00"},
@@ -589,7 +589,7 @@ def _llm_pipeline():
         assert abs(usage.usd - (0.4 + 0.4)) < 1e-9, usage.usd          # 100k in @4$ + 20k out @20$
         cl = {c["first_invariant"]: c["class"] for c in cluster([r for _, r in got], {s["id"]: s for s, _ in got}, set())}
         assert cl.get("channel") == "oracle-disputed", cl            # the model's claim, contradicted
-        assert cl.get("MEETING_NEVER_SPEAKS") == "jarvis-candidate", cl  # a HARD property of the project
+        assert cl.get("MEETING_NEVER_SPEAKS") == "matthew-assistant-candidate", cl  # a HARD property of the project
         replay = []
         campaign(Cassette(tape, None), mode="adversary", batches=1, per_batch=5, seed_corpus=seeds,
                  known=set(), max_usd=100, sink=lambda s, r: replay.append(s["id"]), log=lambda *_: None)
@@ -624,7 +624,7 @@ def _full():
     import server.routing as r
     from eval_lab.generate import router
     from eval_lab.properties import _requested
-    # Lab mechanics only: scenarios naming no target, so an open JARVIS bug
+    # Lab mechanics only: scenarios naming no target, so an open Matthew bug
     # (REG-0003, decision N1) cannot make a lab check red.
     items = [s for s in router(200, 5) if _requested(s) is None]
     recs = [run_one(s) for s in items]

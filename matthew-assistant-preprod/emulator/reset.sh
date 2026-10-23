@@ -6,7 +6,7 @@
 #
 #   (défaut)  désinstalle l'application et efface ses données. Quelques
 #             secondes. Suffisant entre deux campagnes : ce que les tests
-#             salissent, c'est l'état de JARVIS, pas celui d'Android.
+#             salissent, c'est l'état de Matthew, pas celui d'Android.
 #
 #   --wipe    efface toute la partition data et redémarre l'AVD à neuf.
 #             Plusieurs minutes. Pour les cas où l'on soupçonne l'état du

@@ -18,8 +18,8 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-TMP = Path(tempfile.mkdtemp(prefix="jarvis-daily-"))
-os.environ["JARVIS_DAILY_FILE"] = str(TMP / "daily.json")
+TMP = Path(tempfile.mkdtemp(prefix="matthew-assistant-daily-"))
+os.environ["MATTHEW_ASSISTANT_DAILY_FILE"] = str(TMP / "daily.json")
 
 import daily as D  # noqa: E402
 from daily import agenda as A  # noqa: E402
@@ -36,7 +36,7 @@ _results: list[tuple[str, bool, str]] = []
 # 14 h le jeudi (RECURRENCE-ID) ; une journée entière le lundi ; un événement annulé ; un appel à New York.
 ICS = """BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//JARVIS//test//FR
+PRODID:-//Matthew//test//FR
 X-WR-CALNAME:Perso
 BEGIN:VTIMEZONE
 TZID:Europe/Paris
@@ -109,7 +109,7 @@ def _day(d: date, tz: str = "Europe/Paris"):
     return A.day({"agenda_ics": "x", "timezone": tz}, d, fetcher=lambda u: ICS)[0]
 
 
-@check("1 contrat V2 : daily/ n'importe rien de JARVIS au chargement")
+@check("1 contrat V2 : daily/ n'importe rien de Matthew au chargement")
 def _contract():
     banned = ("main", "core", "actions", "plugins", "cognition", "server", "dashboard", "client_desktop", "memory",
               "reminders", "meeting", "context")

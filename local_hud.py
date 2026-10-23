@@ -7,9 +7,9 @@ python main.py                  the brain on Oracle, this PC as its terminal
 ```
 
 ONE INTERFACE, TWO BRAINS
-    Online, the HUD renders a `client_desktop.state.JarvisStore` that the
+    Online, the HUD renders a `client_desktop.state.MatthewAssistantStore` that the
     network worker fills from Oracle's sockets. Here the same store is filled by
-    `LocalUI`, the object `main.JarvisLive` is handed as its UI.
+    `LocalUI`, the object `main.MatthewAssistantLive` is handed as its UI.
     The window, the page, the store and the tray are the very same objects in
     both modes — so the two cannot drift apart: there is nothing to keep in sync.
 
@@ -42,7 +42,7 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from client_desktop.state import AssistantState, JarvisStore, LinkState, Message  # noqa: E402
+from client_desktop.state import AssistantState, MatthewAssistantStore, LinkState, Message  # noqa: E402
 from server.headless_ui import HeadlessUI  # noqa: E402
 
 _STATES = {
@@ -55,14 +55,14 @@ _LINE = re.compile(r"^\s*(\[?[^:\]\n]{1,32}\]?):\s?(.*)$", re.S)
 
 
 class LocalUI(HeadlessUI):
-    """What main.JarvisLive draws on, translated into the HUD's store."""
+    """What main.MatthewAssistantLive draws on, translated into the HUD's store."""
 
     # Plugins can use this capability flag to distinguish a desktop brain with
     # a real browser from the server's headless UI without importing either
     # host implementation or changing the plugin protocol.
     local_mode = True
 
-    def __init__(self, store: JarvisStore) -> None:
+    def __init__(self, store: MatthewAssistantStore) -> None:
         super().__init__(echo=True)
         self.store = store
         #: The file the user attached in the HUD (📎 or drag-and-drop): what
@@ -116,7 +116,7 @@ class LocalUI(HeadlessUI):
     def _follow_link(self, line: str) -> None:
         """The 'link' of a local Matthew is its Gemini Live session."""
         low = line.lower()
-        if "jarvis online" in low or "reconnected — conversation restored" in low:
+        if "matthew_assistant online" in low or "reconnected — conversation restored" in low:
             self.store.set_link(LinkState.CONNECTED)
         elif low.startswith("net:") and "retrying in" in low:
             delay = re.search(r"retrying in\s+(\d+)s", low)
@@ -266,7 +266,7 @@ class LocalUI(HeadlessUI):
     def prompt_reconfig(self) -> None:
         """Park local retries until the rejected key is actually changed.
 
-        main.JarvisLive already waits on ``_win._ready`` after this callback.
+        main.MatthewAssistantLive already waits on ``_win._ready`` after this callback.
         The server UI keeps its timed re-arm; locally we can watch the config
         file and let the existing connection loop retry once a new key appears.
         No Gemini session or retry code is changed here.
@@ -274,7 +274,7 @@ class LocalUI(HeadlessUI):
         self._win._ready = False
         self.store.set_link(
             LinkState.ERROR,
-            f"Clé Gemini refusée — modifiez {api_key_path(BASE_DIR).relative_to(BASE_DIR)} ; Jarvis attend.",
+            f"Clé Gemini refusée — modifiez {api_key_path(BASE_DIR).relative_to(BASE_DIR)} ; Matthew attend.",
         )
         self.write_log(
             "ERR: Clé Gemini refusée. Modifiez gemini_api_key dans "
@@ -304,7 +304,7 @@ class LocalUI(HeadlessUI):
                     return
 
         threading.Thread(target=wait_for_changed_key, daemon=True,
-                         name="jarvis-local-key-watch").start()
+                         name="matthew-assistant-local-key-watch").start()
 
 
 class LocalBackend:
@@ -330,7 +330,7 @@ class LocalBackend:
         if op == "phone.pair":
             return self._pair_phone()
         if str(op).startswith("studio."):
-            # Jarvis Code Studio (core/code_workspace): the workspace is on
+            # Matthew Code Studio (core/code_workspace): the workspace is on
             # this PC, so only the local brain answers these.
             from core.code_workspace import get_studio
             studio = get_studio()
@@ -361,7 +361,7 @@ class LocalBackend:
                 from matthew import hud as matthew_hud
             except Exception:
                 return {"error": "module matthew absent"}
-            return matthew_hud.call(op, data, jarvis=self._brain.get("jarvis"))
+            return matthew_hud.call(op, data, matthew_assistant=self._brain.get("matthew_assistant"))
         return self._control.call(op, data)
 
     def attach_file(self, path: str) -> dict:
@@ -376,8 +376,8 @@ class LocalBackend:
         self._ui.attached = None
 
     def _pair_phone(self) -> dict:
-        jarvis = self._brain.get("jarvis")
-        make = getattr(jarvis, "_make_remote_key", None)
+        matthew_assistant = self._brain.get("matthew_assistant")
+        make = getattr(matthew_assistant, "_make_remote_key", None)
         if not callable(make):
             return {"error": "Matthew démarre encore — réessayez dans un instant."}
         made = make()
@@ -401,7 +401,7 @@ class LocalBackend:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     # Let the shared startup setting preserve this brain choice at next login.
-    os.environ["JARVIS_LOCAL_MODE"] = "1"
+    os.environ["MATTHEW_ASSISTANT_LOCAL_MODE"] = "1"
 
     from PyQt6.QtCore import QObject, QTimer, pyqtSignal
     from PyQt6.QtWidgets import QApplication
@@ -425,14 +425,14 @@ def main(argv: list[str] | None = None) -> int:
     app.setQuitOnLastWindowClosed(False)
 
     from client_desktop.hud.window import HudWindow
-    from client_desktop.ui.tray import JarvisTray
+    from client_desktop.ui.tray import MatthewAssistantTray
 
     settings = load()
-    store = JarvisStore()
+    store = MatthewAssistantStore()
     hud = HudWindow(settings)
     hud.local_mode = True
     hud.attach_store(store)
-    tray = JarvisTray()
+    tray = MatthewAssistantTray()
     ui = LocalUI(store)
     brain_ref: dict = {}
     hud.backend = LocalBackend(ui, brain_ref)
@@ -449,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
 
     hud.settings_overrides = local_audio
 
-    # ── store events → GUI thread (same marshalling as app.JarvisDesktop) ──
+    # ── store events → GUI thread (same marshalling as app.MatthewAssistantDesktop) ──
     class _Bridge(QObject):
         event = pyqtSignal(str, object)
         camera = pyqtSignal(object)
@@ -467,7 +467,7 @@ def main(argv: list[str] | None = None) -> int:
             hud.raise_()
             if settings.notifications:
                 tray.notify(f"Matthew — confirmation : {payload[1]}", payload[2] or "")
-        elif kind == "message" and getattr(payload, "from_jarvis", False) and settings.notifications:
+        elif kind == "message" and getattr(payload, "from_matthew_assistant", False) and settings.notifications:
             if not hud.isVisible() or hud.isMinimized() or hud._mini:
                 tray.notify("Matthew", payload.text[:180])
 
@@ -499,9 +499,9 @@ def main(argv: list[str] | None = None) -> int:
     def reconnect() -> None:
         # The same call main.py makes when the audio device changes: rebuild
         # the Gemini session, keep the conversation.
-        jarvis = brain_ref.get("jarvis")
-        if jarvis is not None and hasattr(jarvis, "request_reconnect"):
-            jarvis.request_reconnect(keep_context=True, reason="tray")
+        matthew_assistant = brain_ref.get("matthew_assistant")
+        if matthew_assistant is not None and hasattr(matthew_assistant, "request_reconnect"):
+            matthew_assistant.request_reconnect(keep_context=True, reason="tray")
 
     def quit_all() -> None:
         tray.hide()
@@ -557,30 +557,30 @@ def main(argv: list[str] | None = None) -> int:
         try:
             ui.wait_for_api_key()
             import main as brain           # imported, so its own launcher block does not run
-            jarvis = brain.JarvisLive(ui)
-            brain_ref["jarvis"] = jarvis
+            matthew_assistant = brain.MatthewAssistantLive(ui)
+            brain_ref["matthew_assistant"] = matthew_assistant
 
             def local_health_snapshot() -> dict:
                 from memory.config_manager import (
                     get_gemini_key, get_input_device, get_output_device,
                 )
-                plugins = jarvis._plugin_registry.list_for_ui()
+                plugins = matthew_assistant._plugin_registry.list_for_ui()
                 return {
                     "link": store.snapshot().link.value,
                     "gemini_key_configured": bool(get_gemini_key()),
                     "microphone_setting": get_input_device() or "défaut système",
                     "speaker_setting": get_output_device() or "défaut système",
-                    "actions_loaded": len(jarvis._action_registry.names()),
+                    "actions_loaded": len(matthew_assistant._action_registry.names()),
                     "plugins_loaded": sum(1 for p in plugins if p.get("valid")),
                     "plugins_enabled": sum(
                         1 for p in plugins if p.get("valid") and p.get("enabled")
                     ),
-                    "dashboard_initialized": jarvis._dashboard is not None,
+                    "dashboard_initialized": matthew_assistant._dashboard is not None,
                 }
 
             ui.health_provider = local_health_snapshot
 
-            # Read-only health observer. JarvisLive owns all connect/reconnect
+            # Read-only health observer. MatthewAssistantLive owns all connect/reconnect
             # decisions; this thread only mirrors whether its session exists so
             # the HUD stays truthful across failures and backoff sleeps.
             watch_stop = threading.Event()
@@ -590,7 +590,7 @@ def main(argv: list[str] | None = None) -> int:
                 attempts = 0
                 retry_deadline = 0.0
                 while not watch_stop.wait(0.5):
-                    session_active = jarvis.session is not None
+                    session_active = matthew_assistant.session is not None
                     current = store.snapshot()
                     if session_active:
                         was_connected = True
@@ -603,15 +603,15 @@ def main(argv: list[str] | None = None) -> int:
                         was_connected = False
                         if store.snapshot().link is not LinkState.ERROR:
                             attempts += 1
-                            delay = int(getattr(jarvis, "_conn_backoff", 0) or 0)
+                            delay = int(getattr(matthew_assistant, "_conn_backoff", 0) or 0)
                             retry_deadline = time.monotonic() + delay
                             store.set_retry(attempts, delay)
                             store.set_link(LinkState.RECONNECTING)
                     elif (current.link is LinkState.CONNECTING
-                          and int(getattr(jarvis, "_conn_backoff", 0) or 0) > 0):
+                          and int(getattr(matthew_assistant, "_conn_backoff", 0) or 0) > 0):
                         # Also cover failures before the first session opened.
                         attempts += 1
-                        delay = int(getattr(jarvis, "_conn_backoff", 0) or 0)
+                        delay = int(getattr(matthew_assistant, "_conn_backoff", 0) or 0)
                         retry_deadline = time.monotonic() + delay
                         store.set_retry(attempts, delay)
                         store.set_link(LinkState.RECONNECTING)
@@ -623,21 +623,21 @@ def main(argv: list[str] | None = None) -> int:
                         retry_deadline = time.monotonic() + current.next_retry_seconds
 
             watcher = threading.Thread(
-                target=watch_session, daemon=True, name="jarvis-local-health"
+                target=watch_session, daemon=True, name="matthew-assistant-local-health"
             )
             watcher.start()
             # Hear about the end of speech (see LocalUI.speaking_finished). An
             # instance attribute, so main.py's own code is left as it is.
-            original = jarvis.set_speaking
+            original = matthew_assistant.set_speaking
 
             def set_speaking(value: bool) -> None:
                 original(value)
                 if not value:
                     ui.speaking_finished()
 
-            jarvis.set_speaking = set_speaking
+            matthew_assistant.set_speaking = set_speaking
             try:
-                asyncio.run(jarvis.run())
+                asyncio.run(matthew_assistant.run())
             finally:
                 watch_stop.set()
         except Exception as exc:
@@ -654,7 +654,7 @@ def main(argv: list[str] | None = None) -> int:
     # default sent every word in the room to Gemini — and the room's language
     # became Matthew's language.
     ui.muted = True
-    threading.Thread(target=runner, name="jarvis-local", daemon=True).start()
+    threading.Thread(target=runner, name="matthew-assistant-local", daemon=True).start()
 
     try:
         return app.exec()

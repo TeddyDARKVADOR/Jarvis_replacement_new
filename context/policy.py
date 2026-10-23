@@ -96,7 +96,7 @@ _MATRIX: dict[Situation, dict[Priority, Channel]] = {
     },
 }
 
-# Combien de temps JARVIS se tait apres avoir delivre un message de ce niveau.
+# Combien de temps Matthew se tait apres avoir delivre un message de ce niveau.
 # CRITIQUE n'a pas de silence impose : deux urgences reelles a une minute
 # d'intervalle sont deux urgences, pas du bruit.
 _COOLDOWN_S: dict[Priority, float] = {

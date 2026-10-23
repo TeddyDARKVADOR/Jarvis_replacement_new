@@ -1,8 +1,8 @@
 """
-One JARVIS, and only one.
+One Matthew, and only one.
 
 The brief is explicit about this — "éviter une boucle qui lance plusieurs copies
-de JARVIS" — and it is not a tidiness concern. Two instances means two
+de Matthew" — and it is not a tidiness concern. Two instances means two
 microphones streaming to the same server, which is two uplinks fighting over the
 same Gemini turn, and the second one silences the first server-side. It is also
 exactly what a Run key plus a watchdog plus a user double-clicking the shortcut
@@ -15,7 +15,7 @@ a file they have never heard of. A mutex is owned by a process and released by
 the kernel when that process dies, however it dies.
 
 **And a named event, so the second launch is not simply thrown away.** Someone
-who double-clicks the shortcut wants to *see* JARVIS. The second instance sets
+who double-clicks the shortcut wants to *see* Matthew. The second instance sets
 the event and exits; the first sees it and shows its panel. That is a better
 answer than a silent no-op, which reads as a broken shortcut.
 
@@ -45,10 +45,10 @@ except Exception:  # pragma: no cover - non-Windows or pywin32 absent
 
 #: Global\ rather than Local\ would make this one instance per *machine* rather
 #: than per session. Per session is right: two users fast-switched on the same
-#: workstation each get their own JARVIS, their own microphone and their own
+#: workstation each get their own Matthew, their own microphone and their own
 #: settings file, and neither should block the other.
-MUTEX_NAME = "Local\\JarvisDesktop.SingleInstance"
-EVENT_NAME = "Local\\JarvisDesktop.ShowPanel"
+MUTEX_NAME = "Local\\MatthewAssistantDesktop.SingleInstance"
+EVENT_NAME = "Local\\MatthewAssistantDesktop.ShowPanel"
 
 _UNIX = sys.platform.startswith("linux")
 
@@ -58,7 +58,7 @@ def _unix_name() -> str:
     session = (os.environ.get("XDG_SESSION_ID") or os.environ.get("WAYLAND_DISPLAY")
                or os.environ.get("DISPLAY") or "0")
     uid = os.getuid() if hasattr(os, "getuid") else 0
-    return f"\0JarvisDesktop.SingleInstance.{uid}.{session}"
+    return f"\0MatthewAssistantDesktop.SingleInstance.{uid}.{session}"
 
 
 class SingleInstance:
@@ -76,7 +76,7 @@ class SingleInstance:
 
         Without pywin32 this returns True and says so in the caller's log: a
         missing guard is a worse failure than a duplicate instance, because it
-        stops JARVIS starting at all.
+        stops Matthew starting at all.
         """
         if _UNIX:
             return self._acquire_unix()
@@ -136,7 +136,7 @@ class SingleInstance:
                         pass
 
         self._thread = threading.Thread(
-            target=loop, name="JarvisSingleInstance", daemon=True
+            target=loop, name="MatthewAssistantSingleInstance", daemon=True
         )
         self._thread.start()
 
@@ -177,7 +177,7 @@ class SingleInstance:
                     except Exception:
                         pass
 
-        self._thread = threading.Thread(target=loop, name="JarvisSingleInstance", daemon=True)
+        self._thread = threading.Thread(target=loop, name="MatthewAssistantSingleInstance", daemon=True)
         self._thread.start()
 
     def release(self) -> None:

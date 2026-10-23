@@ -1,15 +1,15 @@
 """
-capabilities/ — le graphe de ce que JARVIS sait faire, lu par JARVIS lui-même.
+capabilities/ — le graphe de ce que Matthew sait faire, lu par Matthew lui-même.
 
 Paquet racine au sens du contrat V2 (graphe `contrat`) : il n'importe rien de
 main.py, du cœur, du serveur ni des clients. Le supprimer, avec
-plugins/capabilities.py, rend JARVIS identique à avant : l'outil disparaît, le
+plugins/capabilities.py, rend Matthew identique à avant : l'outil disparaît, le
 HUD n'a plus rien à afficher.
 
     python -m capabilities.selftest      le graphe correspond-il au code ?
 
 LES GRAPHES REMPLACENT LES README
-    Chaque fichier de `graphs/` décrit une partie de JARVIS : `general.json`
+    Chaque fichier de `graphs/` décrit une partie de Matthew : `general.json`
     pour l'ensemble, puis un sous-graphe par dossier (serveur, HUD, Android…).
     Un nœud est une fonctionnalité, un outil, un module, une règle, une
     procédure ou une limite connue ; une arête dit comment deux nœuds se
@@ -20,7 +20,7 @@ LES GRAPHES REMPLACENT LES README
     exister, tout fichier cité doit exister, et un README remplacé ne peut pas
     revenir sans que le test le signale.
 
-FORMAT (jarvis.graph/1)
+FORMAT (matthew_assistant.graph/1)
     {"schema", "id", "title", "updated": "AAAA-MM-JJ", "summary",
      "replaces": [chemins des .md que ce graphe remplace],
      "nodes": [{"id", "label", "kind", "summary", "details": [...],
@@ -34,7 +34,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-SCHEMA = "jarvis.graph/1"
+SCHEMA = "matthew_assistant.graph/1"
 ROOT = Path(__file__).resolve().parent
 GRAPHS_DIR = ROOT / "graphs"
 REPO = ROOT.parent
@@ -42,7 +42,7 @@ GENERAL = "general"
 
 #: Ce qu'un nœud peut être. Le HUD en tire sa légende et ses couleurs.
 KINDS = {
-    "racine": "JARVIS ou la racine d'un sous-graphe",
+    "racine": "Matthew ou la racine d'un sous-graphe",
     "domaine": "un grand ensemble de fonctionnalités",
     "fonction": "une fonctionnalité",
     "outil": "un outil que Gemini peut appeler",

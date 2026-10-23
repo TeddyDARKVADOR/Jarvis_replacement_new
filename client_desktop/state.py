@@ -67,7 +67,7 @@ class Message:
     HUD shows under the core (a search result, a list, a file summary).
     """
 
-    from_jarvis: bool
+    from_matthew_assistant: bool
     text: str
     at: float = 0.0
     title: str | None = None
@@ -101,10 +101,10 @@ class Snapshot:
 
     #: Microphone level 0..1.
     mic_level: float = 0.0
-    #: Loudness of JARVIS's own voice 0..1, taken from the playback loop and not
+    #: Loudness of Matthew's own voice 0..1, taken from the playback loop and not
     #: from the socket: audio arrives in bursts far faster than real time, so a
     #: level measured on arrival would run ahead of the voice and then flatline
-    #: while JARVIS was still speaking.
+    #: while Matthew was still speaking.
     speaker_level: float = 0.0
 
     wake_word_name: str = ""
@@ -122,7 +122,7 @@ class Snapshot:
     # ── the pending irreversible action, if any ──────────────────────────────
     #
     # Three fields on the existing snapshot rather than a second state machine:
-    # a confirmation is something JARVIS is *doing*, concurrent with LISTENING
+    # a confirmation is something Matthew is *doing*, concurrent with LISTENING
     # or SPEAKING, not a mode the client enters.
     confirmation_id: str | None = None
     confirmation_title: str = ""
@@ -162,16 +162,16 @@ class Snapshot:
 
     @property
     def last_spoken_line(self) -> str | None:
-        """The line the panel shows under the core, or None while JARVIS has
-        said nothing yet. Only JARVIS's own words: showing users their own
+        """The line the panel shows under the core, or None while Matthew has
+        said nothing yet. Only Matthew's own words: showing users their own
         sentence back is the one thing they already know."""
         for message in reversed(self.messages):
-            if message.from_jarvis:
+            if message.from_matthew_assistant:
                 return message.text
         return None
 
 
-class JarvisStore:
+class MatthewAssistantStore:
     """The snapshot, and the only thing allowed to replace it.
 
     Every mutator takes the lock, builds a new frozen snapshot and publishes it.
@@ -366,7 +366,7 @@ class JarvisStore:
         self._emit("confirm_hide", None)
 
     def request_graph(self, graph: str = "general", focus: str = "") -> None:
-        """JARVIS was asked to show its capability graph. An event, never
+        """Matthew was asked to show its capability graph. An event, never
         state: the HUD opens its GRAPHE panel and reads the graphs itself."""
         self._emit("graph", {"graph": graph or "general", "focus": focus or ""})
 

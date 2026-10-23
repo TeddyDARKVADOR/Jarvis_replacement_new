@@ -118,7 +118,7 @@ def context_scenarios() -> list[dict]:
                           stimulus={"priority": prio}, expected={"channel": want}))
 
     for prio in ("CRITICAL", "IMPORTANT", "USEFUL", "TRIVIAL"):
-        out.append(_L("policy", _ctx("JARVIS never speaks in a meeting, at any priority"),
+        out.append(_L("policy", _ctx("Matthew never speaks in a meeting, at any priority"),
                       family="policy.meeting",
                       world={"phone": {**fresh, "screen_on": True, "dnd": True}},
                       stimulus={"priority": prio},
@@ -152,7 +152,7 @@ def context_scenarios() -> list[dict]:
                   # The check also reuses ONE snapshot for 1000 s; in simulated
                   # time the phone would go stale (TTL 300 s), so it reports
                   # again before the last decision — found by the lab's first
-                  # run, a transcription error and not a JARVIS one.
+                  # run, a transcription error and not a Matthew one.
                   events=[
                       {"op": "decide", "priority": "IMPORTANT"},
                       {"op": "advance", "s": 1}, {"op": "decide", "priority": "IMPORTANT"},

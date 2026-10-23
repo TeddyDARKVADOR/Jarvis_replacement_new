@@ -1,7 +1,7 @@
 """
 One palette, dark, and no light variant — carried over from `ui/Theme.kt`.
 
-JARVIS is a lit core on a near-black field; a light theme would not be the same
+Matthew is a lit core on a near-black field; a light theme would not be the same
 design with different values, it would be a different design.
 
 The greys are blue-shifted (0x05070C, not 0x0A0A0A). The reason given on Android

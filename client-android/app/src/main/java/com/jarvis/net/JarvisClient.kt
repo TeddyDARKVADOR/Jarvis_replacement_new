@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * **Generations.** Every connect() bumps a counter that each socket callback
  * carries. A callback from an older generation is dropped on the floor. This is
- * lifted straight from the old Jarvis's voice machine, where the same problem —
+ * lifted straight from the old Matthew's voice machine, where the same problem —
  * a late callback from a session that had already been replaced — was what let
  * a dead session report itself as alive. Here it is what stops our own
  * deliberate disconnect() from being reported upward as a network failure.

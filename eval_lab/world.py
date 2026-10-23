@@ -2,7 +2,7 @@
 eval_lab/world.py — the simulated world a trial runs in.
 
 THE CLOCK IS THE WHOLE PROBLEM
-    Most of what is interesting about JARVIS happens at a time boundary: a
+    Most of what is interesting about Matthew happens at a time boundary: a
     device goes stale after 90 s, a turn's origin after 180 s, a phone report
     after 300 s, a cooldown after 900 s, sleep needs 30 min of idle. Testing
     any of that against the wall clock means either sleeping or not testing it.
@@ -153,8 +153,8 @@ def isolated(clock: SimClock):
 
 
 class SutCrash(Exception):
-    """JARVIS's own code raised. Kept apart from every other exception so a
-    broken simulator can never be reported as a bug in JARVIS."""
+    """Matthew's own code raised. Kept apart from every other exception so a
+    broken simulator can never be reported as a bug in Matthew."""
 
     def __init__(self, where: str, exc: BaseException):
         super().__init__(f"{where}: {type(exc).__name__}: {exc}")
@@ -163,7 +163,7 @@ class SutCrash(Exception):
 
 
 def sut(where: str, fn, *args, **kwargs):
-    """Call into the system under test. The one door between lab and JARVIS."""
+    """Call into the system under test. The one door between lab and Matthew."""
     try:
         return fn(*args, **kwargs)
     except SutCrash:

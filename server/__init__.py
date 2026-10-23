@@ -11,7 +11,7 @@ That is the whole design constraint. (`local_hud.py`, the desktop's local
 mode, borrows `headless_ui` and `assistant_control` from here — the arrow still
 points away from main.py.)
 
-How the same JarvisLive runs without a screen and without a sound card:
+How the same MatthewAssistantLive runs without a screen and without a sound card:
 
     run_headless.py
         │  installs a stand-in in sys.modules BEFORE importing main
@@ -19,5 +19,5 @@ How the same JarvisLive runs without a screen and without a sound card:
               │
               ▼
         import main
-        main.JarvisLive(HeadlessUI(...))   ← same class, same run(), same tools
+        main.MatthewAssistantLive(HeadlessUI(...))   ← same class, same run(), same tools
 """

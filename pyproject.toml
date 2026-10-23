@@ -1,4 +1,4 @@
-# Configuration des outils seulement : JARVIS ne s'installe pas avec pip
+# Configuration des outils seulement : Matthew ne s'installe pas avec pip
 # (python setup.py installe ses dépendances, voir requirements.txt).
 
 [tool.ruff]

@@ -30,10 +30,10 @@
 #   l'historique git d'Oracle : si la copie d'Oracle a diverge, il s'arrete.
 set -euo pipefail
 
-SSH_TARGET="${JARVIS_SSH:-ubuntu@jarvis-vps}"          # Tailscale SSH, pas de cle
-REMOTE_REPO="${JARVIS_REMOTE_REPO:-Jarvis_replacement_new}"   # relatif au $HOME distant
-BACKUPS="${JARVIS_BACKUPS:-/var/backups/jarvis}"
-KEEP="${JARVIS_KEEP_BACKUPS:-10}"
+SSH_TARGET="${MATTHEW_ASSISTANT_SSH:-${JARVIS_SSH:-ubuntu@jarvis-vps}}"          # Tailscale SSH, pas de cle
+REMOTE_REPO="${MATTHEW_ASSISTANT_REMOTE_REPO:-${JARVIS_REMOTE_REPO:-Jarvis_replacement_new}}"   # relatif au $HOME distant
+BACKUPS="${MATTHEW_ASSISTANT_BACKUPS:-${JARVIS_BACKUPS:-/var/backups/jarvis}}"
+KEEP="${MATTHEW_ASSISTANT_KEEP_BACKUPS:-${JARVIS_KEEP_BACKUPS:-10}}"
 
 DRY=0; BACKUP_ONLY=0; YES=0; RESTART=1; TESTS=1
 for arg in "$@"; do

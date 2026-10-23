@@ -124,7 +124,7 @@ class Brain:
                         continue
                     key = self.settings["gemini_api_key" if name == "gemini" else "groq_api_key"].strip()
                     status, raw = self._send(GEMINI_URL if name == "gemini" else GROQ_URL,
-                                             {"Content-Type": "application/json", "User-Agent": "jarvis-meeting/1",
+                                             {"Content-Type": "application/json", "User-Agent": "matthew-assistant-meeting/1",
                                               "Authorization": f"Bearer {key}"},
                                              {"model": model, "temperature": 0.2, "max_tokens": max_tokens,
                                               "messages": messages}, self.timeout)

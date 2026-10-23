@@ -1,5 +1,5 @@
 ﻿<#
-  sync_to_key.ps1 -- copie JARVIS sur la cle USB pour le mode portable.
+  sync_to_key.ps1 -- copie Matthew sur la cle USB pour le mode portable.
 
   Depuis le depot, sur le PC de dev :
       powershell -ExecutionPolicy Bypass -File portable\sync_to_key.ps1
@@ -8,7 +8,7 @@
   Ce que ca fait :
     - cree <KeyRoot>\app, \data, \runtime
     - copie le depot dans \app (sans .git, .venv, caches, donnees de session)
-    - y inclut config\ (ta cle Gemini locale) pour que JARVIS marche hors de ce PC
+    - y inclut config\ (ta cle Gemini locale) pour que Matthew marche hors de ce PC
     - pose Lancer-JARVIS.bat a la racine de <KeyRoot>
   Ca n'EFFACE jamais tes ISOs ni les autres dossiers de la cle.
 #>

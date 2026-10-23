@@ -5,7 +5,7 @@ Micro : 16 kHz mono int16, trames de 30 ms jugées par webrtcvad (sinon par
 l'énergie). Une phrase commence après 3 trames voisées sur les 10 dernières et
 finit après 0,8 s de silence, ou au bout de 15 s.
 
-Semi-duplex : pendant que JARVIS parle, le micro est ignoré puis vidé. Moins
+Semi-duplex : pendant que Matthew parle, le micro est ignoré puis vidé. Moins
 fin que l'anti-écho de Mark LV, mais sans réglage et sans risque qu'il se
 réponde à lui-même — en mode dégradé, c'est la bonne affaire.
 

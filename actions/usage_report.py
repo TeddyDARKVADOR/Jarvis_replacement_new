@@ -1,4 +1,4 @@
-"""Expose real Gemini usage for the current JARVIS conversation."""
+"""Expose real Gemini usage for the current Matthew conversation."""
 
 from core import token_usage
 

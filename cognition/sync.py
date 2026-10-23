@@ -1,8 +1,8 @@
 """
-cognition/sync.py — une seule mémoire pour JARVIS, sur tous vos PC.
+cognition/sync.py — une seule mémoire pour Matthew, sur tous vos PC.
 
 Chaque PC garde sa base (memory/cognition.db) et partage ses changements par
-un dossier synchronisé, OneDrive par défaut (OneDrive\\JarvisMemory) :
+un dossier synchronisé, OneDrive par défaut (OneDrive\\MatthewAssistantMemory) :
 
     <dossier>/<ce-pc>.jsonl      ce que CE PC a appris, oublié, validé…
     <dossier>/<autre-pc>.jsonl   lu et appliqué ici
@@ -53,7 +53,10 @@ def default_folder(cfg: dict) -> Path | None:
         value = str(cfg.get("memory_sync_dir") or "").strip()
         return Path(os.path.expandvars(value)).expanduser() if value else None
     onedrive = os.environ.get("OneDrive") or os.environ.get("OneDriveConsumer")
-    return Path(onedrive) / "JarvisMemory" if onedrive and Path(onedrive).is_dir() else None
+    if not (onedrive and Path(onedrive).is_dir()):
+        return None
+    new, old = Path(onedrive) / "MatthewAssistantMemory", Path(onedrive) / "JarvisMemory"   # ancien nom, encore lu
+    return old if old.is_dir() and not new.exists() else new
 
 
 class MemorySync:

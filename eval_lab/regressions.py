@@ -11,9 +11,9 @@ WHAT A REGRESSION IS HERE
         fixed   the bug was fixed. The scenario must now pass, forever. A
                 failure is a regression in the plain sense of the word.
 
-    Promotion is never automatic. The lab proposes (every jarvis-candidate
+    Promotion is never automatic. The lab proposes (every matthew-assistant-candidate
     cluster, with its minimal reproducer); a person decides it is a bug. That
-    is the line between "JARVIS is wrong" and "the lab thinks so".
+    is the line between "Matthew is wrong" and "the lab thinks so".
 
 NOTHING DISAPPEARS SILENTLY
     manifest.json maps each id to the fingerprint of its scenario. It is

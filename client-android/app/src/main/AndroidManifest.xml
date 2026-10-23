@@ -18,7 +18,7 @@
       versions, startForeground() with the microphone type throws
       SecurityException — and on Android 11+ a background app that merely holds
       an AudioRecord reads SILENCE rather than failing, which is the worse
-      failure: everything "works" and JARVIS just never hears anything.
+      failure: everything "works" and Matthew just never hears anything.
 
       Nothing here bypasses a restriction. The service is started from a visible
       Activity, after the user has granted the microphone and switched it on
@@ -40,7 +40,7 @@
     <!--
       The `open_app` capability, and nothing else.
 
-      Since Android 10 a background app cannot start an activity. JARVIS runs as
+      Since Android 10 a background app cannot start an activity. Matthew runs as
       a foreground SERVICE — a notification, not a window — so every "ouvre
       Chrome" arriving over the device channel is a background launch, and the
       platform drops it. It does not throw: startActivity returns normally, one
@@ -65,7 +65,7 @@
 
       • RECEIVE_BOOT_COMPLETED — a microphone service that restarts itself after
         a reboot, with no one present, is not something this app should do
-        silently. The user switches JARVIS on.
+        silently. The user switches Matthew on.
       • REQUEST_IGNORE_BATTERY_OPTIMIZATIONS — the app can only *ask*, from a
         settings screen, and Play policy is strict about it. A foreground
         service is the supported way to stay alive; the exemption is a
@@ -96,14 +96,14 @@
         android:icon="@drawable/ic_stat_jarvis"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Jarvis">
+        android:theme="@style/Theme.Matthew">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
-            android:theme="@style/Theme.Jarvis">
+            android:theme="@style/Theme.Matthew">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

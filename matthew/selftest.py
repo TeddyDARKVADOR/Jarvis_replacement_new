@@ -147,7 +147,7 @@ def _tap():
     return f"{len(eps)} épisodes"
 
 
-@check("Tap.install se greffe sur JarvisLive (interface + outils) sans rien changer")
+@check("Tap.install se greffe sur MatthewAssistantLive (interface + outils) sans rien changer")
 def _install():
     import asyncio
     from types import SimpleNamespace
@@ -158,7 +158,7 @@ def _install():
             shown.append(text)
 
     class Live:
-        _asst_name = "Jarvis"
+        _asst_name = "Matthew"
         def __init__(self):
             self.ui = UI()
         async def _execute_tool(self, fc):
@@ -170,12 +170,12 @@ def _install():
         tap = matthew.attach(live)
         fr = asyncio.run(live._execute_tool(SimpleNamespace(name="weather", args={"city": "x"})))
         assert fr.response == {"result": "weather fait"}, "la réponse à Gemini doit rester identique"
-        for line in ("You: météo x", "Jarvis: Il fait beau.", "SYS: rien"):
+        for line in ("You: météo x", "Matthew: Il fait beau.", "SYS: rien"):
             live.ui.write_log(line)
-        assert shown == ["You: météo x", "Jarvis: Il fait beau.", "SYS: rien"], shown
+        assert shown == ["You: météo x", "Matthew: Il fait beau.", "SYS: rien"], shown
         eps = [r for r in tap.journal.records() if r["kind"] == "episode"]
         assert len(eps) == 1 and eps[0]["user"] == "météo x" and eps[0]["tools"][0]["name"] == "weather", eps
-        assert matthew.attach(SimpleNamespace(ui=UI())) is None, "faux JarvisLive : rien à capter"
+        assert matthew.attach(SimpleNamespace(ui=UI())) is None, "faux MatthewAssistantLive : rien à capter"
     finally:
         os.environ["MATTHEW_HOME"] = str(TMP / "home")
     return "transparent"
@@ -793,7 +793,7 @@ def _vitrine_flag():
     assert V.clean_title("Déploiement vers MARK LIII") == "Déploiement vers le serveur"
     for bad in ("x", "fix C:/Users/moi/secret.txt", "envoie à bob@ex.fr", "voir https://exemple.com"):
         assert V.clean_title(bad) is None, bad
-    assert V.pub("shutdown_jarvis") == "shutdown"
+    assert V.pub("shutdown_matthew_assistant") == "shutdown"
     git_log = ("@@2026-10-20|JARVIS : nouveau HUD\nclient_desktop/hud/web/index.html\nclient_desktop/hud/window.py\n"
                "@@2026-10-19|Matthew : routeur par le sens\nmatthew/router.py\ncapabilities/graphs/matthew.json\n"
                "@@2026-10-18|clé AIza" + "x" * 35 + "\nmain.py\n")
@@ -1727,7 +1727,7 @@ def _vitrine_more():
 @check("contrat V2 : trois hooks gardés, données ignorées par Git")
 def _contract():
     rt = (REPO / "cognition" / "runtime.py").read_text(encoding="utf-8")
-    hook = rt.index('__import__("matthew").attach(jarvis)')
+    hook = rt.index('__import__("matthew").attach(matthew_assistant)')
     assert hook < rt.index('if not getattr(ui, "local_mode", False)'), "le hook doit précéder le test du mode local"
     assert "except ImportError" in rt
     prov = (REPO / "cognition" / "providers.py").read_text(encoding="utf-8")

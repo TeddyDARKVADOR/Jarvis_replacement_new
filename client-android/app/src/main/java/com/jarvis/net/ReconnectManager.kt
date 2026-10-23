@@ -18,14 +18,14 @@ import kotlin.random.Random
 /**
  * When to try again — the only place in the app that decides that.
  *
- * **Lifted from the old Jarvis Android, whose `SpeechErrorPolicy` was written
+ * **Lifted from the old Matthew Android, whose `SpeechErrorPolicy` was written
  * against a real, measured failure.** Its microphone restart loop fed itself:
  * an error triggered a retry, the retry came too soon, Android answered
  * `error_client`, which triggered another retry. The fix was not a longer sleep
  * but three separate categories of failure and a growing delay between
  * attempts. The same three categories apply here:
  *
- * | Old Jarvis (microphone)   | Here (WebSocket)                          |
+ * | Old Matthew (microphone)   | Here (WebSocket)                          |
  * |---------------------------|-------------------------------------------|
  * | `restartSilently`         | ordinary close — reconnect, say nothing   |
  * | `restartWithBackoff`      | network down, server restarting           |

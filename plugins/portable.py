@@ -1,14 +1,14 @@
 """
-JARVIS portable — l'assistant vit sur une clé USB et n'écrit rien sur le PC hôte.
+Matthew portable — l'assistant vit sur une clé USB et n'écrit rien sur le PC hôte.
 
 Cet outil ne déploie rien lui-même : le déploiement se fait par le lanceur
 `portable/Lancer-JARVIS.bat` posé sur la clé. L'outil répond à la question que
-l'utilisateur pose à JARVIS une fois qu'il tourne — « es-tu en mode portable ? »,
+l'utilisateur pose à Matthew une fois qu'il tourne — « es-tu en mode portable ? »,
 « où sont mes données ? », « comment retirer la clé sans rien casser ? ».
 
 Le mode portable est activé par le lanceur, qui exporte avant de démarrer Python :
-  JARVIS_PORTABLE=1          marqueur
-  JARVIS_DATA_DIR=<clé>/data racine de données
+  MATTHEW_ASSISTANT_PORTABLE=1          marqueur
+  MATTHEW_ASSISTANT_DATA_DIR=<clé>/data racine de données
   USERPROFILE / LOCALAPPDATA / APPDATA / TEMP / TMP / HF_HOME / OLLAMA_MODELS
                              redirigés vers des dossiers de la clé
 Ainsi tout ce que le code écrit « chez l'utilisateur » atterrit sur la clé, sans
@@ -23,11 +23,11 @@ from pathlib import Path
 PLUGIN = {
     "name": "portable",
     "description": (
-        "État du mode portable (JARVIS sur clé USB). À appeler quand l'utilisateur "
+        "État du mode portable (Matthew sur clé USB). À appeler quand l'utilisateur "
         "demande s'il tourne depuis une clé, où sont stockées ses données en mode "
         "portable, combien d'espace reste sur la clé, ou comment retirer la clé "
         "proprement. N'installe ni ne supprime rien : lecture seule. Pour déployer "
-        "JARVIS sur une clé, c'est le lanceur Lancer-JARVIS.bat de la clé, pas cet outil."
+        "Matthew sur une clé, c'est le lanceur Lancer-JARVIS.bat de la clé, pas cet outil."
     ),
     "parameters": {
         "type": "OBJECT",
@@ -43,7 +43,7 @@ PLUGIN = {
                                "audit : preuve que rien n'a été écrit hors de la clé sur ce PC. "
                                "note : enregistrer ce sur quoi on travaille (passer `text`) pour la reprise. "
                                "check : auto-vérification (dépendances + intégrité de la clé). "
-                               "history : où et quand JARVIS a tourné (les dernières sessions).",
+                               "history : où et quand Matthew a tourné (les dernières sessions).",
             },
             "text": {
                 "type": "STRING",
@@ -57,11 +57,11 @@ PLUGIN = {
 
 
 def _is_portable() -> bool:
-    return os.environ.get("JARVIS_PORTABLE", "") not in ("", "0", "false", "False")
+    return os.environ.get("MATTHEW_ASSISTANT_PORTABLE", "") not in ("", "0", "false", "False")
 
 
 def _data_dir() -> Path | None:
-    d = os.environ.get("JARVIS_DATA_DIR", "").strip()
+    d = os.environ.get("MATTHEW_ASSISTANT_DATA_DIR", "").strip()
     return Path(d) if d else None
 
 
@@ -74,14 +74,14 @@ def _free_gb(path: Path) -> float | None:
 
 def _key_root() -> Path | None:
     """Racine de la clé : le dossier qui contient data/, app/, runtime/.
-    Le lanceur pose JARVIS_DATA_DIR = <racine>\\data, donc la racine est son parent."""
+    Le lanceur pose MATTHEW_ASSISTANT_DATA_DIR = <racine>\\data, donc la racine est son parent."""
     d = _data_dir()
     return d.parent if d is not None else None
 
 
 def _status() -> str:
     if not _is_portable():
-        return ("JARVIS ne tourne pas en mode portable, Sir : il est installé sur ce PC. "
+        return ("Matthew ne tourne pas en mode portable, Sir : il est installé sur ce PC. "
                 "Pour le rendre portable, lancez-le par Lancer-JARVIS.bat depuis la clé.")
     data = _data_dir()
     lines = ["Mode portable actif — je vis sur la clé, rien n'est écrit sur ce PC."]
@@ -101,7 +101,7 @@ def _status() -> str:
 def _eject() -> str:
     if not _is_portable():
         return "Pas en mode portable : rien de spécial à faire, la clé ne me fait pas tourner."
-    return ("Pour retirer la clé sans rien casser, Sir : fermez d'abord JARVIS "
+    return ("Pour retirer la clé sans rien casser, Sir : fermez d'abord Matthew "
             "(dites « arrête-toi » ou fermez le HUD), attendez 2 secondes que les "
             "fichiers soient écrits, puis éjectez la clé normalement (icône « Retirer "
             "le périphérique » de Windows). Un gardien surveille la clé : si elle "
@@ -111,7 +111,7 @@ def _eject() -> str:
 
 def _doctor() -> str:
     if not _is_portable():
-        return ("Pas en mode portable : le bilan du dispositif ne s'applique qu'à JARVIS lancé "
+        return ("Pas en mode portable : le bilan du dispositif ne s'applique qu'à Matthew lancé "
                 "depuis la clé (Lancer-JARVIS.bat).")
     root = _key_root()
     lines = ["Bilan du dispositif portable :"]
@@ -140,7 +140,7 @@ def _doctor() -> str:
         p = host_profile.profile()
         gpu = f"GPU NVIDIA {p['vram_gb']} Go" if p["gpu_nvidia"] else "sans GPU dédié"
         lines.append(f"  ce PC : {gpu}, {p['ram_gb']} Go RAM → modèle conseillé {p['recommended_model']}")
-        net = "en ligne (Gemini dispo)" if p.get("online") else "hors-ligne (JARVIS passe sur Ollama local)"
+        net = "en ligne (Gemini dispo)" if p.get("online") else "hors-ligne (Matthew passe sur Ollama local)"
         lines.append(f"  connexion : {net}")
         bat = p.get("battery") or {}
         if bat:
@@ -265,7 +265,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
         result = f"Sir, l'outil portable a échoué : {e}"
     if player:
         try:
-            player.write_log(f"JARVIS: {result.splitlines()[0]}")
+            player.write_log(f"Matthew: {result.splitlines()[0]}")
         except Exception:
             pass
     return result

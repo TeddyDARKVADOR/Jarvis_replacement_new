@@ -1,5 +1,5 @@
 """
-JARVIS Desktop — a permanent MARK LIII terminal for a Windows workstation.
+Matthew Desktop — a permanent MARK LIII terminal for a Windows workstation.
 
 This package is a **client**. It holds no model, opens no Gemini session and
 owns no memory. The brain is MARK LIII on the Oracle VPS; this is a second
@@ -29,7 +29,7 @@ Nothing in `main.py`, `dashboard/`, `server/`, `actions/`, `plugins/` or
 it only ever imports. `local_hud.py`, beside main.py, reuses its HUD to show
 the brain running on this PC.
 
-**Why it does not reuse `JarvisLive`.** `JarvisLive` (`main.py`) *is* the brain:
+**Why it does not reuse `MatthewAssistantLive`.** `MatthewAssistantLive` (`main.py`) *is* the brain:
 constructing one opens a Gemini Live session. Oracle already runs exactly one.
 A desktop client that instantiated it would be a second assistant wearing the
 same name — two sessions, two conversation histories, two bills. So this package

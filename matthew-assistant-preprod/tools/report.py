@@ -5,7 +5,7 @@ UNE DECISION QUI COMPTE PLUS QUE LA MISE EN PAGE
     PHYSICAL_ONLY n'est pas compte comme un SKIP et n'est jamais melange aux
     autres. Un SKIP dit « pas execute cette fois » ; PHYSICAL_ONLY dit « cet
     emulateur ne pourra jamais le prouver ». Les confondre rendrait possible
-    une campagne toute verte qu'on lirait comme « JARVIS est valide », alors
+    une campagne toute verte qu'on lirait comme « Matthew est valide », alors
     que la batterie, le Bluetooth, le micro et HyperOS n'ont pas ete touches.
 
     Le rapport affiche donc deux totaux distincts et le HTML met la liste
@@ -121,7 +121,7 @@ def to_html(report: dict) -> str:
 
     return f"""<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8">
-<title>JARVIS préprod</title>
+<title>Matthew préprod</title>
 <style>
  :root {{ color-scheme: dark; }}
  body {{ background:#0D1117; color:#C9D1D9; font:14px/1.6 ui-monospace,Menlo,Consolas,monospace;
@@ -147,7 +147,7 @@ def to_html(report: dict) -> str:
  @media (max-width:640px) {{ body {{ padding:20px 16px; }} .det {{ display:none; }} }}
 </style></head>
 <body><div class="wrap">
-  <h1>JARVIS — préproduction Android</h1>
+  <h1>Matthew — préproduction Android</h1>
   <div class="meta">{report["generated"]} &middot; serveur en mode
       <b>{html.escape(report["server_mode"])}</b> &middot; émulateur, pas un Redmi</div>
   <div class="banner">{banner}</div>

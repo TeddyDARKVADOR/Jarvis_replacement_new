@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent
 # du test ne doivent jamais toucher memory/quota.json.
 try:
     import quota as _Q
-    _Q.reset_for_tests(Path(tempfile.mkdtemp(prefix="jarvis-quota-")) / "quota.json")
+    _Q.reset_for_tests(Path(tempfile.mkdtemp(prefix="matthew-assistant-quota-")) / "quota.json")
 except Exception:
     _Q = None
 _results: list[tuple[str, bool, str]] = []
@@ -51,7 +51,7 @@ def check(name: str):
     return deco
 
 
-@check("1 contrat V2 : pilot/ n'importe rien de JARVIS au chargement")
+@check("1 contrat V2 : pilot/ n'importe rien de Matthew au chargement")
 def _contract():
     banned = ("main", "core", "actions", "plugins", "cognition", "server", "dashboard", "client_desktop",
               "offline", "nightshift", "memory", "context", "meeting")
@@ -270,11 +270,11 @@ def _no_replace():
     return "Ctrl+Fin puis frappe ; aucun SetValue"
 
 
-@check("8 HUD de JARVIS au premier plan : la fenêtre de travail repasse devant ; écran verrouillé : arrêt")
+@check("8 HUD de Matthew au premier plan : la fenêtre de travail repasse devant ; écran verrouillé : arrêt")
 def _own_window():
     import os
     calls = []
-    hud = _obs([], title="JARVIS", pid=os.getpid())
+    hud = _obs([], title="Matthew", pid=os.getpid())
     work = _obs([], title="Teams")
     seq = [hud, work]
     ag, _ = _agent([("done", {"summary": "x"})], work, [])

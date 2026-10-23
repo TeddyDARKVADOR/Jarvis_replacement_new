@@ -24,7 +24,7 @@ THE ANSWER
 
         RawOutputStream  → every stream.write(pcm) is published to whoever is
                            listening on /ws/phone-out.
-                           This single line is the whole downlink: JARVIS's
+                           This single line is the whole downlink: Matthew's
                            voice, which has always gone to the desktop
                            speakers, now goes to the phone instead — and
                            _play_audio is untouched, still batching ~200 ms
@@ -119,7 +119,7 @@ class AudioHub:
     def flush(self) -> None:
         """Drop every frame still queued for every listener. Call on interrupt.
 
-        `JarvisLive.interrupt()` empties the queue feeding `_play_audio`, which
+        `MatthewAssistantLive.interrupt()` empties the queue feeding `_play_audio`, which
         stops *new* audio being produced. It cannot touch what has already left
         that queue — and what has already left it is the problem: Gemini
         generates faster than real time (measured: 1.52 s of speech delivered in
@@ -149,7 +149,7 @@ class AudioHub:
             return
 
         # Counted before the subscriber check on purpose: these say how much
-        # JARVIS actually said, not how much got delivered. "speaking, 0
+        # Matthew actually said, not how much got delivered. "speaking, 0
         # listeners" in /status is precisely the symptom worth being able to
         # see — it is what a phone that thinks it is connected looks like.
         self.frames_published += 1
@@ -237,7 +237,7 @@ def build_module(hub: AudioHub, log=print) -> types.ModuleType:
             return False
 
     class _PhoneOutputStream:
-        """Every write() is one step of JARVIS's voice on its way to the phone."""
+        """Every write() is one step of Matthew's voice on its way to the phone."""
 
         def __init__(self, *_a, **kw):
             self.samplerate = kw.get("samplerate")
@@ -294,7 +294,7 @@ def build_module(hub: AudioHub, log=print) -> types.ModuleType:
         if not _warned["play"]:
             _warned["play"] = True
             log("SYS: local sd.play() ignored — headless server has no speaker "
-                "(JARVIS's voice goes to the phone via /ws/phone-out).")
+                "(Matthew's voice goes to the phone via /ws/phone-out).")
 
     def wait(*_a, **_kw):
         return None

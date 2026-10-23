@@ -84,7 +84,7 @@ class Overlay:
                               | Qt.WindowType.WindowTransparentForInput)
                 win.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
                 win.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
-                win.setObjectName("jarvisMeetingOverlay")
+                win.setObjectName("matthewAssistantMeetingOverlay")
                 box = QVBoxLayout(win)
                 box.setContentsMargins(0, 0, 0, 0)
                 self.label = QLabel(win)
@@ -104,7 +104,7 @@ class Overlay:
                 if self.win is None:
                     self._build()
                 from html import escape
-                self.label.setText(f"<div style='color:#8fb4ff;font-size:8.5pt'>JARVIS · {escape(title)}</div>"
+                self.label.setText(f"<div style='color:#8fb4ff;font-size:8.5pt'>Matthew · {escape(title)}</div>"
                                    f"<div style='margin-top:3px'>{escape(text)}</div>")
                 self.win.adjustSize()
                 screen = QApplication.primaryScreen().availableGeometry()

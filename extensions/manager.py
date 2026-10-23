@@ -2,8 +2,8 @@
 extensions/manager.py — installer, examiner, désactiver, restaurer des plugins, en sachant ce qu'ils font.
 
     report = inspect(source)          ce que le fichier déclare ET ce que son code fait, sans l'exécuter
-    install(jarvis, source, sha256)   après CONFIRMER sur le HUD ; la version d'avant est gardée
-    restore(jarvis, name) · remove(jarvis, name) · installed()
+    install(matthew_assistant, source, sha256)   après CONFIRMER sur le HUD ; la version d'avant est gardée
+    restore(matthew_assistant, name) · remove(matthew_assistant, name) · installed()
 
 LE MANIFESTE — facultatif, dans le fichier du plugin, une constante littérale :
 
@@ -16,7 +16,7 @@ LE MANIFESTE — facultatif, dans le fichier du plugin, une constante littérale
     }
 
 CE QUI PROTÈGE VRAIMENT (et ce qui ne protège pas)
-  Un plugin Python tourne dans le processus de JARVIS : une liste de
+  Un plugin Python tourne dans le processus de Matthew : une liste de
   permissions ne l'EMPÊCHE de rien. Ce module ne prétend donc pas le confiner.
   Il fait trois choses vérifiables :
   1. la PROVENANCE — empreinte SHA-256 montrée, épinglée si l'utilisateur la
@@ -165,7 +165,7 @@ def _missing(requires: list) -> list[str]:
 
 def read_source(source: str) -> str:
     if source.startswith("https://"):
-        req = urllib.request.Request(source, headers={"User-Agent": "jarvis-extensions/1"})
+        req = urllib.request.Request(source, headers={"User-Agent": "matthew-assistant-extensions/1"})
         with urllib.request.urlopen(req, timeout=20) as r:
             raw = r.read(MAX_BYTES + 1)
     elif source.startswith("http://"):
@@ -207,22 +207,22 @@ def inspect(source: str, text: str | None = None, taken: set[str] | None = None)
     if "dynamic_code" in detected:
         rep.problems.append("exécute du code construit à la volée (eval/exec/import dynamique) : à lire de près")
     if taken and rep.name in taken:
-        rep.ok, rep.problems = False, rep.problems + [f"le nom « {rep.name} » est déjà pris par un outil de JARVIS"]
+        rep.ok, rep.problems = False, rep.problems + [f"le nom « {rep.name} » est déjà pris par un outil de Matthew"]
     return rep
 
 
 # ── installation ─────────────────────────────────────────────────────────────
 
-def _registry(jarvis):
-    return getattr(jarvis, "_plugin_registry", None)
+def _registry(matthew_assistant):
+    return getattr(matthew_assistant, "_plugin_registry", None)
 
 
-def _taken(jarvis, except_user: str = "") -> set[str]:
+def _taken(matthew_assistant, except_user: str = "") -> set[str]:
     names = set()
-    reg = _registry(jarvis)
+    reg = _registry(matthew_assistant)
     if reg is not None:
         names |= {n for n in getattr(reg, "_plugins", {}) if n != except_user}
-    ar = getattr(jarvis, "_action_registry", None)
+    ar = getattr(matthew_assistant, "_action_registry", None)
     if ar is not None:
         try:
             names |= set(ar.names())
@@ -245,8 +245,8 @@ def write(rep: Report, user_dir: Path = USER_DIR) -> Path:
     return dest
 
 
-def load_into(jarvis, path: Path) -> str:
-    """Importe un plugin de user_plugins/ et le range dans le registre de JARVIS, avec la garde lire/agir."""
+def load_into(matthew_assistant, path: Path) -> str:
+    """Importe un plugin de user_plugins/ et le range dans le registre de Matthew, avec la garde lire/agir."""
     from core.plugin_loader import _validate
     module_name = f"user_plugins.{path.stem}"
     spec = importlib.util.spec_from_file_location(module_name, path)
@@ -259,7 +259,7 @@ def load_into(jarvis, path: Path) -> str:
     manifest = getattr(module, "PLUGIN_MANIFEST", None)
     if isinstance(manifest, dict):
         rec.run = gate(rec.name, rec.run, manifest)
-    reg = _registry(jarvis)
+    reg = _registry(matthew_assistant)
     if reg is not None:
         reg._plugins[rec.name] = rec
     return rec.name
@@ -294,15 +294,15 @@ def gate(name: str, run, manifest: dict):
     return gated
 
 
-def install(jarvis, source: str, expected_sha: str = "", user_dir: Path = USER_DIR, confirmer=None) -> str:
+def install(matthew_assistant, source: str, expected_sha: str = "", user_dir: Path = USER_DIR, confirmer=None) -> str:
     """Examine, puis installe après CONFIRMER. `expected_sha` (si donné) doit correspondre exactement."""
     existing = ""
     rep = inspect(source, taken=None)
     if rep.ok:
         existing = rep.name if (user_dir / f"{rep.name}.py").exists() else ""
-        clash = _taken(jarvis, except_user=existing)
+        clash = _taken(matthew_assistant, except_user=existing)
         if rep.name in clash and not existing:
-            rep.ok, rep.problems = False, rep.problems + [f"le nom « {rep.name} » est déjà pris par un outil de JARVIS"]
+            rep.ok, rep.problems = False, rep.problems + [f"le nom « {rep.name} » est déjà pris par un outil de Matthew"]
     if not rep.ok:
         return rep.render()
     if expected_sha and expected_sha.lower() != rep.sha256:
@@ -310,7 +310,7 @@ def install(jarvis, source: str, expected_sha: str = "", user_dir: Path = USER_D
 
     def _do() -> str:
         path = write(rep, user_dir)
-        load_into(jarvis, path)
+        load_into(matthew_assistant, path)
         return f"Extension {rep.name} installée."
 
     summary = rep.render()
@@ -334,7 +334,7 @@ def installed(user_dir: Path = USER_DIR) -> list[dict]:
     return out
 
 
-def restore(jarvis, name: str, user_dir: Path = USER_DIR) -> str:
+def restore(matthew_assistant, name: str, user_dir: Path = USER_DIR) -> str:
     keep = user_dir / VERSIONS / name
     versions = sorted(keep.glob("*.py")) if keep.exists() else []
     if not versions:
@@ -342,34 +342,34 @@ def restore(jarvis, name: str, user_dir: Path = USER_DIR) -> str:
     current = user_dir / f"{name}.py"
     shutil.copy2(versions[-1], current)
     versions[-1].unlink()
-    load_into(jarvis, current)
+    load_into(matthew_assistant, current)
     return f"{name} : version précédente restaurée ({versions[-1].stem})."
 
 
-def remove(jarvis, name: str, user_dir: Path = USER_DIR) -> str:
+def remove(matthew_assistant, name: str, user_dir: Path = USER_DIR) -> str:
     path = user_dir / f"{name}.py"
     if not path.exists():
         return f"{name} n'est pas une extension installée (les plugins du dépôt ne se retirent pas ici)."
     keep = user_dir / VERSIONS / name
     keep.mkdir(parents=True, exist_ok=True)
     shutil.move(str(path), str(keep / f"{datetime.now():%Y%m%d-%H%M%S}-retiree.py"))
-    reg = _registry(jarvis)
+    reg = _registry(matthew_assistant)
     if reg is not None:
         reg._plugins.pop(name, None)
     return f"{name} retirée (gardée dans .versions : « restaure {name} » la remet)."
 
 
-def attach(jarvis, user_dir: Path = USER_DIR, log=print) -> list[str]:
+def attach(matthew_assistant, user_dir: Path = USER_DIR, log=print) -> list[str]:
     """Hook de main.py : charge user_plugins/ dans le registre (après les plugins du dépôt), avec la garde."""
     loaded = []
-    taken = _taken(jarvis)
+    taken = _taken(matthew_assistant)
     for f in sorted(user_dir.glob("*.py")) if user_dir.exists() else []:
         try:
             rep = inspect(str(f))
             if not rep.ok or rep.name in taken:
                 log(f"SYS: Extension {f.name} écartée : {'; '.join(rep.problems) or 'nom déjà pris'}")
                 continue
-            loaded.append(load_into(jarvis, f))
+            loaded.append(load_into(matthew_assistant, f))
         except Exception as e:
             log(f"SYS: Extension {f.name} écartée : {type(e).__name__}: {e}")
     return loaded

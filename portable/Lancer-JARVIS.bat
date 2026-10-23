@@ -1,9 +1,9 @@
 @echo off
 REM ============================================================================
-REM  JARVIS PORTABLE  --  se lance depuis la cle USB, n'ecrit rien sur le PC hote
+REM  Matthew PORTABLE  --  se lance depuis la cle USB, n'ecrit rien sur le PC hote
 REM ----------------------------------------------------------------------------
-REM  Pose ce fichier a la RACINE du dossier JARVIS de la cle, a cote de :
-REM     app\        le depot JARVIS (copie par portable\sync_to_key.ps1)
+REM  Pose ce fichier a la RACINE du dossier Matthew de la cle, a cote de :
+REM     app\        le depot Matthew (copie par portable\sync_to_key.ps1)
 REM     data\       cree ici : toutes les donnees (home, cache, temp, modeles)
 REM     runtime\    cree ici : le Python portable et, en option, ollama.exe
 REM
@@ -26,12 +26,12 @@ set "RUNTIME=%ROOT%\runtime"
 set "PYDIR=%RUNTIME%\python"
 set "PY=%PYDIR%\python.exe"
 
-echo [JARVIS portable] Cle         : %ROOT%
-echo [JARVIS portable] Application : %APP%
+echo [Matthew portable] Cle         : %ROOT%
+echo [Matthew portable] Application : %APP%
 
 if not exist "%APP%\main.py" (
-  echo [JARVIS portable] ERREUR : %APP%\main.py introuvable.
-  echo                   Lance d'abord portable\sync_to_key.ps1 depuis le depot pour copier JARVIS sur la cle.
+  echo [Matthew portable] ERREUR : %APP%\main.py introuvable.
+  echo                   Lance d'abord portable\sync_to_key.ps1 depuis le depot pour copier Matthew sur la cle.
   pause & exit /b 1
 )
 
@@ -42,18 +42,18 @@ for %%D in ("%DATA%" "%DATA%\home" "%DATA%\home\AppData\Local" "%DATA%\home\AppD
 
 REM --- Animation de demarrage (reacteur ARC) pendant tout le boot --------------
 set "STATUS=%DATA%\tmp\boot-status.txt"
-echo Demarrage du boot portable de JARVIS...> "%STATUS%"
+echo Demarrage du boot portable de Matthew...> "%STATUS%"
 start "" powershell -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "%APP%\portable\splash.ps1" -StatusFile "%STATUS%" -SettingsFile "%DATA%\portable.json"
 
 REM Preuve zero-trace : memoriser les VRAIS dossiers de l'hote AVANT de rediriger
-set "JARVIS_HOST_USERPROFILE=%USERPROFILE%"
-set "JARVIS_HOST_LOCALAPPDATA=%LOCALAPPDATA%"
-set "JARVIS_HOST_APPDATA=%APPDATA%"
-set "JARVIS_HOST_TEMP=%TEMP%"
+set "MATTHEW_ASSISTANT_HOST_USERPROFILE=%USERPROFILE%"
+set "MATTHEW_ASSISTANT_HOST_LOCALAPPDATA=%LOCALAPPDATA%"
+set "MATTHEW_ASSISTANT_HOST_APPDATA=%APPDATA%"
+set "MATTHEW_ASSISTANT_HOST_TEMP=%TEMP%"
 
 REM --- Redirection : tout ce que le code ecrit "chez l'utilisateur" va sur la cle
-set "JARVIS_PORTABLE=1"
-set "JARVIS_DATA_DIR=%DATA%"
+set "MATTHEW_ASSISTANT_PORTABLE=1"
+set "MATTHEW_ASSISTANT_DATA_DIR=%DATA%"
 set "USERPROFILE=%DATA%\home"
 set "HOMEDRIVE=%ROOT:~0,2%"
 set "HOMEPATH=%DATA:~2%\home"
@@ -74,27 +74,27 @@ set "SETTINGS=%DATA%\portable.json"
 
 REM --- 1. Python portable present ? sinon bootstrap --------------------------
 if exist "%PY%" goto :have_python
-echo [JARVIS portable] Python portable absent -- telechargement initial (une fois)...
+echo [Matthew portable] Python portable absent -- telechargement initial (une fois)...
 echo Installation du moteur Python portable (une fois, internet requis)...>> "%STATUS%"
 call :bootstrap_python
 if errorlevel 1 (
-  echo [JARVIS portable] FATAL : impossible d'installer Python portable.
+  echo [Matthew portable] FATAL : impossible d'installer Python portable.
   echo                   Solution manuelle : telecharge un "python-build-standalone"
   echo                   (install_only, x86_64-pc-windows-msvc) et extrais-le dans %PYDIR%
   echo                   de sorte que %PY% existe, puis relance ce fichier.
   pause & exit /b 1
 )
 :have_python
-echo [JARVIS portable] Python      : %PY%
+echo [Matthew portable] Python      : %PY%
 
 REM --- 2. Dependances installees ? (marqueur .deps-ok) -----------------------
 if exist "%PYDIR%\.deps-ok" goto :have_deps
-echo [JARVIS portable] Installation des dependances (INTERNET requis, ~5 min)...
-echo Installation des dependances de JARVIS (~5 min la premiere fois)...>> "%STATUS%"
+echo [Matthew portable] Installation des dependances (INTERNET requis, ~5 min)...
+echo Installation des dependances de Matthew (~5 min la premiere fois)...>> "%STATUS%"
 "%PY%" -m pip install --upgrade pip wheel setuptools
 "%PY%" -m pip install -r "%APP%\requirements.txt"
 if errorlevel 1 (
-  echo [JARVIS portable] FATAL : pip install a echoue. Verifie ta connexion et relance.
+  echo [Matthew portable] FATAL : pip install a echoue. Verifie ta connexion et relance.
   pause & exit /b 1
 )
 echo ok> "%PYDIR%\.deps-ok"
@@ -119,11 +119,11 @@ set "OLLAMA_EXE=%RUNTIME%\ollama\ollama.exe"
 if exist "%OLLAMA_EXE%" (
   tasklist /FI "IMAGENAME eq ollama.exe" 2>nul | find /I "ollama.exe" >nul
   if errorlevel 1 (
-    echo [JARVIS portable] Demarrage d'Ollama (modeles sur la cle)...
+    echo [Matthew portable] Demarrage d'Ollama (modeles sur la cle)...
     start "ollama-portable" /B "%OLLAMA_EXE%" serve
   )
 ) else (
-  echo [JARVIS portable] Ollama non fourni -- JARVIS utilisera Gemini/cloud ^(cle dans app\config^).
+  echo [Matthew portable] Ollama non fourni -- Matthew utilisera Gemini/cloud ^(cle dans app\config^).
 )
 
 REM --- 3c. Premiere config : ni cle en clair ni coffre -> assistant -----------
@@ -137,14 +137,14 @@ echo Ouverture du coffre securise...>> "%STATUS%"
 "%PY%" "%APP%\portable\vault.py" unlock --dir "%APP%\config"
 if errorlevel 1 (
   echo __CLOSE__>> "%STATUS%"
-  echo [JARVIS portable] Coffre non deverrouille -- arret.
+  echo [Matthew portable] Coffre non deverrouille -- arret.
   pause & exit /b 1
 )
 
 REM --- 4. Lancement sous le gardien d'ejection --------------------------------
-echo [JARVIS portable] Demarrage de JARVIS...
-echo JARVIS est pret. Bonjour, Sir.>> "%STATUS%"
-REM laisse voir le message une seconde, puis ferme l'animation (JARVIS prend la main)
+echo [Matthew portable] Demarrage de Matthew...
+echo Matthew est pret. Bonjour, Sir.>> "%STATUS%"
+REM laisse voir le message une seconde, puis ferme l'animation (Matthew prend la main)
 ping -n 2 127.0.0.1 >nul
 echo __READY__>> "%STATUS%"
 "%PY%" "%APP%\portable\eject_guard.py" --anchor "%~f0" -- "%PY%" "%APP%\main.py" --local
@@ -155,7 +155,7 @@ REM --- 5. Fin de session : continuite, preuve zero-trace, re-chiffrement ------
 "%PY%" "%APP%\portable\vault.py" relock --dir "%APP%\config"
 
 REM --- 6. Animation de retrait (montre le resultat de l'audit zero-trace) ------
-echo [JARVIS portable] JARVIS s'est arrete.
+echo [Matthew portable] Matthew s'est arrete.
 powershell -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "%APP%\portable\farewell.ps1" -SettingsFile "%DATA%\portable.json" -MessageFile "%DATA%\tmp\farewell.txt"
 endlocal
 exit /b 0
@@ -176,15 +176,15 @@ set "ARCHIVE=%DATA%\tmp\%PBS_FILE%"
 if not exist "%RUNTIME%" mkdir "%RUNTIME%"
 
 if exist "%STAGED%" (
-  echo [JARVIS portable] Archive Python pre-posee sur la cle, extraction...
+  echo [Matthew portable] Archive Python pre-posee sur la cle, extraction...
   copy /Y "%STAGED%" "%ARCHIVE%" >nul
 ) else (
-  echo [JARVIS portable] Telechargement de Python %PBS_VER%...
+  echo [Matthew portable] Telechargement de Python %PBS_VER%...
   powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -Uri '%PBS_URL%' -OutFile '%ARCHIVE%' -UseBasicParsing } catch { exit 1 }"
   if errorlevel 1 exit /b 1
 )
 
-echo [JARVIS portable] Extraction...
+echo [Matthew portable] Extraction...
 if not exist "%DATA%\tmp\pyextract" mkdir "%DATA%\tmp\pyextract"
 tar -xf "%ARCHIVE%" -C "%DATA%\tmp\pyextract"
 if errorlevel 1 exit /b 1
@@ -197,5 +197,5 @@ del /q "%ARCHIVE%" 2>nul
 rmdir /S /Q "%DATA%\tmp\pyextract" 2>nul
 
 if not exist "%PY%" exit /b 1
-echo [JARVIS portable] Python portable installe.
+echo [Matthew portable] Python portable installe.
 exit /b 0

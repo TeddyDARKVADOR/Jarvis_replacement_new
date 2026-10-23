@@ -106,7 +106,7 @@ def _describe():
 
 @check("3 serveur introuvable ou commande absente : une phrase, pas un plantage")
 def _missing():
-    m = mcp.Manager(config={"x": {"command": "commande-qui-n-existe-pas-jarvis"}})
+    m = mcp.Manager(config={"x": {"command": "commande-qui-n-existe-pas-matthew-assistant"}})
     assert "[x] indisponible" in m.list()
     try:
         m.call("nope", "t", {})
@@ -285,7 +285,7 @@ def _manager_inspect():
 def _manager_install():
     import tempfile
     from extensions import manager as X
-    tmp = Path(tempfile.mkdtemp(prefix="jarvis-ext-"))
+    tmp = Path(tempfile.mkdtemp(prefix="matthew-assistant-ext-"))
     src = tmp / "agenda_demo.py"
     src.write_text(GOOD_PLUGIN, encoding="utf-8")
     users = tmp / "user_plugins"
