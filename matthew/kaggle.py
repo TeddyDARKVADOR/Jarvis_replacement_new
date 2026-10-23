@@ -13,9 +13,12 @@ Ce qui part dans le cloud : seulement la donnée SYNTHÉTIQUE des paquets (deman
 des professeurs ouverts) et les déclarations d'outils. Le journal réel et les corrections ne
 quittent jamais le PC : ils restent dans la boucle locale.
 
-Clé : ~/.kaggle/kaggle.json (ou KAGGLE_USERNAME / KAGGLE_KEY). Le compte doit être vérifié
-par téléphone (GPU) ; le noyau a besoin d'Internet (Unsloth, modèle de base).
+Accès (2026) : un jeton KGAT_… dans ~/.kaggle/access_token (ou KAGGLE_API_TOKEN), et le nom
+d'utilisateur à part (KAGGLE_USERNAME, ou "kaggle_user" dans la section matthew) ; l'ancien
+kaggle.json marche encore. Le compte doit être vérifié par téléphone (GPU) ; le noyau a besoin
+d'Internet (Unsloth, modèle de base).
 
+    python -m matthew.kaggle token        écrire le jeton correctement (saisie masquée, texte simple)
     python -m matthew.kaggle prepare DIR | launch [--force] | pull | status
 """
 from __future__ import annotations
@@ -70,14 +73,42 @@ def cli() -> list[str]:
     return [exe] if exe else [sys.executable, "-m", "kaggle"]
 
 
+def token_file() -> Path:
+    return Path.home() / ".kaggle" / "access_token"
+
+
+def has_token() -> bool:
+    """Un jeton KGAT (2026 : ~/.kaggle/access_token ou KAGGLE_API_TOKEN), ou l'ancien kaggle.json."""
+    return bool(os.environ.get("KAGGLE_API_TOKEN") or os.environ.get("KAGGLE_KEY")
+                or token_file().exists() or (Path.home() / ".kaggle" / "kaggle.json").exists())
+
+
+def check_token_file() -> str | None:
+    """Le piège de Windows PowerShell 5.1 : `echo … > fichier` écrit en UTF-16 (FF FE), que l'outil
+    Kaggle ne lit pas. Rend une explication, ou None si le fichier est absent ou correct."""
+    try:
+        raw = token_file().read_bytes()
+    except OSError:
+        return None
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff") or b"\x00" in raw:
+        return ("~/.kaggle/access_token est en UTF-16 (écrit par `echo … >` de PowerShell) : "
+                "réécris-le en texte simple, voir `python -m matthew.kaggle token`")
+    if not raw.strip().startswith(b"KGAT_"):
+        return "~/.kaggle/access_token ne commence pas par KGAT_ : est-ce bien le jeton de l'API Kaggle ?"
+    return None
+
+
 def user() -> str:
-    u = os.environ.get("KAGGLE_USERNAME")
+    """Le nom d'utilisateur Kaggle (il nomme <user>/matthew-run et <user>/matthew-train). Le jeton
+    KGAT ne le contient pas : KAGGLE_USERNAME, ou "kaggle_user" dans la section matthew."""
+    u = os.environ.get("KAGGLE_USERNAME") or config().get("kaggle_user")
     if u:
-        return u
+        return str(u)
     try:
         return json.loads((Path.home() / ".kaggle" / "kaggle.json").read_text(encoding="utf-8"))["username"]
     except (OSError, ValueError, KeyError):
-        raise KaggleError("pas de clé Kaggle : ~/.kaggle/kaggle.json, ou KAGGLE_USERNAME et KAGGLE_KEY")
+        raise KaggleError("nom d'utilisateur Kaggle inconnu : KAGGLE_USERNAME, ou \"kaggle_user\" dans la "
+                          "section matthew de config/api_keys.json")
 
 
 def packs_hash(pack_dir: Path | None = None) -> str:
@@ -161,6 +192,9 @@ def last_packs(owner: str, runner=subprocess.run) -> str | None:
 def launch(force: bool = False, runner=subprocess.run, owner: str | None = None, out: Path | None = None,
            pack_dir: Path | None = None) -> dict:
     owner = owner or user()
+    bad = check_token_file()
+    if bad:
+        raise KaggleError(bad)
     if not force and last_packs(owner, runner) == packs_hash(pack_dir):
         return {"ok": True, "skipped": "aucune donnée nouvelle depuis le dernier entraînement"}
     out = Path(out or tempfile.mkdtemp(prefix="matthew-kaggle-"))
@@ -193,6 +227,9 @@ def status(owner: str | None = None, runner=subprocess.run) -> str:
 def pull(fw=None, runner=subprocess.run, owner: str | None = None, root: Path | None = None) -> dict:
     """Si un candidat entraîné dans le cloud est prêt et nouveau : le télécharger, puis le duel."""
     root = Path(root or data_dir())
+    bad = check_token_file()
+    if bad:
+        return {"ok": False, "reason": bad}
     st = status(owner, runner)
     if st != "complete":
         return {"ok": True, "status": st}
@@ -223,6 +260,36 @@ def pull(fw=None, runner=subprocess.run, owner: str | None = None, root: Path | 
     return {"ok": True, "status": st, "stamp": stamp, "outcome": rep.get("outcome")}
 
 
+def write_token(token: str, path: Path | None = None) -> Path:
+    """Texte simple (ASCII, sans BOM, sans fin de ligne), lisible par le seul utilisateur."""
+    token = token.strip()
+    if not re.fullmatch(r"KGAT_[A-Za-z0-9]{16,}", token):
+        raise KaggleError("un jeton Kaggle commence par KGAT_ suivi de lettres et de chiffres")
+    path = Path(path or token_file())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(token.encode("ascii"))
+    try:
+        if sys.platform == "win32":        # le dossier du profil l'est déjà ; on retire l'héritage par prudence
+            subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", f"{os.environ.get('USERNAME', '')}:(R,W)"],
+                           capture_output=True, timeout=30)
+        else:
+            path.chmod(0o600)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return path
+
+
+def save_token() -> int:
+    import getpass
+    try:
+        path = write_token(getpass.getpass("Jeton Kaggle (KGAT_…, rien ne s'affiche) : "))
+    except KaggleError as e:
+        print(e)
+        return 1
+    print(f"Jeton enregistré : {path} (texte simple, accès réservé à ton compte)")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="matthew.kaggle")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -233,8 +300,11 @@ def main(argv=None) -> int:
     l.add_argument("--force", action="store_true", help="même si les paquets n'ont pas changé")
     sub.add_parser("pull", help="récupérer le candidat entraîné et lui faire passer le duel")
     sub.add_parser("status", help="état du noyau d'entraînement")
+    sub.add_parser("token", help="enregistrer le jeton KGAT (saisie masquée) en texte simple")
     a = ap.parse_args(argv)
     try:
+        if a.cmd == "token":
+            return save_token()
         if a.cmd == "prepare":
             out = prepare(Path(a.out), owner=a.owner)
         elif a.cmd == "launch":

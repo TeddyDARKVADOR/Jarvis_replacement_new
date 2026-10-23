@@ -2,7 +2,7 @@
   "schema": "jarvis.graph/1",
   "id": "matthew",
   "title": "Matthew — notre propre modèle",
-  "updated": "2026-10-22",
+  "updated": "2026-10-23",
   "summary": "La transition vers un cerveau à nous : collecte dans tous les modes, amorçage vérifié par un second modèle ouvert, routeur par le sens, données augmentées, LoRA de Qwen3.5-4B sur la RTX 3060, juge par outil, promotion et changement de base automatiques, chaque nuit. Gemini reste en service pendant ce temps.",
   "replaces": [],
   "nodes": [
@@ -615,7 +615,8 @@
         "Seule la donnée SYNTHÉTIQUE des paquets part dans le cloud ; le journal réel et les corrections restent sur les PC.",
         "Le noyau efface points de contrôle, GGUF 16 bits et modèle fusionné (~8,7 Go) : seul le GGUF quantifié et le LoRA voyagent.",
         "Pourquoi l'évaluation sur le PC : le format d'appel d'outils de Qwen3.5 est lu nativement par Ollama (PARSER qwen3.5) ; Oracle (VM.Standard.E2.1.Micro, 1 Go de RAM) ne peut pas servir un modèle 4B.",
-        "À faire par l'utilisateur : un compte Kaggle vérifié par téléphone, la clé API en secrets GitHub (KAGGLE_USERNAME, KAGGLE_KEY) et dans ~/.kaggle/kaggle.json sur le PC qui sert Matthew. Jamais lancé en vrai (pas encore de compte)."
+        "Accès (2026-10-23) : Kaggle délivre désormais un jeton KGAT_… (~/.kaggle/access_token ou KAGGLE_API_TOKEN) ; le nom d'utilisateur se donne à part (KAGGLE_USERNAME ou \"kaggle_user\"). `python -m matthew.kaggle token` l'écrit en texte simple (saisie masquée) ; un fichier en UTF-16 — ce que produit `echo … >` sous Windows PowerShell 5.1, rencontré le 2026-10-23 — est reconnu et refusé avec l'explication. Secrets GitHub : KAGGLE_API_TOKEN, KAGGLE_USERNAME.",
+        "À faire par l'utilisateur : compte vérifié par téléphone, jeton valide, secrets GitHub. Jamais lancé en vrai."
       ],
       "files": [
         "matthew/kaggle.py",
@@ -624,8 +625,8 @@
         "matthew/train.py"
       ],
       "test": "python -m matthew.kaggle prepare /tmp/matthew-cloud",
-      "verified": "2026-10-22 — matthew.selftest : 43/43",
-      "updated": "2026-10-22"
+      "verified": "2026-10-23 — matthew.selftest : 44/44",
+      "updated": "2026-10-23"
     },
     {
       "id": "m.oracle",

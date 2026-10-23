@@ -1252,6 +1252,8 @@ def _sched():
 def _kaggle():
     import shutil
     from matthew import kaggle as K
+    real_token_file = K.token_file          # jamais le vrai ~/.kaggle de l'utilisateur
+    K.token_file = lambda: TMP / "kaggle-absent" / "access_token"
     from matthew import pack as P
     # 1. Des paquets comme ceux du dépôt : exemples synthétiques vérifiés + déclarations d'outils.
     src, packs = TMP / "cloud-src", TMP / "cloud-packs"
@@ -1355,7 +1357,29 @@ def _kaggle():
     empty = TMP / "cloud-fw" / "runs" / "cloud-vide"
     shutil.copytree(planned, empty)
     assert fw.cloud(empty)["outcome"] == "échec import Ollama", "sans GGUF : rien n'est importé"
-    return f"préparé, lancé une fois, récupéré, jugé : {rep['outcome']}"
+    # 6. Le jeton KGAT : texte simple ; le piège UTF-16 de PowerShell est reconnu.
+    tok = TMP / "kaggle-home" / "access_token"
+    K.write_token("  KGAT_0123456789abcdef0123456789abcdef \n", tok)
+    assert tok.read_bytes() == b"KGAT_0123456789abcdef0123456789abcdef", "ASCII, sans BOM ni fin de ligne"
+    for bad in ("", "kaggle.json", "KGAT_court", "KGAT_avec espace"):
+        try:
+            K.write_token(bad, TMP / "kaggle-home" / "x")
+            raise AssertionError(f"jeton accepté : {bad!r}")
+        except K.KaggleError:
+            pass
+    try:
+        K.token_file = lambda: tok
+        assert K.check_token_file() is None
+        tok.write_bytes("KGAT_0123456789abcdef0123456789abcdef\r\n".encode("utf-16"))
+        assert "UTF-16" in K.check_token_file(), "echo … > de PowerShell 5.1"
+        try:
+            K.launch(owner="teddy", runner=runner, out=TMP / "cloud-l4", pack_dir=packs)
+            raise AssertionError("lancé avec un jeton illisible")
+        except K.KaggleError as e:
+            assert "UTF-16" in str(e)
+    finally:
+        K.token_file = real_token_file
+    return f"préparé, lancé une fois, récupéré, jugé : {rep['outcome']} ; jeton KGAT vérifié"
 
 
 @check("journal d'Oracle : rapatrié par SSH, préfixé, rejoué sans doublon, archive piégée sans effet")
