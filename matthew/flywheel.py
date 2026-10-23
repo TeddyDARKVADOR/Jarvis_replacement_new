@@ -208,6 +208,7 @@ class Flywheel:
             plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
             res = _read(run / "result.json", {})
             step("cloud", ok=True, run=str(run), stamp=(plan.get("cloud") or {}).get("stamp"),
+                 variant=plan.get("variant"), hyper=plan.get("hyper"),
                  examples=(plan.get("cloud") or {}).get("examples"), train_loss=res.get("train_loss"))
             if T.finish(run) is None:                     # le Modelfile pointe sur le GGUF quantifié
                 step("import", ok=False, reason="aucun GGUF quantifié dans la sortie du cloud")
@@ -462,13 +463,20 @@ def schedule_command(hour: str = "02:30", root: Path | None = None) -> list[str]
     from matthew import sched
     name, argv, log, folder = _plan(root)
     out = sched.daily(name, hour, argv, log, folder, dry=True, stem="flywheel")
-    return out["commands"][-1] if out.get("commands") else ["crontab", out["line"]]
+    # schtasks /Create d'abord (le réglage de rattrapage suit) ; systemd : l'activation, en dernier.
+    return out["commands"][0 if out.get("how") == "schtasks" else -1] if out.get("commands") else ["crontab", out["line"]]
 
 
 def install(hour: str = "02:30", runner=subprocess.run) -> dict:
+    """La nuit locale, sans rattrapage (elle peut entraîner : pas au réveil du PC, en pleine journée).
+    Avec l'entraînement dans le cloud, aussi la tâche qui juge le tournoi, elle rattrapée."""
     from matthew import sched
     name, argv, log, folder = _plan()
-    return sched.daily(name, hour, argv, log, folder, runner=runner, stem="flywheel")
+    out = sched.daily(name, hour, argv, log, folder, runner=runner, stem="flywheel")
+    if out.get("ok") and config().get("cloud_training") == "kaggle":
+        from matthew import kaggle
+        out["cloud"] = kaggle.install(runner=runner)
+    return out
 
 
 def main(argv=None) -> int:
@@ -482,7 +490,9 @@ def main(argv=None) -> int:
     if a.install:
         out = install()
         print(out.get("out") or out)
-        return 0 if out["ok"] else 1
+        if out.get("cloud"):
+            print("Matthew cloud :", out["cloud"].get("out") or out["cloud"])
+        return 0 if out["ok"] and out.get("cloud", {"ok": True})["ok"] else 1
     if a.schedule:
         print(" ".join(schedule_command()))
         return 0

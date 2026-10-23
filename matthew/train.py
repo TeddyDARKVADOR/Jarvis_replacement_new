@@ -121,7 +121,21 @@ trainer = train_on_responses_only(trainer, instruction_part=PLAN["instruction_pa
 stats = trainer.train()
 model.save_pretrained(str(HERE / "lora"))
 tok.save_pretrained(str(HERE / "lora"))
+# Dans le tournoi du cloud (matthew/kaggle.py), deux entraînements partagent le disque : un seul
+# export à la fois (~17 Go le temps de la conversion), et la place est rendue avant le suivant.
+import os, shutil
+LOCK = os.environ.get("MATTHEW_EXPORT_LOCK")
+if LOCK:
+    import fcntl
+    _lock = open(LOCK, "w")
+    fcntl.flock(_lock, fcntl.LOCK_EX)
+    shutil.rmtree(HERE / "ckpt", ignore_errors=True)
 model.save_pretrained_gguf(str(HERE / "gguf"), tok, quantization_method=H["quant"])
+if LOCK:
+    for g in list(HERE.glob("gguf*/*")):
+        n = g.name.upper()
+        if g.suffix == ".safetensors" or (g.suffix == ".gguf" and any(x in n for x in ("BF16", "F16", "F32"))):
+            g.unlink()
 (HERE / "result.json").write_text(json.dumps({
     "train_loss": stats.training_loss, "best_eval_loss": trainer.state.best_metric,
     "train_runtime": stats.metrics.get("train_runtime"),

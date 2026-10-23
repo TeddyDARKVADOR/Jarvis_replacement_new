@@ -78,6 +78,10 @@ DEFAULTS: dict = {
     # Entraînement dans le cloud (matthew/kaggle.py) : "kaggle" fait juger chaque nuit le candidat
     # entraîné sur Kaggle, s'il y en a un nouveau. None : seulement la boucle locale.
     "cloud_training": None,
+    # Le tournoi Kaggle d'une nuit : heures de GPU (Kaggle donne ~30 h par semaine, une session
+    # s'arrête à 12 h) et nombre de meilleurs candidats rapatriés pour le duel (~3 Go chacun).
+    "kaggle_hours": 4.0,
+    "kaggle_keep": 2,
     # Le journal collecté sur le serveur (conversations venues du téléphone) : rapatrié chaque
     # nuit par Tailscale SSH (matthew/oracle.py). None : rien.
     "oracle_ssh": "ubuntu@jarvis-vps",

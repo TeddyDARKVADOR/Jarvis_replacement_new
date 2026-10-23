@@ -1257,7 +1257,20 @@ def _sched():
     now = _dt(2026, 10, 22, 23, 0).astimezone()
     assert S.cron_next(f"30 2 * * * {lin}", now)[:16] == "2026-10-23T02:30"
     assert S.cron_next(f"*/30 * * * * {lin}", now)[11:16] == "23:30"
-    return "Windows (.cmd, schtasks), Linux (systemd Persistent, sinon crontab sans écraser l'existant)"
+    # Rattrapage sous Windows : schtasks pose la tâche, PowerShell lui ajoute StartWhenAvailable.
+    real = S.WINDOWS
+    try:
+        S.WINDOWS = True
+        plain = S.daily("Matthew flywheel", "02:30", ["-m", "x"], d / "f.log", d, dry=True)
+        assert len(plain["commands"]) == 1, "la nuit locale ne se rattrape pas (elle peut entraîner)"
+        cmds = S.daily("Matthew cloud", "05:00", ["-m", "x"], d / "c.log", d, dry=True, catch_up=True)["commands"]
+        assert cmds[0][0] == "schtasks" and "StartWhenAvailable = $true" in cmds[1][-1] and "'Matthew cloud'" in cmds[1][-1]
+        tabs.clear()
+        assert S.daily("Matthew cloud", "05:00", ["-m", "x"], d / "c.log", d, runner=runner, catch_up=True)["ok"]
+        assert [c[0][0] for c in tabs] == ["schtasks", "powershell"]
+    finally:
+        S.WINDOWS = real
+    return "Windows (.cmd, schtasks, rattrapage), Linux (systemd Persistent, sinon crontab sans écraser l'existant)"
 
 
 @check("cloud Kaggle : paquet préparé, lancé sans doublon, candidat récupéré puis jugé par la vraie boucle")
@@ -1294,6 +1307,15 @@ def _kaggle():
     assert meta["dataset_sources"] == ["teddy/matthew-run"] and meta["id"] == "teddy/matthew-train"
     assert json.loads((Path(out["dataset"]) / "dataset-metadata.json").read_text(encoding="utf-8"))["id"] == "teddy/matthew-run"
     assert "fp16=not BF16" in (Path(out["dataset"]) / "train_matthew.py").read_text(encoding="utf-8")
+    # Le tournoi : « base » d'abord sur des données neuves, un budget sous les 12 h d'une session.
+    assert plan["variants"][0]["label"] == "base" and len(plan["variants"]) == len(K.VARIANTS)
+    assert 0 < plan["budget_s"] <= K.MAX_BUDGET_H * 3600 and plan["keep_gguf"] >= 1
+    assert all(set(v["hyper"]) <= set(json.loads(json.dumps(plan["hyper"]))) for v in K.VARIANTS), "réglages connus seulement"
+    import ast
+    ast.parse(K.WRAPPER)
+    assert "MATTHEW_EXPORT_LOCK" in K.WRAPPER and "MATTHEW_EXPORT_LOCK" in (Path(out["dataset"]) / "train_matthew.py").read_text(encoding="utf-8")
+    same = [v["label"] for v in K.variants_for(False, day=3)]
+    assert "base" not in same and same != [v["label"] for v in K.variants_for(False, day=4)], "mêmes données : on tourne"
     # 3. Lancer : envoi puis noyau ; rien si les paquets n'ont pas changé.
     calls = []
 
@@ -1317,11 +1339,16 @@ def _kaggle():
                 fake["exists"] = True
                 return _CP(code=1)
             return _CP("ready") if fake["exists"] else _CP(code=1)
+        if args[:2] == ["kernels", "status"]:
+            return _CP(f'teddy/matthew-train has status "KernelWorkerStatus.{fake["kstatus"]}"')
+        if args[:2] == ["kernels", "push"]:
+            fake["pushed"].append(json.loads((Path(args[args.index("-p") + 1]).parent / "dataset" / "plan.json")
+                                             .read_text(encoding="utf-8"))["variants"])
         if args[:2] == ["kernels", "pull"]:
             d = Path(args[args.index("-p") + 1])
             (d / "kernel-metadata.json").write_text(json.dumps({"dataset_sources": fake["sources"]}), encoding="utf-8")
         return _CP()
-    fake = {"packs": None, "exists": False, "sources": ["teddy/matthew-run"]}
+    fake = {"packs": None, "exists": False, "sources": ["teddy/matthew-run"], "kstatus": "COMPLETE", "pushed": []}
     r = K.launch(runner=runner, owner="teddy", out=TMP / "cloud-l1", pack_dir=packs, sleep=lambda s: None)
     assert r["ok"] and r["launched"] == "teddy/matthew-train", r
     assert ["datasets", "create"] in calls and ["kernels", "push"] in calls
@@ -1333,11 +1360,14 @@ def _kaggle():
     except K.KaggleError as e:
         assert "sans son jeu de données" in str(e)
     fake.update(sources=["teddy/matthew-run"])
-    fake.update(packs=K.packs_hash(packs), exists=True)
+    assert fake["pushed"][0][0]["label"] == "base" and r["new_data"], "données neuves : la recette du PC d'abord"
+    fake.update(packs=K.packs_hash(packs), exists=True, kstatus="RUNNING")
     calls.clear()
-    assert "skipped" in K.launch(runner=runner, owner="teddy", out=TMP / "cloud-l2", pack_dir=packs)
-    assert ["kernels", "push"] not in calls, "aucune donnée nouvelle : aucun GPU consommé"
-    assert K.launch(force=True, runner=runner, owner="teddy", out=TMP / "cloud-l3", pack_dir=packs)["ok"]
+    assert "en cours" in K.launch(runner=runner, owner="teddy", out=TMP / "cloud-l2", pack_dir=packs, sleep=lambda s: None)["skipped"]
+    assert ["kernels", "push"] not in calls, "un tournoi tourne encore : pas de second"
+    fake.update(kstatus="COMPLETE")
+    r = K.launch(runner=runner, owner="teddy", out=TMP / "cloud-l3", pack_dir=packs, sleep=lambda s: None)
+    assert r["ok"] and not r["new_data"] and "base" not in r["variants"], "mêmes données : d'autres réglages"
     assert ["datasets", "version"] in calls
     # 4. État du noyau, et récupération.
     assert K.status("teddy", lambda c, **k: _CP('teddy/matthew-train has status "running"')) == "running"
@@ -1364,6 +1394,29 @@ def _kaggle():
     out = K.pull(FakeFw(), runner=done, owner="teddy", root=root)
     assert out["outcome"] == "nouveau champion" and judged[0].name == "cloud-20261022-210000", out
     assert "déjà jugé" in K.pull(FakeFw(), runner=done, owner="teddy", root=root)["skipped"]
+    # Le tournoi : seuls les gardés vont au duel, du meilleur (perte d'évaluation) au suivant.
+    def tour(cmd, **kw):
+        args = cmd[len(K.cli()):]
+        if args[:2] == ["kernels", "status"]:
+            return _CP('teddy/matthew-train has status "KernelWorkerStatus.COMPLETE"')
+        if args[:2] == ["kernels", "output"]:
+            run = Path(args[args.index("-p") + 1]) / "run"
+            stamp = {"cloud": {"stamp": "20261023-210000"}}
+            for label in ("r32", "ep1", "r8"):
+                (run / "variants" / label).mkdir(parents=True)
+                (run / "variants" / label / "plan.json").write_text(json.dumps({**stamp, "variant": label}))
+            (run / "plan.json").write_text(json.dumps(stamp))
+            (run / "tournament.json").write_text(json.dumps({"gpus": 2, "variants": [
+                {"label": "r32", "ok": True, "kept": True, "best_eval_loss": 0.41},
+                {"label": "ep1", "ok": True, "kept": True, "best_eval_loss": 0.33},
+                {"label": "r8", "ok": True, "kept": False, "best_eval_loss": 0.52},
+                {"label": "lr3e-4", "ok": False, "kept": False, "best_eval_loss": None}]}))
+        return _CP()
+    judged.clear()
+    out = K.pull(FakeFw(), runner=tour, owner="teddy", root=root)
+    assert [p.name for p in judged] == ["cloud-20261023-210000-ep1", "cloud-20261023-210000-r32"], judged
+    assert out["outcomes"] == {"ep1": "nouveau champion", "r32": "nouveau champion"}, out
+    assert not (root / "cloud-download").exists(), "le téléchargement est rangé, sur le disque des données"
     # 5. La vraie boucle juge un candidat du cloud : GGUF quantifié retrouvé, même duel.
     sch, j = school_for(TMP / "cloud-fw")
     for i in range(3):

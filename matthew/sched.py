@@ -1,7 +1,8 @@
 """
 matthew/sched.py — planifier les tâches de Matthew, sous Windows comme sous Linux.
 
-    daily(nom, "02:30", argv)     chaque nuit         (la boucle d'entraînement)
+    daily(nom, "02:30", argv)     chaque nuit         (la boucle d'entraînement ; catch_up=True :
+                                                       rattrapée au réveil du PC)
     every(nom, 30, argv)          toutes les N minutes (la vitrine)
     at_login(nom, argv)           à l'ouverture de session (la passerelle)
     next_run(nom)                 la prochaine exécution, lue dans le système, jamais en dur
@@ -98,15 +99,30 @@ def _install_linux(name: str, launcher: Path, cron: str, calendar: str | None, m
     return {"ok": cp.returncode == 0, "how": "cron", "out": (cp.stderr or line).strip()[:200]}
 
 
+def catch_up_command(name: str) -> list[str]:
+    """Windows : « exécuter dès que possible si un démarrage planifié est manqué » (schtasks ne sait
+    pas le poser ; PowerShell oui, sans droits administrateur — vérifié le 2026-10-23)."""
+    ps = (f"$t = Get-ScheduledTask -TaskName '{name}' -ErrorAction Stop; $t.Settings.StartWhenAvailable = $true; "
+          "Set-ScheduledTask -InputObject $t -ErrorAction Stop | Out-Null")
+    return ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps]
+
+
 def daily(name: str, hour: str, argv: list[str], log: Path, folder: Path, runner=subprocess.run, dry: bool = False,
-          stem: str | None = None) -> dict:
+          stem: str | None = None, catch_up: bool = False) -> dict:
+    """`catch_up` : une heure manquée (PC éteint ou en veille) est rattrapée à son retour. Sous Linux,
+    la minuterie systemd le fait toujours (Persistent=true) ; crontab, jamais."""
     launcher = script(name, argv, log, folder, stem=stem)
     if WINDOWS:
         cmd = ["schtasks", "/Create", "/TN", name, "/SC", "DAILY", "/ST", hour, "/TR", f'"{launcher}"', "/F"]
+        cmds = [cmd] + ([catch_up_command(name)] if catch_up else [])
         if dry:
-            return {"ok": True, "how": "schtasks", "commands": [cmd]}
-        cp = runner(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-        return {"ok": cp.returncode == 0, "how": "schtasks", "out": (cp.stdout or cp.stderr).strip()[:200]}
+            return {"ok": True, "how": "schtasks", "commands": cmds}
+        for c in cmds:
+            cp = runner(c, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+            if cp.returncode != 0:
+                break
+        return {"ok": cp.returncode == 0, "how": "schtasks", "catch_up": catch_up,
+                "out": (cp.stdout or cp.stderr).strip()[:200]}
     h, m = hour.split(":")
     return _install_linux(name, launcher, f"{int(m)} {int(h)} * * *", f"*-*-* {int(h):02d}:{int(m):02d}:00", None, runner, dry)
 

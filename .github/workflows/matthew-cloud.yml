@@ -4,8 +4,10 @@
 #   1. construit le jeu de données à partir des paquets du dépôt (matthew/packs : donnée
 #      SYNTHÉTIQUE vérifiée ; jamais le journal réel, qui ne quitte pas les PC) ;
 #   2. l'envoie à Kaggle comme jeu de données privé, puis lance le noyau privé d'entraînement
-#      sur GPU (T4, gratuit, 30 h par semaine) — sans attendre la fin ;
-#   3. ne fait rien si les paquets n'ont pas changé depuis le dernier envoi.
+#      sur GPU (T4, gratuit, ~30 h par semaine) — sans attendre la fin ;
+#   3. le noyau fait un TOURNOI : plusieurs réglages différents, un par GPU, dans le budget de
+#      la nuit (kaggle_hours, 4 h) ; données inchangées → il explore d'autres réglages ;
+#   4. ne fait rien tant qu'un tournoi précédent tourne encore.
 # Le PC qui sert Matthew récupère le candidat à sa nuit (cloud_training: "kaggle") et lui
 # fait passer le même duel que d'habitude : matthew/kaggle.py.
 #
@@ -20,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "Relancer même si les paquets n'ont pas changé"
+        description: "Relancer même si un tournoi tourne encore"
         type: boolean
         default: false
 

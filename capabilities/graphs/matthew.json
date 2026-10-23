@@ -600,7 +600,8 @@
       "details": [
         "Lanceurs gardés : flywheel.cmd / vitrine/run.cmd / gateway.cmd, et leurs jumeaux .sh (LF, exécutables).",
         "Linux : loginctl enable-linger $USER pour tourner sans session ouverte.",
-        "Vérifié : selftest (unités systemd, crontab sans écraser l'existant, prochaine heure) ; jamais posé sur un vrai Linux."
+        "Vérifié : selftest (unités systemd, crontab sans écraser l'existant, prochaine heure) ; jamais posé sur un vrai Linux.",
+        "Rattrapage sous Windows (2026-10-23) : daily(catch_up=True) ajoute StartWhenAvailable par PowerShell (Set-ScheduledTask, sans droits administrateur, vérifié sur une tâche jetable) ; utilisé par « Matthew cloud », pas par la nuit locale."
       ],
       "files": [
         "matthew/sched.py",
@@ -610,30 +611,38 @@
       ],
       "test": "python -m matthew.flywheel --schedule",
       "verified": "2026-10-22 — matthew.selftest : 42/42",
-      "updated": "2026-10-22"
+      "updated": "2026-10-23"
     },
     {
       "id": "m.kaggle",
       "label": "kaggle.py — Matthew s'entraîne dans le cloud, sans PC allumé",
       "kind": "module",
       "status": "a_tester",
-      "summary": "Chaque soir, GitHub Actions (matthew-cloud.yml) construit le jeu de données à partir des paquets du dépôt, l'envoie à Kaggle comme jeu de données PRIVÉ et lance le noyau PRIVÉ d'entraînement sur GPU (T4 gratuit, 30 h par semaine, fp16), sans attendre la fin ; rien si les paquets n'ont pas changé. Le PC qui sert Matthew récupère le candidat (cloud_training: \"kaggle\", ou python -m matthew.kaggle pull) et lui fait passer le MÊME duel que la nuit locale (Flywheel._judge : examen, banc scellé, cognition, archive, retour arrière).",
+      "summary": "Chaque soir, GitHub Actions (matthew-cloud.yml) construit le jeu de données à partir des paquets du dépôt, l'envoie à Kaggle comme jeu de données PRIVÉ et lance le noyau PRIVÉ d'entraînement sur GPU (T4 gratuit, 30 h par semaine, fp16), sans attendre la fin. Chaque soir s'entraîne, même sans donnée neuve (le quota non utilisé est perdu) : seul un tournoi encore en cours fait attendre. Le PC qui sert Matthew récupère le candidat (cloud_training: \"kaggle\", ou python -m matthew.kaggle pull) et lui fait passer le MÊME duel que la nuit locale (Flywheel._judge : examen, banc scellé, cognition, archive, retour arrière).",
       "details": [
         "Seule la donnée SYNTHÉTIQUE des paquets part dans le cloud ; le journal réel et les corrections restent sur les PC.",
         "Le noyau efface points de contrôle, GGUF 16 bits et modèle fusionné (~8,7 Go) : seul le GGUF quantifié et le LoRA voyagent.",
         "Pourquoi l'évaluation sur le PC : le format d'appel d'outils de Qwen3.5 est lu nativement par Ollama (PARSER qwen3.5) ; Oracle (VM.Standard.E2.1.Micro, 1 Go de RAM) ne peut pas servir un modèle 4B.",
         "Accès (2026-10-23) : Kaggle délivre désormais un jeton KGAT_… (~/.kaggle/access_token ou KAGGLE_API_TOKEN) ; le nom d'utilisateur se donne à part (KAGGLE_USERNAME ou \"kaggle_user\"). `python -m matthew.kaggle token` l'écrit en texte simple (saisie masquée) ; un fichier en UTF-16 — ce que produit `echo … >` sous Windows PowerShell 5.1, rencontré le 2026-10-23 — est reconnu et refusé avec l'explication. Secrets GitHub : KAGGLE_API_TOKEN, KAGGLE_USERNAME.",
         "Premiers lancements réels (2026-10-23) : 18 h 07 (GitHub Actions) et 18 h 27 (PC) — noyau parti SANS jeu de données (StopIteration sur plan.json) : un jeu tout juste créé est inconnu de `datasets status`, la boucle d'attente s'arrêtait là et Kaggle retirait la source sans erreur. Corrigé : attendre « ready » (sinon refus), puis relire les sources du noyau (attached) et refuser s'il manque. 18 h 31 : source rattachée, noyau RUNNING (1 925 exemples d'entraînement / 312 d'évaluation) ; fin de l'entraînement et duel sur le PC pas encore vus.",
-        "2026-10-23 : nom d'utilisateur nettoyé (strip) — le secret KAGGLE_USERNAME finissait par un retour à la ligne."
+        "2026-10-23 : nom d'utilisateur nettoyé (strip) — le secret KAGGLE_USERNAME finissait par un retour à la ligne.",
+        "TOURNOI (2026-10-23) : le noyau entraîne plusieurs variantes de réglages (VARIANTS : base, ep1, lr1e-4, r32, r8, lr3e-4, drop05, seed42), une par GPU en parallèle (2 × T4), tant que le budget de la nuit le permet (kaggle_hours = 4 h, plafond 11 h : Kaggle coupe à 12 h). Première vague : un entraînement par GPU ; ensuite, une variante ne part que si la plus longue déjà vue tient dans le reste.",
+        "Données neuves : « base » (les réglages du PC) d'abord, puis les autres ; mêmes données : les autres seulement, dans un ordre qui tourne chaque nuit (variants_for). Les kaggle_keep = 2 meilleures sur la perte d'évaluation gardent leur GGUF ; tournament.json raconte chaque variante (durée, GPU, perte, erreur).",
+        "Disque : chaque variante s'entraîne dans /tmp, un seul export GGUF à la fois (verrou MATTHEW_EXPORT_LOCK dans train_matthew.py), 16 bits effacés avant de rendre le verrou ; seul le Q5_K_M, le LoRA et les petits fichiers vont dans /kaggle/working.",
+        "Côté PC : pull juge les candidats gardés du meilleur au suivant (le second doit battre le champion que le premier vient peut-être de devenir) ; téléchargement dans memory/matthew/cloud-download (D:), jamais dans le temporaire de C:. status() lit KernelWorkerStatus.* (Kaggle 2.x) — l'ancienne lecture ne voyait jamais « complete ».",
+        "Rattrapage : tâche « Matthew cloud » (chaque jour 05 h, StartWhenAvailable) qui ne fait QUE pull — PC éteint ou en veille la nuit, le duel part à son réveil ; la nuit locale (« Matthew flywheel ») n'est pas rattrapée, car elle peut entraîner sur la carte en pleine journée. Posées par `python -m matthew.flywheel --install` quand cloud_training = kaggle.",
+        "Simulé en local le 2026-10-23 (faux entraînement, 2 GPU) : vagues parallèles, arrêt au budget, variante en échec écartée, 2 GGUF gardés. Jamais vu sur Kaggle : le noyau du 2026-10-23 18 h 31 n'avait PAS d'Internet (pip ne résout pas pypi.org) — compte Kaggle à vérifier par téléphone."
       ],
       "files": [
-        "matthew/kaggle.py",
         ".github/workflows/matthew-cloud.yml",
+        "matthew/__init__.py",
         "matthew/flywheel.py",
+        "matthew/kaggle.py",
+        "matthew/sched.py",
         "matthew/train.py"
       ],
       "test": "python -m matthew.kaggle prepare /tmp/matthew-cloud",
-      "verified": "2026-10-23 — matthew.selftest : 44/44",
+      "verified": "2026-10-23 — matthew.selftest : 44/44 ; tournoi simulé en local",
       "updated": "2026-10-23"
     },
     {
