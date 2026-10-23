@@ -1310,13 +1310,29 @@ def _kaggle():
                 (d / "plan.json").write_text(json.dumps({"cloud": {"packs": fake["packs"]}}), encoding="utf-8")
                 return _CP()
             return _CP(code=1)
+        if args[:2] == ["datasets", "create"]:
+            fake["exists"] = "bientôt"
         if args[:2] == ["datasets", "status"]:
+            if fake["exists"] == "bientôt":         # tout juste créé : encore inconnu de `status`
+                fake["exists"] = True
+                return _CP(code=1)
             return _CP("ready") if fake["exists"] else _CP(code=1)
+        if args[:2] == ["kernels", "pull"]:
+            d = Path(args[args.index("-p") + 1])
+            (d / "kernel-metadata.json").write_text(json.dumps({"dataset_sources": fake["sources"]}), encoding="utf-8")
         return _CP()
-    fake = {"packs": None, "exists": False}
-    r = K.launch(runner=runner, owner="teddy", out=TMP / "cloud-l1", pack_dir=packs)
+    fake = {"packs": None, "exists": False, "sources": ["teddy/matthew-run"]}
+    r = K.launch(runner=runner, owner="teddy", out=TMP / "cloud-l1", pack_dir=packs, sleep=lambda s: None)
     assert r["ok"] and r["launched"] == "teddy/matthew-train", r
     assert ["datasets", "create"] in calls and ["kernels", "push"] in calls
+    assert calls.index(["kernels", "push"]) > calls.index(["datasets", "status"], calls.index(["datasets", "create"]))         and calls.count(["datasets", "status"]) >= 3, "le noyau attend que le jeu tout neuf soit prêt"
+    fake.update(sources=[])
+    try:
+        K.launch(force=True, runner=runner, owner="teddy", out=TMP / "cloud-l1b", pack_dir=packs, sleep=lambda s: None)
+        raise AssertionError("noyau sans jeu de données déclaré lancé")
+    except K.KaggleError as e:
+        assert "sans son jeu de données" in str(e)
+    fake.update(sources=["teddy/matthew-run"])
     fake.update(packs=K.packs_hash(packs), exists=True)
     calls.clear()
     assert "skipped" in K.launch(runner=runner, owner="teddy", out=TMP / "cloud-l2", pack_dir=packs)

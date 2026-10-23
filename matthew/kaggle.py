@@ -190,8 +190,23 @@ def last_packs(owner: str, runner=subprocess.run) -> str | None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def attached(owner: str, runner=subprocess.run) -> list[str] | None:
+    """Les jeux de données vraiment rattachés au noyau (None : métadonnées illisibles)."""
+    tmp = Path(tempfile.mkdtemp(prefix="matthew-kaggle-"))
+    try:
+        cp = _run(["kernels", "pull", f"{owner}/{KERNEL}", "-p", str(tmp), "-m"], runner, timeout=120)
+        meta = tmp / "kernel-metadata.json"
+        if cp.returncode != 0 or not meta.exists():
+            return None
+        return list(json.loads(meta.read_text(encoding="utf-8")).get("dataset_sources") or [])
+    except (OSError, ValueError):
+        return None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def launch(force: bool = False, runner=subprocess.run, owner: str | None = None, out: Path | None = None,
-           pack_dir: Path | None = None) -> dict:
+           pack_dir: Path | None = None, sleep=time.sleep) -> dict:
     owner = owner or user()
     bad = check_token_file()
     if bad:
@@ -206,15 +221,22 @@ def launch(force: bool = False, runner=subprocess.run, owner: str | None = None,
     cp = _run(up, runner)
     if cp.returncode != 0:
         raise KaggleError(f"envoi du jeu de données refusé : {(cp.stderr or cp.stdout)[-300:]}")
-    # Kaggle traite la nouvelle version quelques instants avant qu'un noyau puisse la lire.
+    # Kaggle traite la nouvelle version quelques instants avant qu'un noyau puisse la lire. Un jeu
+    # de données tout juste créé n'existe pas encore pour `status` : pousser le noyau à ce moment
+    # lui retire la source sans rien dire (2026-10-23 : StopIteration sur plan.json).
     for _ in range(30):
         st = _run(["datasets", "status", f"{owner}/{DATASET}"], runner)
-        if "ready" in (st.stdout or "").lower() or st.returncode != 0:
+        if "ready" in (st.stdout or "").lower():
             break
-        time.sleep(10)
+        sleep(10)
+    else:
+        raise KaggleError("le jeu de données n'est pas prêt après 5 min : noyau non lancé")
     cp = _run(["kernels", "push", "-p", prep["kernel"]], runner)
     if cp.returncode != 0:
         raise KaggleError(f"lancement du noyau refusé : {(cp.stderr or cp.stdout)[-300:]}")
+    src = attached(owner, runner)
+    if src is not None and f"{owner}/{DATASET}" not in src:
+        raise KaggleError(f"noyau poussé sans son jeu de données (sources : {src}) : relancer")
     return {"ok": True, "launched": f"{owner}/{KERNEL}", **{k: prep[k] for k in ("train", "eval", "packs", "stamp")}}
 
 
