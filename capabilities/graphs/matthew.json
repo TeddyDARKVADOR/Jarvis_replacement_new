@@ -623,7 +623,8 @@
         "Le noyau efface points de contrôle, GGUF 16 bits et modèle fusionné (~8,7 Go) : seul le GGUF quantifié et le LoRA voyagent.",
         "Pourquoi l'évaluation sur le PC : le format d'appel d'outils de Qwen3.5 est lu nativement par Ollama (PARSER qwen3.5) ; Oracle (VM.Standard.E2.1.Micro, 1 Go de RAM) ne peut pas servir un modèle 4B.",
         "Accès (2026-10-23) : Kaggle délivre désormais un jeton KGAT_… (~/.kaggle/access_token ou KAGGLE_API_TOKEN) ; le nom d'utilisateur se donne à part (KAGGLE_USERNAME ou \"kaggle_user\"). `python -m matthew.kaggle token` l'écrit en texte simple (saisie masquée) ; un fichier en UTF-16 — ce que produit `echo … >` sous Windows PowerShell 5.1, rencontré le 2026-10-23 — est reconnu et refusé avec l'explication. Secrets GitHub : KAGGLE_API_TOKEN, KAGGLE_USERNAME.",
-        "À faire par l'utilisateur : compte vérifié par téléphone, jeton valide, secrets GitHub. Jamais lancé en vrai."
+        "Premier lancement réel (2026-10-23, 18 h 07, workflow_dispatch force) : jeu de données envoyé et noyau poussé (1 925 exemples d'entraînement / 312 d'évaluation, paquets 1ae8c18524fe0fed) ; résultat de l'entraînement et duel sur le PC pas encore vus.",
+        "2026-10-23 : nom d'utilisateur nettoyé (strip) — le secret KAGGLE_USERNAME finissait par un retour à la ligne."
       ],
       "files": [
         "matthew/kaggle.py",

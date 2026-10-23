@@ -101,9 +101,10 @@ def check_token_file() -> str | None:
 def user() -> str:
     """Le nom d'utilisateur Kaggle (il nomme <user>/matthew-run et <user>/matthew-train). Le jeton
     KGAT ne le contient pas : KAGGLE_USERNAME, ou "kaggle_user" dans la section matthew."""
-    u = os.environ.get("KAGGLE_USERNAME") or config().get("kaggle_user")
+    # Un secret GitHub collé avec son retour à la ligne donnait « nom\n/matthew-train ».
+    u = str(os.environ.get("KAGGLE_USERNAME") or config().get("kaggle_user") or "").strip()
     if u:
-        return str(u)
+        return u
     try:
         return json.loads((Path.home() / ".kaggle" / "kaggle.json").read_text(encoding="utf-8"))["username"]
     except (OSError, ValueError, KeyError):
