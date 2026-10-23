@@ -1,21 +1,21 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "39909394840",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39909394840",
+ "run_id": "39924885862",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39924885862",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
- "commit": "a518c85",
- "commit_full": "a518c85af8bcd8927d4e6f76c277d131989d9d18",
+ "commit": "763c975",
+ "commit_full": "763c9752fa4465529e9330e6d56b73f680c9e255",
  "previous": {
-  "run_id": "39884587868",
+  "run_id": "39909394840",
   "commit": "a518c85",
-  "finished_at": "2026-10-23T03:35:54+02:00",
+  "finished_at": "2026-10-23T08:07:30+02:00",
   "status": "success"
  },
- "started_at": "2026-10-23T08:06:05+02:00",
- "finished_at": "2026-10-23T08:07:30+02:00",
- "duration_s": 85.0,
+ "started_at": "2026-10-23T10:29:29+02:00",
+ "finished_at": "2026-10-23T10:30:56+02:00",
+ "duration_s": 87.0,
  "status": "success",
  "summary": "21/21 suites vertes ; aucune régression ; ruff : 5 remarques ; rien à corriger.",
  "environment": {
@@ -33,7 +33,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.6,
+   "duration_s": 0.5,
    "outcome": "ok"
   },
   {
@@ -55,7 +55,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 2.0,
+   "duration_s": 1.9,
    "outcome": "ok"
   },
   {
@@ -66,7 +66,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.6,
    "outcome": "ok"
   },
   {
@@ -77,7 +77,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.6,
    "outcome": "ok"
   },
   {
@@ -88,7 +88,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 3.6,
+   "duration_s": 4.8,
    "outcome": "ok"
   },
   {
@@ -99,7 +99,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 7.0,
+   "duration_s": 5.5,
    "outcome": "ok"
   },
   {
@@ -110,7 +110,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 33.9,
+   "duration_s": 33.6,
    "outcome": "ok"
   },
   {
@@ -121,7 +121,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.3,
+   "duration_s": 0.2,
    "outcome": "ok"
   },
   {
@@ -154,7 +154,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.3,
+   "duration_s": 1.2,
    "outcome": "ok"
   },
   {
@@ -187,7 +187,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.7,
+   "duration_s": 6.3,
    "outcome": "ok"
   },
   {
@@ -198,7 +198,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.0,
+   "duration_s": 0.9,
    "outcome": "ok"
   },
   {
@@ -220,7 +220,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.1,
+   "duration_s": 0.0,
    "outcome": "ok"
   },
   {
@@ -253,7 +253,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.3,
+   "duration_s": 10.6,
    "outcome": "ok"
   }
  ],
@@ -397,7 +397,7 @@
   }
  },
  "metrics_changes": [],
- "green_streak": 6,
+ "green_streak": 7,
  "task": {
   "id": null,
   "source": null,
@@ -742,7 +742,7 @@
   }
  ],
  "pass": {
-  "n": 2,
+  "n": 3,
   "of": 3
  },
  "diagnostics": [
@@ -774,6 +774,16 @@
   {
    "pass": 2,
    "run_id": "39909394840",
+   "status": "success",
+   "task": null,
+   "outcome": "skipped",
+   "ref": {},
+   "tokens": 0,
+   "pr": null
+  },
+  {
+   "pass": 3,
+   "run_id": "39924885862",
    "status": "success",
    "task": null,
    "outcome": "skipped",

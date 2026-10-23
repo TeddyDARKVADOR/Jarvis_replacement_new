@@ -1,10 +1,10 @@
 {
  "schema": "jarvis.nightshift-queue/1",
- "run_id": "39909394840",
- "created": "2026-10-23T08:07:30+02:00",
+ "run_id": "39924885862",
+ "created": "2026-10-23T10:30:56+02:00",
  "tasks": [
   {
-   "id": "triage-39909394840",
+   "id": "triage-39924885862",
    "kind": "triage",
    "input": {
     "findings": [
