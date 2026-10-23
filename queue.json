@@ -1,13 +1,31 @@
 {
  "schema": "jarvis.nightshift-queue/1",
- "run_id": "39748523606",
- "created": "2026-10-22T10:34:31+02:00",
+ "run_id": "39884587868",
+ "created": "2026-10-23T03:35:54+02:00",
  "tasks": [
   {
-   "id": "triage-39748523606",
+   "id": "triage-39884587868",
    "kind": "triage",
    "input": {
     "findings": [
+     {
+      "code": "E731",
+      "path": "matthew/flywheel.py",
+      "line": 258,
+      "message": "Do not assign a `lambda` expression, use a `def`"
+     },
+     {
+      "code": "E731",
+      "path": "matthew/selftest.py",
+      "line": 1177,
+      "message": "Do not assign a `lambda` expression, use a `def`"
+     },
+     {
+      "code": "E731",
+      "path": "matthew/session.py",
+      "line": 64,
+      "message": "Do not assign a `lambda` expression, use a `def`"
+     },
      {
       "code": "E731",
       "path": "matthew/specialist.py",

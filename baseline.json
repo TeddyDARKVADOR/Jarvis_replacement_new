@@ -1,28 +1,28 @@
 {
  "schema_version": "jarvis.nightly/1",
- "run_id": "39748523606",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39748523606",
+ "run_id": "39884587868",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39884587868",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
- "commit": "19f2eae",
- "commit_full": "19f2eaeed85c366fe9952a71694c9f03549b844d",
+ "commit": "a518c85",
+ "commit_full": "a518c85af8bcd8927d4e6f76c277d131989d9d18",
  "previous": {
-  "run_id": "39732276807",
-  "commit": "3b91e19",
-  "finished_at": "2026-10-22T08:12:21+02:00",
+  "run_id": "39748523606",
+  "commit": "19f2eae",
+  "finished_at": "2026-10-22T10:34:31+02:00",
   "status": "success"
  },
- "started_at": "2026-10-22T10:33:17+02:00",
- "finished_at": "2026-10-22T10:34:31+02:00",
- "duration_s": 74.0,
+ "started_at": "2026-10-23T03:34:29+02:00",
+ "finished_at": "2026-10-23T03:35:54+02:00",
+ "duration_s": 85.0,
  "status": "success",
- "summary": "21/21 suites vertes ; aucune régression ; ruff : 2 remarques dont 2 nouvelles ; indicateurs : 3 changements à relire (coût en contexte (server)) ; rien à corriger.",
+ "summary": "21/21 suites vertes ; aucune régression ; ruff : 5 remarques dont 3 nouvelles ; rien à corriger.",
  "environment": {
   "runner": "github",
   "os": "Ubuntu 24.04.5 LTS",
   "python": "3.12.15",
-  "image": "ubuntu24 20261018.339.1"
+  "image": "ubuntu24 20261012.334.1"
  },
  "suites": [
   {
@@ -33,7 +33,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.4,
+   "duration_s": 0.6,
    "outcome": "ok"
   },
   {
@@ -55,18 +55,18 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.7,
+   "duration_s": 1.9,
    "outcome": "ok"
   },
   {
    "name": "server.routing_selftest",
    "platform": "linux",
-   "passed": 35,
-   "total": 35,
+   "passed": 39,
+   "total": 39,
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.5,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -77,7 +77,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.5,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -88,7 +88,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 3.2,
+   "duration_s": 3.5,
    "outcome": "ok"
   },
   {
@@ -99,18 +99,18 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 4.3,
+   "duration_s": 6.9,
    "outcome": "ok"
   },
   {
    "name": "core.code_workspace.selftest",
    "platform": "linux",
-   "passed": 34,
-   "total": 34,
+   "passed": 35,
+   "total": 35,
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 33.5,
+   "duration_s": 34.7,
    "outcome": "ok"
   },
   {
@@ -121,7 +121,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.2,
+   "duration_s": 0.3,
    "outcome": "ok"
   },
   {
@@ -132,7 +132,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.5,
+   "duration_s": 0.6,
    "outcome": "ok"
   },
   {
@@ -143,7 +143,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.8,
    "outcome": "ok"
   },
   {
@@ -154,7 +154,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.2,
+   "duration_s": 1.3,
    "outcome": "ok"
   },
   {
@@ -187,7 +187,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 5.6,
+   "duration_s": 6.7,
    "outcome": "ok"
   },
   {
@@ -198,7 +198,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.8,
+   "duration_s": 1.0,
    "outcome": "ok"
   },
   {
@@ -220,7 +220,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.0,
+   "duration_s": 0.1,
    "outcome": "ok"
   },
   {
@@ -248,12 +248,12 @@
   {
    "name": "matthew.selftest",
    "platform": "linux",
-   "passed": 37,
-   "total": 37,
+   "passed": 44,
+   "total": 44,
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.7,
+   "duration_s": 5.3,
    "outcome": "ok"
   }
  ],
@@ -265,8 +265,29 @@
   "tool": "ruff",
   "available": true,
   "version": "0.17.0",
-  "count": 2,
+  "count": 5,
   "findings": [
+   {
+    "code": "E731",
+    "path": "matthew/flywheel.py",
+    "line": 258,
+    "message": "Do not assign a `lambda` expression, use a `def`",
+    "fix": "unsafe"
+   },
+   {
+    "code": "E731",
+    "path": "matthew/selftest.py",
+    "line": 1177,
+    "message": "Do not assign a `lambda` expression, use a `def`",
+    "fix": "unsafe"
+   },
+   {
+    "code": "E731",
+    "path": "matthew/session.py",
+    "line": 64,
+    "message": "Do not assign a `lambda` expression, use a `def`",
+    "fix": "unsafe"
+   },
    {
     "code": "E731",
     "path": "matthew/specialist.py",
@@ -285,15 +306,22 @@
   "new": [
    {
     "code": "E731",
-    "path": "matthew/specialist.py",
-    "line": 145,
+    "path": "matthew/flywheel.py",
+    "line": 258,
     "message": "Do not assign a `lambda` expression, use a `def`",
     "fix": "unsafe"
    },
    {
     "code": "E731",
-    "path": "matthew/specialist.py",
-    "line": 271,
+    "path": "matthew/selftest.py",
+    "line": 1177,
+    "message": "Do not assign a `lambda` expression, use a `def`",
+    "fix": "unsafe"
+   },
+   {
+    "code": "E731",
+    "path": "matthew/session.py",
+    "line": 64,
     "message": "Do not assign a `lambda` expression, use a `def`",
     "fix": "unsafe"
    }
@@ -390,30 +418,8 @@
    "estimated_tokens_local": 9841
   }
  },
- "metrics_changes": [
-  {
-   "metric": "coût en contexte (server)",
-   "verdict": "hausse",
-   "before": 29657,
-   "now": 29658,
-   "detail": "+1 caractères (+0.0%) envoyés à chaque connexion"
-  },
-  {
-   "metric": "coût en contexte (local)",
-   "verdict": "hausse",
-   "before": 30893,
-   "now": 30894,
-   "detail": "+1 caractères (+0.0%) envoyés à chaque connexion"
-  },
-  {
-   "metric": "prompt système",
-   "verdict": "hausse",
-   "before": 3540,
-   "now": 3552,
-   "detail": "+12 caractères"
-  }
- ],
- "green_streak": 4,
+ "metrics_changes": [],
+ "green_streak": 5,
  "task": {
   "id": null,
   "source": null,
@@ -442,6 +448,18 @@
  "limitations": [],
  "dry_run": false,
  "backlog": [
+  {
+   "graph": "client_desktop",
+   "node": "f.instance",
+   "label": "Une seule instance",
+   "status": "partiel",
+   "summary": "Mutex noyau nommé Local\\JarvisDesktop.SingleInstance (pas un fichier PID, qui ment après un plantage). Un second lancement montre le HUD existant.",
+   "files": [
+    "client_desktop/single_instance.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
   {
    "graph": "context",
    "node": "l.voiture",
@@ -630,6 +648,35 @@
    "owner": "humain"
   },
   {
+   "graph": "matthew",
+   "node": "m.oracle",
+   "label": "oracle.py — le journal collecté sur Oracle rejoint l'entraînement",
+   "status": "partiel",
+   "summary": "Les conversations venues du téléphone passent par Oracle : leur journal y est écrit. Chaque nuit, le PC d'entraînement le rapatrie par Tailscale SSH (chiffré, entre tes machines seulement), sous journ",
+   "files": [
+    "matthew/oracle.py",
+    "matthew/flywheel.py",
+    "matthew/__init__.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
+   "graph": "matthew",
+   "node": "m.sched",
+   "label": "sched.py — planifier sous Windows comme sous Linux",
+   "status": "partiel",
+   "summary": "Chaque nuit, toutes les N minutes, à l'ouverture de session : Planificateur de tâches et dossier Démarrage sous Windows ; minuteries systemd utilisateur (Persistent : une nuit manquée est rattrapée) o",
+   "files": [
+    "matthew/sched.py",
+    "matthew/flywheel.py",
+    "matthew/vitrine.py",
+    "matthew/gateway.py"
+   ],
+   "zone": false,
+   "owner": "humain"
+  },
+  {
    "graph": "general",
    "node": "f.pilote",
    "label": "Pilote universel",
@@ -717,7 +764,7 @@
   }
  ],
  "pass": {
-  "n": 3,
+  "n": 1,
   "of": 3
  },
  "diagnostics": [
@@ -738,27 +785,7 @@
  "tonight": [
   {
    "pass": 1,
-   "run_id": "39706293691",
-   "status": "success",
-   "task": null,
-   "outcome": "skipped",
-   "ref": {},
-   "tokens": 0,
-   "pr": null
-  },
-  {
-   "pass": 2,
-   "run_id": "39732276807",
-   "status": "success",
-   "task": null,
-   "outcome": "skipped",
-   "ref": {},
-   "tokens": 0,
-   "pr": null
-  },
-  {
-   "pass": 3,
-   "run_id": "39748523606",
+   "run_id": "39884587868",
    "status": "success",
    "task": null,
    "outcome": "skipped",

@@ -1,43 +1,37 @@
-## JARVIS Night Shift — 2026-10-22 · passe 3/3
+## JARVIS Night Shift — 2026-10-23 · passe 1/3
 
-**21/21 suites vertes ; aucune régression ; ruff : 2 remarques dont 2 nouvelles ; indicateurs : 3 changements à relire (coût en contexte (server)) ; rien à corriger.**
+**21/21 suites vertes ; aucune régression ; ruff : 5 remarques dont 3 nouvelles ; rien à corriger.**
 
-commit `19f2eae` · branche `main` · ubuntu24 20261018.339.1 · Python 3.12.15 · 1 min 14 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39748523606)
+commit `a518c85` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 25 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39884587868)
 
 | Suite | Score | État | Durée |
 |---|---:|---|---:|
-| capabilities.selftest | 11/11 | ✅ vert | 0.4 s |
+| capabilities.selftest | 11/11 | ✅ vert | 0.6 s |
 | context.selftest | 33/33 | ✅ vert | 0.1 s |
-| server.selftest | 35/35 | ✅ vert | 1.7 s |
-| server.routing_selftest | 35/35 | ✅ vert | 0.5 s |
-| client_desktop --selftest | 28/28 | ✅ vert | 0.5 s |
-| cognition.selftest | 65/65 | ✅ vert | 3.2 s |
-| eval_lab.selftest | 28/28 | ✅ vert | 4.3 s |
-| core.code_workspace.selftest | 34/34 | ✅ vert | 33.5 s |
-| reminders.selftest | 4/4 | ✅ vert | 0.2 s |
-| resilience.selftest | 15/15 | ✅ vert | 0.5 s |
-| extensions.selftest | 15/15 | ✅ vert | 0.7 s |
-| offline.selftest | 10/10 | ✅ vert | 1.2 s |
+| server.selftest | 35/35 | ✅ vert | 1.9 s |
+| server.routing_selftest | 39/39 | ✅ vert | 0.7 s |
+| client_desktop --selftest | 28/28 | ✅ vert | 0.7 s |
+| cognition.selftest | 65/65 | ✅ vert | 3.5 s |
+| eval_lab.selftest | 28/28 | ✅ vert | 6.9 s |
+| core.code_workspace.selftest | 35/35 | ✅ vert | 34.7 s |
+| reminders.selftest | 4/4 | ✅ vert | 0.3 s |
+| resilience.selftest | 15/15 | ✅ vert | 0.6 s |
+| extensions.selftest | 15/15 | ✅ vert | 0.8 s |
+| offline.selftest | 10/10 | ✅ vert | 1.3 s |
 | core.token_usage_selftest | 1/1 | ✅ vert | 0.0 s |
 | actions.repository_review_selftest | 1/1 | ✅ vert | 0.0 s |
-| nightshift.selftest | 38/38 | ✅ vert | 5.6 s |
-| meeting.selftest | 21/21 | ✅ vert | 0.8 s |
+| nightshift.selftest | 38/38 | ✅ vert | 6.7 s |
+| meeting.selftest | 21/21 | ✅ vert | 1.0 s |
 | pilot.selftest | 13/13 | ✅ vert | 1.7 s |
-| quota.selftest | 7/7 | ✅ vert | 0.0 s |
+| quota.selftest | 7/7 | ✅ vert | 0.1 s |
 | daily.selftest | 8/8 | ✅ vert | 15.2 s |
 | incidents.selftest | 6/6 | ✅ vert | 0.2 s |
-| matthew.selftest | 37/37 | ✅ vert | 1.7 s |
+| matthew.selftest | 44/44 | ✅ vert | 5.3 s |
 
 ### Tâche de la nuit
 
 - rien à corriger
 - Consommation : 0 appel(s) sur 12 · 0 tokens sur 60000
-
-### Cette nuit, passe par passe
-
-- Passe 1 : rien de tenté — rien de tenté · 0 tokens
-- Passe 2 : rien de tenté — rien de tenté · 0 tokens
-- Passe 3 : rien de tenté — rien de tenté · 0 tokens
 
 ### Échec persistant — manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte
 
@@ -56,16 +50,14 @@ Idée `check:extensions.selftest:manager 1 examen sans exécution : déclaré, r
 - eval_lab regressions : 9/9 réussis
 - Coût en contexte : prompt 3552 car. + outils 30894 car. (42 outils, mode local) ≈ 9841 tokens par connexion
 - Cognition : 14 valeurs mesurées (architecture complète)
-- **coût en contexte (server)** : 29657 → 29658 (hausse) — +1 caractères (+0.0%) envoyés à chaque connexion
-- **coût en contexte (local)** : 30893 → 30894 (hausse) — +1 caractères (+0.0%) envoyés à chaque connexion
-- **prompt système** : 3540 → 3552 (hausse) — +12 caractères
 
 ### Modèle local
 
 - indisponible : aucun avis local : PC éteint, ou worker non installé (phase 5, facultative)
 
-### Backlog du graphe — 20 nœud(s) bug ou partiel
+### Backlog du graphe — 23 nœud(s) bug ou partiel
 
+- partiel · `client_desktop/f.instance` — Une seule instance · hors zone
 - partiel · `context/l.voiture` — Détection de la voiture · zone autorisée
 - partiel · `general/dom.matthew` — Matthew — notre propre modèle · hors zone
 - partiel · `general/tool.weather_report` — weather_report · hors zone
@@ -81,13 +73,15 @@ Idée `check:extensions.selftest:manager 1 examen sans exécution : déclaré, r
 - partiel · `server/m.assist` — assist.py — le cerveau d'Oracle pour les appareils · hors zone
 - partiel · `client_desktop/f.plugins_appareil` — Plugins d'appareil (PLUGIN_DEVICE) · hors zone
 - partiel · `general/f.nightshift` — Veilleur de nuit (Night Shift) · hors zone
+- partiel · `matthew/m.oracle` — oracle.py — le journal collecté sur Oracle rejoint l'entraînement · hors zone
+- partiel · `matthew/m.sched` — sched.py — planifier sous Windows comme sous Linux · hors zone
 - partiel · `general/f.pilote` — Pilote universel · hors zone
 - partiel · `general/f.reunion` — Copilote de réunion · hors zone
-- partiel · `android/m.matrice` — Ce qui arrive sur Android · hors zone
-- partiel · `cognition/l.local` — Mode local seulement · hors zone
-- partiel · `deployment/l.dependances` — Ce qui dépend d'autre chose que ce PC · hors zone
 
-### ruff 0.17.0 — 2 remarque(s)
+### ruff 0.17.0 — 5 remarque(s)
 
-- `matthew/specialist.py:145` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
-- `matthew/specialist.py:271` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
+- `matthew/flywheel.py:258` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
+- `matthew/selftest.py:1177` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
+- `matthew/session.py:64` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
+- `matthew/specialist.py:145` E731 Do not assign a `lambda` expression, use a `def`
+- `matthew/specialist.py:271` E731 Do not assign a `lambda` expression, use a `def`
