@@ -1,19 +1,19 @@
-## JARVIS Night Shift — 2026-10-23 · passe 1/3
+## JARVIS Night Shift — 2026-10-23 · passe 2/3
 
-**21/21 suites vertes ; aucune régression ; ruff : 5 remarques dont 3 nouvelles ; rien à corriger.**
+**21/21 suites vertes ; aucune régression ; ruff : 5 remarques ; rien à corriger.**
 
-commit `a518c85` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 25 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39884587868)
+commit `a518c85` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 25 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39909394840)
 
 | Suite | Score | État | Durée |
 |---|---:|---|---:|
 | capabilities.selftest | 11/11 | ✅ vert | 0.6 s |
 | context.selftest | 33/33 | ✅ vert | 0.1 s |
-| server.selftest | 35/35 | ✅ vert | 1.9 s |
+| server.selftest | 35/35 | ✅ vert | 2.0 s |
 | server.routing_selftest | 39/39 | ✅ vert | 0.7 s |
 | client_desktop --selftest | 28/28 | ✅ vert | 0.7 s |
-| cognition.selftest | 65/65 | ✅ vert | 3.5 s |
-| eval_lab.selftest | 28/28 | ✅ vert | 6.9 s |
-| core.code_workspace.selftest | 35/35 | ✅ vert | 34.7 s |
+| cognition.selftest | 65/65 | ✅ vert | 3.6 s |
+| eval_lab.selftest | 28/28 | ✅ vert | 7.0 s |
+| core.code_workspace.selftest | 35/35 | ✅ vert | 33.9 s |
 | reminders.selftest | 4/4 | ✅ vert | 0.3 s |
 | resilience.selftest | 15/15 | ✅ vert | 0.6 s |
 | extensions.selftest | 15/15 | ✅ vert | 0.8 s |
@@ -26,12 +26,17 @@ commit `a518c85` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 
 | quota.selftest | 7/7 | ✅ vert | 0.1 s |
 | daily.selftest | 8/8 | ✅ vert | 15.2 s |
 | incidents.selftest | 6/6 | ✅ vert | 0.2 s |
-| matthew.selftest | 44/44 | ✅ vert | 5.3 s |
+| matthew.selftest | 44/44 | ✅ vert | 6.3 s |
 
 ### Tâche de la nuit
 
 - rien à corriger
 - Consommation : 0 appel(s) sur 12 · 0 tokens sur 60000
+
+### Cette nuit, passe par passe
+
+- Passe 1 : rien de tenté — rien de tenté · 0 tokens
+- Passe 2 : rien de tenté — rien de tenté · 0 tokens
 
 ### Échec persistant — manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte
 
@@ -80,8 +85,8 @@ Idée `check:extensions.selftest:manager 1 examen sans exécution : déclaré, r
 
 ### ruff 0.17.0 — 5 remarque(s)
 
-- `matthew/flywheel.py:258` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
-- `matthew/selftest.py:1177` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
-- `matthew/session.py:64` E731 Do not assign a `lambda` expression, use a `def` **(nouvelle)**
+- `matthew/flywheel.py:258` E731 Do not assign a `lambda` expression, use a `def`
+- `matthew/selftest.py:1177` E731 Do not assign a `lambda` expression, use a `def`
+- `matthew/session.py:64` E731 Do not assign a `lambda` expression, use a `def`
 - `matthew/specialist.py:145` E731 Do not assign a `lambda` expression, use a `def`
 - `matthew/specialist.py:271` E731 Do not assign a `lambda` expression, use a `def`
