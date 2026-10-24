@@ -1,6 +1,6 @@
 {
- "schema": "jarvis.nightshift-state/1",
- "updated": "2026-10-23T10:30:56+02:00",
+ "schema": "matthew_assistant.nightshift-state/1",
+ "updated": "2026-10-24T03:38:46+02:00",
  "ideas": {
   "ruff:F841:eval_lab/mutate.py:Local variable `stim` is assigned to but never used": {
    "source": "ruff",
@@ -68,6 +68,23 @@
     }
    ],
    "label": "manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte"
+  },
+  "check:offline.selftest:3": {
+   "source": "regression",
+   "attempts": [
+    {
+     "run_id": "40050555631",
+     "date": "2026-10-24",
+     "commit": "689bfa6",
+     "fingerprint": "7b8688984e7080a9",
+     "outcome": "patch_rejected",
+     "reason": "le n°3 échoue encore",
+     "model": "groq/openai/gpt-oss-120b",
+     "tokens": 6939,
+     "pr": null
+    }
+   ],
+   "label": "nom : n'importe où dans la phrase, accents et casse ignorés"
   }
  },
  "nights": [
@@ -395,6 +412,22 @@
    "ref": {},
    "llm_calls": 0,
    "tokens": 0,
+   "pr": null
+  },
+  {
+   "date": "2026-10-24",
+   "run_id": "40050555631",
+   "pass": 1,
+   "status": "partial_success",
+   "task": "reg-offline-3-689bfa6",
+   "outcome": "patch_rejected",
+   "ref": {
+    "source": "regression",
+    "suite": "offline.selftest",
+    "check": "3"
+   },
+   "llm_calls": 2,
+   "tokens": 6939,
    "pr": null
   }
  ]

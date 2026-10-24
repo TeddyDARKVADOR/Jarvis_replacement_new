@@ -1,23 +1,43 @@
 {
- "schema": "jarvis.nightshift-queue/1",
- "run_id": "39924885862",
- "created": "2026-10-23T10:30:56+02:00",
+ "schema": "matthew_assistant.nightshift-queue/1",
+ "run_id": "40050555631",
+ "created": "2026-10-24T03:38:46+02:00",
  "tasks": [
   {
-   "id": "triage-39924885862",
+   "id": "resume-40050555631",
+   "kind": "resume",
+   "input": {
+    "summary": "20/21 suites vertes ; 1 régression (offline n°3) ; ruff : 5 remarques ; indicateurs : 3 changements à relire (coût en contexte (server)) ; tâche offline n°3 : correctif rejeté (le n°3 échoue encore).",
+    "red": [
+     {
+      "suite": "offline.selftest",
+      "status": "regression",
+      "failures": [
+       {
+        "check": "3",
+        "label": "nom : n'importe où dans la phrase, accents et casse ignorés",
+        "detail": ""
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "id": "triage-40050555631",
    "kind": "triage",
    "input": {
     "findings": [
      {
       "code": "E731",
       "path": "matthew/flywheel.py",
-      "line": 258,
+      "line": 259,
       "message": "Do not assign a `lambda` expression, use a `def`"
      },
      {
       "code": "E731",
       "path": "matthew/selftest.py",
-      "line": 1177,
+      "line": 1189,
       "message": "Do not assign a `lambda` expression, use a `def`"
      },
      {

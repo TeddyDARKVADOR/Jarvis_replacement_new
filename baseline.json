@@ -1,28 +1,28 @@
 {
- "schema_version": "jarvis.nightly/1",
- "run_id": "39924885862",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/39924885862",
+ "schema_version": "matthew_assistant.nightly/1",
+ "run_id": "40050555631",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/40050555631",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
- "commit": "763c975",
- "commit_full": "763c9752fa4465529e9330e6d56b73f680c9e255",
+ "commit": "689bfa6",
+ "commit_full": "689bfa6d3f124f191dab8cb53beb7762ad2f6535",
  "previous": {
-  "run_id": "39909394840",
-  "commit": "a518c85",
-  "finished_at": "2026-10-23T08:07:30+02:00",
+  "run_id": "39924885862",
+  "commit": "763c975",
+  "finished_at": "2026-10-23T10:30:56+02:00",
   "status": "success"
  },
- "started_at": "2026-10-23T10:29:29+02:00",
- "finished_at": "2026-10-23T10:30:56+02:00",
- "duration_s": 87.0,
- "status": "success",
- "summary": "21/21 suites vertes ; aucune régression ; ruff : 5 remarques ; rien à corriger.",
+ "started_at": "2026-10-24T03:37:11+02:00",
+ "finished_at": "2026-10-24T03:38:46+02:00",
+ "duration_s": 95.0,
+ "status": "partial_success",
+ "summary": "20/21 suites vertes ; 1 régression (offline n°3) ; ruff : 5 remarques ; indicateurs : 3 changements à relire (coût en contexte (server)) ; tâche offline n°3 : correctif rejeté (le n°3 échoue encore).",
  "environment": {
   "runner": "github",
   "os": "Ubuntu 24.04.5 LTS",
   "python": "3.12.15",
-  "image": "ubuntu24 20261012.334.1"
+  "image": "ubuntu24 20261023.334.3"
  },
  "suites": [
   {
@@ -33,7 +33,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.5,
+   "duration_s": 0.6,
    "outcome": "ok"
   },
   {
@@ -55,7 +55,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.9,
+   "duration_s": 2.0,
    "outcome": "ok"
   },
   {
@@ -66,7 +66,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.6,
+   "duration_s": 0.8,
    "outcome": "ok"
   },
   {
@@ -77,7 +77,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.6,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -88,7 +88,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 4.8,
+   "duration_s": 3.6,
    "outcome": "ok"
   },
   {
@@ -99,7 +99,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 5.5,
+   "duration_s": 7.3,
    "outcome": "ok"
   },
   {
@@ -110,7 +110,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 33.6,
+   "duration_s": 33.8,
    "outcome": "ok"
   },
   {
@@ -121,7 +121,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.2,
+   "duration_s": 0.3,
    "outcome": "ok"
   },
   {
@@ -132,7 +132,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.6,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -149,13 +149,22 @@
   {
    "name": "offline.selftest",
    "platform": "linux",
-   "passed": 10,
+   "passed": 9,
    "total": 10,
-   "status": "ok",
-   "failures": [],
-   "failed": [],
-   "duration_s": 1.2,
-   "outcome": "ok"
+   "status": "regression",
+   "failures": [
+    "3 nom : n'importe où dans la phrase, accents et casse ignorés"
+   ],
+   "failed": [
+    {
+     "id": "3",
+     "label": "nom : n'importe où dans la phrase, accents et casse ignorés",
+     "detail": "",
+     "class": "regression"
+    }
+   ],
+   "duration_s": 1.3,
+   "outcome": "failing"
   },
   {
    "name": "core.token_usage_selftest",
@@ -187,7 +196,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.3,
+   "duration_s": 6.9,
    "outcome": "ok"
   },
   {
@@ -198,7 +207,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.9,
+   "duration_s": 1.0,
    "outcome": "ok"
   },
   {
@@ -220,7 +229,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.0,
+   "duration_s": 0.1,
    "outcome": "ok"
   },
   {
@@ -253,11 +262,27 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 10.6,
+   "duration_s": 15.9,
    "outcome": "ok"
   }
  ],
- "regressions": [],
+ "regressions": [
+  {
+   "suite": "offline.selftest",
+   "check": "3",
+   "label": "nom : n'importe où dans la phrase, accents et casse ignorés",
+   "since_commit": "689bfa6",
+   "last_green_commit": "763c975",
+   "suspects": [
+    "689bfa6 Renommage : JARVIS devient Matthew (textes) et matthew_assistant (code)",
+    "b9b6cec Kaggle : tournoi de réglages sur 2 GPU dans le budget de la nuit, duel rattrapé au réveil du PC",
+    "28cf39d Kaggle : le noyau attend que le jeu de données neuf soit prêt et vérifie qu'il lui est rattaché",
+    "bad567f Kaggle : nom d'utilisateur nettoyé (retour à la ligne du secret), premier lancement réel consigné",
+    "019d049 Matthew : part minimale de 40 % d'exemples sans outil, 2 époques",
+    "64a35fc Matthew : sorties d'outils externes décodées en UTF-8, troisième cycle consigné"
+   ]
+  }
+ ],
  "repaired": [],
  "preexisting": [],
  "unreferenced": [],
@@ -270,14 +295,14 @@
    {
     "code": "E731",
     "path": "matthew/flywheel.py",
-    "line": 258,
+    "line": 259,
     "message": "Do not assign a `lambda` expression, use a `def`",
     "fix": "unsafe"
    },
    {
     "code": "E731",
     "path": "matthew/selftest.py",
-    "line": 1177,
+    "line": 1189,
     "message": "Do not assign a `lambda` expression, use a `def`",
     "fix": "unsafe"
    },
@@ -386,34 +411,64 @@
    "available": true,
    "server": {
     "tools": 41,
-    "chars": 29658
+    "chars": 29679
    },
    "local": {
     "tools": 42,
-    "chars": 30894
+    "chars": 30915
    },
-   "system_prompt_chars": 3552,
-   "estimated_tokens_local": 9841
+   "system_prompt_chars": 3563,
+   "estimated_tokens_local": 9850
   }
  },
- "metrics_changes": [],
- "green_streak": 7,
+ "metrics_changes": [
+  {
+   "metric": "coût en contexte (server)",
+   "verdict": "hausse",
+   "before": 29658,
+   "now": 29679,
+   "detail": "+21 caractères (+0.1%) envoyés à chaque connexion"
+  },
+  {
+   "metric": "coût en contexte (local)",
+   "verdict": "hausse",
+   "before": 30894,
+   "now": 30915,
+   "detail": "+21 caractères (+0.1%) envoyés à chaque connexion"
+  },
+  {
+   "metric": "prompt système",
+   "verdict": "hausse",
+   "before": 3552,
+   "now": 3563,
+   "detail": "+11 caractères"
+  }
+ ],
+ "green_streak": 0,
  "task": {
-  "id": null,
-  "source": null,
-  "files": [],
-  "attempts": 0,
-  "outcome": "skipped",
-  "reason": "rien à corriger",
+  "id": "reg-offline-3-689bfa6",
+  "source": "regression",
+  "suite": "offline.selftest",
+  "check": "3",
+  "label": "nom : n'importe où dans la phrase, accents et casse ignorés",
+  "files": [
+   "offline/__init__.py"
+  ],
+  "attempts": 2,
   "out_of_zone": [],
+  "model": "groq/openai/gpt-oss-120b",
+  "outcome": "patch_rejected",
+  "reason": "le n°3 échoue encore",
   "skipped": []
  },
  "pull_request_url": null,
  "usage": {
-  "llm_calls": 0,
-  "tokens_in": 0,
-  "tokens_out": 0,
-  "providers": {}
+  "llm_calls": 2,
+  "tokens_in": 4815,
+  "tokens_out": 2124,
+  "providers": {
+   "groq/openai/gpt-oss-120b": 2
+  }
  },
  "budgets": {
   "max_tasks": 1,
@@ -431,7 +486,7 @@
    "node": "f.instance",
    "label": "Une seule instance",
    "status": "partiel",
-   "summary": "Mutex noyau nommé Local\\JarvisDesktop.SingleInstance (pas un fichier PID, qui ment après un plantage). Un second lancement montre le HUD existant.",
+   "summary": "Mutex noyau nommé Local\\MatthewAssistantDesktop.SingleInstance (pas un fichier PID, qui ment après un plantage). Un second lancement montre le HUD existant.",
    "files": [
     "client_desktop/single_instance.py"
    ],
@@ -541,7 +596,7 @@
    "status": "partiel",
    "summary": "Ce qui est déterministe ; le reste sort en PHYSICAL_ONLY.",
    "files": [
-    "jarvis-preprod/tests/audio/test_audio.sh"
+    "matthew-assistant-preprod/tests/audio/test_audio.sh"
    ],
    "zone": false,
    "owner": "humain"
@@ -551,7 +606,7 @@
    "node": "l.barge_in",
    "label": "Interruption à la voix (option)",
    "status": "partiel",
-   "summary": "phone_barge_in: true dans config/api_keys.json : l'audio du téléphone continue d'aller à Gemini pendant que JARVIS parle, et sa détection de voix peut l'interrompre. Désactivé par défaut.",
+   "summary": "phone_barge_in: true dans config/api_keys.json : l'audio du téléphone continue d'aller à Gemini pendant que Matthew parle, et sa détection de voix peut l'interrompre. Désactivé par défaut.",
    "files": [
     "main.py"
    ],
@@ -563,7 +618,7 @@
    "node": "tool.reminder",
    "label": "reminder · rappels",
    "status": "partiel",
-   "summary": "Rappel à une date et une heure : tâche planifiée du système (filet quand JARVIS est fermé) et, quand il tourne, livraison par JARVIS lui-même (HUD, téléphone, voix).",
+   "summary": "Rappel à une date et une heure : tâche planifiée du système (filet quand Matthew est fermé) et, quand il tourne, livraison par Matthew lui-même (HUD, téléphone, voix).",
    "files": [
     "actions/reminder.py",
     "reminders/__init__.py"
@@ -659,7 +714,7 @@
    "node": "f.pilote",
    "label": "Pilote universel",
    "status": "partiel",
-   "summary": "JARVIS prend la main sur l'ordinateur pour n'importe quelle application ou site : il regarde l'écran (arbre d'accessibilité numéroté + capture), choisit une action avec Gemini, la fait, vérifie, recom",
+   "summary": "Matthew prend la main sur l'ordinateur pour n'importe quelle application ou site : il regarde l'écran (arbre d'accessibilité numéroté + capture), choisit une action avec Gemini, la fait, vérifie, reco",
    "files": [
     "pilot/__init__.py",
     "pilot/a11y.py",
@@ -687,7 +742,7 @@
    "node": "f.reunion",
    "label": "Copilote de réunion",
    "status": "partiel",
-   "summary": "Une visio commence (n'importe quelle application prend le micro ou la caméra) : JARVIS capte le son du PC (« Participants ») et le micro (« Moi »), transcrit sur ce PC au fil de la réunion, puis écrit",
+   "summary": "Une visio commence (n'importe quelle application prend le micro ou la caméra) : Matthew capte le son du PC (« Participants ») et le micro (« Moi »), transcrit sur ce PC au fil de la réunion, puis écri",
    "files": [
     "meeting/__init__.py",
     "meeting/detect.py",
@@ -742,7 +797,7 @@
   }
  ],
  "pass": {
-  "n": 3,
+  "n": 1,
   "of": 3
  },
  "diagnostics": [
@@ -763,32 +818,16 @@
  "tonight": [
   {
    "pass": 1,
-   "run_id": "39884587868",
-   "status": "success",
-   "task": null,
-   "outcome": "skipped",
-   "ref": {},
-   "tokens": 0,
-   "pr": null
-  },
-  {
-   "pass": 2,
-   "run_id": "39909394840",
-   "status": "success",
-   "task": null,
-   "outcome": "skipped",
-   "ref": {},
-   "tokens": 0,
-   "pr": null
-  },
-  {
-   "pass": 3,
-   "run_id": "39924885862",
-   "status": "success",
-   "task": null,
-   "outcome": "skipped",
-   "ref": {},
-   "tokens": 0,
+   "run_id": "40050555631",
+   "status": "partial_success",
+   "task": "reg-offline-3-689bfa6",
+   "outcome": "patch_rejected",
+   "ref": {
+    "source": "regression",
+    "suite": "offline.selftest",
+    "check": "3"
+   },
+   "tokens": 6939,
    "pr": null
   }
  ],
@@ -798,6 +837,6 @@
  },
  "incidents": {
   "available": false,
-  "reason": "pas de résumé partagé (incidents_share désactivé, ou JARVIS pas lancé)"
+  "reason": "pas de résumé partagé (incidents_share désactivé, ou Matthew pas lancé)"
  }
 }
