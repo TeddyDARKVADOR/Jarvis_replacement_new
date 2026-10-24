@@ -1,13 +1,13 @@
 {
  "schema": "matthew_assistant.nightshift-queue/1",
- "run_id": "40068384488",
- "created": "2026-10-24T08:01:11+02:00",
+ "run_id": "40076579767",
+ "created": "2026-10-24T10:06:23+02:00",
  "tasks": [
   {
-   "id": "resume-40068384488",
+   "id": "resume-40076579767",
    "kind": "resume",
    "input": {
-    "summary": "20/21 suites vertes ; aucune régression ; ruff : 5 remarques ; tâche offline n°3 : correctif rejeté (le n°3 échoue encore).",
+    "summary": "20/21 suites vertes ; aucune régression ; ruff : 5 remarques ; rien de neuf : les tâches possibles sont déjà tentées, refusées ou en échec persistant.",
     "red": [
      {
       "suite": "offline.selftest",
@@ -24,7 +24,7 @@
    }
   },
   {
-   "id": "triage-40068384488",
+   "id": "triage-40076579767",
    "kind": "triage",
    "input": {
     "findings": [
