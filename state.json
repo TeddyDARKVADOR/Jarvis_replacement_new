@@ -1,6 +1,6 @@
 {
  "schema": "matthew_assistant.nightshift-state/1",
- "updated": "2026-10-24T03:38:46+02:00",
+ "updated": "2026-10-24T08:01:11+02:00",
  "ideas": {
   "ruff:F841:eval_lab/mutate.py:Local variable `stim` is assigned to but never used": {
    "source": "ruff",
@@ -81,6 +81,17 @@
      "reason": "le n°3 échoue encore",
      "model": "groq/openai/gpt-oss-120b",
      "tokens": 6939,
+     "pr": null
+    },
+    {
+     "run_id": "40068384488",
+     "date": "2026-10-24",
+     "commit": "689bfa6",
+     "fingerprint": "68a10653a371ed98",
+     "outcome": "patch_rejected",
+     "reason": "le n°3 échoue encore",
+     "model": "groq/openai/gpt-oss-120b",
+     "tokens": 2006,
      "pr": null
     }
    ],
@@ -428,6 +439,22 @@
    },
    "llm_calls": 2,
    "tokens": 6939,
+   "pr": null
+  },
+  {
+   "date": "2026-10-24",
+   "run_id": "40068384488",
+   "pass": 2,
+   "status": "partial_success",
+   "task": "fail-offline-3-689bfa6",
+   "outcome": "patch_rejected",
+   "ref": {
+    "source": "failing_check",
+    "suite": "offline.selftest",
+    "check": "3"
+   },
+   "llm_calls": 1,
+   "tokens": 2006,
    "pr": null
   }
  ]

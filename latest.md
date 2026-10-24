@@ -1,38 +1,43 @@
-## Matthew Night Shift — 2026-10-24 · passe 1/3
+## Matthew Night Shift — 2026-10-24 · passe 2/3
 
-**20/21 suites vertes ; 1 régression (offline n°3) ; ruff : 5 remarques ; indicateurs : 3 changements à relire (coût en contexte (server)) ; tâche offline n°3 : correctif rejeté (le n°3 échoue encore).**
+**20/21 suites vertes ; aucune régression ; ruff : 5 remarques ; tâche offline n°3 : correctif rejeté (le n°3 échoue encore).**
 
-commit `689bfa6` · branche `main` · ubuntu24 20261023.334.3 · Python 3.12.15 · 1 min 35 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/40050555631)
+commit `689bfa6` · branche `main` · ubuntu24 20261012.334.1 · Python 3.12.15 · 1 min 19 s · [exécution](https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/40068384488)
 
 | Suite | Score | État | Durée |
 |---|---:|---|---:|
-| capabilities.selftest | 11/11 | ✅ vert | 0.6 s |
+| capabilities.selftest | 11/11 | ✅ vert | 0.4 s |
 | context.selftest | 33/33 | ✅ vert | 0.1 s |
-| server.selftest | 35/35 | ✅ vert | 2.0 s |
+| server.selftest | 35/35 | ✅ vert | 1.6 s |
 | server.routing_selftest | 39/39 | ✅ vert | 0.8 s |
-| client_desktop --selftest | 28/28 | ✅ vert | 0.7 s |
-| cognition.selftest | 65/65 | ✅ vert | 3.6 s |
-| eval_lab.selftest | 28/28 | ✅ vert | 7.3 s |
-| core.code_workspace.selftest | 35/35 | ✅ vert | 33.8 s |
-| reminders.selftest | 4/4 | ✅ vert | 0.3 s |
-| resilience.selftest | 15/15 | ✅ vert | 0.7 s |
-| extensions.selftest | 15/15 | ✅ vert | 0.8 s |
-| offline.selftest | 9/10 | 🔴 RÉGRESSION | 1.3 s |
+| client_desktop --selftest | 28/28 | ✅ vert | 0.5 s |
+| cognition.selftest | 65/65 | ✅ vert | 3.2 s |
+| eval_lab.selftest | 28/28 | ✅ vert | 4.3 s |
+| core.code_workspace.selftest | 35/35 | ✅ vert | 33.6 s |
+| reminders.selftest | 4/4 | ✅ vert | 0.2 s |
+| resilience.selftest | 15/15 | ✅ vert | 0.4 s |
+| extensions.selftest | 15/15 | ✅ vert | 0.7 s |
+| offline.selftest | 9/10 | ❌ rouge (déjà) | 1.2 s |
 | core.token_usage_selftest | 1/1 | ✅ vert | 0.0 s |
 | actions.repository_review_selftest | 1/1 | ✅ vert | 0.0 s |
-| nightshift.selftest | 38/38 | ✅ vert | 6.9 s |
-| meeting.selftest | 21/21 | ✅ vert | 1.0 s |
-| pilot.selftest | 13/13 | ✅ vert | 1.7 s |
-| quota.selftest | 7/7 | ✅ vert | 0.1 s |
+| nightshift.selftest | 38/38 | ✅ vert | 5.4 s |
+| meeting.selftest | 21/21 | ✅ vert | 0.8 s |
+| pilot.selftest | 13/13 | ✅ vert | 1.6 s |
+| quota.selftest | 7/7 | ✅ vert | 0.0 s |
 | daily.selftest | 8/8 | ✅ vert | 15.2 s |
 | incidents.selftest | 6/6 | ✅ vert | 0.2 s |
-| matthew.selftest | 44/44 | ✅ vert | 15.9 s |
+| matthew.selftest | 44/44 | ✅ vert | 6.6 s |
 
 ### Tâche de la nuit
 
-- **offline n°3** (régression) — correctif rejeté : le n°3 échoue encore
-- 1 fichier(s) : `offline/__init__.py` · 2 tentative(s) · groq/openai/gpt-oss-120b
-- Consommation : 2 appel(s) sur 12 · 6939 tokens sur 60000
+- **offline n°3** (contrôle rouge) — correctif rejeté : le n°3 échoue encore
+- 1 fichier(s) : `offline/__init__.py` · 1 tentative(s) · groq/openai/gpt-oss-120b
+- Consommation : 1 appel(s) sur 12 · 2006 tokens sur 60000
+
+### Cette nuit, passe par passe
+
+- Passe 1 : offline n°3 — correctif rejeté · 6939 tokens
+- Passe 2 : offline n°3 — correctif rejeté · 2006 tokens
 
 ### Échec persistant — manager 1 examen sans exécution : déclaré, réellement fait, écarts, dépendances, empreinte
 
@@ -51,9 +56,6 @@ Idée `check:extensions.selftest:manager 1 examen sans exécution : déclaré, r
 - eval_lab regressions : 9/9 réussis
 - Coût en contexte : prompt 3563 car. + outils 30915 car. (42 outils, mode local) ≈ 9850 tokens par connexion
 - Cognition : 14 valeurs mesurées (architecture complète)
-- **coût en contexte (server)** : 29658 → 29679 (hausse) — +21 caractères (+0.1%) envoyés à chaque connexion
-- **coût en contexte (local)** : 30894 → 30915 (hausse) — +21 caractères (+0.1%) envoyés à chaque connexion
-- **prompt système** : 3552 → 3563 (hausse) — +11 caractères
 
 ### Modèle local
 
@@ -82,9 +84,9 @@ Idée `check:extensions.selftest:manager 1 examen sans exécution : déclaré, r
 - partiel · `general/f.pilote` — Pilote universel · hors zone
 - partiel · `general/f.reunion` — Copilote de réunion · hors zone
 
-### Régressions
+### Déjà rouge
 
-- **offline n°3** — nom : n'importe où dans la phrase, accents et casse ignorés · depuis `689bfa6` (dernier vert : `763c975`) · commits suspects : `689bfa6 Renommage : JARVIS devient Matthew (textes) et matthew_assistant (code)`, `b9b6cec Kaggle : tournoi de réglages sur 2 GPU dans le budget de la nuit, duel rattrapé au réveil du PC`, `28cf39d Kaggle : le noyau attend que le jeu de données neuf soit prêt et vérifie qu'il lui est rattaché`, `bad567f Kaggle : nom d'utilisateur nettoyé (retour à la ligne du secret), premier lancement réel consigné`, `019d049 Matthew : part minimale de 40 % d'exemples sans outil, 2 époques`
+- offline n°3 — nom : n'importe où dans la phrase, accents et casse ignorés
 
 ### ruff 0.17.0 — 5 remarque(s)
 

@@ -1,28 +1,28 @@
 {
  "schema_version": "matthew_assistant.nightly/1",
- "run_id": "40050555631",
- "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/40050555631",
+ "run_id": "40068384488",
+ "run_url": "https://github.com/TeddyDARKVADOR/Jarvis_replacement_new/actions/runs/40068384488",
  "repository": "TeddyDARKVADOR/Jarvis_replacement_new",
  "ref": "main",
  "event": "schedule",
  "commit": "689bfa6",
  "commit_full": "689bfa6d3f124f191dab8cb53beb7762ad2f6535",
  "previous": {
-  "run_id": "39924885862",
-  "commit": "763c975",
-  "finished_at": "2026-10-23T10:30:56+02:00",
-  "status": "success"
+  "run_id": "40050555631",
+  "commit": "689bfa6",
+  "finished_at": "2026-10-24T03:38:46+02:00",
+  "status": "partial_success"
  },
- "started_at": "2026-10-24T03:37:11+02:00",
- "finished_at": "2026-10-24T03:38:46+02:00",
- "duration_s": 95.0,
+ "started_at": "2026-10-24T07:59:52+02:00",
+ "finished_at": "2026-10-24T08:01:11+02:00",
+ "duration_s": 79.0,
  "status": "partial_success",
- "summary": "20/21 suites vertes ; 1 régression (offline n°3) ; ruff : 5 remarques ; indicateurs : 3 changements à relire (coût en contexte (server)) ; tâche offline n°3 : correctif rejeté (le n°3 échoue encore).",
+ "summary": "20/21 suites vertes ; aucune régression ; ruff : 5 remarques ; tâche offline n°3 : correctif rejeté (le n°3 échoue encore).",
  "environment": {
   "runner": "github",
   "os": "Ubuntu 24.04.5 LTS",
   "python": "3.12.15",
-  "image": "ubuntu24 20261023.334.3"
+  "image": "ubuntu24 20261012.334.1"
  },
  "suites": [
   {
@@ -33,7 +33,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.6,
+   "duration_s": 0.4,
    "outcome": "ok"
   },
   {
@@ -55,7 +55,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 2.0,
+   "duration_s": 1.6,
    "outcome": "ok"
   },
   {
@@ -77,7 +77,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.5,
    "outcome": "ok"
   },
   {
@@ -88,7 +88,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 3.6,
+   "duration_s": 3.2,
    "outcome": "ok"
   },
   {
@@ -99,7 +99,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 7.3,
+   "duration_s": 4.3,
    "outcome": "ok"
   },
   {
@@ -110,7 +110,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 33.8,
+   "duration_s": 33.6,
    "outcome": "ok"
   },
   {
@@ -121,7 +121,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.3,
+   "duration_s": 0.2,
    "outcome": "ok"
   },
   {
@@ -132,7 +132,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.7,
+   "duration_s": 0.4,
    "outcome": "ok"
   },
   {
@@ -143,7 +143,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.8,
+   "duration_s": 0.7,
    "outcome": "ok"
   },
   {
@@ -151,7 +151,7 @@
    "platform": "linux",
    "passed": 9,
    "total": 10,
-   "status": "regression",
+   "status": "failing",
    "failures": [
     "3 nom : n'importe où dans la phrase, accents et casse ignorés"
    ],
@@ -160,10 +160,10 @@
      "id": "3",
      "label": "nom : n'importe où dans la phrase, accents et casse ignorés",
      "detail": "",
-     "class": "regression"
+     "class": "preexisting"
     }
    ],
-   "duration_s": 1.3,
+   "duration_s": 1.2,
    "outcome": "failing"
   },
   {
@@ -196,7 +196,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 6.9,
+   "duration_s": 5.4,
    "outcome": "ok"
   },
   {
@@ -207,7 +207,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.0,
+   "duration_s": 0.8,
    "outcome": "ok"
   },
   {
@@ -218,7 +218,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 1.7,
+   "duration_s": 1.6,
    "outcome": "ok"
   },
   {
@@ -229,7 +229,7 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 0.1,
+   "duration_s": 0.0,
    "outcome": "ok"
   },
   {
@@ -262,29 +262,19 @@
    "status": "ok",
    "failures": [],
    "failed": [],
-   "duration_s": 15.9,
+   "duration_s": 6.6,
    "outcome": "ok"
   }
  ],
- "regressions": [
+ "regressions": [],
+ "repaired": [],
+ "preexisting": [
   {
    "suite": "offline.selftest",
    "check": "3",
-   "label": "nom : n'importe où dans la phrase, accents et casse ignorés",
-   "since_commit": "689bfa6",
-   "last_green_commit": "763c975",
-   "suspects": [
-    "689bfa6 Renommage : JARVIS devient Matthew (textes) et matthew_assistant (code)",
-    "b9b6cec Kaggle : tournoi de réglages sur 2 GPU dans le budget de la nuit, duel rattrapé au réveil du PC",
-    "28cf39d Kaggle : le noyau attend que le jeu de données neuf soit prêt et vérifie qu'il lui est rattaché",
-    "bad567f Kaggle : nom d'utilisateur nettoyé (retour à la ligne du secret), premier lancement réel consigné",
-    "019d049 Matthew : part minimale de 40 % d'exemples sans outil, 2 époques",
-    "64a35fc Matthew : sorties d'outils externes décodées en UTF-8, troisième cycle consigné"
-   ]
+   "label": "nom : n'importe où dans la phrase, accents et casse ignorés"
   }
  ],
- "repaired": [],
- "preexisting": [],
  "unreferenced": [],
  "lint": {
   "tool": "ruff",
@@ -421,40 +411,18 @@
    "estimated_tokens_local": 9850
   }
  },
- "metrics_changes": [
-  {
-   "metric": "coût en contexte (server)",
-   "verdict": "hausse",
-   "before": 29658,
-   "now": 29679,
-   "detail": "+21 caractères (+0.1%) envoyés à chaque connexion"
-  },
-  {
-   "metric": "coût en contexte (local)",
-   "verdict": "hausse",
-   "before": 30894,
-   "now": 30915,
-   "detail": "+21 caractères (+0.1%) envoyés à chaque connexion"
-  },
-  {
-   "metric": "prompt système",
-   "verdict": "hausse",
-   "before": 3552,
-   "now": 3563,
-   "detail": "+11 caractères"
-  }
- ],
+ "metrics_changes": [],
  "green_streak": 0,
  "task": {
-  "id": "reg-offline-3-689bfa6",
-  "source": "regression",
+  "id": "fail-offline-3-689bfa6",
+  "source": "failing_check",
   "suite": "offline.selftest",
   "check": "3",
   "label": "nom : n'importe où dans la phrase, accents et casse ignorés",
   "files": [
    "offline/__init__.py"
   ],
-  "attempts": 2,
+  "attempts": 1,
   "out_of_zone": [],
   "model": "groq/openai/gpt-oss-120b",
   "outcome": "patch_rejected",
@@ -463,11 +431,11 @@
  },
  "pull_request_url": null,
  "usage": {
-  "llm_calls": 2,
-  "tokens_in": 4815,
-  "tokens_out": 2124,
+  "llm_calls": 1,
+  "tokens_in": 1240,
+  "tokens_out": 766,
   "providers": {
-   "groq/openai/gpt-oss-120b": 2
+   "groq/openai/gpt-oss-120b": 1
   }
  },
  "budgets": {
@@ -797,7 +765,7 @@
   }
  ],
  "pass": {
-  "n": 1,
+  "n": 2,
   "of": 3
  },
  "diagnostics": [
@@ -828,6 +796,20 @@
     "check": "3"
    },
    "tokens": 6939,
+   "pr": null
+  },
+  {
+   "pass": 2,
+   "run_id": "40068384488",
+   "status": "partial_success",
+   "task": "fail-offline-3-689bfa6",
+   "outcome": "patch_rejected",
+   "ref": {
+    "source": "failing_check",
+    "suite": "offline.selftest",
+    "check": "3"
+   },
+   "tokens": 2006,
    "pr": null
   }
  ],
