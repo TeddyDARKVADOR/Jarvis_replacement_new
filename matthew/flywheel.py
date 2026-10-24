@@ -37,6 +37,7 @@ if __package__ in (None, ""):
 from matthew import NAME, OPEN_LICENSES, REPO, config, data_dir
 from matthew import dataset as D
 from matthew import evaluate as E
+from matthew import stats as S
 from matthew import train as T
 from matthew.client import Client, usage_summary
 from matthew.journal import Journal
@@ -59,6 +60,63 @@ def _write(path: Path, data) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, path)
+
+
+def duel(cand: Client, champ: Client | None, rows: list[dict], cases: list[dict], decls: list[dict],
+         cfg: dict, exam=None) -> dict:
+    """Le jury, le même partout (nuit locale, cloud) : examen apparié sur `rows` puis banc scellé.
+    `champ` None = pas encore de champion. `exam(phase)` rend le suivi en direct d'une phase."""
+    reps = cfg["eval_repeats"]
+    track = exam or (lambda phase: None)
+    cand_score = E.score(cand, rows, reps, progress=track("exam"))
+    champ_score = E.score(champ, rows, reps, progress=track("duel")) if champ else None
+    ok, why = E.gate(cand_score, champ_score, cfg["promote_margin"], min_eval=cfg.get("min_eval", 30))
+    # Banc scellé (jamais appris) : aucune régression critique ni recul essentiel permis.
+    bench_c = bench_h = None
+    if cases:
+        from matthew import bench as B
+        bench_c = B.run(cand, cases, decls)
+        bench_h = B.run(champ, cases, decls) if champ else None
+        ok_b, why_b = B.gate(bench_c, bench_h)
+        if ok and not ok_b:
+            ok, why = False, why_b
+    return {"ok": ok, "why": why, "candidate": cand_score, "champion": champ_score,
+            "bench_c": bench_c, "bench_h": bench_h}
+
+
+def worth_training(man: dict, st: dict, last_eval: dict, cfg: dict, now: float) -> tuple[bool, str]:
+    """Un entraînement coûte ~20 min de GPU : il part si les données neuves le valent.
+        une correction humaine          toujours (la meilleure donnée qui existe)
+        ≥ value_weak_min exemples neufs sur un outil faible du dernier examen
+        ≥ min_new_examples exemples neufs (l'ancien seuil, gardé)
+        ≥ value_stale_min neufs et value_stale_days jours sans entraînement
+    Sinon on attend : pas d'entraînement pour quelques exemples redondants (« faire semblant »)."""
+    total = man.get("base", man["train"] + man["eval"])
+    new = total - st.get("trained_examples", 0)
+    human = (man.get("origins") or {}).get("human", 0) - st.get("trained_human", 0)
+    if human > 0:
+        return True, f"{human} correction(s) humaine(s) neuve(s)"
+    weak_new = 0
+    if "trained_per_target" in st:                  # état d'avant : inconnu, on ne devine pas
+        prev, per = st["trained_per_target"], man.get("per_target") or {}
+        weak_new = sum(max(0, per.get(t, 0) - prev.get(t, 0)) for t in (last_eval.get("weak") or []))
+    if weak_new >= cfg.get("value_weak_min", 5):
+        return True, f"{weak_new} exemples neufs sur les outils faibles ({', '.join(last_eval['weak'][:4])})"
+    if new >= cfg["min_new_examples"]:
+        return True, f"{new} nouveaux exemples"
+    at = st.get("last_train_at")
+    if at is None and st.get("last_run"):          # état d'avant : la date se lit dans le nom du run
+        try:
+            at = datetime.strptime(Path(st["last_run"]).name[:15], "%Y%m%d-%H%M%S").timestamp()
+        except ValueError:
+            pass
+    days = (now - at) / 86400 if at is not None else None
+    stale_min, stale_days = cfg.get("value_stale_min", 20), cfg.get("value_stale_days", 7)
+    if new >= stale_min and days is not None and days >= stale_days:
+        return True, f"{new} nouveaux exemples et {days:.0f} jours sans entraînement"
+    return False, (f"{new} nouveaux exemples ({cfg['min_new_examples']} requis, ou {stale_min} après "
+                   f"{stale_days} jours), {weak_new} sur les outils faibles ({cfg.get('value_weak_min', 5)} requis), "
+                   "aucune correction neuve")
 
 
 class Flywheel:
@@ -163,14 +221,15 @@ class Flywheel:
                 step("données", ok=False, reason=f"{type(e).__name__}: {e}")
                 return self._finish(rep, "échec données")
             step("données", ok=True, **{k: man[k] for k in ("train", "eval", "dpo", "origins", "with_tools")})
-            # 3. seuil
+            # 3. seuil : la valeur des données neuves, pas seulement leur nombre
             st = _read(self.state_path, {})
             total = man.get("base", man["train"] + man["eval"])     # avant augmentations
-            new = total - st.get("trained_examples", 0)
             base, why_base = self.pick_base(st, total)
-            if new < self.cfg["min_new_examples"] and why_base != "challenger":
-                step("seuil", ok=True, reason=f"{new} nouveaux exemples, {self.cfg['min_new_examples']} requis")
+            go, why_go = worth_training(man, st, _read(self.root / "last_eval.json", {}), self.cfg, self._clock())
+            if not go and why_base != "challenger":
+                step("seuil", ok=True, reason=why_go)
                 return self._finish(rep, "en attente de données")
+            step("seuil", ok=True, go=True, reason=why_go if go else "challenger")
             # 4. entraîner (depuis la base choisie : champion, réglage, ou challenger)
             run = T.plan(Path(man["dir"]), {**self.cfg, "base_model": base["model"],
                                             "base_license": base["license"]},
@@ -180,12 +239,15 @@ class Flywheel:
                 return self._finish(rep, "plan prêt (à sec)")
             res = self._trainer(run)
             step("entraînement", **res)
+            if res.get("interrupted"):
+                return self._finish(rep, "interrompu")
             if not res.get("ok"):
                 return self._finish(rep, "échec entraînement")
             if why_base == "challenger":
                 st.setdefault("challenged", {})[base["model"]] = total
             else:
-                st["trained_examples"] = total
+                st.update(trained_examples=total, trained_per_target=man.get("per_target", {}),
+                          trained_human=(man.get("origins") or {}).get("human", 0), last_train_at=self._clock())
             st["last_run"] = str(run)
             _write(self.state_path, st)
             return self._judge(rep, step, run, Path(man["dir"]) / "eval.jsonl", base, stamp)
@@ -193,7 +255,8 @@ class Flywheel:
             self._unlock()
 
     def cloud(self, run: Path) -> dict:
-        """Un candidat entraîné dans le cloud (matthew/kaggle.py) : le même duel que la nuit locale."""
+        """Un candidat entraîné dans le cloud (matthew/kaggle.py, matthew/modal_gpu.py) : le même duel
+        que la nuit locale — déjà joué là-bas si verdict.json l'accompagne (Modal)."""
         stamp = datetime.fromtimestamp(self._clock()).strftime("%Y%m%d-%H%M%S")
         rep = {"schema": "matthew.cycle/1", "at": stamp, "execute": True, "cloud": True, "steps": []}
 
@@ -214,14 +277,18 @@ class Flywheel:
                 step("import", ok=False, reason="aucun GGUF quantifié dans la sortie du cloud")
                 return self._finish(rep, "échec import Ollama")
             base = {"model": plan["base_model"], "license": plan.get("base_license", self.cfg["base_license"])}
-            return self._judge(rep, step, run, run / "data" / "eval.jsonl", base, stamp)
+            return self._judge(rep, step, run, run / "data" / "eval.jsonl", base, stamp,
+                               verdict=_read(run / "verdict.json", None))
         finally:
             self._unlock()
 
-    def _judge(self, rep: dict, step, run: Path, eval_path: Path, base: dict, stamp: str) -> dict:
+    def _judge(self, rep: dict, step, run: Path, eval_path: Path, base: dict, stamp: str,
+               verdict: dict | None = None) -> dict:
         """Importer le candidat dans Ollama, le faire passer contre le champion (examen, banc scellé,
         cognition), le promouvoir s'il gagne, archiver, vérifier la copie servie, spécialités.
-        Partagé par la nuit locale et par le candidat entraîné dans le cloud (matthew/kaggle.py)."""
+        Partagé par la nuit locale et par le candidat entraîné dans le cloud (matthew/kaggle.py).
+        `verdict` : le duel déjà joué dans le cloud (matthew/modal_gpu.py, même fonction `duel`) ;
+        gardé seulement s'il a été joué contre le champion d'ici, sinon rejoué ici."""
         # 5. importer
         cand = f"{self.cfg['serve_model']}-candidate"
         self._phase("import")
@@ -230,24 +297,23 @@ class Flywheel:
         if not res["ok"]:
             return self._finish(rep, "échec import Ollama")
         # 6. évaluer
-        rows = E.load(eval_path)
-        reps = self.cfg["eval_repeats"]
-        cand_score = E.score(self._client_factory(cand), rows, reps, progress=self._exam("exam"))
         champ = _read(self.root / "champion.json", None)
-        champ_score = E.score(self._client_factory(self.cfg["serve_model"]), rows, reps,
-                              progress=self._exam("duel")) if champ else None
-        ok, why = E.gate(cand_score, champ_score, self.cfg["promote_margin"],
-                         min_eval=self.cfg.get("min_eval", 30))
-        # Banc scellé (jamais appris) : aucune régression critique ni recul essentiel permis.
         cases, decls = self._bench_cases(), self.journal.tools()
-        bench_c = bench_h = None
-        if cases:
-            from matthew import bench as B
-            bench_c = B.run(self._client_factory(cand), cases, decls)
-            bench_h = B.run(self._client_factory(self.cfg["serve_model"]), cases, decls) if champ else None
-            ok_b, why_b = B.gate(bench_c, bench_h)
-            if ok and not ok_b:
-                ok, why = False, why_b
+        if verdict is not None and verdict.get("champion_since") != (champ or {}).get("since"):
+            step("verdict du cloud", ok=False, reason=f"joué contre le champion {verdict.get('champion_since')}, "
+                 f"celui d'ici est {(champ or {}).get('since')} : duel rejoué ici")
+            verdict = None
+        elif verdict is not None:
+            step("verdict du cloud", ok=True, champion=verdict.get("champion_since"), gpu=verdict.get("gpu"))
+        v = verdict or duel(self._client_factory(cand),
+                            self._client_factory(self.cfg["serve_model"]) if champ else None,
+                            E.load(eval_path), cases, decls, self.cfg, exam=self._exam)
+        ok, why, cand_score, champ_score = v["ok"], v["why"], v["candidate"], v["champion"]
+        bench_c, bench_h = v["bench_c"], v["bench_h"]
+        # Le détail cas par cas reste dans le run (rejouer la décision) ; les notes gardées ailleurs sont légères.
+        _write(run / "duel.json", {"candidate": cand_score.get("items"),
+                                   "champion": (champ_score or {}).get("items"), "why": why})
+        cand_score, champ_score = S.strip(cand_score), champ_score and S.strip(champ_score)
         # Banc de cognition (juge de mémoire, planificateur) : décide de sa place dans la cognition.
         try:
             from matthew import cogbench

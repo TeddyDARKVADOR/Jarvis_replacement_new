@@ -242,7 +242,11 @@ def parse_progress(line: str) -> dict | None:
     return out or None
 
 
-def execute(run: Path, timeout_h: float = 6.0, cfg: dict | None = None, on_progress=None) -> dict:
+def execute(run: Path, timeout_h: float = 6.0, cfg: dict | None = None, on_progress=None,
+            should_stop=None) -> dict:
+    """`should_stop()` : interroge toutes les 15 s ; une raison (texte) arrête l'entraînement net
+    (entraînement de jour : l'utilisateur est revenu). Pas de reprise exacte : le cycle suivant
+    repart de zéro — ~20 min de GPU perdues au plus, rien de faux gardé."""
     cfg = cfg or config()
     missing = missing_deps(cfg)
     if missing:
@@ -256,6 +260,22 @@ def execute(run: Path, timeout_h: float = 6.0, cfg: dict | None = None, on_progr
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
                             errors="replace", env=train_env(cfg))
     lines, deadline, losses = [], time.monotonic() + timeout_h * 3600, []
+    stopped: list[str] = []
+    if should_stop:
+        import threading
+
+        def watch():
+            while proc.poll() is None:
+                try:
+                    why = should_stop()
+                except Exception:
+                    why = None
+                if why:
+                    stopped.append(str(why))
+                    proc.kill()
+                    return
+                time.sleep(15)
+        threading.Thread(target=watch, daemon=True).start()
     for line in proc.stdout:
         lines.append(line)
         if len(lines) > 20_000:
@@ -275,6 +295,8 @@ def execute(run: Path, timeout_h: float = 6.0, cfg: dict | None = None, on_progr
     proc.wait()
     out = "".join(lines)
     (run / "train.log").write_text(out[-400_000:], encoding="utf-8")
+    if stopped:
+        return {"ok": False, "interrupted": True, "reason": f"interrompu : {stopped[0]}"}
     if proc.returncode != 0 or "MATTHEW_TRAIN_OK" not in out:
         return {"ok": False, "reason": f"échec (code {proc.returncode}), voir {run / 'train.log'}"}
     if on_progress:

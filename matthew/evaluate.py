@@ -12,15 +12,19 @@ bancs d'outils varient d'une passe à l'autre jusqu'à 20 points sans changer de
 modèle (audit arXiv 2607.02577).
 
 La promotion (gate) compare candidat et champion SUR LE MÊME jeu, mesurés le
-même jour : il faut battre le champion d'une marge, sans recul de plus de
-5 points sur le choix d'outil ni sur les réponses directes.
+même jour, cas par cas (bootstrap apparié, matthew/stats.py) : il faut que la
+borne basse de l'écart soit au-dessus de zéro — sinon « indécis », le champion
+reste —, sans recul de plus de 5 points sur le choix d'outil, les réponses
+directes ni la pertinence. Sans détail cas par cas (ancienne note), la marge fixe.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import statistics
 from pathlib import Path
 
+from matthew import stats as S
 from matthew.client import Client, ClientError
 from matthew.norm import same
 
@@ -87,6 +91,8 @@ def score(client: Client, rows: list[dict], repeats: int = 1, progress=None) -> 
                 got = {"content": ""}
             lat.append(got.get("_latency", 0.0))
             mark = judge(msgs[i], got)
+            mark["id"] = hashlib.sha1(json.dumps(msgs[:i], ensure_ascii=False, sort_keys=True)
+                                      .encode("utf-8")).hexdigest()[:12]
             want = msgs[i].get("tool_calls") or []
             mark["target"] = want[0]["function"]["name"] if want else (
                 "__irrelevance__" if row.get("aug") == "irrelevance" or row.get("target") == "__none__"
@@ -122,6 +128,16 @@ def score(client: Client, rows: list[dict], repeats: int = 1, progress=None) -> 
             per.setdefault(m["target"], []).append(m["score"])
     per_tool = {t: round(sum(v) / len(v), 3) for t, v in sorted(per.items())}
     out["per_tool"] = per_tool
+    # Cas par cas, passes moyennées (la question est l'unité) : intervalles et duel apparié.
+    items = [{"id": col[0]["id"], "t": col[0]["target"], "s": round(sum(m["score"] for m in col) / len(col), 4)}
+             for col in zip(*per_pass)] if per_pass else []
+    out["items"] = items
+    out["ci"] = {k: v for k, v in S.mean_ci([it["s"] for it in items]).items() if k in ("lo", "hi")}
+    tgt = S.per_target(items)
+    out["per_tool_n"] = {t: v["n"] for t, v in tgt.items()}
+    out["exploratory"] = [t for t, v in tgt.items() if v["exploratory"]]
+    # « Faible » oriente la remédiation (plus d'exemples là) : un 0/1 exploratoire y a sa place,
+    # mais il ne prouve rien sur l'outil (voir « exploratory »).
     out["weak"] = [t for t, s in per_tool.items() if s < 0.75 and not t.startswith("__")]
     out["irrelevance"] = per_tool.get("__irrelevance__")
     out["failures"] = [{k: m[k] for k in ("target", "user", "got") if k in m}
@@ -136,6 +152,7 @@ def score(client: Client, rows: list[dict], repeats: int = 1, progress=None) -> 
 
 def gate(candidate: dict, champion: dict | None, margin: float = 0.02, floor: float = 0.5,
          min_eval: int = 30) -> tuple[bool, str]:
+    """`margin` ne sert plus qu'aux notes sans détail cas par cas (avant le duel apparié)."""
     c = candidate.get("composite") or 0.0
     if candidate.get("n", 0) < min_eval:
         return False, f"évaluation trop petite ({candidate.get('n', 0)} exemples, {min_eval} requis)"
@@ -146,6 +163,12 @@ def gate(candidate: dict, champion: dict | None, margin: float = 0.02, floor: fl
         a, b = candidate.get(key), champion.get(key)
         if a is not None and b is not None and a < b - 0.05:
             return False, f"recul sur {key} : {a:.2f} contre {b:.2f}"
-    if c < h + margin:
-        return False, f"{c:.2f} ne bat pas le champion ({h:.2f}) de {margin}"
-    return True, f"{c:.2f} bat le champion ({h:.2f})"
+    duel = S.paired(candidate, champion)
+    if duel is None:
+        if c < h + margin:
+            return False, f"{c:.2f} ne bat pas le champion ({h:.2f}) de {margin}"
+        return True, f"{c:.2f} bat le champion ({h:.2f})"
+    span = f"écart {duel['diff']:+.3f} [{duel['lo']:+.3f} ; {duel['hi']:+.3f}], {duel['better']} cas gagnés, {duel['worse']} perdus"
+    if duel["lo"] <= 0:
+        return False, f"indécis : {span} — le champion reste"
+    return True, f"{c:.2f} bat le champion ({h:.2f}) : {span}"

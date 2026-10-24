@@ -31,6 +31,10 @@ from matthew.journal import Journal
 from matthew.teacher import SYSTEM, School
 
 
+#: Les clés déjà évaluées et déjà apprises (empreintes, jamais le texte) : l'évaluation reste figée.
+LEDGER = "eval_ledger.json"
+
+
 def _key(text: str) -> str:
     return hashlib.sha1(" ".join(text.casefold().split()).encode("utf-8")).hexdigest()
 
@@ -114,16 +118,36 @@ def synthetic_records(root: Path):
             yield r
 
 
-def split(examples: list[dict], share: float) -> tuple[list[dict], list[dict]]:
+def split(examples: list[dict], share: float, ledger: dict | None = None) -> tuple[list[dict], list[dict]]:
     """Réel : les plus récents en évaluation (hold-out temporel). Synthétique : un
     tirage stable de `share` PAR OUTIL visé, pour que chaque outil soit évalué
-    (par date, les derniers outils amorcés seraient tous en évaluation)."""
+    (par date, les derniers outils amorcés seraient tous en évaluation).
+
+    `ledger` ({"eval": [...], "trained": [...]} de clés) fige l'évaluation d'une
+    construction à l'autre : un cas déjà évalué le reste toujours, et un cas à ajouter
+    est pris de préférence parmi ceux qu'aucun entraînement n'a vus. Sans lui, un cas
+    appris par le champion pouvait passer en évaluation au tour suivant (le champion
+    jugé sur sa copie) et les notes de deux semaines ne se comparaient pas."""
+    held = set((ledger or {}).get("eval", ()))
+    seen = set((ledger or {}).get("trained", ()))
+
+    def pick(group: list[dict], k: int) -> tuple[list[dict], list[dict]]:
+        """`group` dans l'ordre de préférence : déjà évalués, puis jamais vus, puis appris."""
+        ev = [e for e in group if e["key"] in held]
+        for e in ([e for e in group if e["key"] not in held and e["key"] not in seen]
+                  + [e for e in group if e["key"] not in held and e["key"] in seen]):
+            if len(ev) >= k:
+                break
+            ev.append(e)
+        taken = {id(e) for e in ev}
+        return [e for e in group if id(e) not in taken], ev
+
     real = [e for e in examples if not e.get("synthetic")]
     syn = [e for e in examples if e.get("synthetic")]
     n_eval = int(len(real) * share) if len(real) >= 5 else 0
     if len(real) >= 5:
         n_eval = max(1, n_eval)
-    train, evals = real[:len(real) - n_eval], real[len(real) - n_eval:]
+    train, evals = pick(real[::-1], n_eval)
     # Par cible (outil, conversation, refus) : au moins un tiers de ses exemples, jusqu'à 3,
     # pour que chaque outil soit noté (18 exemples d'évaluation au premier champion : trop peu).
     by: dict[str, list[dict]] = {}
@@ -132,9 +156,18 @@ def split(examples: list[dict], share: float) -> tuple[list[dict], list[dict]]:
     for group in by.values():
         group.sort(key=lambda e: hashlib.sha1(e["key"].encode()).hexdigest())
         k = max(round(share * len(group)), min(3, len(group) // 3))
-        evals += group[:k]
-        train += group[k:]
-    return train, evals
+        tr, ev = pick(group, k)
+        evals += ev
+        train += tr
+    by_ts = lambda e: e.get("ts", 0)
+    return sorted(train, key=by_ts), sorted(evals, key=by_ts)
+
+
+def _ledger(root: Path) -> dict:
+    try:
+        return json.loads((Path(root) / LEDGER).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"eval": [], "trained": []}
 
 
 def build(journal: Journal | None = None, school: School | None = None, out: Path | None = None,
@@ -160,7 +193,11 @@ def build(journal: Journal | None = None, school: School | None = None, out: Pat
         embed = A.ollama_embedder() if cfg.get("dedup", True) else None
     examples, n_dup = A.dedup(examples, embed)
     examples, n_bal = A.balance(examples)
-    train, evals = split(examples, cfg["eval_share"])
+    ledger = _ledger(journal.root)
+    train, evals = split(examples, cfg["eval_share"], ledger)
+    (journal.root / LEDGER).write_text(json.dumps(
+        {"eval": sorted(set(ledger["eval"]) | {e["key"] for e in evals}),
+         "trained": sorted(set(ledger["trained"]) | {e["key"] for e in train})}), encoding="utf-8")
     # Augmentations : l'entraînement reçoit pertinence + masquage ; l'évaluation,
     # la pertinence seulement (pour la mesurer), jamais le masquage.
     n_irr = len(A.irrelevance(train)) + len(A.irrelevance(evals))

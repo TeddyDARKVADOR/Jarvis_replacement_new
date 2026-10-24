@@ -13,6 +13,8 @@ rattrape une nuit manquée parce que le PC dormait ; sans systemd, crontab. Pour
 tournent sans session ouverte : `loginctl enable-linger $USER` (une fois).
 
 Chaque tâche passe par un petit script (run.cmd / run.sh) : dossier du dépôt, UTF-8, journal.
+Sous Windows, le Planificateur lance ce .cmd par wscript et un .vbs, fenêtre cachée : sinon une
+console s'ouvre au premier plan toutes les 30 minutes (un jeu perd le focus, 2026-10-24).
 `dry=True` rend les commandes sans rien poser (affichage, selftest).
 """
 from __future__ import annotations
@@ -60,6 +62,13 @@ def script(name: str, argv: list[str], log: Path, folder: Path, windows: bool = 
                                    f'exec "{sys.executable}" {args} >> "{log}" 2>&1', ""]), encoding="utf-8", newline="\n")
         path.chmod(0o755)
     return path
+
+
+def hidden(launcher: Path) -> str:
+    """Windows : la commande /TR du Planificateur — wscript lance le .cmd sans fenêtre (style 0)."""
+    vbs = launcher.with_suffix(".vbs")
+    vbs.write_text(f'CreateObject("WScript.Shell").Run """{launcher}""", 0, True\r\n', encoding="utf-8")
+    return f'wscript.exe //B //Nologo "{vbs}"'
 
 
 def _systemd_units(name: str, launcher: Path, calendar: str | None = None, minutes: int | None = None) -> dict[str, str]:
@@ -113,7 +122,7 @@ def daily(name: str, hour: str, argv: list[str], log: Path, folder: Path, runner
     la minuterie systemd le fait toujours (Persistent=true) ; crontab, jamais."""
     launcher = script(name, argv, log, folder, stem=stem)
     if WINDOWS:
-        cmd = ["schtasks", "/Create", "/TN", name, "/SC", "DAILY", "/ST", hour, "/TR", f'"{launcher}"', "/F"]
+        cmd = ["schtasks", "/Create", "/TN", name, "/SC", "DAILY", "/ST", hour, "/TR", hidden(launcher), "/F"]
         cmds = [cmd] + ([catch_up_command(name)] if catch_up else [])
         if dry:
             return {"ok": True, "how": "schtasks", "commands": cmds}
@@ -131,7 +140,7 @@ def every(name: str, minutes: int, argv: list[str], log: Path, folder: Path, run
           stem: str | None = None) -> dict:
     launcher = script(name, argv, log, folder, stem=stem)
     if WINDOWS:
-        cmd = ["schtasks", "/Create", "/TN", name, "/SC", "MINUTE", "/MO", str(minutes), "/TR", f'"{launcher}"', "/F"]
+        cmd = ["schtasks", "/Create", "/TN", name, "/SC", "MINUTE", "/MO", str(minutes), "/TR", hidden(launcher), "/F"]
         if dry:
             return {"ok": True, "how": "schtasks", "commands": [cmd]}
         cp = runner(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")

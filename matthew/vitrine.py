@@ -95,7 +95,9 @@ TOOLS_EN = {
 }
 NO_TOOL = ("__chat__", "__none__")
 #: Identifiants publics : aucun ne doit trahir l'assistant hôte.
-PUBLIC_IDS = {"shutdown_matthew_assistant": "shutdown"}
+# shutdown_jarvis : l'ancien nom, encore dans les évaluations d'avant le renommage (2026-10-23) —
+# inconnu et porteur de la marque, il bloquait toute la vitrine (PrivacyError, 2026-10-24).
+PUBLIC_IDS = {"shutdown_matthew_assistant": "shutdown", "shutdown_jarvis": "shutdown"}
 
 
 def pub(name: str | None) -> str | None:
@@ -294,7 +296,7 @@ def gather(root: Path | None = None, next_run=None) -> dict:
     tools = []
     for name in decls:
         label, dom = TOOLS.get(name, (name.replace("_", " "), "Autres"))
-        acc = per_tool.get(name)
+        acc = per_tool.get(name, next((v for t, v in per_tool.items() if pub(t) == pub(name)), None))
         tools.append({"id": pub(name), "label": label, "label_en": TOOLS_EN.get(name, label), "domain": dom,
                       "learned_on": learned_on.get(name), "examples": per_ex.get(name, 0),
                       "accuracy": round(float(acc), 3) if isinstance(acc, (int, float)) else None})

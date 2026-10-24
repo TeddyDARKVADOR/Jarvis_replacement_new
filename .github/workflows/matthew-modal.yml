@@ -1,0 +1,71 @@
+# Matthew s'entraîne ET passe son duel sur Modal — sans aucun PC allumé la nuit.
+#
+# Chaque soir (et à la demande), ce workflow :
+#   1. construit le jeu de données à partir des paquets du dépôt (matthew/packs : donnée
+#      SYNTHÉTIQUE vérifiée ; jamais le journal réel, qui ne quitte pas les PC) ;
+#   2. l'envoie au volume Modal « matthew-lab » et lance les variantes détachées (une carte L4
+#      chacune) : chacune s'entraîne puis joue le duel contre le champion du volume ;
+#   3. ne fait rien tant que des variantes tournent, ni au-delà du plafond du mois (modal_usd_month).
+# Le PC, à l'ouverture de session, ne rapatrie que les gagnants : python -m matthew.modal_gpu pull.
+#
+# Secrets : MODAL_TOKEN_ID et MODAL_TOKEN_SECRET (modal.com → Settings → API Tokens).
+# Sans eux, le workflow s'arrête proprement.
+
+name: matthew-modal
+
+on:
+  schedule:
+    - cron: "0 19 * * *"          # 21 h à Paris (heure d'été), 20 h l'hiver
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Relancer même si des variantes tournent encore"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: matthew-modal
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    name: Entraînement et duel de Matthew sur Modal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Clé Modal présente ?
+        id: key
+        run: |
+          if [ -n "$MODAL_TOKEN_ID" ] && [ -n "$MODAL_TOKEN_SECRET" ]; then
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Pas de secrets MODAL_TOKEN_ID / MODAL_TOKEN_SECRET : rien n'est lancé."
+            echo "ok=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dépendances
+        if: steps.key.outputs.ok == '1'
+        run: python -m pip install "modal>=1.0,<2" requests
+
+      - name: Envoyer les données et lancer les variantes
+        if: steps.key.outputs.ok == '1'
+        env:
+          FORCE: ${{ inputs.force && '--force' || '' }}
+        run: |
+          # shellcheck disable=SC2086
+          python -m matthew.modal_gpu launch $FORCE

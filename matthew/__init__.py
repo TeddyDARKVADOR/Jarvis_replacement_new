@@ -64,6 +64,14 @@ DEFAULTS: dict = {
                          "extra": {"reasoning_effort": "none"}},
     "match_mode": "trace",           # "trace" | "schema" — voir teacher.py
     "min_new_examples": 60,          # ~1 nuit d'amorçage ; un cycle coûte ~20 min de GPU
+    # Valeur des données (flywheel.worth_training) : une correction humaine suffit toujours.
+    "value_weak_min": 5,             # exemples neufs sur un outil faible du dernier examen
+    "value_stale_min": 20,           # … ou 20 neufs après 7 jours sans entraînement
+    "value_stale_days": 7,
+    # Entraînement local de JOUR (matthew/daytime.py) : le PC n'est plus allumé la nuit.
+    "daytime_training": True,
+    "daytime_idle_minutes": 20,      # absent depuis 20 min (clavier, souris) avant de commencer
+    "daytime_gpu_busy": 30,          # % d'utilisation du GPU au-delà duquel on n'entre pas (jeu, vidéo)
     "eval_share": 0.15,              # les plus récents → évaluation (hold-out temporel)
     "eval_repeats": 2,               # les bancs d'outils varient d'une passe à l'autre
     "promote_margin": 0.02,
@@ -82,6 +90,13 @@ DEFAULTS: dict = {
     # s'arrête à 12 h) et nombre de meilleurs candidats rapatriés pour le duel (~3 Go chacun).
     "kaggle_hours": 4.0,
     "kaggle_keep": 2,
+    # Modal (matthew/modal_gpu.py) : GPU à la seconde, 30 $ offerts par mois (non reportés).
+    # Chaque variante s'entraîne ET passe le duel là-bas ; le PC ne rapatrie que les gagnants.
+    "modal_gpu": "L4",
+    "modal_usd_hour": 1.0,           # L4 ~0,80 $/h + CPU et mémoire : estimation prudente
+    "modal_usd_month": 25.0,         # plafond du mois, sous les 30 $ offerts
+    "modal_variants": 2,             # variantes par lancement (en parallèle, une carte chacune)
+    "modal_unsloth": "unsloth==2026.10.7",
     # Le journal collecté sur le serveur (conversations venues du téléphone) : rapatrié chaque
     # nuit par Tailscale SSH (matthew/oracle.py). None : rien.
     "oracle_ssh": "ubuntu@jarvis-vps",

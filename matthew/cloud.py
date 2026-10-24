@@ -34,6 +34,7 @@ if __package__ in (None, ""):
 from matthew import config, data_dir
 from matthew import dataset as D
 from matthew import evaluate as E
+from matthew import stats as S
 from matthew import train as T
 from matthew.client import Client
 
@@ -93,6 +94,7 @@ def import_run(run: Path, cfg: dict | None = None, runner=subprocess.run, client
     champ_path = data_dir() / "champion.json"
     champ_score = E.score(make(cfg["serve_model"]), rows, cfg["eval_repeats"]) if champ_path.exists() else None
     ok, why = E.gate(cand_score, champ_score, cfg["promote_margin"], min_eval=cfg.get("min_eval", 30))
+    cand_score, champ_score = S.strip(cand_score), champ_score and S.strip(champ_score)
     if ok:
         cp = runner(["ollama", "cp", cand, cfg["serve_model"]], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
         ok = cp.returncode == 0

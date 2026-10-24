@@ -583,6 +583,101 @@ def _remediation():
     return "ronde R1 : weather, confondu avec volume"
 
 
+@check("statistiques : passes moyennées par cas, bootstrap apparié, indécis = le champion reste")
+def _stats():
+    from matthew import stats as S
+    lo, hi = S.wilson(0, 1)
+    assert lo == 0.0 and hi > 0.7, "0/1 : intervalle presque entier, pas « nul »"
+    same = [1.0, 0.0] * 50
+    d = S.paired_bootstrap(same, same)
+    assert d["diff"] == 0 and d["lo"] == 0 == d["hi"], d
+    assert S.paired_bootstrap([1.0] * 60 + [0.0] * 40, [0.0] * 60 + [0.0] * 40)["lo"] > 0.4
+    assert S.paired_bootstrap(same, same, seed=1) == S.paired_bootstrap(same, same, seed=1), "reproductible"
+    mk = lambda scores, c: {"composite": c, "tool_name": 1.0, "answer": 1.0, "n": len(scores),
+                            "items": [{"id": f"i{k}", "t": "x", "s": v} for k, v in enumerate(scores)]}
+    champ = mk([1.0] * 90 + [0.0] * 10, 0.90)
+    noisy = mk([1.0] * 91 + [0.0] * 9, 0.91)                 # +1 point : l'ancienne marge disait presque oui
+    ok, why = E.gate(noisy, champ)
+    assert not ok and why.startswith("indécis"), why
+    clear = mk([1.0] * 100, 1.0)
+    assert E.gate(clear, champ)[0]
+    other = {**clear, "items": [{**it, "id": "autre"} for it in clear["items"]]}
+    assert "ne bat pas" not in E.gate(other, champ)[1], "cas différents : retour à la marge fixe"
+    assert "items" not in S.strip(clear) and S.strip(clear)["n"] == 100
+    return f"+1 point sur 100 cas : {why.split(' — ')[0]}"
+
+
+@check("évaluation figée : un cas évalué le reste, un cas appris n'y passe pas")
+def _ledger():
+    exs = [{"key": f"k{i}", "synthetic": True, "target": "w", "ts": i} for i in range(30)]
+    tr, ev = D.split(exs, 0.15)
+    ledger = {"eval": [e["key"] for e in ev], "trained": [e["key"] for e in tr]}
+    more = exs + [{"key": f"n{i}", "synthetic": True, "target": "w", "ts": 100 + i} for i in range(30)]
+    tr2, ev2 = D.split(more, 0.15, ledger)
+    keys2 = {e["key"] for e in ev2}
+    assert set(ledger["eval"]) <= keys2, "un cas évalué reste évalué"
+    assert not keys2 & set(ledger["trained"]), "aucun cas appris par le champion ne passe en évaluation"
+    assert len(tr2) + len(ev2) == 60
+    return f"{len(ev)} → {len(ev2)} cas évalués, aucun déjà appris"
+
+
+@check("seuil par la valeur : correction, outil faible, ancienneté ; sans donnée utile, aucun entraînement")
+def _worth():
+    from matthew.flywheel import worth_training
+    cfg = {**CFG, "min_new_examples": 60, "value_weak_min": 5, "value_stale_min": 20, "value_stale_days": 7}
+    day = 86400.0
+    man = lambda n, per=None, human=0: {"base": n, "train": n, "eval": 0, "per_target": per or {},
+                                        "origins": {"teacher": n - human, "human": human}}
+    st = {"trained_examples": 100, "trained_per_target": {"a": 10, "b": 10}, "trained_human": 0, "last_train_at": 0.0}
+    ok, why = worth_training(man(103), st, {"weak": ["a"]}, cfg, 1 * day)
+    assert not ok and "aucune correction" in why, "3 exemples redondants : on n'entraîne pas pour faire semblant"
+    assert worth_training(man(101, human=1), st, {}, cfg, day)[0], "une correction suffit"
+    ok, why = worth_training(man(106, {"a": 16, "b": 10}), st, {"weak": ["a"]}, cfg, day)
+    assert ok and "outils faibles" in why, why
+    assert not worth_training(man(106, {"a": 10, "b": 16}), st, {"weak": ["a"]}, cfg, day)[0], "neufs sur un outil sûr"
+    assert worth_training(man(160), st, {}, cfg, day)[0], "l'ancien seuil reste"
+    assert not worth_training(man(125), st, {}, cfg, 3 * day)[0] and worth_training(man(125), st, {}, cfg, 8 * day)[0]
+    old = {"trained_examples": 100}
+    assert not worth_training(man(110, {"a": 99}), old, {"weak": ["a"]}, cfg, day)[0], "état d'avant : on ne devine pas"
+    return why
+
+
+@check("entraînement de jour : seulement absent et GPU libre ; retour de l'utilisateur = arrêt")
+def _daytime():
+    from matthew import daytime as DT
+    cfg = {**CFG, "daytime_training": True, "daytime_idle_minutes": 20, "daytime_gpu_busy": 30}
+    assert not DT.ready(cfg, idle=lambda: 60.0, gpu=lambda: 0)[0], "présent"
+    assert "GPU occupé" in DT.ready(cfg, idle=lambda: 3600.0, gpu=lambda: 95)[1], "jeu en cours"
+    assert not DT.ready(cfg, idle=lambda: None, gpu=lambda: 0)[0], "absence illisible : pas à l'aveugle"
+    assert not DT.ready({**cfg, "daytime_training": False}, idle=lambda: 9e9, gpu=lambda: 0)[0]
+    assert DT.ready(cfg, idle=lambda: 3600.0, gpu=lambda: None)[0]
+
+    class FakeFw:
+        def cycle(self, execute):
+            assert execute
+            return {"outcome": "en attente de données", "steps": [{"step": "seuil", "reason": "3 nouveaux"}]}
+    assert DT.tick(FakeFw(), cfg, idle=lambda: 60.0, gpu=lambda: 0)["ran"] is False
+    out = DT.tick(FakeFw(), cfg, idle=lambda: 3600.0, gpu=lambda: 5)
+    assert out["ran"] and out["seuil"] == "3 nouveaux", out
+    # L'arrêt : un faux entraînement long, tué dès que should_stop répond.
+    import time as _t
+    run = TMP / "day-run"
+    run.mkdir()
+    (run / "plan.json").write_text(json.dumps({"hyper": {"epochs": 1}}), encoding="utf-8")
+    (run / "train_matthew.py").write_text("import time\nprint('début', flush=True)\ntime.sleep(120)\n", encoding="utf-8")
+    real = (T.missing_deps, T.train_python, T.free_gpu, T.train_env, T.time.sleep)
+    T.missing_deps, T.train_python, T.free_gpu = (lambda cfg: []), (lambda cfg: sys.executable), (lambda: None)
+    T.train_env = lambda cfg: None
+    try:
+        t0 = _t.monotonic()
+        res = T.execute(run, cfg=CFG, should_stop=lambda: "tu es revenu")
+        assert res["interrupted"] and "revenu" in res["reason"] and _t.monotonic() - t0 < 60, res
+    finally:
+        T.missing_deps, T.train_python, T.free_gpu, T.train_env, _ = real
+    assert DT.install(dry=True)["ok"]
+    return "présent / jeu / illisible → rien ; absent → cycle ; retour → arrêt net"
+
+
 @check("synthétique réparti par tirage stable, pas par date")
 def _syn_split():
     exs = [{"key": f"k{i}", "synthetic": True, "ts": i} for i in range(200)]
@@ -794,6 +889,7 @@ def _vitrine_flag():
     for bad in ("x", "fix C:/Users/moi/secret.txt", "envoie à bob@ex.fr", "voir https://exemple.com"):
         assert V.clean_title(bad) is None, bad
     assert V.pub("shutdown_matthew_assistant") == "shutdown"
+    assert V.pub("shutdown_jarvis") == "shutdown", "l'ancien nom des évaluations d'avant le renommage bloquait la vitrine"
     git_log = ("@@2026-10-20|JARVIS : nouveau HUD\nclient_desktop/hud/web/index.html\nclient_desktop/hud/window.py\n"
                "@@2026-10-19|Matthew : routeur par le sens\nmatthew/router.py\ncapabilities/graphs/matthew.json\n"
                "@@2026-10-18|clé AIza" + "x" * 35 + "\nmain.py\n")
@@ -1265,12 +1361,121 @@ def _sched():
         assert len(plain["commands"]) == 1, "la nuit locale ne se rattrape pas (elle peut entraîner)"
         cmds = S.daily("Matthew cloud", "05:00", ["-m", "x"], d / "c.log", d, dry=True, catch_up=True)["commands"]
         assert cmds[0][0] == "schtasks" and "StartWhenAvailable = $true" in cmds[1][-1] and "'Matthew cloud'" in cmds[1][-1]
+        tr = cmds[0][cmds[0].index("/TR") + 1]
+        assert tr.startswith("wscript.exe ") and ", 0, True" in (d / "matthew-cloud.vbs").read_text(encoding="utf-8"), \
+            "sans fenêtre : une console au premier plan vole le focus (jeu)"
+        every = S.every("Matthew vitrine", 30, ["-m", "x"], d / "v.log", d, dry=True)["commands"][0]
+        assert every[every.index("/TR") + 1].startswith("wscript.exe ")
         tabs.clear()
         assert S.daily("Matthew cloud", "05:00", ["-m", "x"], d / "c.log", d, runner=runner, catch_up=True)["ok"]
         assert [c[0][0] for c in tabs] == ["schtasks", "powershell"]
     finally:
         S.WINDOWS = real
     return "Windows (.cmd, schtasks, rattrapage), Linux (systemd Persistent, sinon crontab sans écraser l'existant)"
+
+
+@check("cloud Modal : variantes entraînées ET jugées là-bas, seuls les gagnants rapatriés, budget, champion synchronisé")
+def _modal():
+    from matthew import config, modal_gpu as M
+    from matthew import pack as P
+    src, packs = TMP / "modal-src", TMP / "modal-packs"
+    (src / "synthetic").mkdir(parents=True)
+    decls = [{"name": "weather_report", "description": "Weather for a city",
+              "parameters": {"type": "OBJECT", "properties": {"city": {"type": "STRING"}}, "required": ["city"]}}]
+    (src / "tools.json").write_text(json.dumps({"digest": "x", "tools": decls}), encoding="utf-8")
+    rows = [{"episode": f"syn-m{i}", "target": "weather_report", "status": "ok", "synthetic": True,
+             "license": "apache-2.0", "teacher": "gpt-oss:120b-cloud", "verifier": "gemma4:31b-cloud",
+             "ts": 1_790_000_000 + i, "tools": ["weather_report"],
+             "messages": [{"role": "system", "content": "s"}, {"role": "user", "content": f"Quel temps à {c} ?"},
+                          {"role": "assistant", "content": "", "tool_calls": [{"id": "call_0", "type": "function",
+                           "function": {"name": "weather_report", "arguments": {"city": c}}}]}]}
+            for i, c in enumerate(["Lyon", "Nantes", "Brest", "Dijon", "Rouen", "Metz", "Pau", "Nice", "Caen", "Albi"])]
+    (src / "synthetic" / "records.jsonl").write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    P.export(src, packs, host="portable")
+    vol = TMP / "modal-vol"
+    store = M.DirStore(vol)
+    cfg = {**config({}), "modal_variants": 2, "min_eval": 1}
+    clock = lambda: 1_800_000_000.0
+    # Un champion déjà sur le volume (envoyé une fois par `seed`).
+    store.put_bytes("champion/20261021-005219/Modelfile", b"FROM ./x.gguf\n")
+    store.put_bytes("champion/current.json", json.dumps({"since": "20261021-005219",
+                                                          "dir": "champion/20261021-005219"}).encode())
+    # 1. Lancer : données au volume, deux variantes détachées ; une seconde fois : « en cours ».
+    spawned = []
+    r = M.launch(store=store, spawn=lambda st, vs: spawned.append((st, vs)), pack_dir=packs, clock=clock, cfg=cfg)
+    stamp = r["stamp"]
+    assert r["ok"] and r["new_data"] and r["variants"][0] == "base" and len(r["variants"]) == 2, r
+    for f in ("plan.json", "train_matthew.py", "tools.json", "data/eval.jsonl", "data/train.jsonl"):
+        assert (vol / "inbox" / stamp / f).exists(), f
+    assert "en cours" in M.launch(store=store, spawn=lambda *a: spawned.append(a), pack_dir=packs, clock=clock, cfg=cfg)["skipped"]
+    assert len(spawned) == 1, "pas de second lancement tant que des variantes tournent"
+
+    # 2. Sur Modal : la variante « base » apprend tout, l'autre rien ; le champion répond vide.
+    class _CP:
+        returncode, stdout, stderr = 0, "", ""
+
+    def runner(cmd, cwd=None, **kw):
+        if cmd[-1] == "train_matthew.py":
+            (Path(cwd) / "gguf_gguf").mkdir(exist_ok=True)
+            (Path(cwd) / "gguf_gguf" / "Qwen3.5-4B.Q5_K_M.gguf").write_bytes(b"GGUF" * 10)
+        return _CP()
+    def weather(p):
+        city = p["messages"][-1]["content"].split()[-2]
+        return {"role": "assistant", "content": "", "tool_calls": [{"id": "a", "type": "function",
+                "function": {"name": "weather_report", "arguments": {"city": city}}}]}
+    smart = lambda m: Client("http://x", m, post=fake_post(weather), usage_root=TMP)
+    dumb = lambda m: Client("http://x", m, post=fake_post(lambda p: {"role": "assistant", "content": ""}), usage_root=TMP)
+    for v in spawned[0][1]:
+        good = v["label"] == "base"
+        out = M.run_variant(stamp, v, vol, TMP / "modal-work", runner=runner, serve=lambda: None, clock=clock,
+                            cfg=cfg, cases=[],
+                            client_factory=lambda m, good=good: (smart if good and m != "matthew" else dumb)(m))
+        assert out["ok"] and out["promote"] == good, out
+    base_dir, other = vol / "runs" / stamp / "base", vol / "runs" / stamp / spawned[0][1][1]["label"]
+    verdict = json.loads((base_dir / "verdict.json").read_text(encoding="utf-8"))
+    assert verdict["champion_since"] == "20261021-005219" and verdict["candidate"]["items"], "duel apparié joué là-bas"
+    assert (base_dir / "gguf_gguf" / "Qwen3.5-4B.Q5_K_M.gguf").exists() and not (other / "gguf_gguf").exists(), \
+        "seul le gagnant garde son GGUF sur le volume"
+    assert len(store.listdir(f"usage/{M.month(clock)}")) == 2, "chaque variante compte sa durée"
+    assert M.running(store, clock) == [], "toutes les variantes ont rendu un verdict"
+    # 3. Le PC : un seul téléchargement (le gagnant).
+    root = TMP / "modal-root"
+    root.mkdir()
+    judged = []
+
+    class FakeFw:
+        def cloud(self, run):
+            judged.append(Path(run))
+            (root / "champion.json").write_text(json.dumps({"since": "20261101-090000", "run": str(run)}), encoding="utf-8")
+            return {"outcome": "nouveau champion"}
+    rep = M.pull(FakeFw(), store=store, root=root)
+    assert [p.name for p in judged] == [f"modal-{stamp}-base"] and rep[stamp]["outcome"] == "nouveau champion", rep
+    assert (judged[0] / "verdict.json").exists() and (judged[0] / "gguf_gguf" / "Qwen3.5-4B.Q5_K_M.gguf").exists()
+    assert rep["champion"]["action"] == "déjà sur le volume", "un gagnant de Modal n'est pas renvoyé (~3 Go)"
+    cur = json.loads((vol / "champion" / "current.json").read_text(encoding="utf-8"))
+    assert cur["since"] == "20261101-090000" and cur["dir"] == f"runs/{stamp}/base", cur
+    assert not (vol / "champion" / "20261021-005219").exists(), "l'ancien champion quitte le volume"
+    again = M.pull(FakeFw(), store=store, root=root)
+    assert set(again) == {"champion"} and again["champion"]["action"] == "déjà à jour", again
+    # 4. Champion promu ailleurs (entraînement local de jour) : son GGUF est envoyé une fois.
+    local = root / "runs" / "20261102-120000"
+    (local / "gguf_gguf").mkdir(parents=True)
+    (local / "gguf_gguf" / "Qwen3.5-4B.Q5_K_M.gguf").write_bytes(b"GGUF")
+    (local / "Modelfile").write_text("FROM ./gguf_gguf/Qwen3.5-4B.Q5_K_M.gguf\nRENDERER qwen3.5\n", encoding="utf-8")
+    (root / "champion.json").write_text(json.dumps({"since": "20261102-120000", "run": str(local)}), encoding="utf-8")
+    s = M.sync_champion(store, root)
+    assert s["action"] == "envoyé" and (vol / "champion" / "20261102-120000" / "Qwen3.5-4B.Q5_K_M.gguf").exists()
+    assert "FROM ./Qwen3.5-4B.Q5_K_M.gguf" in (vol / "champion" / "20261102-120000" / "Modelfile").read_text(encoding="utf-8")
+    assert not (base_dir / "gguf_gguf" / "Qwen3.5-4B.Q5_K_M.gguf").exists(), "un seul GGUF de champion sur le volume"
+    # 5. Plafond du mois : plus rien n'est lancé.
+    store.put_bytes(f"usage/{M.month(clock)}/gros.json", json.dumps({"seconds": 10 ** 6}).encode())
+    r = M.launch(store=store, spawn=lambda *a: spawned.append(a), pack_dir=packs, clock=clock, cfg=cfg, force=True)
+    assert "plafond" in r["skipped"] and len(spawned) == 1, r
+    # 6. Échec d'entraînement : error.json, pas de verdict, compté au budget.
+    bad = M.run_variant(stamp, {"label": "casse", "hyper": {}}, vol, TMP / "modal-work", clock=clock, cfg=cfg, cases=[],
+                        runner=lambda cmd, **kw: type("P", (), {"returncode": 1})(), serve=lambda: None)
+    assert not bad["ok"] and (vol / "runs" / stamp / "casse" / "error.json").exists()
+    return f"2 variantes jugées sur Modal, 1 GGUF rapatrié, champion synchronisé sans renvoi, plafond {cfg['modal_usd_month']} $"
 
 
 @check("cloud Kaggle : paquet préparé, lancé sans doublon, candidat récupéré puis jugé par la vraie boucle")
@@ -1761,6 +1966,9 @@ def main() -> int:
             print(f"  ÉCHEC {name} : {type(e).__name__}: {e}")
             traceback.print_exc()
     print(f"\nmatthew.selftest : {ok}/{len(CHECKS)}")
+    # ~22 Mo par passage : laissés dans le dossier temporaire, ils ont fini par remplir C: (2026-10-24).
+    import shutil
+    shutil.rmtree(TMP, ignore_errors=True)
     return 0 if ok == len(CHECKS) else 1
 
 
